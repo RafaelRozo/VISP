@@ -1,0 +1,142 @@
+VISP/TASKER INDEPENDENT CONTRACTOR AGREEMENT
+Version 1.0 — Effective Date: January 1, 2026
+
+THIS INDEPENDENT CONTRACTOR AGREEMENT ("AGREEMENT") IS ENTERED INTO
+BETWEEN VISP TECHNOLOGIES INC. ("VISP", "COMPANY") AND THE INDIVIDUAL
+ACCEPTING THESE TERMS ("PROVIDER", "CONTRACTOR", "YOU").
+
+RECITALS
+WHEREAS VISP operates the Tasker platform, a technology marketplace
+connecting customers with independent service providers; and WHEREAS
+the Provider wishes to offer services through the Platform as an
+independent contractor;
+
+NOW, THEREFORE, in consideration of the mutual covenants contained
+herein, the parties agree as follows:
+
+1. INDEPENDENT CONTRACTOR STATUS
+1.1. You are an independent contractor and NOT an employee, agent,
+     partner, or joint venturer of VISP. Nothing in this Agreement
+     creates an employment relationship.
+1.2. You are solely responsible for determining the manner and means
+     of performing the services, subject to the quality standards and
+     requirements of the Platform.
+1.3. VISP does not control the hours you work, the sequence of your
+     tasks, or the tools you use beyond those required by applicable
+     law and professional standards.
+1.4. You retain the right to provide services through other platforms
+     or directly to clients outside the Platform.
+
+2. TAX OBLIGATIONS
+2.1. As an independent contractor, you are solely responsible for:
+     (a) Reporting all income earned through the Platform to the
+         applicable tax authorities (Canada Revenue Agency, IRS, or
+         provincial/state tax agencies);
+     (b) Remitting all applicable income taxes, self-employment taxes,
+         HST/GST, and any other taxes or levies;
+     (c) Maintaining appropriate tax registration (e.g., GST/HST
+         registration if applicable);
+     (d) Filing all required tax returns on time.
+2.2. VISP will issue T4A slips (Canada) or 1099 forms (USA) as
+     required by law.
+2.3. VISP does not withhold taxes from your earnings and has no
+     obligation to do so.
+
+3. PROVIDER OBLIGATIONS
+3.1. You shall maintain all licenses, certifications, permits, and
+     insurance required by applicable law for the services you perform.
+3.2. You shall perform all accepted tasks in a professional, workmanlike
+     manner and in compliance with all applicable laws, regulations,
+     building codes, and industry standards.
+3.3. You shall not subcontract or delegate any task accepted through
+     the Platform without prior written approval from VISP.
+3.4. You shall not solicit customers met through the Platform for
+     off-platform services for a period of twelve (12) months following
+     the last task completed for that customer.
+
+4. SCOPE OF SERVICES
+4.1. Services available through the Platform are defined by the closed
+     task catalog. Providers may only perform tasks that match their
+     verified qualifications and assigned level.
+4.2. Providers CANNOT unilaterally expand the scope of a job. Any
+     additional services require a new job to be created through the
+     Platform.
+4.3. If a Provider identifies work beyond the original job scope, they
+     must inform the customer through the Platform and a new job must
+     be requested.
+
+5. LEVEL DESIGNATION AND QUALIFICATIONS
+5.1. Providers are assigned a level (1 through 4) based on verified
+     qualifications, experience, and certifications.
+5.2. Level assignment determines which tasks a Provider can accept
+     and the applicable compensation range.
+5.3. Attempting to perform tasks above your designated level is a
+     violation of this Agreement and may result in immediate removal
+     from the Platform.
+
+6. COMPENSATION AND COMMISSION
+6.1. Compensation for each task is determined by the Platform based on
+     the task type, provider level, region, and applicable pricing rules.
+6.2. VISP deducts a commission from each completed job. Commission rates
+     vary by level:
+     - Level 1: 15-20%
+     - Level 2: 12-18%
+     - Level 3: 8-12%
+     - Level 4: 15-25%
+6.3. Payment is processed through Stripe and deposited to your linked
+     bank account according to the payout schedule.
+
+7. INSURANCE AND LIABILITY
+7.1. You shall maintain adequate insurance coverage appropriate for your
+     level and the services you perform.
+7.2. Level 3 and Level 4 providers must maintain a minimum of $2,000,000
+     (two million dollars) in commercial general liability insurance.
+7.3. You are solely responsible for any damage, injury, or loss arising
+     from the services you perform.
+7.4. You agree to indemnify and hold harmless VISP from any claims
+     arising from your performance of services.
+
+8. BACKGROUND CHECKS
+8.1. All Providers must consent to and successfully pass a Criminal
+     Record Check (CRC) before being activated on the Platform.
+8.2. VISP reserves the right to require additional background checks
+     at any time.
+8.3. Failure to pass a background check or refusal to consent to a
+     check will result in removal from the Platform.
+
+9. TERMINATION
+9.1. Either party may terminate this Agreement at any time, for any
+     reason, with or without cause.
+9.2. Upon termination, you must complete any in-progress tasks unless
+     otherwise directed by VISP.
+9.3. VISP may immediately suspend or terminate your access to the
+     Platform for violation of this Agreement, the Platform Terms of
+     Service, or applicable law.
+
+10. CONFIDENTIALITY
+You shall not disclose any confidential information obtained through
+the Platform, including customer personal information, proprietary
+business processes, pricing algorithms, or internal communications.
+
+11. GOVERNING LAW
+This Agreement is governed by the laws of the Province of Ontario
+and the federal laws of Canada applicable therein.
+
+12. DISPUTE RESOLUTION
+Disputes arising under this Agreement shall be resolved through binding
+arbitration in Ontario, Canada, in accordance with the Arbitration
+Act, 1991 (Ontario).
+
+13. SEVERABILITY
+If any provision of this Agreement is held to be unenforceable, the
+remaining provisions shall remain in full force and effect.
+
+14. ENTIRE AGREEMENT
+This Agreement, together with the Platform Terms of Service and
+applicable level-specific terms, constitutes the entire agreement
+between you and VISP regarding your provision of services through
+the Platform.
+
+BY ACCEPTING THIS AGREEMENT, YOU ACKNOWLEDGE THAT YOU HAVE READ AND
+UNDERSTOOD ALL OF THE ABOVE TERMS, AND THAT YOU ARE ENTERING INTO
+THIS AGREEMENT VOLUNTARILY AS AN INDEPENDENT CONTRACTOR.

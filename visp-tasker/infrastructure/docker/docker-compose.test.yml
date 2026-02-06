@@ -1,0 +1,118 @@
+# =============================================================================
+# VISP/Tasker — Test Environment Docker Compose
+# =============================================================================
+# Extends the base docker-compose.yml with test-specific overrides:
+#   - Isolated test database (visp_test)
+#   - No persistent volumes (clean state per run)
+#   - Test runner service that executes pytest
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up --abort-on-container-exit
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Test Database (isolated, ephemeral)
+  # ---------------------------------------------------------------------------
+  db:
+    environment:
+      POSTGRES_DB: visp_test
+      POSTGRES_USER: visp_test
+      POSTGRES_PASSWORD: visp_test
+    # No persistent volumes — clean state each run
+    volumes: []
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  # ---------------------------------------------------------------------------
+  # Redis — Test Instance (ephemeral)
+  # ---------------------------------------------------------------------------
+  redis:
+    # No persistent volumes
+    volumes: []
+    command: >
+      redis-server
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+
+  # ---------------------------------------------------------------------------
+  # Backend — Disabled (replaced by test runner)
+  # ---------------------------------------------------------------------------
+  backend:
+    profiles:
+      - disabled
+
+  # ---------------------------------------------------------------------------
+  # Worker — Disabled in test mode
+  # ---------------------------------------------------------------------------
+  worker:
+    profiles:
+      - disabled
+
+  # ---------------------------------------------------------------------------
+  # Beat — Disabled in test mode
+  # ---------------------------------------------------------------------------
+  beat:
+    profiles:
+      - disabled
+
+  # ---------------------------------------------------------------------------
+  # Test Runner — Executes pytest
+  # ---------------------------------------------------------------------------
+  test-runner:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    container_name: visp-test-runner
+    environment:
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql+asyncpg://visp_test:visp_test@db:5432/visp_test
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - JWT_SECRET=test-secret-for-unit-tests
+      - STRIPE_SECRET_KEY=sk_test_placeholder
+      - STRIPE_WEBHOOK_SECRET=whsec_placeholder
+      - GOOGLE_MAPS_API_KEY=test_key
+      - FIREBASE_CREDENTIALS_JSON={}
+      - AWS_REGION=us-east-1
+      - S3_UPLOAD_BUCKET=visp-test-uploads
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - TESTING=1
+    volumes:
+      - ../../backend:/app
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        python -c \"
+import asyncio, asyncpg, sys
+async def wait():
+    for i in range(30):
+        try:
+            conn = await asyncpg.connect('postgresql://visp_test:visp_test@db:5432/visp_test')
+            await conn.close()
+            return
+        except Exception:
+            await asyncio.sleep(1)
+    sys.exit(1)
+asyncio.run(wait())
+        \" &&
+        echo 'Running migrations...' &&
+        alembic upgrade head &&
+        echo 'Running tests...' &&
+        pytest tests/ -v --tb=short --junitxml=/app/test-results.xml -x
+      "
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - visp-network
+
+# Remove named volumes for test isolation
+volumes:
+  postgres_data: !reset null
+  redis_data: !reset null

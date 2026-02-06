@@ -1,0 +1,440 @@
+/**
+ * VISP/Tasker - App Navigator
+ *
+ * Root navigation structure with:
+ * - Auth flow (Login, Register, ForgotPassword)
+ * - Customer tab navigator (Home, Jobs, Profile)
+ * - Provider tab navigator (Dashboard, Jobs, Earnings, Profile)
+ * - Profile stack navigator (Profile, Credentials, Verification, Settings)
+ * - Type-safe navigation params throughout
+ */
+
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Colors, getLevelColor } from '../theme/colors';
+
+// Screens - Auth
+// In production, these would be imported from auth screens directory.
+// Placeholder screens are used here for the auth flow.
+import type {
+  AuthStackParamList,
+  CustomerTabParamList,
+  ProfileStackParamList,
+  ProviderTabParamList,
+  RootStackParamList,
+} from '../types';
+
+// Navigators - Customer & Emergency Flows
+import CustomerNavigator from './CustomerNavigator';
+import EmergencyNavigator from './EmergencyNavigator';
+
+// Screens - Provider
+import DashboardScreen from '../screens/provider/DashboardScreen';
+import JobOffersScreen from '../screens/provider/JobOffersScreen';
+import ActiveJobScreen from '../screens/provider/ActiveJobScreen';
+import EarningsScreen from '../screens/provider/EarningsScreen';
+import ScheduleScreen from '../screens/provider/ScheduleScreen';
+
+// Screens - Profile
+import ProfileScreen from '../screens/profile/ProfileScreen';
+import CredentialsScreen from '../screens/profile/CredentialsScreen';
+import VerificationScreen from '../screens/profile/VerificationScreen';
+import SettingsScreen from '../screens/profile/SettingsScreen';
+
+// ---------------------------------------------------------------------------
+// Placeholder auth screens (to be replaced by VISP-FE-AUTH-001 module)
+// ---------------------------------------------------------------------------
+
+function LoginScreen() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>Login Screen</Text>
+      <Text style={placeholderStyles.subtext}>VISP-FE-AUTH-001</Text>
+    </View>
+  );
+}
+
+function RegisterScreen() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>Register Screen</Text>
+      <Text style={placeholderStyles.subtext}>VISP-FE-AUTH-001</Text>
+    </View>
+  );
+}
+
+function ForgotPasswordScreen() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>Forgot Password Screen</Text>
+      <Text style={placeholderStyles.subtext}>VISP-FE-AUTH-001</Text>
+    </View>
+  );
+}
+
+// Placeholder customer screens (to be replaced by VISP-FE-HOME-002 module)
+function CustomerHomeScreen() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>Customer Home</Text>
+      <Text style={placeholderStyles.subtext}>VISP-FE-HOME-002</Text>
+    </View>
+  );
+}
+
+function CustomerJobsScreen() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>My Jobs</Text>
+      <Text style={placeholderStyles.subtext}>VISP-FE-TASK-003</Text>
+    </View>
+  );
+}
+
+const placeholderStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 8,
+  },
+  subtext: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Screen options
+// ---------------------------------------------------------------------------
+
+const SCREEN_OPTIONS = {
+  headerStyle: {
+    backgroundColor: Colors.surface,
+  },
+  headerTintColor: Colors.textPrimary,
+  headerTitleStyle: {
+    fontWeight: '600' as const,
+  },
+  headerShadowVisible: false,
+  contentStyle: {
+    backgroundColor: Colors.background,
+  },
+};
+
+const TAB_OPTIONS = {
+  tabBarStyle: {
+    backgroundColor: Colors.surface,
+    borderTopColor: Colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 4,
+    height: 56,
+  },
+  tabBarActiveTintColor: Colors.primary,
+  tabBarInactiveTintColor: Colors.textTertiary,
+  tabBarLabelStyle: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+  },
+  headerStyle: {
+    backgroundColor: Colors.surface,
+  },
+  headerTintColor: Colors.textPrimary,
+  headerTitleStyle: {
+    fontWeight: '600' as const,
+  },
+  headerShadowVisible: false,
+};
+
+// ---------------------------------------------------------------------------
+// Tab icon helper (text-based, replace with icon library in production)
+// ---------------------------------------------------------------------------
+
+function TabIcon({
+  label,
+  focused,
+}: {
+  label: string;
+  focused: boolean;
+}): React.JSX.Element {
+  return (
+    <View style={tabIconStyles.container}>
+      <Text
+        style={[
+          tabIconStyles.icon,
+          { color: focused ? Colors.primary : Colors.textTertiary },
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const tabIconStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+    height: 24,
+  },
+  icon: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Stack Navigators
+// ---------------------------------------------------------------------------
+
+const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
+
+// Provider stack for ActiveJob (nested inside tab)
+const ProviderJobStack = createNativeStackNavigator<
+  Pick<ProviderTabParamList, 'JobOffers' | 'ActiveJob'>
+>();
+
+// ---------------------------------------------------------------------------
+// Tab Navigators
+// ---------------------------------------------------------------------------
+
+const CustomerTab = createBottomTabNavigator<CustomerTabParamList>();
+const ProviderTab = createBottomTabNavigator<ProviderTabParamList>();
+
+// ---------------------------------------------------------------------------
+// Profile Stack Navigator
+// ---------------------------------------------------------------------------
+
+function ProfileStackNavigator(): React.JSX.Element {
+  return (
+    <ProfileStack.Navigator screenOptions={SCREEN_OPTIONS}>
+      <ProfileStack.Screen
+        name="ProfileMain"
+        component={ProfileScreen}
+        options={{ title: 'Profile' }}
+      />
+      <ProfileStack.Screen
+        name="Credentials"
+        component={CredentialsScreen}
+        options={{ title: 'My Credentials' }}
+      />
+      <ProfileStack.Screen
+        name="Verification"
+        component={VerificationScreen}
+        options={{ title: 'Verification' }}
+      />
+      <ProfileStack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ title: 'Settings' }}
+      />
+    </ProfileStack.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Provider Jobs Stack (Offers + Active Job)
+// ---------------------------------------------------------------------------
+
+function ProviderJobStackNavigator(): React.JSX.Element {
+  return (
+    <ProviderJobStack.Navigator screenOptions={SCREEN_OPTIONS}>
+      <ProviderJobStack.Screen
+        name="JobOffers"
+        component={JobOffersScreen}
+        options={{ title: 'Job Offers' }}
+      />
+      <ProviderJobStack.Screen
+        name="ActiveJob"
+        component={ActiveJobScreen}
+        options={{ title: 'Active Job' }}
+      />
+    </ProviderJobStack.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Auth Flow
+// ---------------------------------------------------------------------------
+
+function AuthNavigator(): React.JSX.Element {
+  return (
+    <AuthStack.Navigator
+      screenOptions={{
+        ...SCREEN_OPTIONS,
+        headerShown: false,
+      }}
+    >
+      <AuthStack.Screen name="Login" component={LoginScreen} />
+      <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen
+        name="ForgotPassword"
+        component={ForgotPasswordScreen}
+      />
+    </AuthStack.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Customer Tab Navigator
+// ---------------------------------------------------------------------------
+
+function CustomerTabNavigator(): React.JSX.Element {
+  return (
+    <CustomerTab.Navigator screenOptions={TAB_OPTIONS}>
+      <CustomerTab.Screen
+        name="Home"
+        component={CustomerHomeScreen}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="H" focused={focused} />
+          ),
+        }}
+      />
+      <CustomerTab.Screen
+        name="MyJobs"
+        component={CustomerJobsScreen}
+        options={{
+          title: 'My Jobs',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="J" focused={focused} />
+          ),
+        }}
+      />
+      <CustomerTab.Screen
+        name="CustomerProfile"
+        component={ProfileStackNavigator}
+        options={{
+          title: 'Profile',
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="P" focused={focused} />
+          ),
+        }}
+      />
+    </CustomerTab.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Provider Tab Navigator
+// ---------------------------------------------------------------------------
+
+function ProviderTabNavigator(): React.JSX.Element {
+  return (
+    <ProviderTab.Navigator screenOptions={TAB_OPTIONS}>
+      <ProviderTab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="D" focused={focused} />
+          ),
+        }}
+      />
+      <ProviderTab.Screen
+        name="JobOffers"
+        component={ProviderJobStackNavigator}
+        options={{
+          title: 'Jobs',
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="J" focused={focused} />
+          ),
+        }}
+      />
+      <ProviderTab.Screen
+        name="Earnings"
+        component={EarningsScreen}
+        options={{
+          title: 'Earnings',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="$" focused={focused} />
+          ),
+        }}
+      />
+      <ProviderTab.Screen
+        name="Schedule"
+        component={ScheduleScreen}
+        options={{
+          title: 'Schedule',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="S" focused={focused} />
+          ),
+        }}
+      />
+      <ProviderTab.Screen
+        name="ProviderProfile"
+        component={ProfileStackNavigator}
+        options={{
+          title: 'Profile',
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="P" focused={focused} />
+          ),
+        }}
+      />
+    </ProviderTab.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root Navigator
+// ---------------------------------------------------------------------------
+
+export default function AppNavigator(): React.JSX.Element {
+  // In production, isAuthenticated and userRole come from an auth store
+  const isAuthenticated = true;
+  const userRole: 'customer' | 'provider' | 'both' = 'provider';
+
+  return (
+    <NavigationContainer>
+      <RootStack.Navigator
+        screenOptions={{
+          ...SCREEN_OPTIONS,
+          headerShown: false,
+        }}
+      >
+        {!isAuthenticated ? (
+          <RootStack.Screen name="Auth" component={AuthNavigator} />
+        ) : userRole === 'customer' ? (
+          <>
+            <RootStack.Screen
+              name="CustomerHome"
+              component={CustomerTabNavigator}
+            />
+            <RootStack.Screen
+              name="CategoryDetail"
+              component={CustomerNavigator}
+              options={{ headerShown: false }}
+            />
+            <RootStack.Screen
+              name="EmergencyFlow"
+              component={EmergencyNavigator}
+              options={{ headerShown: false }}
+            />
+          </>
+        ) : (
+          <RootStack.Screen
+            name="ProviderHome"
+            component={ProviderTabNavigator}
+          />
+        )}
+      </RootStack.Navigator>
+    </NavigationContainer>
+  );
+}

@@ -1,0 +1,140 @@
+VISP/TASKER CUSTOMER SERVICE AGREEMENT
+Version 1.0 — Effective Date: January 1, 2026
+
+THIS CUSTOMER SERVICE AGREEMENT ("AGREEMENT") IS ENTERED INTO BETWEEN
+VISP TECHNOLOGIES INC. ("VISP", "WE", "US") AND THE CUSTOMER ACCEPTING
+THESE TERMS ("CUSTOMER", "YOU") UPON YOUR FIRST USE OF THE TASKER
+PLATFORM TO REQUEST SERVICES.
+
+1. SERVICE REQUEST PROCESS
+1.1. All service requests must be made through the Tasker platform
+     using the predefined task catalog. Free-text task descriptions
+     are not available.
+1.2. You will select the appropriate service category and task type
+     that best matches your needs.
+1.3. Upon submitting a service request, the Platform will match you
+     with a qualified, verified independent service provider
+     ("Provider") based on the task requirements, your location,
+     Provider availability, ratings, and proximity.
+1.4. You acknowledge that VISP does not employ the Providers and that
+     VISP acts solely as a technology platform facilitating the
+     connection between you and independent contractors.
+
+2. PROVIDER LEVELS AND SERVICE QUALITY
+2.1. The Platform classifies Providers into four levels based on their
+     qualifications, certifications, and experience:
+     - Level 1 (Helper): Basic household tasks, $25-45/hr
+     - Level 2 (Experienced): Skilled tasks, $60-90/hr
+     - Level 3 (Certified Pro): Licensed/regulated services, $90-150/hr
+     - Level 4 (Emergency): 24/7 emergency services, $150+/hr
+2.2. All Providers undergo background checks and qualification
+     verification appropriate to their level before being activated
+     on the Platform.
+2.3. Level 3 and Level 4 Providers are required to hold valid trade
+     licenses and maintain a minimum of $2,000,000 in commercial
+     general liability insurance.
+
+3. PRICING AND PAYMENT
+3.1. The price for each service is determined by the Platform and
+     displayed to you before you confirm the service request. The
+     price is based on the task type, Provider level, estimated
+     duration, geographic region, and current demand.
+3.2. You agree to pay the quoted price plus any applicable taxes
+     (HST/GST in Canada, state/local sales tax in the USA).
+3.3. Payment is processed securely through Stripe. By using the
+     Platform, you agree to Stripe's terms of service.
+3.4. Your payment method will be charged upon completion of the
+     service, unless otherwise specified for the service type.
+3.5. For jobs estimated to exceed $500 CAD, a hold may be placed
+     on your payment method at the time of booking.
+
+4. EMERGENCY SERVICES AND DYNAMIC PRICING
+4.1. Emergency services (Level 4) may be subject to dynamic pricing
+     that reflects urgency, time of day, Provider availability, and
+     demand conditions.
+4.2. Dynamic pricing will be clearly displayed before you confirm
+     an emergency service request. You must provide explicit consent
+     to dynamic pricing before the request is processed.
+4.3. VISP does not guarantee response times for emergency services
+     but Providers are bound by Service Level Agreements that
+     include specific response time targets.
+
+5. SCOPE OF WORK
+5.1. The scope of each job is defined by the task selected from the
+     Platform catalog. Providers cannot unilaterally expand the scope.
+5.2. If the Provider identifies additional work beyond the original
+     scope, a new service request must be created through the Platform.
+5.3. You should not ask or allow a Provider to perform work outside
+     the scope of the original task without creating a new job.
+
+6. YOUR RESPONSIBILITIES
+6.1. You must provide accurate information about the service location,
+     access requirements, and any known hazards or conditions relevant
+     to the task.
+6.2. You must ensure the Provider has safe access to the work area.
+6.3. You must be present (or have an authorized representative present)
+     at the service location during the scheduled service, unless the
+     service type permits otherwise.
+6.4. You are responsible for obtaining any permits required for the
+     work, unless the task specification states that permit acquisition
+     is included in the service.
+
+7. CANCELLATION POLICY
+7.1. Cancellations made more than twenty-four (24) hours before the
+     scheduled service: No charge.
+7.2. Cancellations made between four (4) and twenty-four (24) hours
+     before the scheduled service: A cancellation fee of twenty-five
+     percent (25%) of the estimated job total may apply.
+7.3. Cancellations made less than four (4) hours before the scheduled
+     service or after the Provider has departed: A cancellation fee
+     of fifty percent (50%) of the estimated job total may apply.
+7.4. Emergency service cancellations are subject to the Emergency
+     Pricing Consent terms.
+
+8. REVIEWS AND RATINGS
+8.1. After each completed service, you will be invited to rate the
+     Provider and leave a review.
+8.2. Reviews must be honest, fair, and based on your actual experience.
+8.3. VISP reserves the right to remove reviews that contain abusive
+     language, discriminatory content, or are determined to be
+     fraudulent.
+
+9. COMPLAINTS AND DISPUTES
+9.1. If you are dissatisfied with a service, you may file a complaint
+     through the Platform within seventy-two (72) hours of service
+     completion.
+9.2. VISP will investigate complaints and may offer resolution options
+     including partial or full refunds, re-service by a different
+     Provider, or account credits.
+9.3. Disputes not resolved through the complaint process are subject
+     to the dispute resolution provisions in the Platform Terms of
+     Service.
+
+10. LIMITATION OF LIABILITY
+10.1. VISP is a technology platform and does not perform the services.
+      VISP is not liable for the acts or omissions of Providers.
+10.2. Your sole remedy for unsatisfactory service is through the
+      complaint and dispute resolution process described above.
+10.3. VISP's total liability to you shall not exceed the amount you
+      paid for the specific service giving rise to the claim.
+
+11. PROPERTY ACCESS AND SECURITY
+11.1. By requesting a service, you authorize the assigned Provider to
+      enter your property for the purpose of performing the task.
+11.2. VISP recommends that you secure valuables and sensitive items
+      before a Provider arrives.
+11.3. VISP is not responsible for loss or damage to your property
+      except to the extent caused by a Provider's negligence, which
+      is the Provider's liability as an independent contractor.
+
+12. PRIVACY
+12.1. Your personal information is collected, used, and protected in
+      accordance with our Privacy Policy and applicable privacy
+      legislation (PIPEDA, provincial privacy acts, and applicable
+      US state privacy laws).
+12.2. Your contact information is shared with the assigned Provider
+      solely for the purpose of completing the requested service.
+
+BY USING THE TASKER PLATFORM TO REQUEST SERVICES, YOU ACKNOWLEDGE THAT
+YOU HAVE READ, UNDERSTOOD, AND AGREE TO THIS CUSTOMER SERVICE AGREEMENT
+IN ADDITION TO THE PLATFORM TERMS OF SERVICE.

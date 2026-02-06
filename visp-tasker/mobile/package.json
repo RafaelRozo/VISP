@@ -1,0 +1,64 @@
+{
+  "name": "visp-tasker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "react-native start",
+    "ios": "react-native run-ios",
+    "ios:sim": "react-native run-ios --simulator=\"iPhone 16 Pro\"",
+    "android": "react-native run-android",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "clean": "cd ios && xcodebuild clean && cd ..",
+    "pod-install": "cd ios && pod install && cd ..",
+    "reset-cache": "react-native start --reset-cache"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-native": "0.76.6",
+    "@react-navigation/native": "^7.0.14",
+    "@react-navigation/native-stack": "^7.2.0",
+    "@react-navigation/bottom-tabs": "^7.2.0",
+    "react-native-screens": "^4.4.0",
+    "react-native-safe-area-context": "^5.1.0",
+    "react-native-gesture-handler": "^2.21.2",
+    "react-native-reanimated": "^3.16.7",
+    "react-native-maps": "^1.18.0",
+    "react-native-keychain": "^9.2.0",
+    "axios": "^1.7.9",
+    "zustand": "^5.0.3",
+    "socket.io-client": "^4.8.1",
+    "react-native-vector-icons": "^10.2.0",
+    "@react-native-async-storage/async-storage": "^2.1.0",
+    "react-native-image-picker": "^7.2.3",
+    "react-native-splash-screen": "^3.3.0",
+    "react-native-config": "^1.5.3",
+    "@react-native-firebase/app": "^21.6.1",
+    "@react-native-firebase/messaging": "^21.6.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.3",
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "@babel/runtime": "^7.26.0",
+    "@react-native/babel-preset": "^0.76.6",
+    "@react-native/eslint-config": "^0.76.6",
+    "@react-native/metro-config": "^0.76.6",
+    "@react-native/typescript-config": "^0.76.6",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "@testing-library/react-native": "^12.9.0",
+    "react-test-renderer": "18.3.1",
+    "babel-jest": "^29.7.0",
+    "prettier": "^3.4.2",
+    "@types/react-test-renderer": "^18.3.0"
+  },
+  "jest": {
+    "preset": "react-native"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

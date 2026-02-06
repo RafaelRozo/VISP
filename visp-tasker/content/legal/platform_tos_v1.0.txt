@@ -1,0 +1,130 @@
+VISP/TASKER PLATFORM TERMS OF SERVICE
+Version 1.0 — Effective Date: January 1, 2026
+
+PLEASE READ THESE TERMS OF SERVICE ("TERMS") CAREFULLY BEFORE USING THE
+TASKER PLATFORM OPERATED BY VISP TECHNOLOGIES INC. ("VISP", "WE", "US",
+OR "OUR"). BY ACCESSING OR USING THE PLATFORM, YOU AGREE TO BE BOUND
+BY THESE TERMS.
+
+1. ACCEPTANCE OF TERMS
+By creating an account, accessing, or using the Tasker platform (the
+"Platform"), including the mobile application, website, and all related
+services, you acknowledge that you have read, understood, and agree to
+be bound by these Terms and our Privacy Policy. If you do not agree,
+you must not use the Platform.
+
+2. PLATFORM DESCRIPTION
+Tasker is a technology-enabled marketplace that connects customers seeking
+home services with independent service providers ("Providers"). VISP does
+not itself perform any home services. VISP provides the technology
+platform that facilitates connections between customers and Providers.
+
+3. ELIGIBILITY
+You must be at least eighteen (18) years of age and legally capable of
+entering into binding contracts under the laws of your jurisdiction.
+The Platform is currently available in select regions of Canada (with an
+Ontario focus) and the United States. You represent that you are accessing
+the Platform from an eligible jurisdiction.
+
+4. USER ACCOUNTS
+4.1. You must provide accurate, current, and complete information during
+     registration and keep your account information up to date.
+4.2. You are responsible for maintaining the confidentiality of your
+     account credentials and for all activities under your account.
+4.3. You must immediately notify VISP of any unauthorized use of your
+     account.
+4.4. VISP reserves the right to suspend or terminate accounts that
+     violate these Terms.
+
+5. SERVICE CATALOG AND TASK SELECTION
+5.1. All services available through the Platform are defined in a closed
+     task catalog. Free-text task descriptions are not permitted.
+5.2. Customers must select from predefined service categories and task
+     types when requesting services.
+5.3. Providers are matched to tasks based on their verified qualifications,
+     level designation, availability, and proximity.
+
+6. SERVICE LEVELS
+The Platform operates a four-tier provider level system:
+  - Level 1 (Helper): Basic household tasks
+  - Level 2 (Experienced): Technical and skilled tasks
+  - Level 3 (Certified Pro): Licensed and regulated services
+  - Level 4 (Emergency): 24/7 on-call emergency services
+Each level has specific qualification requirements, pricing ranges, and
+commission structures as detailed in the applicable level-specific terms.
+
+7. PRICING AND PAYMENTS
+7.1. Service pricing is determined by the Platform based on the task type,
+     provider level, geographic region, and demand conditions.
+7.2. Emergency services (Level 4) may be subject to dynamic pricing based
+     on urgency, time of day, and provider availability.
+7.3. All payments are processed through our third-party payment processor
+     (Stripe). You agree to their terms of service as applicable.
+7.4. VISP charges a commission on each completed job. Commission rates
+     vary by provider level.
+
+8. CANCELLATION AND REFUNDS
+8.1. Cancellation policies vary by service level and are detailed in the
+     applicable service agreement.
+8.2. Refund eligibility is determined on a case-by-case basis in
+     accordance with our Refund Policy.
+
+9. LIMITATION OF LIABILITY
+9.1. TO THE MAXIMUM EXTENT PERMITTED BY LAW, VISP SHALL NOT BE LIABLE
+     FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE
+     DAMAGES ARISING FROM YOUR USE OF THE PLATFORM.
+9.2. VISP'S TOTAL LIABILITY SHALL NOT EXCEED THE GREATER OF (A) THE
+     AMOUNT YOU PAID TO VISP IN THE TWELVE (12) MONTHS PRECEDING THE
+     CLAIM, OR (B) ONE HUNDRED CANADIAN DOLLARS (CAD $100).
+9.3. VISP does not guarantee the quality, safety, or legality of
+     services performed by Providers.
+
+10. INTELLECTUAL PROPERTY
+All content, trademarks, logos, and software associated with the
+Platform are the property of VISP Technologies Inc. or its licensors.
+You may not copy, modify, distribute, or create derivative works
+without prior written consent.
+
+11. PRIVACY AND DATA PROTECTION
+Your use of the Platform is subject to our Privacy Policy, which
+describes how we collect, use, and protect your personal information
+in compliance with the Personal Information Protection and Electronic
+Documents Act (PIPEDA) and applicable provincial privacy legislation.
+
+12. DISPUTE RESOLUTION
+12.1. Any dispute arising from these Terms shall first be subject to
+      good-faith negotiation between the parties.
+12.2. If negotiation fails, disputes shall be resolved through binding
+      arbitration in Ontario, Canada, in accordance with the Arbitration
+      Act, 1991 (Ontario).
+12.3. Nothing in this section prevents either party from seeking
+      injunctive relief in a court of competent jurisdiction.
+
+13. GOVERNING LAW
+These Terms are governed by and construed in accordance with the laws
+of the Province of Ontario and the federal laws of Canada applicable
+therein, without regard to conflict-of-law principles.
+
+14. MODIFICATIONS TO TERMS
+VISP reserves the right to modify these Terms at any time. Material
+changes will be communicated via email or in-app notification at least
+thirty (30) days before taking effect. Continued use of the Platform
+after the effective date constitutes acceptance of the modified Terms.
+
+15. SEVERABILITY
+If any provision of these Terms is found to be unenforceable, the
+remaining provisions shall continue in full force and effect.
+
+16. ENTIRE AGREEMENT
+These Terms, together with the Privacy Policy and any applicable
+service-level agreements, constitute the entire agreement between you
+and VISP regarding the use of the Platform.
+
+17. CONTACT INFORMATION
+For questions about these Terms, contact us at:
+VISP Technologies Inc.
+Email: legal@tasker.visp.ca
+Address: Toronto, Ontario, Canada
+
+BY USING THE PLATFORM, YOU ACKNOWLEDGE THAT YOU HAVE READ THESE TERMS
+OF SERVICE, UNDERSTAND THEM, AND AGREE TO BE BOUND BY THEM.

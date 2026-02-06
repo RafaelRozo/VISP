@@ -1,0 +1,131 @@
+VISP/TASKER LEVEL 3 — CERTIFIED PROFESSIONAL TERMS AND CONDITIONS
+Version 1.0 — Effective Date: January 1, 2026
+
+THESE TERMS AND CONDITIONS ("LEVEL 3 TERMS") SUPPLEMENT THE INDEPENDENT
+CONTRACTOR AGREEMENT AND PLATFORM TERMS OF SERVICE. BY ACCEPTING A
+LEVEL 3 DESIGNATION, YOU AGREE TO THE FOLLOWING ADDITIONAL TERMS.
+
+1. LEVEL 3 — CERTIFIED PROFESSIONAL DESIGNATION
+1.1. Level 3 Certified Professionals perform licensed, regulated, and
+     specialized services that require government-issued trade licenses,
+     professional certifications, and mandatory insurance coverage.
+1.2. Examples of Level 3 tasks include, but are not limited to:
+     - Licensed electrical work (ESA-regulated in Ontario)
+     - Licensed plumbing (including backflow prevention)
+     - HVAC installation, repair, and maintenance
+     - Gas fitting (TSSA-regulated in Ontario)
+     - Structural carpentry and renovation
+     - Roofing (commercial and residential)
+     - Licensed pest control
+     - Asbestos and hazardous material abatement
+     - Fire alarm and sprinkler system installation
+     - Pool and spa installation and maintenance
+
+2. MANDATORY QUALIFICATION REQUIREMENTS
+2.1. All Level 1 and Level 2 qualification requirements must be met.
+2.2. Valid, current provincial or state trade license(s) applicable to
+     the services you intend to perform through the Platform. You must
+     provide:
+     (a) License number and issuing authority;
+     (b) Jurisdiction of validity;
+     (c) Expiry date (if applicable);
+     (d) Scanned copy of the license for verification.
+2.3. VISP will verify your license directly with the issuing authority.
+     Providing a fraudulent, expired, or invalid license will result
+     in immediate and permanent removal from the Platform and may be
+     reported to the relevant regulatory body.
+2.4. All applicable certifications required by your jurisdiction
+     (e.g., Certificate of Qualification, Red Seal endorsement).
+2.5. Criminal Record Check (CRC) with Vulnerable Sector Screening
+     obtained within the last six (6) months.
+
+3. MANDATORY INSURANCE — $2,000,000 MINIMUM
+3.1. Level 3 Certified Professionals MUST maintain commercial general
+     liability insurance with a MINIMUM coverage amount of TWO MILLION
+     CANADIAN DOLLARS ($2,000,000 CAD) or equivalent in USD.
+3.2. The insurance policy must:
+     (a) Be issued by a licensed insurer authorized to operate in your
+         jurisdiction;
+     (b) Name VISP Technologies Inc. as an additional insured;
+     (c) Include completed operations coverage;
+     (d) Cover the specific trades and services you perform;
+     (e) Remain valid and in force at all times while you are active
+         on the Platform.
+3.3. You must provide proof of insurance (Certificate of Insurance)
+     prior to activation and upon each renewal.
+3.4. VISP will monitor insurance expiry dates. Failure to renew before
+     expiry will result in automatic suspension of your account until
+     valid proof of insurance is provided.
+3.5. You must notify VISP within forty-eight (48) hours of any
+     insurance policy cancellation, material change, or claim.
+
+4. COMPENSATION
+4.1. Level 3 Certified Professionals are compensated at rates ranging
+     from $90.00 to $150.00 CAD per hour, as determined by the Platform
+     based on the trade, specific task, geographic region, licensing
+     requirements, and demand conditions.
+4.2. Complex or specialized tasks may command rates at the higher end
+     of the range or above, subject to VISP approval.
+
+5. COMMISSION STRUCTURE
+5.1. VISP charges a commission of eight percent (8%) to twelve percent
+     (12%) on each completed Level 3 job.
+5.2. The reduced commission rate reflects the higher qualification
+     requirements and insurance costs borne by Level 3 providers.
+5.3. The specific commission rate for each job is displayed before
+     you accept the task.
+
+6. REGULATORY COMPLIANCE
+6.1. You are solely responsible for ensuring that all work performed
+     complies with applicable:
+     (a) Building codes (Ontario Building Code, National Building Code
+         of Canada, or applicable US codes);
+     (b) Electrical safety codes (Ontario Electrical Safety Code, NEC);
+     (c) Fire codes and safety standards;
+     (d) Environmental regulations;
+     (e) Occupational health and safety legislation (OHSA in Ontario).
+6.2. You are responsible for obtaining or advising the customer to
+     obtain all necessary permits before commencing work.
+6.3. You must ensure all work passes required inspections by the
+     relevant authority having jurisdiction (AHJ).
+
+7. PROFESSIONAL LIABILITY
+7.1. In addition to general liability insurance, Level 3 Providers
+     performing design, engineering advisory, or consulting services
+     are strongly recommended to carry professional liability
+     (errors and omissions) insurance.
+7.2. You agree to indemnify and hold harmless VISP from any claims,
+     damages, penalties, or fines arising from your work, including
+     code violations, failed inspections, or regulatory non-compliance.
+
+8. QUALITY STANDARDS
+8.1. All work must meet or exceed the standards required by the
+     applicable regulatory authority and trade association.
+8.2. You must maintain a minimum customer rating of 4.2 out of 5.0
+     stars averaged over your last forty (40) completed jobs.
+8.3. You must maintain a task completion rate of at least ninety-five
+     percent (95%).
+8.4. Workmanship is warranted for a period of one (1) year from
+     completion, in addition to any statutory warranty periods.
+
+9. CONTINUING EDUCATION
+9.1. You must maintain all continuing education and professional
+     development requirements mandated by your licensing authority.
+9.2. VISP reserves the right to require evidence of continuing
+     education compliance on an annual basis.
+
+10. SUSPENSION AND REMOVAL
+10.1. VISP may immediately suspend your Level 3 status for:
+      (a) Expired or revoked trade license;
+      (b) Lapsed insurance coverage;
+      (c) Failed inspection reported through the Platform;
+      (d) Regulatory enforcement action;
+      (e) Safety incident or complaint.
+10.2. Suspension is effective immediately and remains in place until
+      the matter is resolved to VISP's satisfaction.
+
+BY ACCEPTING LEVEL 3 CERTIFIED PROFESSIONAL STATUS, YOU CONFIRM THAT
+YOU HAVE READ, UNDERSTOOD, AND AGREE TO THESE TERMS IN ADDITION TO THE
+INDEPENDENT CONTRACTOR AGREEMENT AND PLATFORM TERMS OF SERVICE. YOU
+CONFIRM THAT YOU HOLD ALL REQUIRED LICENSES AND INSURANCE AS SPECIFIED
+ABOVE.

@@ -1,0 +1,134 @@
+VISP/TASKER EMERGENCY DYNAMIC PRICING CONSENT
+Version 1.0 — Effective Date: January 1, 2026
+
+THIS EMERGENCY DYNAMIC PRICING CONSENT ("CONSENT") MUST BE ACCEPTED
+BEFORE ANY LEVEL 4 EMERGENCY SERVICE REQUEST CAN BE PROCESSED. PLEASE
+READ CAREFULLY AS EMERGENCY SERVICES ARE SUBJECT TO PREMIUM AND
+VARIABLE PRICING.
+
+1. DYNAMIC PRICING DISCLOSURE
+1.1. Emergency services provided through the Tasker platform (Level 4)
+     are subject to dynamic pricing. This means that the price you pay
+     for an emergency service may be significantly higher than the
+     standard rate for the same type of work performed as a non-emergency
+     service.
+1.2. Dynamic pricing factors include, but are not limited to:
+     (a) Time of day: Services requested between 10:00 PM and 6:00 AM
+         local time are subject to overnight premiums;
+     (b) Day of week: Weekend and statutory holiday requests carry
+         additional premiums;
+     (c) Provider availability: When fewer Providers are available in
+         your area, prices may increase to incentivize response;
+     (d) Urgency classification: The severity and urgency of the
+         emergency as determined by the Platform's assessment;
+     (e) Geographic factors: Distance of the nearest available Provider,
+         travel conditions, and regional demand;
+     (f) Seasonal demand: Extreme weather events and seasonal peaks
+         may result in elevated pricing.
+
+2. PRICING STRUCTURE
+2.1. Emergency service pricing consists of the following components:
+     (a) BASE RATE: Starting at $150.00 CAD per hour for the Provider's
+         time on site;
+     (b) EMERGENCY DISPATCH FEE: A flat fee charged for activating the
+         emergency dispatch system (amount varies by service type);
+     (c) AFTER-HOURS PREMIUM: An additional surcharge of up to fifty
+         percent (50%) for services between 10:00 PM and 6:00 AM;
+     (d) HOLIDAY PREMIUM: An additional surcharge of up to one hundred
+         percent (100%) for services on statutory holidays;
+     (e) DYNAMIC MULTIPLIER: A variable multiplier of up to 3.0x
+         applied to the base rate during periods of extreme demand or
+         limited availability;
+     (f) MATERIALS: Cost of any emergency materials or parts used,
+         at market rates plus a handling markup.
+2.2. The TOTAL ESTIMATED PRICE, including all applicable premiums and
+     multipliers, will be displayed to you BEFORE you confirm the
+     emergency service request. You must explicitly confirm acceptance
+     of the displayed price.
+
+3. PRICE GUARANTEE
+3.1. Once you confirm an emergency service request at the displayed
+     price, that price is locked as the maximum amount you will be
+     charged for the Provider's time, subject to the following:
+     (a) If the actual time on site is less than estimated, you will
+         be charged only for actual time;
+     (b) If the actual time exceeds the estimate by more than twenty
+         percent (20%), you will be contacted for approval before
+         additional charges are incurred;
+     (c) Emergency materials and parts are billed at actual cost plus
+         the markup disclosed at the time of booking.
+
+4. COMPARISON TO STANDARD RATES
+4.1. For transparency, the Platform will display the standard (non-
+     emergency) rate for the same type of service alongside the
+     emergency rate so you can understand the premium being charged.
+4.2. You acknowledge that emergency rates may be TWO TO FIVE TIMES
+     higher than standard rates for the same work, reflecting the
+     24/7 availability, rapid response requirements, and on-call
+     infrastructure costs.
+
+5. YOUR RIGHT TO DECLINE
+5.1. You are under no obligation to accept the emergency pricing.
+     If you decline:
+     (a) You may schedule the service at standard rates during normal
+         business hours (subject to availability);
+     (b) The Platform will display the next available non-emergency
+         appointment time;
+     (c) VISP is not responsible for any damage or loss that occurs
+         between your decision to decline emergency service and the
+         completion of a standard-rate service.
+
+6. CANCELLATION OF EMERGENCY SERVICES
+6.1. Once an emergency Provider has been dispatched:
+     (a) Cancellation before the Provider departs: Emergency dispatch
+         fee applies (non-refundable);
+     (b) Cancellation after the Provider departs but before arrival:
+         Emergency dispatch fee plus a minimum one (1) hour charge at
+         the emergency rate;
+     (c) Cancellation after the Provider arrives: Full charges for time
+         on site plus the emergency dispatch fee.
+6.2. These cancellation terms apply regardless of the reason for
+     cancellation, except in cases of force majeure.
+
+7. PAYMENT AUTHORIZATION
+7.1. By consenting to emergency pricing, you authorize VISP to place
+     a pre-authorization hold on your payment method for the full
+     estimated amount at the time of booking.
+7.2. The final charge will be processed upon job completion and will
+     reflect the actual time and materials used.
+7.3. If your payment method cannot be pre-authorized for the
+     estimated amount, the emergency request cannot be processed.
+
+8. DISPUTE RESOLUTION FOR EMERGENCY CHARGES
+8.1. If you believe you were overcharged for an emergency service,
+     you may file a pricing dispute within forty-eight (48) hours
+     of service completion.
+8.2. VISP will review the dispatch logs, Provider GPS data, time
+     stamps, and job completion records to resolve the dispute.
+8.3. If the dispute is resolved in your favor, a partial or full
+     refund will be issued to your original payment method.
+
+9. CONSUMER PROTECTION
+9.1. VISP's emergency pricing practices comply with applicable
+     consumer protection legislation, including the Ontario Consumer
+     Protection Act, 2002, and applicable US state consumer protection
+     laws.
+9.2. VISP does not engage in price gouging as defined by applicable
+     law and maintains pricing records for audit and compliance.
+9.3. Emergency pricing multipliers are capped and monitored by VISP
+     to prevent excessive charges.
+
+10. RECORD OF CONSENT
+10.1. Your acceptance of this Emergency Dynamic Pricing Consent is
+      recorded with a timestamp, your IP address, device identifier,
+      and a cryptographic hash of the consent text for integrity
+      verification.
+10.2. This consent record is immutable and retained for a minimum of
+      seven (7) years in compliance with applicable record retention
+      requirements.
+
+BY ACCEPTING THIS CONSENT, YOU ACKNOWLEDGE THAT YOU UNDERSTAND AND
+AGREE TO THE DYNAMIC PRICING MODEL DESCRIBED ABOVE FOR EMERGENCY
+SERVICES. YOU CONFIRM THAT YOU ARE VOLUNTARILY REQUESTING AN EMERGENCY
+SERVICE AT PREMIUM RATES AND THAT THE ESTIMATED PRICE HAS BEEN
+CLEARLY DISPLAYED TO YOU BEFORE CONFIRMATION.

@@ -1,0 +1,204 @@
+# =============================================================================
+# VISP/Tasker — Local Development Docker Compose
+# =============================================================================
+# Services:
+#   - backend:  FastAPI API server (port 305) with hot reload
+#   - worker:   Celery background worker
+#   - beat:     Celery beat scheduler
+#   - db:       PostgreSQL 15 (port 5432)
+#   - redis:    Redis 7 (port 6379)
+#
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose up -d backend db   # Start only API and database
+#   docker compose logs -f backend    # Follow API logs
+#   docker compose down               # Stop all services
+#   docker compose down -v            # Stop and remove volumes
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: visp-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: visp_tasker
+      POSTGRES_USER: visp
+      POSTGRES_PASSWORD: visp_local
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U visp -d visp_tasker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - visp-network
+
+  # ---------------------------------------------------------------------------
+  # Redis Cache & Message Broker
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: visp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - visp-network
+
+  # ---------------------------------------------------------------------------
+  # FastAPI Backend (API Server)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    container_name: visp-backend
+    restart: unless-stopped
+    ports:
+      - "305:305"
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://visp:visp_local@db:5432/visp_tasker
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - JWT_SECRET=dev-secret-change-in-production-do-not-use
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-placeholder}
+      - FIREBASE_CREDENTIALS_JSON=${FIREBASE_CREDENTIALS_JSON:-{}}
+      - AWS_REGION=us-east-1
+      - S3_UPLOAD_BUCKET=visp-dev-uploads
+      - S3_STATIC_BUCKET=visp-dev-static
+      - LOG_LEVEL=debug
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount source code for hot reload during development
+      - ../../backend/src:/app/src:ro
+    command: >
+      uvicorn src.main:app
+      --host 0.0.0.0
+      --port 305
+      --reload
+      --reload-dir src
+      --log-level debug
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:305/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - visp-network
+
+  # ---------------------------------------------------------------------------
+  # Celery Worker (Background Jobs)
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    container_name: visp-worker
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://visp:visp_local@db:5432/visp_tasker
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - JWT_SECRET=dev-secret-change-in-production-do-not-use
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-placeholder}
+      - FIREBASE_CREDENTIALS_JSON=${FIREBASE_CREDENTIALS_JSON:-{}}
+      - AWS_REGION=us-east-1
+      - S3_UPLOAD_BUCKET=visp-dev-uploads
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../../backend/src:/app/src:ro
+    command: >
+      celery -A src.jobs.celery_app worker
+      --loglevel=info
+      --concurrency=2
+      --queues=default,notifications,payments
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - visp-network
+
+  # ---------------------------------------------------------------------------
+  # Celery Beat (Scheduled Tasks)
+  # ---------------------------------------------------------------------------
+  beat:
+    build:
+      context: ../../
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    container_name: visp-beat
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://visp:visp_local@db:5432/visp_tasker
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../../backend/src:/app/src:ro
+    command: >
+      celery -A src.jobs.celery_app beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - visp-network
+
+# ---------------------------------------------------------------------------
+# Volumes — Persistent data storage
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+    name: visp-postgres-data
+  redis_data:
+    driver: local
+    name: visp-redis-data
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  visp-network:
+    driver: bridge
+    name: visp-network

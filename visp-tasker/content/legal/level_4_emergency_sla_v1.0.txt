@@ -1,0 +1,146 @@
+VISP/TASKER LEVEL 4 — EMERGENCY SERVICE LEVEL AGREEMENT
+Version 1.0 — Effective Date: January 1, 2026
+
+THIS SERVICE LEVEL AGREEMENT ("SLA") SUPPLEMENTS THE INDEPENDENT
+CONTRACTOR AGREEMENT, PLATFORM TERMS OF SERVICE, AND LEVEL 3 CERTIFIED
+PROFESSIONAL TERMS. BY ACCEPTING A LEVEL 4 EMERGENCY DESIGNATION, YOU
+AGREE TO THE FOLLOWING ADDITIONAL TERMS. THIS SLA IS SUBJECT TO ZERO
+TOLERANCE ENFORCEMENT.
+
+1. LEVEL 4 — EMERGENCY PROVIDER DESIGNATION
+1.1. Level 4 Emergency Providers are elite, SLA-bound professionals
+     who provide 24/7 on-call emergency home services. These services
+     address urgent situations that pose an immediate risk to property,
+     health, or safety.
+1.2. Examples of Level 4 emergency tasks include, but are not limited to:
+     - Burst pipe and flooding mitigation
+     - Gas leak detection and emergency shut-off
+     - Electrical hazard remediation (exposed wiring, panel failures)
+     - Furnace failure during extreme weather
+     - Air conditioning failure during extreme heat events
+     - Sewer backup and emergency drainage
+     - Lock-out emergency services
+     - Storm damage emergency repairs (roof, windows, structural)
+     - Fire damage emergency stabilization
+     - Carbon monoxide alarm response
+
+2. ALL LEVEL 3 REQUIREMENTS APPLY
+2.1. Level 4 Emergency Providers must meet ALL Level 3 Certified
+     Professional requirements, including but not limited to:
+     (a) Valid, current provincial/state trade licenses;
+     (b) $2,000,000 minimum commercial general liability insurance;
+     (c) Criminal Record Check with Vulnerable Sector Screening;
+     (d) All applicable certifications and continuing education.
+
+3. ON-CALL REQUIREMENTS
+3.1. You must commit to a minimum on-call schedule through the Platform.
+     On-call shifts are scheduled in blocks as follows:
+     (a) Weekday shifts: minimum twelve (12) hours per shift;
+     (b) Weekend shifts: minimum eight (8) hours per shift;
+     (c) You must be available for a minimum of forty (40) on-call
+         hours per week, unless a reduced schedule is approved in
+         advance by VISP.
+3.2. During on-call hours, you must:
+     (a) Have your mobile device powered on and within reach at all
+         times;
+     (b) Be within your designated service radius;
+     (c) Have your vehicle loaded with standard emergency equipment
+         and supplies for your trade;
+     (d) Be prepared to depart for a job site within the response
+         time specified in Section 4.
+
+4. RESPONSE TIME SLA — ZERO TOLERANCE
+4.1. ACKNOWLEDGEMENT: You must acknowledge (accept or decline) an
+     emergency dispatch within FIVE (5) MINUTES of notification.
+4.2. DEPARTURE: You must depart for the job site within FIFTEEN (15)
+     MINUTES of accepting the dispatch.
+4.3. ARRIVAL: You must arrive at the job site within the estimated
+     arrival time provided by the Platform (based on real-time traffic
+     and distance calculations), plus a maximum grace period of TEN
+     (10) MINUTES.
+4.4. ZERO TOLERANCE POLICY: Failure to meet these response time
+     requirements is subject to zero tolerance enforcement:
+     (a) First violation: Written warning and mandatory review;
+     (b) Second violation within ninety (90) days: Temporary
+         suspension of Level 4 status for fourteen (14) days;
+     (c) Third violation within one hundred eighty (180) days:
+         Permanent revocation of Level 4 status. You may continue
+         as a Level 3 provider if eligible.
+4.5. Force majeure exceptions may be considered for documented extreme
+     weather events, road closures, or other circumstances genuinely
+     beyond your control, at VISP's sole discretion.
+
+5. COMPENSATION
+5.1. Level 4 Emergency Providers receive a base compensation starting
+     at $150.00 CAD per hour, with the actual rate determined by:
+     (a) The specific emergency type and severity;
+     (b) Time of day (overnight and holiday premiums apply);
+     (c) Dynamic pricing factors based on demand and availability;
+     (d) Geographic region and travel requirements.
+5.2. On-call standby compensation may be provided at a reduced hourly
+     rate during scheduled on-call hours when no dispatch is received,
+     as determined by VISP.
+5.3. Overtime rates may apply for emergency jobs exceeding four (4)
+     hours of continuous on-site work.
+
+6. COMMISSION STRUCTURE
+6.1. VISP charges a commission of fifteen percent (15%) to twenty-five
+     percent (25%) on each completed Level 4 emergency job.
+6.2. The higher commission range reflects the premium pricing, dynamic
+     pricing capability, and the Platform's investment in maintaining
+     the emergency dispatch infrastructure.
+6.3. The specific commission rate for each job is displayed at dispatch.
+
+7. EMERGENCY EQUIPMENT REQUIREMENTS
+7.1. You must maintain a fully stocked emergency response kit
+     appropriate to your trade at all times during on-call hours.
+7.2. Minimum equipment requirements by trade are specified in the
+     Tasker Emergency Provider Handbook and may be updated periodically.
+7.3. VISP reserves the right to conduct random equipment audits.
+
+8. COMMUNICATION REQUIREMENTS
+8.1. You must provide real-time status updates through the Platform:
+     (a) When you depart for the job site;
+     (b) When you arrive at the job site;
+     (c) Initial assessment of the situation;
+     (d) When the emergency has been stabilized;
+     (e) When the job is complete.
+8.2. For jobs involving safety hazards (gas leaks, electrical hazards),
+     you must confirm that the immediate hazard has been mitigated
+     within the first thirty (30) minutes of arrival or escalate to
+     emergency services (911).
+
+9. PERFORMANCE METRICS
+9.1. You must maintain:
+     (a) Average response time at or below the SLA targets;
+     (b) Customer rating of 4.5 out of 5.0 or higher;
+     (c) Job acceptance rate of at least ninety-five percent (95%)
+         during on-call hours;
+     (d) Zero safety incidents attributable to negligence.
+
+10. SAFETY AND ESCALATION
+10.1. If an emergency situation poses an imminent threat to life, you
+      must instruct the customer to call 911 immediately and may
+      assist only to the extent safe and legally permitted.
+10.2. You must not enter a property if you reasonably believe there
+      is an immediate danger to your personal safety.
+10.3. All safety incidents must be reported through the Platform
+      within one (1) hour of occurrence.
+
+11. IMMEDIATE TERMINATION
+11.1. VISP may immediately and permanently revoke your Level 4 status
+      without warning for:
+      (a) Any safety incident caused by negligence;
+      (b) Falsifying response times or status updates;
+      (c) Abandoning an emergency job site before the situation is
+          stabilized;
+      (d) Operating without valid insurance or license;
+      (e) Being under the influence of alcohol or drugs during
+          on-call hours or while performing services.
+
+BY ACCEPTING LEVEL 4 EMERGENCY PROVIDER STATUS, YOU CONFIRM THAT YOU
+HAVE READ, UNDERSTOOD, AND AGREE TO THIS SERVICE LEVEL AGREEMENT,
+INCLUDING THE ZERO TOLERANCE ENFORCEMENT PROVISIONS. YOU UNDERSTAND
+THAT EMERGENCY SERVICES CARRY HEIGHTENED RESPONSIBILITIES AND THAT
+FAILURE TO MEET SLA REQUIREMENTS WILL RESULT IN CONSEQUENCES AS
+DESCRIBED HEREIN.

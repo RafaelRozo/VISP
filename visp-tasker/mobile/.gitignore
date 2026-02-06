@@ -1,0 +1,89 @@
+# OSX
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+*.xcscmblueprint
+
+# Android/Gradle
+*.apk
+*.aab
+*.dex
+*.class
+android/build/
+android/app/build/
+android/.gradle/
+local.properties
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+
+# iOS
+ios/Pods/
+ios/build/
+ios/*.xcworkspace
+!ios/VISPTasker.xcworkspace
+Podfile.lock
+
+# Metro bundler
+.metro-health-check*
+
+# React Native
+*.jsbundle
+
+# Environment
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+coverage/
+
+# Temporary
+*.orig.*
+*.log
+tmp/
+temp/
+
+# Keys & Certificates
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.cer
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
