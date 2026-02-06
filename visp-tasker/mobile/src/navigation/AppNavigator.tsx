@@ -10,15 +10,12 @@
  */
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Colors, getLevelColor } from '../theme/colors';
+import { Colors } from '../theme/colors';
 
-// Screens - Auth
-// In production, these would be imported from auth screens directory.
-// Placeholder screens are used here for the auth flow.
 import type {
   AuthStackParamList,
   CustomerTabParamList,
@@ -27,9 +24,19 @@ import type {
   RootStackParamList,
 } from '../types';
 
+import { useAuthStore } from '../stores/authStore';
+
 // Navigators - Customer & Emergency Flows
 import CustomerNavigator from './CustomerNavigator';
 import EmergencyNavigator from './EmergencyNavigator';
+
+// Screens - Auth
+import LoginScreen from '../screens/auth/LoginScreen';
+import RegisterScreen from '../screens/auth/RegisterScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+
+// Screens - Customer
+import CustomerHomeScreen from '../screens/customer/HomeScreen';
 
 // Screens - Provider
 import DashboardScreen from '../screens/provider/DashboardScreen';
@@ -45,51 +52,14 @@ import VerificationScreen from '../screens/profile/VerificationScreen';
 import SettingsScreen from '../screens/profile/SettingsScreen';
 
 // ---------------------------------------------------------------------------
-// Placeholder auth screens (to be replaced by VISP-FE-AUTH-001 module)
+// Placeholder for customer jobs (not yet built as standalone screen)
 // ---------------------------------------------------------------------------
-
-function LoginScreen() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>Login Screen</Text>
-      <Text style={placeholderStyles.subtext}>VISP-FE-AUTH-001</Text>
-    </View>
-  );
-}
-
-function RegisterScreen() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>Register Screen</Text>
-      <Text style={placeholderStyles.subtext}>VISP-FE-AUTH-001</Text>
-    </View>
-  );
-}
-
-function ForgotPasswordScreen() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>Forgot Password Screen</Text>
-      <Text style={placeholderStyles.subtext}>VISP-FE-AUTH-001</Text>
-    </View>
-  );
-}
-
-// Placeholder customer screens (to be replaced by VISP-FE-HOME-002 module)
-function CustomerHomeScreen() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>Customer Home</Text>
-      <Text style={placeholderStyles.subtext}>VISP-FE-HOME-002</Text>
-    </View>
-  );
-}
 
 function CustomerJobsScreen() {
   return (
     <View style={placeholderStyles.container}>
       <Text style={placeholderStyles.text}>My Jobs</Text>
-      <Text style={placeholderStyles.subtext}>VISP-FE-TASK-003</Text>
+      <Text style={placeholderStyles.subtext}>No active jobs</Text>
     </View>
   );
 }
@@ -299,6 +269,7 @@ function CustomerTabNavigator(): React.JSX.Element {
         component={CustomerHomeScreen}
         options={{
           title: 'Home',
+          headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon label="H" focused={focused} />
           ),
@@ -397,9 +368,16 @@ function ProviderTabNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 export default function AppNavigator(): React.JSX.Element {
-  // In production, isAuthenticated and userRole come from an auth store
-  const isAuthenticated = true;
-  const userRole: 'customer' | 'provider' | 'both' = 'provider';
+  const { isAuthenticated, isRestoring, user } = useAuthStore();
+  const userRole = user?.role ?? 'customer';
+
+  if (isRestoring) {
+    return (
+      <View style={loadingStyles.container}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer>
@@ -438,3 +416,12 @@ export default function AppNavigator(): React.JSX.Element {
     </NavigationContainer>
   );
 }
+
+const loadingStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

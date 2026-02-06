@@ -47,6 +47,7 @@ interface AuthState {
   forgotPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   loadStoredAuth: () => Promise<void>;
+  demoLogin: (role: UserRole) => void;
   setUser: (user: User) => void;
   clearError: () => void;
 }
@@ -221,6 +222,30 @@ export const useAuthStore = create<AuthState>((set, get) => {
           isRestoring: false,
         });
       }
+    },
+
+    // ── Demo Login (MVP testing) ───────────
+    demoLogin: (role: UserRole) => {
+      const demoUser: User = {
+        id: role === 'customer' ? 'demo-customer-001' : 'demo-provider-001',
+        email: role === 'customer' ? 'jane@demo.com' : 'mike@demo.com',
+        phone: null,
+        firstName: role === 'customer' ? 'Jane' : 'Mike',
+        lastName: role === 'customer' ? 'Smith' : 'Johnson',
+        role,
+        avatarUrl: null,
+        isVerified: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      set({
+        user: demoUser,
+        token: 'demo-token',
+        isAuthenticated: true,
+        isLoading: false,
+        isRestoring: false,
+        error: null,
+      });
     },
 
     // ── Set User (manual update) ───────────

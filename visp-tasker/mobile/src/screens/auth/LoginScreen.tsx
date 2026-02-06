@@ -71,7 +71,7 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
   const passwordRef = useRef<TextInput>(null);
 
-  const { login, loginWithApple, loginWithGoogle, isLoading, error, clearError } =
+  const { login, loginWithApple, loginWithGoogle, demoLogin, isLoading, error, clearError } =
     useAuthStore();
 
   // ── Handlers ─────────────────────────────
@@ -347,6 +347,31 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
             <Text style={styles.createAccountLink}>Create Account</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Demo Login (MVP Testing) */}
+        <View style={styles.demoSection}>
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>demo access</Text>
+            <View style={styles.dividerLine} />
+          </View>
+          <View style={styles.demoRow}>
+            <TouchableOpacity
+              style={[styles.demoButton, styles.demoCustomer]}
+              onPress={() => demoLogin('customer')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.demoButtonText}>Customer Demo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.demoButton, styles.demoProvider]}
+              onPress={() => demoLogin('provider')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.demoButtonText}>Provider Demo</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -561,6 +586,32 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.primary,
     fontWeight: '600',
+  },
+
+  // ── Demo Section ───────────────────────
+  demoSection: {
+    marginTop: Spacing.xl,
+  },
+  demoRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  demoButton: {
+    flex: 1,
+    borderRadius: BorderRadius.sm,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  demoCustomer: {
+    backgroundColor: '#27AE60',
+  },
+  demoProvider: {
+    backgroundColor: '#9B59B6',
+  },
+  demoButtonText: {
+    ...Typography.buttonSmall,
+    color: Colors.white,
+    fontWeight: '700',
   },
 });
 

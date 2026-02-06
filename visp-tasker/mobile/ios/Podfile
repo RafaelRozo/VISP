@@ -27,8 +27,12 @@ target 'VISPTasker' do
   pod 'react-native-google-maps', path: '../node_modules/react-native-maps'
   pod 'GoogleMaps'
 
-  # Firebase
-  pod 'Firebase/Messaging'
+  # Firebase (modular_headers needed for Swift interop)
+  pod 'Firebase/Messaging', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseInstallations', :modular_headers => true
 
   target 'VISPTaskerTests' do
     inherit! :complete
