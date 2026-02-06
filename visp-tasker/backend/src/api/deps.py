@@ -4,8 +4,10 @@ Shared FastAPI dependencies for the VISP/Tasker backend.
 Provides the async database session dependency used by all route handlers.
 """
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -85,5 +87,5 @@ def get_user_agent(request: Request) -> str | None:
     return request.headers.get("User-Agent")
 
 
-ClientIP = Annotated[str | None, Depends(get_client_ip)]
-UserAgent = Annotated[str | None, Depends(get_user_agent)]
+ClientIP = Annotated[Optional[str], Depends(get_client_ip)]
+UserAgent = Annotated[Optional[str], Depends(get_user_agent)]
