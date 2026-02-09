@@ -5,21 +5,29 @@ Job API Routes -- VISP-BE-JOBS-002
 REST endpoints for job lifecycle management.
 
 Routes:
-  POST   /api/v1/jobs                         -- Create a new job
-  GET    /api/v1/jobs/{job_id}                 -- Get job by ID
-  PATCH  /api/v1/jobs/{job_id}/status          -- Update job status
+  POST   /api/v1/jobs                         -- Create a new job (internal)
+  POST   /api/v1/jobs/book                    -- Create a new job (mobile)
+  GET    /api/v1/jobs/active                  -- Active jobs for current user
+  GET    /api/v1/jobs/{job_id}                -- Get job detail with assignment
+  PATCH  /api/v1/jobs/{job_id}/status          -- Update job status (internal)
+  PATCH  /api/v1/jobs/{job_id}/update-status   -- Update job status (mobile)
   POST   /api/v1/jobs/{job_id}/cancel          -- Cancel a job
+  GET    /api/v1/jobs/{job_id}/tracking        -- Real-time job tracking
   GET    /api/v1/jobs/customer/{customer_id}   -- Jobs by customer (paginated)
   GET    /api/v1/jobs/provider/{provider_id}   -- Jobs by provider (paginated)
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from src.api.deps import DBSession
+from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.job import (
     JobBrief,
     JobCancelRequest,
@@ -29,8 +37,18 @@ from src.api.schemas.job import (
     JobStatusUpdateRequest,
     PaginationMeta,
 )
+from src.api.schemas.provider import (
+    EstimatedPriceOut,
+    JobCreateResponse,
+    JobTrackingOut,
+    MobileJobCreateRequest,
+    MobileJobOut,
+    MobileJobStatusUpdateRequest,
+)
 from src.core.config import settings
 from src.services import jobService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -72,6 +90,202 @@ async def create_job(
         )
 
     return JobOut.model_validate(job)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/book -- Mobile-friendly job booking
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/book",
+    status_code=status.HTTP_201_CREATED,
+    summary="Book a new job (mobile)",
+    description=(
+        "Mobile-friendly endpoint for booking a job. Uses camelCase request "
+        "body and wraps the response in { data: { job, estimatedPrice } }. "
+        "Creates the job, snapshots SLA, estimates pricing, and starts matching."
+    ),
+)
+async def book_job(
+    db: DBSession,
+    user: CurrentUser,
+    body: MobileJobCreateRequest,
+) -> dict[str, Any]:
+    # Determine priority from emergency flag
+    priority = "emergency" if body.is_emergency else "standard"
+
+    # Build schedule from scheduledAt if provided
+    schedule = None
+    if body.scheduled_at:
+        schedule = {
+            "requested_date": body.scheduled_at.date(),
+            "requested_time_start": body.scheduled_at.time(),
+            "requested_time_end": None,
+            "flexible_schedule": False,
+        }
+
+    try:
+        job = await jobService.create_job(
+            db,
+            customer_id=user.id,
+            task_id=body.service_task_id,
+            location={
+                "latitude": body.location_lat,
+                "longitude": body.location_lng,
+                "address": body.location_address,
+                "city": body.city,
+                "province_state": body.province_state,
+                "postal_zip": body.postal_zip,
+                "country": body.country,
+                "unit": body.unit,
+            },
+            schedule=schedule,
+            priority=priority,
+            is_emergency=body.is_emergency,
+            customer_notes_json=body.notes or [],
+        )
+    except jobService.TaskNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+    # Transition from DRAFT to PENDING_MATCH to kick off matching
+    try:
+        job = await jobService.update_job_status(
+            db,
+            job.id,
+            "pending_match",
+            actor_type="system",
+        )
+    except (jobService.JobNotFoundError, jobService.InvalidTransitionError):
+        pass  # Stay in DRAFT if transition fails
+
+    # Attempt price estimation
+    estimated_price = EstimatedPriceOut(
+        min_cents=job.quoted_price_cents or 0,
+        max_cents=job.quoted_price_cents or 0,
+        currency=job.currency,
+        is_emergency=job.is_emergency,
+        dynamic_multiplier=None,
+    )
+
+    # Try to calculate from the pricing engine
+    try:
+        from src.services.pricingEngine import calculate_price as calc_price
+
+        estimate = await calc_price(
+            db,
+            task_id=job.task_id,
+            latitude=job.service_latitude,
+            longitude=job.service_longitude,
+            requested_date=job.requested_date,
+            is_emergency=job.is_emergency,
+            country=job.service_country,
+        )
+        estimated_price = EstimatedPriceOut(
+            min_cents=estimate.final_price_min_cents,
+            max_cents=estimate.final_price_max_cents,
+            currency=estimate.currency,
+            is_emergency=estimate.is_emergency,
+            dynamic_multiplier=estimate.dynamic_multiplier,
+        )
+
+        # Update the job with the quoted price
+        job.quoted_price_cents = estimate.final_price_min_cents
+        job.commission_rate = estimate.commission_rate_default
+        job.commission_amount_cents = int(
+            Decimal(str(estimate.final_price_min_cents))
+            * estimate.commission_rate_default
+        )
+        job.provider_payout_cents = (
+            estimate.final_price_min_cents - job.commission_amount_cents
+        )
+        await db.flush()
+    except Exception as exc:
+        logger.warning("Price estimation failed for job %s: %s", job.id, exc)
+
+    # Start matching (best-effort for MVP)
+    try:
+        from src.services.matchingEngine import assign_provider, find_matching_providers
+
+        match_result = await find_matching_providers(db, job, max_results=1)
+        if match_result["matches"]:
+            best = match_result["matches"][0]
+            await assign_provider(
+                db,
+                job.id,
+                best["provider_id"],
+                match_score=float(best["composite_score"]),
+            )
+    except Exception as exc:
+        logger.warning("Auto-matching failed for job %s: %s", job.id, exc)
+
+    # Build mobile-friendly response
+    job_out = MobileJobOut.model_validate(job)
+    response = JobCreateResponse(
+        job=job_out,
+        estimated_price=estimated_price,
+    )
+
+    return {"data": response.model_dump(by_alias=True)}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/jobs/active -- Active jobs for current user
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/active",
+    summary="Get customer's active jobs",
+    description=(
+        "Returns active jobs for the authenticated customer. Active means "
+        "any status except completed, cancelled, disputed, and refunded."
+    ),
+)
+async def get_active_jobs(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from src.models.job import Job, JobStatus
+
+    terminal_statuses = {
+        JobStatus.COMPLETED,
+        JobStatus.CANCELLED_BY_CUSTOMER,
+        JobStatus.CANCELLED_BY_PROVIDER,
+        JobStatus.CANCELLED_BY_SYSTEM,
+        JobStatus.DISPUTED,
+        JobStatus.REFUNDED,
+    }
+
+    stmt = (
+        select(Job)
+        .options(selectinload(Job.assignments))
+        .where(
+            Job.customer_id == user.id,
+            Job.status.not_in(terminal_statuses),
+        )
+        .order_by(Job.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    jobs = result.scalars().all()
+
+    items = [MobileJobOut.model_validate(j).model_dump(by_alias=True) for j in jobs]
+
+    return {
+        "data": {
+            "items": items,
+            "meta": {
+                "page": 1,
+                "pageSize": len(items),
+                "totalItems": len(items),
+                "totalPages": 1,
+            },
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -206,11 +420,87 @@ async def get_job(
             detail=f"Job with id '{job_id}' not found.",
         )
 
-    return JobOut.model_validate(job)
+    # Build enriched response with assignment and provider info
+    job_data = JobOut.model_validate(job).model_dump()
+
+    # Attach assignment and provider info for the mobile app
+    assignment_data = None
+    provider_data = None
+    if job.assignments:
+        from src.models.job import AssignmentStatus
+
+        active_assignment = None
+        for a in job.assignments:
+            if a.status in (AssignmentStatus.OFFERED, AssignmentStatus.ACCEPTED):
+                active_assignment = a
+                break
+
+        if active_assignment:
+            assignment_data = {
+                "id": str(active_assignment.id),
+                "status": active_assignment.status.value,
+                "offeredAt": (
+                    active_assignment.offered_at.isoformat()
+                    if active_assignment.offered_at
+                    else None
+                ),
+                "respondedAt": (
+                    active_assignment.responded_at.isoformat()
+                    if active_assignment.responded_at
+                    else None
+                ),
+                "slaResponseDeadline": (
+                    active_assignment.sla_response_deadline.isoformat()
+                    if active_assignment.sla_response_deadline
+                    else None
+                ),
+                "slaArrivalDeadline": (
+                    active_assignment.sla_arrival_deadline.isoformat()
+                    if active_assignment.sla_arrival_deadline
+                    else None
+                ),
+                "estimatedArrivalMin": active_assignment.estimated_arrival_min,
+            }
+
+            # Load provider info
+            try:
+                from sqlalchemy import select
+                from sqlalchemy.orm import selectinload
+
+                from src.models.provider import ProviderProfile
+
+                prov_stmt = (
+                    select(ProviderProfile)
+                    .options(selectinload(ProviderProfile.user))
+                    .where(ProviderProfile.id == active_assignment.provider_id)
+                )
+                prov_result = await db.execute(prov_stmt)
+                provider = prov_result.scalar_one_or_none()
+
+                if provider and provider.user:
+                    provider_data = {
+                        "id": str(provider.id),
+                        "displayName": (
+                            provider.user.display_name
+                            or f"{provider.user.first_name} {provider.user.last_name}"
+                        ),
+                        "level": provider.current_level.value,
+                        "avatarUrl": provider.user.avatar_url,
+                    }
+            except Exception:
+                pass
+
+    return {
+        "data": {
+            "job": job_data,
+            "assignment": assignment_data,
+            "provider": provider_data,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
-# PATCH /api/v1/jobs/{job_id}/status -- Update job status
+# PATCH /api/v1/jobs/{job_id}/status -- Update job status (internal)
 # ---------------------------------------------------------------------------
 
 @router.patch(
@@ -289,3 +579,98 @@ async def cancel_job(
         )
 
     return JobOut.model_validate(job)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/jobs/{job_id}/update-status -- Mobile-friendly status update
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/{job_id}/update-status",
+    summary="Update job status (mobile)",
+    description=(
+        "Mobile-friendly endpoint for updating a job's status. Accepts "
+        "simplified status values and determines actor type from the "
+        "authenticated user."
+    ),
+)
+async def mobile_update_job_status(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: MobileJobStatusUpdateRequest,
+) -> dict[str, Any]:
+    # Map mobile status values to internal status and actor type
+    status_map = {
+        "cancelled": "cancelled_by_customer",
+        "en_route": "provider_en_route",
+        "arrived": "in_progress",  # Map arrived to in_progress for now
+        "in_progress": "in_progress",
+        "completed": "completed",
+    }
+
+    internal_status = status_map.get(body.status)
+    if internal_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown status '{body.status}'.",
+        )
+
+    # Determine actor type from user roles
+    actor_type = "customer"
+    if user.role_provider:
+        actor_type = "provider"
+    if user.role_admin:
+        actor_type = "admin"
+
+    # Special case: cancellation
+    if body.status == "cancelled":
+        if actor_type == "provider":
+            internal_status = "cancelled_by_provider"
+        elif actor_type in ("admin", "system"):
+            internal_status = "cancelled_by_system"
+
+    try:
+        job = await jobService.update_job_status(
+            db,
+            job_id,
+            internal_status,
+            actor_id=user.id,
+            actor_type=actor_type,
+        )
+    except jobService.JobNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except jobService.InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+    job_out = MobileJobOut.model_validate(job)
+    return {"data": {"job": job_out.model_dump(by_alias=True)}}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/jobs/{job_id}/tracking -- Real-time tracking
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{job_id}/tracking",
+    summary="Get real-time job tracking info",
+    description=(
+        "Returns provider location, ETA, and current status for tracking "
+        "the provider during an active job."
+    ),
+)
+async def get_job_tracking(
+    db: DBSession,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from src.services import providerService
+
+    tracking = await providerService.get_job_tracking(db, job_id)
+    result = JobTrackingOut(**tracking)
+    return {"data": result.model_dump(by_alias=True)}

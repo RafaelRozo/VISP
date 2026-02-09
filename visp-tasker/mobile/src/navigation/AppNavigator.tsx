@@ -51,6 +51,9 @@ import CredentialsScreen from '../screens/profile/CredentialsScreen';
 import VerificationScreen from '../screens/profile/VerificationScreen';
 import SettingsScreen from '../screens/profile/SettingsScreen';
 
+// Screens - Shared
+import ChatScreen from '../screens/shared/ChatScreen';
+
 // ---------------------------------------------------------------------------
 // Placeholder for customer jobs (not yet built as standalone screen)
 // ---------------------------------------------------------------------------
@@ -171,9 +174,9 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
-// Provider stack for ActiveJob (nested inside tab)
+// Provider stack for ActiveJob + Chat (nested inside tab)
 const ProviderJobStack = createNativeStackNavigator<
-  Pick<ProviderTabParamList, 'JobOffers' | 'ActiveJob'>
+  Pick<ProviderTabParamList, 'JobOffers' | 'ActiveJob' | 'Chat'>
 >();
 
 // ---------------------------------------------------------------------------
@@ -230,6 +233,13 @@ function ProviderJobStackNavigator(): React.JSX.Element {
         name="ActiveJob"
         component={ActiveJobScreen}
         options={{ title: 'Active Job' }}
+      />
+      <ProviderJobStack.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={({ route }) => ({
+          title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
+        })}
       />
     </ProviderJobStack.Navigator>
   );
@@ -405,12 +415,32 @@ export default function AppNavigator(): React.JSX.Element {
               component={EmergencyNavigator}
               options={{ headerShown: false }}
             />
+            <RootStack.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
+              })}
+            />
           </>
         ) : (
-          <RootStack.Screen
-            name="ProviderHome"
-            component={ProviderTabNavigator}
-          />
+          <>
+            <RootStack.Screen
+              name="ProviderHome"
+              component={ProviderTabNavigator}
+            />
+            <RootStack.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
+              })}
+            />
+          </>
         )}
       </RootStack.Navigator>
     </NavigationContainer>

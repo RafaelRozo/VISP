@@ -124,6 +124,37 @@ export const useAuthStore = create<AuthState>((set, get) => {
         const response = await authService.register(data);
         applyAuthResponse(set, response);
       } catch (err) {
+        // DEV FALLBACK: When backend auth endpoints are not yet available,
+        // fall back to a mock registration using the user's actual form data.
+        // This allows the full registration flow to work for MVP testing.
+        // TODO: Remove this fallback once VISP-BE-* auth endpoints are live.
+        if (__DEV__) {
+          console.warn(
+            '[AuthStore] register API failed, using dev fallback:',
+            extractErrorMessage(err),
+          );
+          const mockUser: User = {
+            id: `user-${Date.now()}`,
+            email: data.email,
+            phone: null,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            role: data.role,
+            avatarUrl: null,
+            isVerified: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          set({
+            user: mockUser,
+            token: 'dev-register-token',
+            isAuthenticated: true,
+            isLoading: false,
+            isRestoring: false,
+            error: null,
+          });
+          return;
+        }
         set({
           isLoading: false,
           error: extractErrorMessage(err),

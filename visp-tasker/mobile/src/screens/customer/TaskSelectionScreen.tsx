@@ -236,8 +236,8 @@ function TaskSelectionScreen(): React.JSX.Element {
     [toggleNote],
   );
 
-  // Validate and submit booking
-  const handleConfirmBooking = useCallback(async () => {
+  // Navigate to Booking confirmation screen with task summary
+  const handleConfirmBooking = useCallback(() => {
     if (!address) {
       Alert.alert('Address Required', 'Please enter your service address.');
       return;
@@ -251,21 +251,28 @@ function TaskSelectionScreen(): React.JSX.Element {
       return;
     }
 
-    try {
-      const result = await submitBooking();
-      navigation.navigate('BookingConfirmation', { bookingId: result.bookingId });
-    } catch {
-      Alert.alert(
-        'Booking Failed',
-        'Unable to create your booking. Please try again.',
-      );
-    }
+    if (!taskDetail) return;
+
+    navigation.navigate('Booking', {
+      task: {
+        taskId: taskDetail.id,
+        taskName: taskDetail.name,
+        categoryName: taskDetail.categoryId,
+        level: taskDetail.level,
+        estimatedDurationMinutes: taskDetail.estimatedDurationMinutes,
+        priceRangeMin: taskDetail.priceRangeMin,
+        priceRangeMax: taskDetail.priceRangeMax,
+        estimatedPrice: estimatedPrice,
+        description: taskDetail.description,
+      },
+    });
   }, [
     address,
     scheduledDate,
     scheduledTimeSlot,
     isFlexibleSchedule,
-    submitBooking,
+    taskDetail,
+    estimatedPrice,
     navigation,
   ]);
 
@@ -647,20 +654,16 @@ function TaskSelectionScreen(): React.JSX.Element {
           <TouchableOpacity
             style={[
               styles.confirmButton,
-              (!isFormValid || isSubmittingBooking) && styles.confirmButtonDisabled,
+              !isFormValid && styles.confirmButtonDisabled,
             ]}
             onPress={handleConfirmBooking}
-            disabled={!isFormValid || isSubmittingBooking}
+            disabled={!isFormValid}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Confirm booking"
-            accessibilityState={{ disabled: !isFormValid || isSubmittingBooking }}
+            accessibilityLabel="Continue to booking confirmation"
+            accessibilityState={{ disabled: !isFormValid }}
           >
-            {isSubmittingBooking ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Text style={styles.confirmButtonText}>Confirm Booking</Text>
-            )}
+            <Text style={styles.confirmButtonText}>Continue</Text>
           </TouchableOpacity>
         </View>
       </View>

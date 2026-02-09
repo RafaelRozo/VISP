@@ -3,10 +3,11 @@
  *
  * Current active job details with status progression bar, navigation to
  * customer location, status transition buttons, before/after photo capture,
- * and customer chat. Provider cannot add additional services (business rule).
+ * customer chat, legal acknowledgments, and job timer.
+ * Provider cannot add additional services (business rule).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -50,8 +51,8 @@ const STATUS_FLOW_LABELS: Record<string, string> = {
 };
 
 const NEXT_STATUS_ACTIONS: Record<string, { label: string; next: JobStatus }> = {
-  accepted: { label: 'Mark En Route', next: 'en_route' },
-  en_route: { label: 'Mark Arrived', next: 'in_progress' },
+  accepted: { label: 'Start Route', next: 'en_route' },
+  en_route: { label: 'Arrived', next: 'in_progress' },
   in_progress: { label: 'Complete Job', next: 'completed' },
 };
 
@@ -256,6 +257,47 @@ const photoStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
+// Timer Hook
+// ---------------------------------------------------------------------------
+
+function useJobTimer(startedAt: string | null): string {
+  const [elapsed, setElapsed] = useState('00:00:00');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!startedAt) {
+      setElapsed('00:00:00');
+      return;
+    }
+
+    const update = () => {
+      const diff = Date.now() - new Date(startedAt).getTime();
+      if (diff < 0) {
+        setElapsed('00:00:00');
+        return;
+      }
+      const hours = Math.floor(diff / 3600000);
+      const minutes = Math.floor((diff % 3600000) / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      setElapsed(
+        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+      );
+    };
+
+    update();
+    intervalRef.current = setInterval(update, 1000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [startedAt]);
+
+  return elapsed;
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
@@ -268,8 +310,12 @@ export default function ActiveJobScreen(): React.JSX.Element {
   const [isUpdating, setIsUpdating] = useState(false);
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
+  const [legalAcknowledged, setLegalAcknowledged] = useState(false);
 
   const { jobId } = route.params;
+
+  // Timer for in_progress jobs
+  const timerDisplay = useJobTimer(activeJob?.startedAt ?? null);
 
   // Load job if not already active
   useEffect(() => {
@@ -293,7 +339,6 @@ export default function ActiveJobScreen(): React.JSX.Element {
 
     if (url) {
       Linking.openURL(url).catch(() => {
-        // Fallback to Google Maps web URL
         Linking.openURL(
           `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
         );
@@ -301,12 +346,39 @@ export default function ActiveJobScreen(): React.JSX.Element {
     }
   }, [activeJob]);
 
-  // Handle status update
+  // Handle status update with legal acknowledgment for start job
   const handleStatusUpdate = useCallback(async () => {
     if (!activeJob) return;
 
     const action = NEXT_STATUS_ACTIONS[activeJob.status];
     if (!action) return;
+
+    // For transitioning from en_route to in_progress, require legal acknowledgment
+    if (action.next === 'in_progress' && !legalAcknowledged) {
+      Alert.alert(
+        'Legal Acknowledgment Required',
+        `Before starting work, please confirm:\n\n` +
+          `1. I understand this task is limited to "${activeJob.taskName}" only.\n\n` +
+          `2. I am acting as an independent contractor.\n\n` +
+          `Additional services cannot be performed without a new job request.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'I Acknowledge & Start Job',
+            onPress: async () => {
+              setLegalAcknowledged(true);
+              setIsUpdating(true);
+              try {
+                await updateJobStatus(jobId, action.next);
+              } finally {
+                setIsUpdating(false);
+              }
+            },
+          },
+        ],
+      );
+      return;
+    }
 
     const confirmMessage =
       action.next === 'completed'
@@ -330,11 +402,10 @@ export default function ActiveJobScreen(): React.JSX.Element {
         },
       },
     ]);
-  }, [activeJob, jobId, updateJobStatus, navigation]);
+  }, [activeJob, jobId, updateJobStatus, navigation, legalAcknowledged]);
 
   // Photo capture handlers
   const handleCaptureBeforePhoto = useCallback(() => {
-    // In production, this would launch the camera via react-native-image-picker
     Alert.alert('Camera', 'Camera integration will be connected here.', [
       {
         text: 'OK',
@@ -356,11 +427,14 @@ export default function ActiveJobScreen(): React.JSX.Element {
     ]);
   }, []);
 
-  // Chat handler
+  // Chat handler -- navigate to ChatScreen
   const handleOpenChat = useCallback(() => {
-    // Chat screen navigation will be wired in the full navigation setup
-    Alert.alert('Chat', 'Chat feature will open in a modal.');
-  }, []);
+    if (!activeJob) return;
+    navigation.navigate('Chat', {
+      jobId: activeJob.id,
+      otherUserName: 'Customer',
+    });
+  }, [activeJob, navigation]);
 
   // ------------------------------------------
   // Loading state
@@ -381,6 +455,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
   const showBeforePhotos =
     activeJob.status === 'in_progress' || activeJob.status === 'en_route';
   const showAfterPhotos = activeJob.status === 'in_progress';
+  const isInProgress = activeJob.status === 'in_progress';
 
   return (
     <ScrollView
@@ -391,6 +466,14 @@ export default function ActiveJobScreen(): React.JSX.Element {
       <View style={styles.progressCard}>
         <StatusProgress currentStatus={activeJob.status} />
       </View>
+
+      {/* Timer display when in_progress */}
+      {isInProgress && (
+        <View style={styles.timerCard}>
+          <Text style={styles.timerLabel}>Job Timer</Text>
+          <Text style={styles.timerValue}>{timerDisplay}</Text>
+        </View>
+      )}
 
       {/* Job details card */}
       <View style={styles.detailsCard}>
@@ -433,6 +516,22 @@ export default function ActiveJobScreen(): React.JSX.Element {
         )}
       </View>
 
+      {/* Customer info card */}
+      <View style={styles.customerCard}>
+        <Text style={styles.sectionTitle}>Customer</Text>
+        <View style={styles.customerRow}>
+          <View style={styles.customerAvatar}>
+            <Text style={styles.customerAvatarText}>C</Text>
+          </View>
+          <View style={styles.customerInfo}>
+            <Text style={styles.customerName}>Customer</Text>
+            <Text style={styles.customerSubtext}>
+              {activeJob.address.city}, {activeJob.address.province}
+            </Text>
+          </View>
+        </View>
+      </View>
+
       {/* Customer location card */}
       <View style={styles.locationCard}>
         <Text style={styles.sectionTitle}>Customer Location</Text>
@@ -443,6 +542,15 @@ export default function ActiveJobScreen(): React.JSX.Element {
           {activeJob.address.city}, {activeJob.address.province}{' '}
           {activeJob.address.postalCode}
         </Text>
+
+        {/* Map placeholder */}
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapPlaceholderText}>
+            {activeJob.address.latitude.toFixed(4)},{' '}
+            {activeJob.address.longitude.toFixed(4)}
+          </Text>
+          <Text style={styles.mapPlaceholderLabel}>Map View</Text>
+        </View>
 
         <TouchableOpacity
           style={styles.navigateButton}
@@ -456,22 +564,43 @@ export default function ActiveJobScreen(): React.JSX.Element {
       </View>
 
       {/* Before/after photos */}
-      <View style={styles.photosCard}>
-        {showBeforePhotos && (
-          <PhotoSection
-            title="Before Photos"
-            photos={beforePhotos}
-            onCapture={handleCaptureBeforePhoto}
-          />
-        )}
-        {showAfterPhotos && (
-          <PhotoSection
-            title="After Photos"
-            photos={afterPhotos}
-            onCapture={handleCaptureAfterPhoto}
-          />
-        )}
-      </View>
+      {(showBeforePhotos || showAfterPhotos) && (
+        <View style={styles.photosCard}>
+          {showBeforePhotos && (
+            <PhotoSection
+              title="Before Photos"
+              photos={beforePhotos}
+              onCapture={handleCaptureBeforePhoto}
+            />
+          )}
+          {showAfterPhotos && (
+            <PhotoSection
+              title="After Photos"
+              photos={afterPhotos}
+              onCapture={handleCaptureAfterPhoto}
+            />
+          )}
+        </View>
+      )}
+
+      {/* Legal acknowledgment notice (shown before starting) */}
+      {activeJob.status === 'en_route' && !legalAcknowledged && (
+        <View style={styles.legalCard}>
+          <Text style={styles.legalTitle}>Before You Start</Text>
+          <Text style={styles.legalText}>
+            By starting this job, you acknowledge:
+          </Text>
+          <Text style={styles.legalItem}>
+            - This task is limited to "{activeJob.taskName}" only
+          </Text>
+          <Text style={styles.legalItem}>
+            - You are acting as an independent contractor
+          </Text>
+          <Text style={styles.legalItem}>
+            - Additional services require a new job request
+          </Text>
+        </View>
+      )}
 
       {/* Business rule notice */}
       <View style={styles.noticeCard}>
@@ -490,7 +619,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
         accessibilityRole="button"
         accessibilityLabel="Chat with customer"
       >
-        <Text style={styles.chatButtonText}>Chat with Customer</Text>
+        <Text style={styles.chatButtonText}>Message Customer</Text>
       </TouchableOpacity>
 
       {/* Status action button */}
@@ -556,6 +685,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     overflow: 'hidden',
+  },
+  timerCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  timerLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  timerValue: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: Colors.primary,
+    fontVariant: ['tabular-nums'],
   },
   detailsCard: {
     backgroundColor: Colors.surface,
@@ -642,6 +795,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.emergencyRed,
   },
+  customerCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  customerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  customerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  customerAvatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  customerInfo: {
+    flex: 1,
+  },
+  customerName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  customerSubtext: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
   locationCard: {
     backgroundColor: Colors.surface,
     borderRadius: 12,
@@ -665,6 +857,23 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 12,
   },
+  mapPlaceholder: {
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 8,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  mapPlaceholderText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  mapPlaceholderLabel: {
+    fontSize: 11,
+    color: Colors.textTertiary,
+  },
   navigateButton: {
     backgroundColor: Colors.primary,
     borderRadius: 8,
@@ -682,6 +891,33 @@ const styles = StyleSheet.create({
     padding: 16,
     marginHorizontal: 16,
     marginBottom: 12,
+  },
+  legalCard: {
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  legalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.warning,
+    marginBottom: 8,
+  },
+  legalText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  legalItem: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginLeft: 4,
   },
   noticeCard: {
     backgroundColor: Colors.surfaceLight,

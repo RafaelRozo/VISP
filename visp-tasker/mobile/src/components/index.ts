@@ -12,3 +12,5 @@ export { default as LevelBadge } from './LevelBadge';
 export { default as TaskCard } from './TaskCard';
 export { default as SLATimer } from './SLATimer';
 export { default as EmergencyMap } from './EmergencyMap';
+export { default as ChatBubble } from './ChatBubble';
+export { default as ChatInput } from './ChatInput';

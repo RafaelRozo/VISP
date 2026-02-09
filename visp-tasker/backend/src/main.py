@@ -91,7 +91,9 @@ async def health():
 # ---------------------------------------------------------------------------
 
 from src.api.routes import (  # noqa: E402
+    auth,
     categories,
+    chat,
     consents,
     escalations,
     jobs,
@@ -99,6 +101,7 @@ from src.api.routes import (  # noqa: E402
     notifications,
     payments,
     pricing,
+    providers,
     scoring,
     tasks,
     verification,
@@ -106,16 +109,19 @@ from src.api.routes import (  # noqa: E402
 
 _prefix = settings.api_v1_prefix
 
+app.include_router(auth.router, prefix=_prefix)
 app.include_router(categories.router, prefix=_prefix)
 app.include_router(tasks.router, prefix=_prefix)
 app.include_router(consents.router, prefix=_prefix)
 app.include_router(verification.router, prefix=_prefix)
 app.include_router(jobs.router, prefix=_prefix)
+app.include_router(providers.router, prefix=_prefix)
 app.include_router(matching.router, prefix=_prefix)
 app.include_router(scoring.router, prefix=_prefix)
 app.include_router(pricing.router, prefix=_prefix)
 app.include_router(escalations.router, prefix=_prefix)
 app.include_router(payments.router, prefix=_prefix)
+app.include_router(chat.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
 
 

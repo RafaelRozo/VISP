@@ -1,7 +1,9 @@
 """
 Shared FastAPI dependencies for the VISP/Tasker backend.
 
-Provides the async database session dependency used by all route handlers.
+Provides the async database session dependency used by all route handlers,
+and authentication dependencies for extracting the current user from JWT
+Bearer tokens.
 """
 
 from __future__ import annotations
@@ -9,7 +11,8 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Annotated, Optional
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import settings
@@ -89,3 +92,63 @@ def get_user_agent(request: Request) -> str | None:
 
 ClientIP = Annotated[Optional[str], Depends(get_client_ip)]
 UserAgent = Annotated[Optional[str], Depends(get_user_agent)]
+
+
+# ---------------------------------------------------------------------------
+# Authentication dependencies
+# ---------------------------------------------------------------------------
+
+_bearer_scheme = HTTPBearer(auto_error=True)
+_bearer_scheme_optional = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer_scheme)],
+    db: DBSession,
+):
+    """Extract and validate a Bearer token from the Authorization header.
+
+    Returns the authenticated ``User`` ORM instance.  Raises 401 if the
+    token is missing, expired, or belongs to an inactive account.
+    """
+    from src.services import auth_service
+
+    try:
+        user = await auth_service.get_current_user(db, credentials.credentials)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+async def get_optional_user(
+    credentials: Annotated[
+        Optional[HTTPAuthorizationCredentials], Depends(_bearer_scheme_optional)
+    ],
+    db: DBSession,
+):
+    """Like ``get_current_user`` but returns ``None`` when no token is provided.
+
+    Useful for endpoints that behave differently for authenticated vs
+    anonymous users.
+    """
+    if credentials is None:
+        return None
+
+    from src.services import auth_service
+
+    try:
+        user = await auth_service.get_current_user(db, credentials.credentials)
+    except ValueError:
+        return None
+    return user
+
+
+# Convenience type aliases for route signatures
+from src.models.user import User as _UserModel  # noqa: E402
+
+CurrentUser = Annotated[_UserModel, Depends(get_current_user)]
+OptionalUser = Annotated[Optional[_UserModel], Depends(get_optional_user)]

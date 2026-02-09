@@ -154,6 +154,7 @@ export type RootStackParamList = {
   JobDetail: { jobId: string };
   EmergencyFlow: undefined;
   Profile: undefined;
+  Chat: { jobId: string; otherUserName: string };
 };
 
 // ──────────────────────────────────────────────
@@ -328,6 +329,20 @@ export interface PaymentMethod {
 }
 
 // ──────────────────────────────────────────────
+// Chat
+// ──────────────────────────────────────────────
+
+export interface ChatMessage {
+  id: string;
+  jobId: string;
+  senderId: string;
+  senderName: string;
+  message: string;
+  createdAt: string;
+  isOwnMessage: boolean;
+}
+
+// ──────────────────────────────────────────────
 // Extended Navigation
 // ──────────────────────────────────────────────
 
@@ -338,6 +353,7 @@ export type ProviderTabParamList = {
   Earnings: undefined;
   Schedule: undefined;
   ProviderProfile: undefined;
+  Chat: { jobId: string; otherUserName: string };
 };
 
 export type CustomerTabParamList = {
@@ -529,12 +545,49 @@ export interface RatingDimension {
 // Customer & Emergency Navigation
 // ──────────────────────────────────────────────
 
+// ──────────────────────────────────────────────
+// Job Assignment (for matching/tracking)
+// ──────────────────────────────────────────────
+
+export interface JobAssignment {
+  id: string;
+  jobId: string;
+  providerId: string;
+  providerName: string;
+  providerRating: number;
+  providerPhoto: string | null;
+  providerCompletedJobs: number;
+  providerLevel: ServiceLevel;
+  acceptedAt: string | null;
+  eta: number | null;
+}
+
+// ──────────────────────────────────────────────
+// Booking Flow Data (passed between screens)
+// ──────────────────────────────────────────────
+
+export interface BookingTaskSummary {
+  taskId: string;
+  taskName: string;
+  categoryName: string;
+  level: ServiceLevel;
+  estimatedDurationMinutes: number;
+  priceRangeMin: number;
+  priceRangeMax: number;
+  estimatedPrice: number;
+  description: string;
+}
+
 export type CustomerFlowParamList = {
   CustomerHome: undefined;
   Category: { categoryId: string; categoryName: string };
   Subcategory: { taskId: string };
   TaskSelection: { taskId: string };
-  BookingConfirmation: { bookingId: string };
+  Booking: { task: BookingTaskSummary };
+  Matching: { jobId: string; taskName: string };
+  JobTracking: { jobId: string };
+  Rating: { jobId: string; taskName: string; finalPrice: number };
+  Chat: { jobId: string; otherUserName: string };
 };
 
 export type EmergencyFlowParamList = {
