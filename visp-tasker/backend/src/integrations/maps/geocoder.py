@@ -22,8 +22,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Final
 
-from src.integrations.maps.googleMapsService import (
-    GoogleMapsError,
+from src.integrations.maps.mapboxService import (
+    MapboxError,
     geocode_address,
 )
 
@@ -217,7 +217,7 @@ async def geocode_service_address(
         GeocodingResult with coordinates, formatted address, and confidence.
 
     Raises:
-        GoogleMapsError: If both full and partial geocoding fail at the
+        MapboxError: If both full and partial geocoding fail at the
             API level (network errors, invalid key, etc.).
         ValueError: If the geocoded coordinates are outside the
             Canada/USA service area.
@@ -246,9 +246,9 @@ async def geocode_service_address(
         result = await _try_geocode(partial)
 
     if result is None:
-        raise GoogleMapsError(
+        raise MapboxError(
             f"Could not geocode address '{full_address}' or its partial fallback. "
-            f"No results from Google Maps API."
+            f"No results from Mapbox API."
         )
 
     # -- Validate service area --
@@ -274,7 +274,7 @@ async def _try_geocode(address_string: str) -> GeocodingResult | None:
     """Attempt to geocode an address string, returning None on ZERO_RESULTS."""
     try:
         data = await geocode_address(address_string)
-    except GoogleMapsError:
+    except MapboxError:
         # Re-raise API/network errors -- these are not "no results"
         raise
 

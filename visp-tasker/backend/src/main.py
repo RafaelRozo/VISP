@@ -96,6 +96,7 @@ from src.api.routes import (  # noqa: E402
     chat,
     consents,
     escalations,
+    geolocation,
     jobs,
     matching,
     notifications,
@@ -123,6 +124,7 @@ app.include_router(escalations.router, prefix=_prefix)
 app.include_router(payments.router, prefix=_prefix)
 app.include_router(chat.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
+app.include_router(geolocation.router, prefix=_prefix)
 
 
 # ---------------------------------------------------------------------------

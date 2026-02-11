@@ -377,3 +377,36 @@ async def search_tasks(
         page=page,
         page_size=page_size,
     )
+
+
+async def get_time_slots(
+    db: AsyncSession,
+    task_id: uuid.UUID,
+    date_str: str,
+) -> list[dict]:
+    """Generate available time slots for a given task and date.
+
+    Currently returns standard business hours (08:00 - 20:00).
+    Future evolution: Query `provider_availability` and `provider_task_qualifications`
+    to return only slots where at least one qualified provider is available.
+    """
+    slots = []
+    # Standard 8 AM to 8 PM schedule
+    for hour in range(8, 20):
+        start = f"{hour:02d}:00"
+        end = f"{hour + 1:02d}:00"
+
+        # Format label (e.g., "9:00 AM")
+        h = hour % 12 or 12
+        ampm = "AM" if hour < 12 else "PM"
+        label = f"{h}:00 {ampm}"
+
+        slots.append({
+            "id": start,
+            "label": label,
+            "startTime": start,
+            "endTime": end,
+            "available": True,  # Assume available for now
+        })
+
+    return slots

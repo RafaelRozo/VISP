@@ -21,6 +21,7 @@ from src.api.schemas.taxonomy import (
     TaskBrief,
     TaskDetail,
     TaskSearchResponse,
+    TimeSlot,
 )
 from src.core.config import settings
 from src.services import taxonomy_service
@@ -123,3 +124,25 @@ async def get_task(
         )
 
     return TaskDetail.model_validate(task)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/tasks/{task_id}/time-slots -- Get available time slots
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{task_id}/time-slots",
+    response_model=list[TimeSlot],
+    summary="Get available time slots",
+    description=(
+        "Returns a list of available time slots for a specific task and date. "
+        "Currently returns standard business hours availability."
+    ),
+)
+async def get_task_time_slots(
+    db: DBSession,
+    task_id: uuid.UUID,
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+) -> list[TimeSlot]:
+    slots = await taxonomy_service.get_time_slots(db, task_id, date)
+    return [TimeSlot.model_validate(slot) for slot in slots]

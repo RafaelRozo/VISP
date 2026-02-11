@@ -21,8 +21,8 @@ import math
 from dataclasses import dataclass
 from typing import Final
 
-from src.integrations.maps.googleMapsService import (
-    GoogleMapsError,
+from src.integrations.maps.mapboxService import (
+    MapboxError,
     get_distance_matrix,
     get_directions,
 )
@@ -152,7 +152,7 @@ async def calculate_driving_distance(
             is_fallback=False,
         )
 
-    except GoogleMapsError as exc:
+    except MapboxError as exc:
         logger.warning(
             "Google Maps Directions API failed for (%.5f,%.5f)->(%.5f,%.5f): %s; "
             "falling back to haversine",
@@ -293,7 +293,7 @@ async def _batch_distances_single(
 
         return results
 
-    except GoogleMapsError as exc:
+    except MapboxError as exc:
         logger.warning(
             "Distance matrix API failed for origin (%.5f,%.5f) with %d "
             "destinations: %s; falling back to haversine",

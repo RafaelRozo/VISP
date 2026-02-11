@@ -164,3 +164,15 @@ class TaskClassification(BaseModel):
         default_factory=list,
         description="List of flags that influenced the classification",
     )
+
+
+class TimeSlot(BaseModel):
+    """Available time slot for a task."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    label: str
+    start_time: str = Field(alias="startTime")
+    end_time: str = Field(alias="endTime")
+    available: bool
