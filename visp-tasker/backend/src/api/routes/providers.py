@@ -47,8 +47,11 @@ from src.api.schemas.provider import (
     RecentJobSummary,
     ScheduleOut,
     UpcomingJobOut,
+    DataResponse,
+    ProviderCategoryOut,
 )
-from src.services import providerService
+from src.services import providerService, taxonomy_service
+
 
 router = APIRouter(prefix="/provider", tags=["Provider"])
 
@@ -73,44 +76,180 @@ async def _get_provider_id(db: DBSession, user: CurrentUser) -> uuid.UUID:
 @router.get(
     "/dashboard",
     summary="Provider dashboard stats",
-    description=(
-        "Returns aggregated dashboard data for the authenticated provider: "
-        "today's jobs, week earnings, rating, total completed jobs, "
-        "active job, and recent jobs."
-    ),
 )
 async def get_dashboard(
     db: DBSession,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    try:
-        provider_id = await _get_provider_id(db, user)
-    except providerService.ProviderNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User does not have a provider profile.",
-        )
+    """Return aggregated dashboard for the authenticated provider.
 
-    dashboard = await providerService.get_dashboard(db, provider_id)
+    Returns the shape the mobile app expects:
+    { profile, activeJob, pendingOffers, earnings, performanceScore }
+    """
+    from src.models.provider import ProviderProfile
+    from src.models.verification import ProviderCredential
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import selectinload
 
-    # Build response using schemas for validation
-    active_job = None
-    if dashboard["active_job"]:
-        active_job = ActiveJobSummary(**dashboard["active_job"])
-
-    recent_jobs = [RecentJobSummary(**j) for j in dashboard["recent_jobs"]]
-
-    result = ProviderDashboardOut(
-        today_jobs=dashboard["today_jobs"],
-        week_earnings_cents=dashboard["week_earnings_cents"],
-        rating=dashboard["rating"],
-        total_completed_jobs=dashboard["total_completed_jobs"],
-        active_job=active_job,
-        recent_jobs=recent_jobs,
-        availability_status=dashboard["availability_status"],
+    # 1. Get or default profile
+    profile_stmt = (
+        sa_select(ProviderProfile)
+        .options(selectinload(ProviderProfile.credentials))
+        .where(ProviderProfile.user_id == user.id)
     )
+    profile = (await db.execute(profile_stmt)).scalar_one_or_none()
 
-    return {"data": result.model_dump(by_alias=True)}
+    if profile is None:
+        # New user — return empty defaults
+        return {"data": {
+            "profile": {
+                "id": None,
+                "userId": str(user.id),
+                "level": 1,
+                "performanceScore": 0,
+                "isOnline": False,
+                "isOnCall": False,
+                "completedJobs": 0,
+                "rating": 0.0,
+                "stripeConnectStatus": "not_connected",
+                "credentials": [],
+            },
+            "activeJob": None,
+            "pendingOffers": [],
+            "earnings": {
+                "today": 0,
+                "thisWeek": 0,
+                "thisMonth": 0,
+                "pendingPayout": 0,
+                "totalEarned": 0,
+            },
+            "performanceScore": 0,
+        }}
+
+    # 2. Map credentials to mobile format
+    _cred_type_map = {
+        "background_check": "criminal_record_check",
+        "license": "trade_license",
+        "certification": "certification",
+        "portfolio": "portfolio",
+        "permit": "trade_license",
+        "training": "certification",
+    }
+    _cred_status_map = {
+        "pending_review": "pending",
+        "verified": "approved",
+        "rejected": "rejected",
+        "expired": "expired",
+        "revoked": "rejected",
+    }
+    creds_out = []
+    for c in profile.credentials:
+        creds_out.append({
+            "id": str(c.id),
+            "type": _cred_type_map.get(c.credential_type.value, c.credential_type.value),
+            "label": c.name,
+            "status": _cred_status_map.get(c.status.value, "pending"),
+            "documentUrl": c.document_url,
+            "expiresAt": c.expiry_date.isoformat() if c.expiry_date else None,
+            "rejectionReason": c.rejection_reason,
+            "uploadedAt": c.created_at.isoformat() if c.created_at else None,
+            "reviewedAt": c.verified_at.isoformat() if c.verified_at else None,
+        })
+
+    level_int = int(profile.current_level.value) if profile.current_level else 1
+
+    profile_out = {
+        "id": str(profile.id),
+        "userId": str(profile.user_id),
+        "level": level_int,
+        "performanceScore": float(profile.internal_score) if profile.internal_score else 0,
+        "isOnline": False,  # TODO: read from availability status
+        "isOnCall": False,
+        "completedJobs": 0,  # TODO: count from job_assignments
+        "rating": 0.0,  # TODO: compute from reviews
+        "stripeConnectStatus": "not_connected" if not profile.stripe_account_id else "active",
+        "credentials": creds_out,
+    }
+
+    return {"data": {
+        "profile": profile_out,
+        "activeJob": None,  # TODO: query active assignments
+        "pendingOffers": [],  # TODO: query pending offers
+        "earnings": {
+            "today": 0,
+            "thisWeek": 0,
+            "thisMonth": 0,
+            "pendingPayout": 0,
+            "totalEarned": 0,
+        },
+        "performanceScore": float(profile.internal_score) if profile.internal_score else 0,
+    }}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/provider/verification
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/verification",
+    summary="Provider verification status and credentials",
+)
+async def get_verification(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    """Return credentials and current level for the verification screen."""
+    from src.models.provider import ProviderProfile
+    from src.models.verification import ProviderCredential
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import selectinload
+
+    profile_stmt = (
+        sa_select(ProviderProfile)
+        .options(selectinload(ProviderProfile.credentials))
+        .where(ProviderProfile.user_id == user.id)
+    )
+    profile = (await db.execute(profile_stmt)).scalar_one_or_none()
+
+    if profile is None:
+        return {"data": {"credentials": [], "currentLevel": 1}}
+
+    _cred_type_map = {
+        "background_check": "criminal_record_check",
+        "license": "trade_license",
+        "certification": "certification",
+        "portfolio": "portfolio",
+        "permit": "trade_license",
+        "training": "certification",
+    }
+    _cred_status_map = {
+        "pending_review": "pending",
+        "verified": "approved",
+        "rejected": "rejected",
+        "expired": "expired",
+        "revoked": "rejected",
+    }
+
+    creds_out = []
+    for c in profile.credentials:
+        creds_out.append({
+            "id": str(c.id),
+            "type": _cred_type_map.get(c.credential_type.value, c.credential_type.value),
+            "label": c.name,
+            "status": _cred_status_map.get(c.status.value, "pending"),
+            "documentUrl": c.document_url,
+            "expiresAt": c.expiry_date.isoformat() if c.expiry_date else None,
+            "rejectionReason": c.rejection_reason,
+            "uploadedAt": c.created_at.isoformat() if c.created_at else None,
+            "reviewedAt": c.verified_at.isoformat() if c.verified_at else None,
+        })
+
+    level_int = int(profile.current_level.value) if profile.current_level else 1
+
+    return {"data": {
+        "credentials": creds_out,
+        "currentLevel": level_int,
+    }}
 
 
 # ---------------------------------------------------------------------------
@@ -394,3 +533,194 @@ async def get_credentials(
     )
 
     return {"data": result.model_dump(by_alias=True)}
+
+
+# ---------------------------------------------------------------------------
+# Onboarding / Taxonomy
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/taxonomy",
+    response_model=DataResponse,
+    summary="Get full service taxonomy for provider onboarding",
+)
+async def get_provider_taxonomy(db: DBSession) -> Any:
+    """Return all active categories and their active tasks."""
+    try:
+        categories = await taxonomy_service.get_full_active_taxonomy(db)
+        
+        # Serialize manually to prevent Pydantic/ORM conflict
+        data = []
+        for c in categories:
+            # Defensive access: fetch active_tasks_list via getattr in case 
+            # taxonomy_service logic didn't run or is outdated.
+            tasks_orm = getattr(c, "active_tasks_list", [])
+            
+            # Manual validation of tasks to avoid ANY Pydantic/ORM lazy load issues
+            tasks_data = []
+            for t in tasks_orm:
+                # Handle Level Enum manually if needed
+                level_val = t.level.value if hasattr(t.level, 'value') else str(t.level)
+                
+                tasks_data.append({
+                    "id": t.id,
+                    "slug": t.slug,
+                    "name": t.name,
+                    "description": t.description,
+                    "level": level_val,
+                    "category_id": t.category_id,
+                    "regulated": t.regulated,
+                    "license_required": t.license_required,
+                    "hazardous": t.hazardous,
+                    "structural": t.structural,
+                    "is_active": t.is_active,
+                })
+
+            cat_dict = {
+                "id": c.id,
+                "slug": c.slug,
+                "name": c.name,
+                "icon_url": c.icon_url,
+                "display_order": c.display_order,
+                "active_tasks_list": tasks_data,
+            }
+            data.append(
+                ProviderCategoryOut.model_validate(cat_dict).model_dump(by_alias=True)
+            )
+            
+        return {"data": data}
+    except Exception as e:
+        import traceback
+        traceback.print_exc() # Print full stack trace to server logs
+        print(f"ERROR /taxonomy: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server Error in /taxonomy: {str(e)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /provider/services — current qualified task IDs
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/services",
+    summary="Get provider's current service qualifications",
+)
+async def get_services(
+    db: DBSession,
+    user: CurrentUser,
+) -> Any:
+    """Return the list of task IDs the provider is currently qualified for."""
+    from src.models.provider import ProviderProfile
+    from src.models.taxonomy import ProviderTaskQualification
+    from sqlalchemy import select as sa_select
+
+    profile_stmt = sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+    profile = (await db.execute(profile_stmt)).scalar_one_or_none()
+
+    if profile is None:
+        return {"data": {"taskIds": [], "level": None}}
+
+    qual_stmt = sa_select(ProviderTaskQualification.task_id).where(
+        ProviderTaskQualification.provider_id == profile.id
+    )
+    result = await db.execute(qual_stmt)
+    task_ids = [str(row[0]) for row in result.all()]
+
+    return {
+        "data": {
+            "taskIds": task_ids,
+            "level": profile.current_level.value if profile.current_level else "1",
+            "status": profile.status.value if profile.status else "onboarding",
+        }
+    }
+
+
+
+from pydantic import BaseModel as _BaseModel
+
+class _ServiceUpdateBody(_BaseModel):
+    taskIds: list[str] = []
+
+@router.post(
+    "/services",
+    summary="Update provider service qualifications",
+)
+async def update_services(
+    db: DBSession,
+    user: CurrentUser,
+    body: _ServiceUpdateBody,
+) -> Any:
+    """Update the list of tasks the provider is qualified for.
+    
+    Expects JSON: { "taskIds": ["uuid1", "uuid2", ...] }
+    """
+    from src.models.taxonomy import ProviderTaskQualification, ServiceTask
+    from sqlalchemy import delete as sa_delete, select as sa_select
+    from datetime import datetime, timezone
+    import uuid as _uuid
+
+    try:
+        task_ids = [_uuid.UUID(tid) for tid in body.taskIds]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid task ID format: {e}",
+        )
+
+    # Resolve provider_id — auto-create profile if this is onboarding
+    from src.models.provider import ProviderProfile, ProviderProfileStatus, ProviderLevel
+    from sqlalchemy import select as sa_select2
+
+    profile_stmt = sa_select2(ProviderProfile).where(ProviderProfile.user_id == user.id)
+    profile = (await db.execute(profile_stmt)).scalar_one_or_none()
+
+    if profile is None:
+        # First time onboarding — create a provider profile with defaults
+        profile = ProviderProfile(
+            user_id=user.id,
+            status=ProviderProfileStatus.ONBOARDING,
+            current_level=ProviderLevel.LEVEL_1,
+        )
+        db.add(profile)
+        await db.flush()  # get the generated profile.id
+
+    provider_id = profile.id
+
+    # 1. Clear existing qualifications (full replace)
+    stmt = sa_delete(ProviderTaskQualification).where(
+        ProviderTaskQualification.provider_id == provider_id
+    )
+    await db.execute(stmt)
+
+    if not task_ids:
+        await db.commit()
+        return {"message": "Services cleared successfully"}
+
+    # 2. Fetch task definitions to check requirements
+    task_stmt = sa_select(ServiceTask).where(ServiceTask.id.in_(task_ids))
+    tasks = (await db.execute(task_stmt)).scalars().all()
+
+    # 3. Create new qualifications
+    for task in tasks:
+        is_restricted = (
+            task.regulated or
+            task.license_required or
+            task.hazardous or
+            task.structural
+        )
+        is_qualified = not is_restricted
+
+        qual = ProviderTaskQualification(
+            provider_id=provider_id,
+            task_id=task.id,
+            qualified=is_qualified,
+            auto_granted=is_qualified,
+            qualified_at=datetime.now(timezone.utc) if is_qualified else None,
+        )
+        db.add(qual)
+
+    await db.commit()
+    return {"message": "Services updated successfully"}
+

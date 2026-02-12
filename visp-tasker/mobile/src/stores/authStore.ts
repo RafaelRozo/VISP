@@ -136,7 +136,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
           const mockUser: User = {
             id: `user-${Date.now()}`,
             email: data.email,
-            phone: null,
+            phone: data.phone || null,
             firstName: data.firstName,
             lastName: data.lastName,
             role: data.role,

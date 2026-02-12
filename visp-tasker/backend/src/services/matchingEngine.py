@@ -221,21 +221,32 @@ async def _evaluate_candidate(
     today = date.today()
     now = datetime.now(timezone.utc)
 
-    # Hard filter 1: Level check
+    provider_level_num = LEVEL_NUMERIC.get(provider.current_level, 1)
+    is_higher_level = provider_level_num >= 3  # L3+ needs full verification
+
+    # Hard filter 1: Level check — provider level must be >= job level
     if not _level_meets_requirement(provider.current_level, job_level):
         return None
 
-    # Hard filter 2: Profile must be active
-    if provider.status != ProviderProfileStatus.ACTIVE:
-        return None
+    # Hard filter 2: Profile status
+    # L1/L2 can match in ONBOARDING, PENDING_REVIEW, or ACTIVE (MVP)
+    # L3+ must be ACTIVE
+    if is_higher_level:
+        if provider.status != ProviderProfileStatus.ACTIVE:
+            return None
+    else:
+        # L1/L2: allow any non-suspended/inactive status
+        if provider.status in (ProviderProfileStatus.SUSPENDED, ProviderProfileStatus.INACTIVE):
+            return None
 
-    # Hard filter 3: Background check verified and not expired
-    if not _background_check_valid(provider, today):
+    # Hard filter 3: Background check
+    # L3+ requires cleared background check; L1/L2 skips this for MVP
+    if is_higher_level and not _background_check_valid(provider, today):
         return None
 
     # Hard filter 4: Level 3+ requires valid license
     has_license = False
-    if provider.current_level in LICENSED_LEVELS:
+    if is_higher_level:
         has_license = await _has_valid_license(db, provider.id, today)
         if not has_license:
             return None
@@ -244,7 +255,7 @@ async def _evaluate_candidate(
 
     # Hard filter 5: Level 3+ requires active insurance
     has_insurance = False
-    if provider.current_level in LICENSED_LEVELS:
+    if is_higher_level:
         has_insurance = await _has_active_insurance(db, provider.id, reference_date=today)
         if not has_insurance:
             return None
@@ -319,23 +330,99 @@ async def find_matching_providers(
     job_lat = float(job.service_latitude)
     job_lon = float(job.service_longitude)
 
-    # 2. Query all active providers with location data
+    # 2. Query providers who are QUALIFIED for this specific task
+    # Only include providers with a ProviderTaskQualification record
+    # where qualified=True for the job's task_id.
+    # Also exclude the client's own provider profile.
+    qualified_provider_ids_stmt = (
+        select(ProviderTaskQualification.provider_id)
+        .where(
+            ProviderTaskQualification.task_id == job.task_id,
+            ProviderTaskQualification.qualified.is_(True),
+        )
+    )
+    qual_result = await db.execute(qualified_provider_ids_stmt)
+    qualified_provider_ids = {row[0] for row in qual_result.all()}
+
+    if not qualified_provider_ids:
+        logger.info(
+            "Matching for job %s: no providers qualified for task %s",
+            job.id,
+            job.task_id,
+        )
+        return {
+            "job_id": job.id,
+            "job_reference": job.reference_number,
+            "job_level": job_level.value,
+            "total_candidates_evaluated": 0,
+            "total_qualified": 0,
+            "matches": [],
+        }
+
     provider_stmt = (
         select(ProviderProfile)
         .options(selectinload(ProviderProfile.user))
         .where(
-            ProviderProfile.status == ProviderProfileStatus.ACTIVE,
-            ProviderProfile.home_latitude.is_not(None),
-            ProviderProfile.home_longitude.is_not(None),
+            ProviderProfile.id.in_(qualified_provider_ids),
+            ProviderProfile.status.notin_([
+                ProviderProfileStatus.SUSPENDED,
+                ProviderProfileStatus.INACTIVE,
+            ]),
+            # Exclude the client's own provider profile
+            ProviderProfile.user_id != job.customer_id,
         )
     )
     provider_result = await db.execute(provider_stmt)
     all_providers = provider_result.scalars().all()
 
+    logger.info(
+        "Matching for job %s (task %s): found %d qualified provider IDs, "
+        "%d eligible profiles after status/self-exclusion",
+        job.id,
+        job.task_id,
+        len(qualified_provider_ids),
+        len(all_providers),
+    )
+    for p in all_providers:
+        logger.info(
+            "  Candidate: provider_id=%s, user_id=%s, status=%s, "
+            "lat=%s, lng=%s",
+            p.id, p.user_id, p.status,
+            p.home_latitude, p.home_longitude,
+        )
+
     total_evaluated = len(all_providers)
 
     # 3. Filter by geographic radius
-    nearby = filter_by_radius(all_providers, job_lat, job_lon, radius_km)
+    # Providers WITHOUT location data are excluded from matching
+    providers_with_location = [
+        p for p in all_providers
+        if p.home_latitude is not None and p.home_longitude is not None
+    ]
+
+    if not providers_with_location:
+        logger.info(
+            "Matching for job %s: all %d candidates lack GPS data, no match",
+            job.id,
+            len(all_providers),
+        )
+        return {
+            "job_id": job.id,
+            "job_reference": job.reference_number,
+            "job_level": job_level.value,
+            "total_candidates_evaluated": total_evaluated,
+            "total_qualified": 0,
+            "matches": [],
+        }
+
+    nearby = filter_by_radius(providers_with_location, job_lat, job_lon, radius_km)
+
+    logger.info(
+        "Matching for job %s: %d of %d providers within radius",
+        job.id,
+        len(nearby),
+        len(providers_with_location),
+    )
 
     # 4. Apply hard qualification filters
     qualified: list[dict[str, Any]] = []

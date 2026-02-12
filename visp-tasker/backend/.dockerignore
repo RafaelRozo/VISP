@@ -1,0 +1,46 @@
+# =============================================================================
+# VISP Tasker Backend - Docker Ignore
+# =============================================================================
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Local env files (use docker-compose env instead)
+.env.local
+.env.*.local
+
+# Tests
+tests/
+htmlcov/
+.coverage
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/

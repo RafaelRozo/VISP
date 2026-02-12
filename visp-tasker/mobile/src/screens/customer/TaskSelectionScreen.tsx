@@ -38,6 +38,7 @@ import { BorderRadius } from '../../theme/borders';
 import { Shadows } from '../../theme/shadows';
 import { useTaskStore } from '../../stores/taskStore';
 import { PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
+import { geolocationService } from '../../services/geolocationService';
 import LevelBadge from '../../components/LevelBadge';
 import type {
   CustomerFlowParamList,
@@ -158,27 +159,39 @@ function TaskSelectionScreen(): React.JSX.Element {
     }
   }, [selectedTask, address, priority, calculateEstimate]);
 
-  // Handle address text change (simulated Google Places autocomplete)
-  const handleAddressChange = useCallback((text: string) => {
+  // Handle address text change (using real Geocoding API via Mapbox)
+  const handleAddressChange = useCallback(async (text: string) => {
     setAddressInput(text);
-    if (text.length >= 3) {
-      // In production, this would call Google Places Autocomplete API
-      setShowSuggestions(true);
-      // Simulated suggestion for demonstration
-      setAddressSuggestions([
-        {
-          placeId: 'simulated_place_1',
-          formattedAddress: text,
-          latitude: 43.6532,
-          longitude: -79.3832,
-          streetNumber: '123',
-          street: text,
-          city: 'Toronto',
-          province: 'ON',
-          postalCode: 'M5V 1A1',
-          country: 'CA',
-        },
-      ]);
+    if (text.length >= 4) {
+      try {
+        const result = await geolocationService.geocodeAddress(text);
+        if (result && result.formatted_address) {
+          // Parse the formatted address into structured components
+          const parsed = geolocationService.parseAddress(result.formatted_address);
+          setAddressSuggestions([
+            {
+              placeId: result.place_id || 'mapbox-result',
+              formattedAddress: result.formatted_address,
+              latitude: result.lat,
+              longitude: result.lng,
+              streetNumber: '',
+              street: parsed.street,
+              city: parsed.city,
+              province: parsed.province,
+              postalCode: parsed.postalCode,
+              country: parsed.country || 'CA',
+            },
+          ]);
+          setShowSuggestions(true);
+        } else {
+          setShowSuggestions(false);
+          setAddressSuggestions([]);
+        }
+      } catch (err) {
+        console.warn('Geocoding failed:', err);
+        setShowSuggestions(false);
+        setAddressSuggestions([]);
+      }
     } else {
       setShowSuggestions(false);
       setAddressSuggestions([]);
@@ -236,7 +249,7 @@ function TaskSelectionScreen(): React.JSX.Element {
     [toggleNote],
   );
 
-  // Navigate to Booking confirmation screen with task summary
+  // Navigate to Booking confirmation screen with task summary + booking details
   const handleConfirmBooking = useCallback(() => {
     if (!address) {
       Alert.alert('Address Required', 'Please enter your service address.');
@@ -264,6 +277,13 @@ function TaskSelectionScreen(): React.JSX.Element {
         priceRangeMax: taskDetail.priceRangeMax,
         estimatedPrice: estimatedPrice,
         description: taskDetail.description,
+        // Pass booking details for confirmation screen
+        address: address,
+        scheduledDate: scheduledDate,
+        scheduledTimeSlot: scheduledTimeSlot,
+        isFlexibleSchedule: isFlexibleSchedule,
+        priority: priority,
+        selectedNotes: selectedNotes,
       },
     });
   }, [
@@ -274,6 +294,8 @@ function TaskSelectionScreen(): React.JSX.Element {
     taskDetail,
     estimatedPrice,
     navigation,
+    priority,
+    selectedNotes,
   ]);
 
   // Check if form is complete

@@ -34,7 +34,7 @@ export interface LoginCredentials {
 
 export interface RegisterData {
   email: string;
-  phone?: string;
+  phone: string;
   password: string;
   firstName: string;
   lastName: string;
@@ -152,8 +152,8 @@ export type RootStackParamList = {
   ProviderHome: undefined;
   CategoryDetail: { categoryId: string; categoryName: string };
   JobDetail: { jobId: string };
+  JobTracking: { jobId: string };
   EmergencyFlow: undefined;
-  Profile: undefined;
   Chat: { jobId: string; otherUserName: string };
 };
 
@@ -367,12 +367,14 @@ export type ProfileStackParamList = {
   Credentials: undefined;
   Verification: undefined;
   Settings: undefined;
+  ProviderOnboarding: undefined;
 };
 
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
+  ProviderOnboarding: undefined;
 };
 
 // ──────────────────────────────────────────────
@@ -562,6 +564,15 @@ export interface JobAssignment {
   eta: number | null;
 }
 
+export interface JobTrackingData {
+  providerLat: number | null;
+  providerLng: number | null;
+  etaMinutes: number | null;
+  status: string;
+  providerName: string | null;
+  updatedAt: string | null;
+}
+
 // ──────────────────────────────────────────────
 // Booking Flow Data (passed between screens)
 // ──────────────────────────────────────────────
@@ -576,6 +587,13 @@ export interface BookingTaskSummary {
   priceRangeMax: number;
   estimatedPrice: number;
   description: string;
+  // Booking details from TaskSelectionScreen
+  address?: AddressInfo;
+  scheduledDate?: string;
+  scheduledTimeSlot?: string;
+  isFlexibleSchedule?: boolean;
+  priority?: PriorityLevel;
+  selectedNotes?: string[];
 }
 
 export type CustomerFlowParamList = {

@@ -1,15 +1,17 @@
 /**
- * VISP/Tasker - BookingScreen
+ * VISP/Tasker - BookingScreen (Confirm Booking)
  *
- * Booking confirmation screen with:
- *   - Selected task summary with level badge
- *   - Location input (device location or manual)
- *   - Schedule picker (Now or date/time)
- *   - Mandatory legal acknowledgment checkboxes
- *   - Confirm Booking button
+ * Confirmation / review screen for a booking.
+ * All data (address, date, time, priority, notes) comes pre-populated
+ * from the TaskSelectionScreen. Each section has an "Edit" link that
+ * navigates back so the user can modify their choices.
+ *
+ * The only interactive elements here are:
+ *   - Legal acknowledgment checkboxes (mandatory)
+ *   - "Confirm Booking" button
+ *   - "Edit" links to go back
  *
  * On confirm: POST /api/v1/jobs, then navigate to MatchingScreen.
- * For MVP: if API fails, create a mock job and proceed.
  *
  * CRITICAL: Legal checkboxes are MANDATORY before booking.
  * CRITICAL: No free-text task descriptions. Closed catalog only.
@@ -23,7 +25,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -35,7 +36,7 @@ import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { Shadows } from '../../theme/shadows';
 import LevelBadge from '../../components/LevelBadge';
-import { post } from '../../services/apiClient';
+import { taskService, PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
 import type { CustomerFlowParamList } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -45,49 +46,46 @@ import type { CustomerFlowParamList } from '../../types';
 type BookingRouteProp = RouteProp<CustomerFlowParamList, 'Booking'>;
 type BookingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'Booking'>;
 
-type ScheduleMode = 'now' | 'scheduled';
-
-interface CalendarDate {
-  dateString: string;
-  dayOfWeek: string;
-  dayOfMonth: number;
-  month: string;
-  isToday: boolean;
-}
-
-// ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
-
-function generateCalendarDates(count: number): CalendarDate[] {
-  const dates: CalendarDate[] = [];
-  const now = new Date();
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
-  for (let i = 1; i <= count; i++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + i);
-    dates.push({
-      dateString: date.toISOString().split('T')[0],
-      dayOfWeek: dayNames[date.getDay()],
-      dayOfMonth: date.getDate(),
-      month: monthNames[date.getMonth()],
-      isToday: false,
-    });
-  }
-  return dates;
-}
-
 const LEVEL_LABELS: Record<number, string> = {
   1: 'General Help',
   2: 'Experienced',
   3: 'Certified Pro',
   4: 'Emergency',
 };
+
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+
+/** Format "2026-02-15" to "Sat, Feb 15, 2026" */
+function formatDisplayDate(dateString?: string): string {
+  if (!dateString) return 'Flexible';
+  const date = new Date(dateString + 'T00:00:00');
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${dayNames[date.getDay()]}, ${monthNames[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+/** Format "14:00" to "2:00 PM" */
+function formatDisplayTime(time?: string): string {
+  if (!time) return 'Flexible';
+  const [h, m] = time.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayHour}:${(m ?? 0).toString().padStart(2, '0')} ${ampm}`;
+}
+
+/** Format minutes to "2h" or "1h 30m" */
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (rem === 0) return `${hours}h`;
+  return `${hours}h ${rem}m`;
+}
 
 // ──────────────────────────────────────────────
 // Component
@@ -97,12 +95,6 @@ function BookingScreen(): React.JSX.Element {
   const route = useRoute<BookingRouteProp>();
   const navigation = useNavigation<BookingNavProp>();
   const { task } = route.params;
-
-  // Form state
-  const [locationAddress, setLocationAddress] = useState('');
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now');
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
 
   // Legal consent state
   const [consentIndependent, setConsentIndependent] = useState(false);
@@ -116,28 +108,27 @@ function BookingScreen(): React.JSX.Element {
   // Loading
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const calendarDates = useMemo(() => generateCalendarDates(14), []);
-
   const levelColor = getLevelColor(task.level);
+
+  // Get priority label and color
+  const priorityOption = useMemo(
+    () => PRIORITY_OPTIONS.find(p => p.value === (task.priority ?? 'standard')),
+    [task.priority],
+  );
+
+  // Get selected note labels
+  const selectedNoteLabels = useMemo(() => {
+    if (!task.selectedNotes || task.selectedNotes.length === 0) return [];
+    return task.selectedNotes
+      .map(noteId => PREDEFINED_NOTES.find(n => n.id === noteId))
+      .filter(Boolean)
+      .map(n => n!.label);
+  }, [task.selectedNotes]);
 
   // Set header title
   useEffect(() => {
     navigation.setOptions({ title: 'Confirm Booking' });
   }, [navigation]);
-
-  // Time slot options
-  const timeSlots = useMemo(() => [
-    { id: '08:00', label: '8:00 AM' },
-    { id: '09:00', label: '9:00 AM' },
-    { id: '10:00', label: '10:00 AM' },
-    { id: '11:00', label: '11:00 AM' },
-    { id: '12:00', label: '12:00 PM' },
-    { id: '13:00', label: '1:00 PM' },
-    { id: '14:00', label: '2:00 PM' },
-    { id: '15:00', label: '3:00 PM' },
-    { id: '16:00', label: '4:00 PM' },
-    { id: '17:00', label: '5:00 PM' },
-  ], []);
 
   // Form validation
   const allConsentsAccepted = useMemo(() => {
@@ -148,21 +139,12 @@ function BookingScreen(): React.JSX.Element {
     return baseConsents;
   }, [consentIndependent, consentScope, consentPricing, consentSLA, isEmergency]);
 
-  const hasLocation = locationAddress.trim().length > 0;
+  const isFormValid = allConsentsAccepted;
 
-  const hasSchedule = useMemo(() => {
-    if (scheduleMode === 'now') return true;
-    return selectedDate !== '' && selectedTime !== '';
-  }, [scheduleMode, selectedDate, selectedTime]);
-
-  const isFormValid = allConsentsAccepted && hasLocation && hasSchedule;
-
-  // Build scheduledAt ISO string
-  const buildScheduledAt = useCallback((): string | null => {
-    if (scheduleMode === 'now') return null;
-    if (!selectedDate || !selectedTime) return null;
-    return `${selectedDate}T${selectedTime}:00.000Z`;
-  }, [scheduleMode, selectedDate, selectedTime]);
+  // Navigate back to edit
+  const handleEdit = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
 
   // Submit booking
   const handleConfirmBooking = useCallback(async () => {
@@ -170,50 +152,54 @@ function BookingScreen(): React.JSX.Element {
 
     setIsSubmitting(true);
 
-    const scheduledAt = buildScheduledAt();
-
-    const payload = {
-      serviceTaskId: task.taskId,
-      locationAddress,
-      locationLat: 43.6532,
-      locationLng: -79.3832,
-      scheduledAt,
-    };
-
     try {
-      const result = await post<{ id: string }>('/jobs', payload);
+      const result = await taskService.createBooking({
+        taskId: task.taskId,
+        address: task.address ?? {
+          formattedAddress: '',
+          latitude: 0,
+          longitude: 0,
+          street: '',
+          city: '',
+          province: '',
+          postalCode: '',
+          country: 'CA',
+          placeId: '',
+          streetNumber: '',
+        },
+        scheduledDate: task.scheduledDate ?? '',
+        scheduledTimeSlot: task.scheduledTimeSlot ?? '',
+        isFlexibleSchedule: task.isFlexibleSchedule ?? false,
+        priority: task.priority ?? 'standard',
+        selectedNotes: task.selectedNotes ?? [],
+        estimatedPrice: task.estimatedPrice,
+      });
+
       navigation.navigate('Matching', {
-        jobId: result.id,
+        jobId: result.bookingId,
         taskName: task.taskName,
       });
-    } catch {
-      // MVP fallback: create mock job and proceed
-      if (__DEV__) {
-        console.warn('[BookingScreen] API failed, using mock job for MVP');
-        const mockJobId = `job-${Date.now()}`;
-        navigation.navigate('Matching', {
-          jobId: mockJobId,
-          taskName: task.taskName,
-        });
+    } catch (error: any) {
+      console.error('[BookingScreen] Booking failed:', JSON.stringify(error));
+      // apiClient interceptor normalizes errors to ApiError: { message, statusCode, code }
+      const statusCode = error?.statusCode ?? error?.response?.status ?? 0;
+      const detail = error?.message ?? error?.response?.data?.detail ?? 'Unknown error';
+      console.error('[BookingScreen] Status:', statusCode, 'Detail:', detail);
+      if (statusCode === 401) {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please log in again to complete your booking.',
+        );
       } else {
         Alert.alert(
           'Booking Failed',
-          'Unable to create your booking. Please try again.',
+          `Unable to create your booking. ${detail}`,
         );
       }
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, buildScheduledAt, task, locationAddress, navigation]);
-
-  // Format duration
-  const formatDuration = (minutes: number): string => {
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const rem = minutes % 60;
-    if (rem === 0) return `${hours}h`;
-    return `${hours}h ${rem}m`;
-  };
+  }, [isFormValid, task, navigation]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -222,16 +208,22 @@ function BookingScreen(): React.JSX.Element {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
         >
-          {/* Task Summary Card */}
+          {/* ── Header ────────────────── */}
+          <View style={styles.headerSection}>
+            <Text style={styles.headerTitle}>Review Your Booking</Text>
+            <Text style={styles.headerSubtitle}>
+              Please review all details below before confirming.
+            </Text>
+          </View>
+
+          {/* ── Task Summary ────────────────── */}
           <View style={styles.section}>
             <View style={styles.taskCard}>
               <View style={styles.taskCardHeader}>
                 <Text style={styles.taskCardName}>{task.taskName}</Text>
                 <LevelBadge level={task.level} size="small" />
               </View>
-              <Text style={styles.taskCardCategory}>{task.categoryName}</Text>
               <Text style={styles.taskCardDescription} numberOfLines={2}>
                 {task.description}
               </Text>
@@ -258,175 +250,118 @@ function BookingScreen(): React.JSX.Element {
             </View>
           </View>
 
-          {/* Location Input */}
+          {/* ── Service Location ────────────────── */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Location</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>L</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter your address..."
-                placeholderTextColor={Colors.inputPlaceholder}
-                value={locationAddress}
-                onChangeText={setLocationAddress}
-                autoCapitalize="words"
-                returnKeyType="done"
-                accessibilityLabel="Service address"
-                accessibilityHint="Enter the address where you need the service"
-              />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Service Location</Text>
+              <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                <Text style={styles.editLink}>Edit</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.useLocationButton}
-              onPress={() => {
-                setLocationAddress('123 King Street West, Toronto, ON M5V 1A1');
-              }}
-              activeOpacity={0.7}
-              accessibilityLabel="Use current location"
-            >
-              <Text style={styles.useLocationIcon}>*</Text>
-              <Text style={styles.useLocationText}>Use current location</Text>
-            </TouchableOpacity>
+            <View style={styles.reviewCard}>
+              <Text style={styles.reviewCardIcon}>📍</Text>
+              <View style={styles.reviewCardContent}>
+                <Text style={styles.reviewCardPrimary}>
+                  {task.address?.formattedAddress ?? 'No address provided'}
+                </Text>
+                {task.address?.city ? (
+                  <Text style={styles.reviewCardSecondary}>
+                    {task.address.city}
+                    {task.address.province ? `, ${task.address.province}` : ''}
+                    {task.address.postalCode ? ` ${task.address.postalCode}` : ''}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
           </View>
 
-          {/* Schedule */}
+          {/* ── Schedule ────────────────── */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>When do you need this?</Text>
-
-            {/* Now / Scheduled toggle */}
-            <View style={styles.scheduleToggle}>
-              <TouchableOpacity
-                style={[
-                  styles.scheduleToggleBtn,
-                  scheduleMode === 'now' && styles.scheduleToggleBtnActive,
-                ]}
-                onPress={() => setScheduleMode('now')}
-                activeOpacity={0.7}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: scheduleMode === 'now' }}
-              >
-                <Text
-                  style={[
-                    styles.scheduleToggleBtnText,
-                    scheduleMode === 'now' && styles.scheduleToggleBtnTextActive,
-                  ]}
-                >
-                  As Soon As Possible
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.scheduleToggleBtn,
-                  scheduleMode === 'scheduled' && styles.scheduleToggleBtnActive,
-                ]}
-                onPress={() => setScheduleMode('scheduled')}
-                activeOpacity={0.7}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: scheduleMode === 'scheduled' }}
-              >
-                <Text
-                  style={[
-                    styles.scheduleToggleBtnText,
-                    scheduleMode === 'scheduled' && styles.scheduleToggleBtnTextActive,
-                  ]}
-                >
-                  Pick Date & Time
-                </Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Schedule</Text>
+              <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                <Text style={styles.editLink}>Edit</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Date/Time picker */}
-            {scheduleMode === 'scheduled' && (
-              <>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.dateScrollContent}
-                  style={styles.dateScrollView}
-                >
-                  {calendarDates.map((date) => {
-                    const isSelected = selectedDate === date.dateString;
-                    return (
-                      <TouchableOpacity
-                        key={date.dateString}
-                        style={[
-                          styles.dateCard,
-                          isSelected && styles.dateCardSelected,
-                        ]}
-                        onPress={() => setSelectedDate(date.dateString)}
-                        activeOpacity={0.7}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                      >
-                        <Text
-                          style={[
-                            styles.dateDayOfWeek,
-                            isSelected && styles.dateTextSelected,
-                          ]}
-                        >
-                          {date.dayOfWeek}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.dateDayOfMonth,
-                            isSelected && styles.dateTextSelected,
-                          ]}
-                        >
-                          {date.dayOfMonth}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.dateMonth,
-                            isSelected && styles.dateTextSelected,
-                          ]}
-                        >
-                          {date.month}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                {selectedDate !== '' && (
-                  <View style={styles.timeSlotsContainer}>
-                    <Text style={styles.subsectionTitle}>Select Time</Text>
-                    <View style={styles.timeSlotsGrid}>
-                      {timeSlots.map((slot) => {
-                        const isSelected = selectedTime === slot.id;
-                        return (
-                          <TouchableOpacity
-                            key={slot.id}
-                            style={[
-                              styles.timeSlot,
-                              isSelected && styles.timeSlotSelected,
-                            ]}
-                            onPress={() => setSelectedTime(slot.id)}
-                            activeOpacity={0.7}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: isSelected }}
-                          >
-                            <Text
-                              style={[
-                                styles.timeSlotText,
-                                isSelected && styles.timeSlotTextSelected,
-                              ]}
-                            >
-                              {slot.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
+            <View style={styles.reviewCard}>
+              <Text style={styles.reviewCardIcon}>📅</Text>
+              <View style={styles.reviewCardContent}>
+                {task.isFlexibleSchedule ? (
+                  <>
+                    <Text style={styles.reviewCardPrimary}>Flexible Schedule</Text>
+                    <Text style={styles.reviewCardSecondary}>
+                      We'll find the best available time for you
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.reviewCardPrimary}>
+                      {formatDisplayDate(task.scheduledDate)}
+                    </Text>
+                    <Text style={styles.reviewCardSecondary}>
+                      {formatDisplayTime(task.scheduledTimeSlot)}
+                    </Text>
+                  </>
                 )}
-              </>
-            )}
+              </View>
+            </View>
           </View>
 
-          {/* Emergency SLA Notice */}
+          {/* ── Priority ────────────────── */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Priority</Text>
+              <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                <Text style={styles.editLink}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.reviewCard}>
+              <View
+                style={[
+                  styles.priorityDot,
+                  { backgroundColor: priorityOption?.color ?? Colors.success },
+                ]}
+              />
+              <View style={styles.reviewCardContent}>
+                <Text style={styles.reviewCardPrimary}>
+                  {priorityOption?.label ?? 'Standard'}
+                </Text>
+                <Text style={styles.reviewCardSecondary}>
+                  {priorityOption?.description ?? ''}
+                </Text>
+                {(priorityOption?.multiplier ?? 1) > 1 && (
+                  <Text style={[styles.multiplierBadge, { color: priorityOption?.color }]}>
+                    {priorityOption?.multiplier}x rate
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* ── Additional Notes ────────────────── */}
+          {selectedNoteLabels.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Additional Info</Text>
+                <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                  <Text style={styles.editLink}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.notesContainer}>
+                {selectedNoteLabels.map((label, idx) => (
+                  <View key={idx} style={styles.noteTag}>
+                    <Text style={styles.noteTagText}>✓  {label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* ── Emergency SLA Notice ────────────────── */}
           {isEmergency && (
             <View style={styles.section}>
               <View style={styles.slaCard}>
-                <Text style={styles.slaTitle}>Emergency SLA Terms</Text>
+                <Text style={styles.slaTitle}>⚠️  Emergency SLA Terms</Text>
                 <Text style={styles.slaText}>
                   Emergency services (Level 4) include a guaranteed response
                   time. A provider will be dispatched within 30 minutes.
@@ -438,7 +373,7 @@ function BookingScreen(): React.JSX.Element {
             </View>
           )}
 
-          {/* Legal Acknowledgments */}
+          {/* ── Legal Acknowledgments ────────────────── */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Legal Acknowledgments</Text>
             <Text style={styles.legalSubtitle}>
@@ -460,7 +395,7 @@ function BookingScreen(): React.JSX.Element {
                 ]}
               >
                 {consentIndependent && (
-                  <Text style={styles.checkmark}>V</Text>
+                  <Text style={styles.checkmark}>✓</Text>
                 )}
               </View>
               <Text style={styles.checkboxLabel}>
@@ -484,7 +419,7 @@ function BookingScreen(): React.JSX.Element {
                   consentScope && styles.checkboxChecked,
                 ]}
               >
-                {consentScope && <Text style={styles.checkmark}>V</Text>}
+                {consentScope && <Text style={styles.checkmark}>✓</Text>}
               </View>
               <Text style={styles.checkboxLabel}>
                 I understand the service is limited to "{task.taskName}" only.
@@ -507,7 +442,7 @@ function BookingScreen(): React.JSX.Element {
                   consentPricing && styles.checkboxChecked,
                 ]}
               >
-                {consentPricing && <Text style={styles.checkmark}>V</Text>}
+                {consentPricing && <Text style={styles.checkmark}>✓</Text>}
               </View>
               <Text style={styles.checkboxLabel}>
                 I accept the estimated pricing of ${task.priceRangeMin} - $
@@ -533,7 +468,7 @@ function BookingScreen(): React.JSX.Element {
                     consentSLA && styles.checkboxCheckedEmergency,
                   ]}
                 >
-                  {consentSLA && <Text style={styles.checkmark}>V</Text>}
+                  {consentSLA && <Text style={styles.checkmark}>✓</Text>}
                 </View>
                 <Text style={styles.checkboxLabel}>
                   I understand emergency pricing applies ($150+ base) and
@@ -544,7 +479,7 @@ function BookingScreen(): React.JSX.Element {
             )}
           </View>
 
-          {/* Price Estimate */}
+          {/* ── Price Estimate ────────────────── */}
           <View style={styles.section}>
             <View style={styles.estimateCard}>
               <Text style={styles.estimateLabel}>Estimated Total</Text>
@@ -564,11 +499,17 @@ function BookingScreen(): React.JSX.Element {
           <View style={styles.bottomPadding} />
         </ScrollView>
 
-        {/* Confirm Booking CTA */}
+        {/* ── Confirm Booking CTA ────────────────── */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={styles.ctaPriceLabel}>From</Text>
-            <Text style={styles.ctaPriceValue}>${task.priceRangeMin}</Text>
+            <Text style={styles.ctaPriceLabel}>
+              {task.estimatedPrice > 0 ? 'Estimated' : 'From'}
+            </Text>
+            <Text style={styles.ctaPriceValue}>
+              {task.estimatedPrice > 0
+                ? `$${task.estimatedPrice.toFixed(2)}`
+                : `$${task.priceRangeMin} - $${task.priceRangeMax}`}
+            </Text>
           </View>
           <TouchableOpacity
             style={[
@@ -615,22 +556,41 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.lg,
   },
 
+  // Header
+  headerSection: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.xl,
+  },
+  headerTitle: {
+    fontSize: FontSize.title2,
+    fontWeight: FontWeight.bold as '700',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  headerSubtitle: {
+    ...Typography.footnote,
+    color: Colors.textSecondary,
+  },
+
   // Sections
   section: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.xl,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
   sectionTitle: {
     ...Typography.headline,
     color: Colors.textPrimary,
-    marginBottom: Spacing.md,
   },
-  subsectionTitle: {
+  editLink: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: Colors.primary,
     fontWeight: FontWeight.semiBold as '600',
-    marginBottom: Spacing.sm,
-    marginTop: Spacing.md,
   },
 
   // Task Card
@@ -645,20 +605,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
   taskCardName: {
     ...Typography.title3,
     color: Colors.textPrimary,
     flex: 1,
     marginRight: Spacing.sm,
-  },
-  taskCardCategory: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.sm,
   },
   taskCardDescription: {
     ...Typography.footnote,
@@ -686,143 +639,64 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.semiBold as '600',
   },
 
-  // Location Input
-  inputContainer: {
+  // Review Cards (address, schedule, priority)
+  reviewCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
-    borderRadius: BorderRadius.sm,
+    alignItems: 'flex-start',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: Spacing.md,
-    height: 48,
+    borderColor: Colors.border,
   },
-  inputIcon: {
-    fontSize: 16,
-    color: Colors.textTertiary,
-    fontWeight: FontWeight.bold as '700',
-    marginRight: Spacing.sm,
+  reviewCardIcon: {
+    fontSize: 20,
+    marginRight: Spacing.md,
+    marginTop: 2,
   },
-  textInput: {
+  reviewCardContent: {
     flex: 1,
+  },
+  reviewCardPrimary: {
     ...Typography.body,
-    color: Colors.inputText,
-    paddingVertical: 0,
-  },
-  useLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  useLocationIcon: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: FontWeight.bold as '700',
-    marginRight: Spacing.xs,
-  },
-  useLocationText: {
-    ...Typography.footnote,
-    color: Colors.primary,
+    color: Colors.textPrimary,
     fontWeight: FontWeight.medium as '500',
+    marginBottom: Spacing.xxs,
   },
-
-  // Schedule Toggle
-  scheduleToggle: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  scheduleToggleBtn: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  scheduleToggleBtnActive: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
-  },
-  scheduleToggleBtnText: {
+  reviewCardSecondary: {
     ...Typography.footnote,
     color: Colors.textSecondary,
-    fontWeight: FontWeight.medium as '500',
   },
-  scheduleToggleBtnTextActive: {
-    color: Colors.primary,
+
+  // Priority dot
+  priorityDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: Spacing.md,
+    marginTop: 6,
+  },
+  multiplierBadge: {
+    ...Typography.caption,
     fontWeight: FontWeight.semiBold as '600',
+    marginTop: Spacing.xs,
   },
 
-  // Date Picker
-  dateScrollView: {
-    marginBottom: Spacing.sm,
-  },
-  dateScrollContent: {
+  // Notes
+  notesContainer: {
     gap: Spacing.sm,
   },
-  dateCard: {
-    width: 72,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  dateCardSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
-  },
-  dateDayOfWeek: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xxs,
-  },
-  dateDayOfMonth: {
-    fontSize: FontSize.title3,
-    fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xxs,
-  },
-  dateMonth: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-  },
-  dateTextSelected: {
-    color: Colors.primary,
-  },
-
-  // Time Slots
-  timeSlotsContainer: {
-    marginTop: Spacing.sm,
-  },
-  timeSlotsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  timeSlot: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surface,
+  noteTag: {
+    backgroundColor: `${Colors.primary}10`,
     borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: `${Colors.primary}25`,
   },
-  timeSlotSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
-  },
-  timeSlotText: {
+  noteTagText: {
     ...Typography.footnote,
     color: Colors.textPrimary,
-    fontWeight: FontWeight.medium as '500',
-  },
-  timeSlotTextSelected: {
-    color: Colors.primary,
   },
 
   // SLA Card
@@ -849,6 +723,7 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.textTertiary,
     marginBottom: Spacing.lg,
+    marginTop: Spacing.xs,
   },
   checkboxRow: {
     flexDirection: 'row',

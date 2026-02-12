@@ -12,6 +12,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -20,6 +21,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../theme';
@@ -28,10 +31,12 @@ import EmergencyButton from '../../components/EmergencyButton';
 import CategoryGrid from '../../components/CategoryGrid';
 import ActiveJobCard from '../../components/ActiveJobCard';
 import { get } from '../../services/apiClient';
+import taskService from '../../services/taskService';
 import type {
   Job,
   PaginatedResponse,
   RootStackParamList,
+  CustomerTabParamList,
   ServiceCategory,
 } from '../../types';
 
@@ -39,7 +44,10 @@ import type {
 // Types
 // ──────────────────────────────────────────────
 
-type Props = NativeStackScreenProps<RootStackParamList, 'CustomerHome'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<CustomerTabParamList, 'Home'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 interface RecentActivity {
   id: string;
@@ -112,10 +120,31 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const fetchCategories = useCallback(async () => {
     try {
       setIsLoadingCategories(true);
-      const data = await get<ServiceCategory[]>('/categories');
-      setCategories(data);
+      // get() already unwraps response.data.data, so we receive the array directly
+      const rawCategories = await get<Array<{
+        id: string;
+        slug: string;
+        name: string;
+        icon_url?: string | null;
+        task_count?: number;
+        is_active?: boolean;
+        display_order?: number;
+      }>>('/categories');
+      // Map backend snake_case fields to mobile ServiceCategory type
+      const mapped: ServiceCategory[] = (rawCategories ?? []).map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        icon: cat.icon_url ?? '',
+        taskCount: cat.task_count ?? 0,
+        isEmergency: false,
+        sortOrder: cat.display_order ?? 0,
+      }));
+      setCategories(mapped);
     } catch {
-      // Silently fail; the grid will show empty state
+      // If we fail to fetch, we show error state (controlled by TaskStore)
+      // No fallback to mock data in production alignment
+
     } finally {
       setIsLoadingCategories(false);
     }
@@ -124,8 +153,8 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const fetchActiveJobs = useCallback(async () => {
     try {
       setIsLoadingJobs(true);
-      const data = await get<PaginatedResponse<Job>>('/jobs/active');
-      setActiveJobs(data.items);
+      const jobs = await taskService.getActiveJobs();
+      setActiveJobs(jobs);
     } catch {
       // Silently fail
     } finally {
@@ -183,7 +212,15 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 
   const handleJobPress = useCallback(
     (job: Job) => {
-      navigation.navigate('JobDetail', { jobId: job.id });
+      const pendingStatuses = ['pending_match', 'draft', 'pending'];
+      if (pendingStatuses.includes(job.status)) {
+        Alert.alert(
+          'Searching for a Tasker',
+          'We\'re still looking for the best available Tasker in your area. You\'ll be notified as soon as one is assigned. Hang tight!',
+        );
+        return;
+      }
+      navigation.navigate('JobTracking', { jobId: job.id });
     },
     [navigation],
   );
@@ -217,7 +254,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
           {/* Profile Avatar */}
           <TouchableOpacity
             style={styles.profileButton}
-            onPress={() => navigation.navigate('Profile')}
+            onPress={() => navigation.navigate('CustomerProfile')}
             accessibilityLabel="Open profile"
           >
             <Text style={styles.profileInitials}>

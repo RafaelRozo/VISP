@@ -65,7 +65,7 @@ const LEVEL_TABS: LevelTab[] = [
 function CategoryScreen(): React.JSX.Element {
   const route = useRoute<CategoryScreenRouteProp>();
   const navigation = useNavigation<CategoryScreenNavProp>();
-  const { categoryId, categoryName } = route.params;
+  const { categoryId, categoryName } = route.params ?? { categoryId: '', categoryName: '' };
 
   const {
     filteredTasks,
@@ -78,15 +78,33 @@ function CategoryScreen(): React.JSX.Element {
     setSearchQuery,
   } = useTaskStore();
 
-  // Set header title
+  // Set header title and close button
   useEffect(() => {
-    navigation.setOptions({ title: categoryName });
+    navigation.setOptions({
+      title: categoryName,
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => navigation.getParent()?.goBack()}
+          style={{ paddingRight: Spacing.md, paddingVertical: Spacing.sm }}
+        >
+          <Text style={{ color: Colors.primary, ...Typography.body, fontWeight: '600' }}>
+            Close
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
   }, [navigation, categoryName]);
 
   // Load tasks on mount
   useEffect(() => {
-    fetchCategoryTasks(categoryId);
-  }, [categoryId, fetchCategoryTasks]);
+    // Reset filters to ensure we see all tasks for this category
+    setSearchQuery('');
+    setLevelFilter(null);
+
+    if (categoryId) {
+      fetchCategoryTasks(categoryId);
+    }
+  }, [categoryId, fetchCategoryTasks, setSearchQuery, setLevelFilter]);
 
   // Handlers
   const handleLevelFilter = useCallback(
@@ -202,7 +220,7 @@ function CategoryScreen(): React.JSX.Element {
 
   // Empty state
   const renderEmpty = useCallback(() => {
-    if (isLoadingTasks) {
+    if (isLoadingTasks || error) {
       return null;
     }
     return (
@@ -215,7 +233,7 @@ function CategoryScreen(): React.JSX.Element {
         </Text>
       </View>
     );
-  }, [isLoadingTasks, searchQuery]);
+  }, [isLoadingTasks, searchQuery, error]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

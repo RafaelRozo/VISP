@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""
 
-    # -- Google Maps --
-    google_maps_api_key: str = ""
+    # -- Mapbox --
+    mapbox_access_token: str = ""
 
     # -- Firebase Cloud Messaging --
     firebase_service_account_path: str = ""

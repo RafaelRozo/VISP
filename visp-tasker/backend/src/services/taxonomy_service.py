@@ -377,3 +377,78 @@ async def search_tasks(
         page=page,
         page_size=page_size,
     )
+
+
+async def get_time_slots(
+    db: AsyncSession,
+    task_id: uuid.UUID,
+    date_str: str,
+) -> list[dict]:
+    """Generate available time slots for a given task and date.
+
+    Currently returns standard business hours (08:00 - 20:00).
+    Future evolution: Query `provider_availability` and `provider_task_qualifications`
+    to return only slots where at least one qualified provider is available.
+    """
+    slots = []
+    # Standard 8 AM to 8 PM schedule
+    for hour in range(8, 20):
+        start = f"{hour:02d}:00"
+        end = f"{hour + 1:02d}:00"
+
+        # Format label (e.g., "9:00 AM")
+        h = hour % 12 or 12
+        ampm = "AM" if hour < 12 else "PM"
+        label = f"{h}:00 {ampm}"
+
+        slots.append({
+            "id": start,
+            "label": label,
+            "startTime": start,
+            "endTime": end,
+            "available": True,  # Assume available for now
+        })
+
+    return slots
+
+
+async def get_full_active_taxonomy(db: AsyncSession) -> list[ServiceCategory]:
+    """Fetch the full hierarchy of active categories and their active tasks.
+
+    Used by the Provider App for service selection during onboarding.
+    Optimization: Fetches everything in one go using selectinload or joinedload,
+    but since we need to filter *tasks* by is_active, clear separation is safer.
+    """
+    # 1. Fetch all active categories
+    cat_stmt = (
+        select(ServiceCategory)
+        .where(ServiceCategory.is_active.is_(True))
+        .order_by(ServiceCategory.display_order, ServiceCategory.name)
+    )
+    categories = (await db.execute(cat_stmt)).scalars().all()
+
+    # 2. Fetch all active tasks
+    task_stmt = (
+        select(ServiceTask)
+        .where(ServiceTask.is_active.is_(True))
+        .order_by(ServiceTask.display_order, ServiceTask.name)
+    )
+    tasks = (await db.execute(task_stmt)).scalars().all()
+
+    # 3. Group tasks by category_id
+    tasks_by_cat = {}
+    for task in tasks:
+        if task.category_id not in tasks_by_cat:
+            tasks_by_cat[task.category_id] = []
+        tasks_by_cat[task.category_id].append(task)
+
+    # 4. Attach tasks to categories (ephemeral attribute for Pydantic)
+    result = []
+    for cat in categories:
+        # Create a clean list of tasks for this category
+        cat_tasks = tasks_by_cat.get(cat.id, [])
+        # We attach it to the ORM instance. The Schema must expect 'tasks'
+        cat.active_tasks_list = cat_tasks
+        result.append(cat)
+
+    return result

@@ -37,6 +37,8 @@ import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 
 // Screens - Customer
 import CustomerHomeScreen from '../screens/customer/HomeScreen';
+import JobTrackingScreen from '../screens/customer/JobTrackingScreen';
+import MyJobsScreen from '../screens/customer/MyJobsScreen';
 
 // Screens - Provider
 import DashboardScreen from '../screens/provider/DashboardScreen';
@@ -44,6 +46,7 @@ import JobOffersScreen from '../screens/provider/JobOffersScreen';
 import ActiveJobScreen from '../screens/provider/ActiveJobScreen';
 import EarningsScreen from '../screens/provider/EarningsScreen';
 import ScheduleScreen from '../screens/provider/ScheduleScreen';
+import ProviderOnboardingScreen from '../screens/provider/ProviderOnboardingScreen';
 
 // Screens - Profile
 import ProfileScreen from '../screens/profile/ProfileScreen';
@@ -54,18 +57,7 @@ import SettingsScreen from '../screens/profile/SettingsScreen';
 // Screens - Shared
 import ChatScreen from '../screens/shared/ChatScreen';
 
-// ---------------------------------------------------------------------------
-// Placeholder for customer jobs (not yet built as standalone screen)
-// ---------------------------------------------------------------------------
-
-function CustomerJobsScreen() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>My Jobs</Text>
-      <Text style={placeholderStyles.subtext}>No active jobs</Text>
-    </View>
-  );
-}
+// CustomerJobsScreen is now MyJobsScreen (imported above)
 
 const placeholderStyles = StyleSheet.create({
   container: {
@@ -213,6 +205,11 @@ function ProfileStackNavigator(): React.JSX.Element {
         component={SettingsScreen}
         options={{ title: 'Settings' }}
       />
+      <ProfileStack.Screen
+        name="ProviderOnboarding"
+        component={ProviderOnboardingScreen}
+        options={{ title: 'My Services' }}
+      />
     </ProfileStack.Navigator>
   );
 }
@@ -263,6 +260,11 @@ function AuthNavigator(): React.JSX.Element {
         name="ForgotPassword"
         component={ForgotPasswordScreen}
       />
+      <AuthStack.Screen
+        name="ProviderOnboarding"
+        component={ProviderOnboardingScreen}
+        options={{ title: 'Select Services', headerShown: true }}
+      />
     </AuthStack.Navigator>
   );
 }
@@ -287,7 +289,7 @@ function CustomerTabNavigator(): React.JSX.Element {
       />
       <CustomerTab.Screen
         name="MyJobs"
-        component={CustomerJobsScreen}
+        component={MyJobsScreen}
         options={{
           title: 'My Jobs',
           tabBarIcon: ({ focused }) => (
@@ -407,9 +409,15 @@ export default function AppNavigator(): React.JSX.Element {
             />
             <RootStack.Screen
               name="CategoryDetail"
-              component={CustomerNavigator}
               options={{ headerShown: false }}
-            />
+            >
+              {(props: any) => (
+                <CustomerNavigator
+                  initialCategoryId={props.route.params?.categoryId}
+                  initialCategoryName={props.route.params?.categoryName}
+                />
+              )}
+            </RootStack.Screen>
             <RootStack.Screen
               name="EmergencyFlow"
               component={EmergencyNavigator}
@@ -423,6 +431,16 @@ export default function AppNavigator(): React.JSX.Element {
                 ...SCREEN_OPTIONS,
                 title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
               })}
+            />
+            <RootStack.Screen
+              name="JobTracking"
+              component={JobTrackingScreen}
+              options={{
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: 'Job Status',
+                headerBackTitle: 'Back',
+              }}
             />
           </>
         ) : (

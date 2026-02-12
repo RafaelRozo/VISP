@@ -10,6 +10,7 @@ import axios, {
   AxiosInstance,
   AxiosResponse,
   InternalAxiosRequestConfig,
+  AxiosRequestConfig,
 } from 'axios';
 import { ApiError } from '../types';
 import { Config } from './config';
@@ -126,7 +127,9 @@ apiClient.interceptors.response.use(
           refreshToken: _refreshToken,
         });
 
-        const { accessToken, refreshToken } = refreshResponse.data.tokens;
+        // Backend wraps response: { data: { tokens: { accessToken, refreshToken } } }
+        const refreshData = refreshResponse.data?.data ?? refreshResponse.data;
+        const { accessToken, refreshToken } = refreshData.tokens;
         setTokens(accessToken, refreshToken);
 
         processQueue(null, accessToken);
@@ -145,10 +148,15 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // Normalise the error shape
-    const apiError: ApiError = error.response?.data ?? {
-      message: error.message || 'An unexpected error occurred',
-      code: 'NETWORK_ERROR',
+    // Normalise the error shape — always include statusCode and message
+    const responseData = error.response?.data as Record<string, unknown> | undefined;
+    const apiError: ApiError = {
+      message:
+        responseData?.message as string ??
+        responseData?.detail as string ??
+        error.message ??
+        'An unexpected error occurred',
+      code: (responseData?.code as string) ?? 'NETWORK_ERROR',
       statusCode: error.response?.status ?? 0,
     };
 
@@ -170,18 +178,18 @@ export async function get<T>(url: string, params?: Record<string, unknown>): Pro
   return response.data.data;
 }
 
-export async function post<T>(url: string, body?: unknown): Promise<T> {
-  const response = await apiClient.post<ApiResponse<T>>(url, body);
+export async function post<T>(url: string, body?: unknown, config?: InternalAxiosRequestConfig): Promise<T> {
+  const response = await apiClient.post<ApiResponse<T>>(url, body, config);
   return response.data.data;
 }
 
-export async function put<T>(url: string, body?: unknown): Promise<T> {
-  const response = await apiClient.put<ApiResponse<T>>(url, body);
+export async function put<T>(url: string, body?: unknown, config?: InternalAxiosRequestConfig): Promise<T> {
+  const response = await apiClient.put<ApiResponse<T>>(url, body, config);
   return response.data.data;
 }
 
-export async function patch<T>(url: string, body?: unknown): Promise<T> {
-  const response = await apiClient.patch<ApiResponse<T>>(url, body);
+export async function patch<T>(url: string, body?: unknown, config?: InternalAxiosRequestConfig): Promise<T> {
+  const response = await apiClient.patch<ApiResponse<T>>(url, body, config);
   return response.data.data;
 }
 

@@ -1,0 +1,35 @@
+# =============================================================================
+# Cloudflare Tunnel Configuration - VISP Tasker API
+# =============================================================================
+# This file configures the Cloudflare tunnel to expose the API
+# Place in: ~/.cloudflared/config.yml or /etc/cloudflared/config.yml
+# =============================================================================
+
+# Tunnel UUID (replace with your actual tunnel ID after creation)
+tunnel: visp-api-tunnel
+
+# Path to credentials file (created when you run 'cloudflared tunnel create')
+credentials-file: /home/richie/.cloudflared/visp-api-tunnel.json
+
+# Ingress rules - route traffic to appropriate services
+ingress:
+  # API endpoint - route to the FastAPI backend
+  - hostname: api.yourdomain.com  # Replace with your actual domain
+    service: http://localhost:8000
+    originRequest:
+      # Keep connections alive for WebSocket support
+      noTLSVerify: false
+      connectTimeout: 30s
+      httpHostHeader: "api.yourdomain.com"
+
+  # WebSocket endpoint (Socket.IO)
+  - hostname: api.yourdomain.com
+    path: /ws/*
+    service: http://localhost:8000
+    originRequest:
+      # WebSocket specific settings
+      noTLSVerify: false
+      disableChunkedEncoding: true
+
+  # Catch-all rule (required)
+  - service: http_status:404

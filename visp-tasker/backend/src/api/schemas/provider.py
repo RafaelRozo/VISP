@@ -360,7 +360,7 @@ class MobileJobCreateRequest(BaseModel):
 
 class MobileJobOut(BaseModel):
     """Job detail in camelCase format for mobile clients."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     reference_number: str = Field(alias="referenceNumber")
@@ -402,6 +402,7 @@ class MobileJobStatusUpdateRequest(BaseModel):
 
 class EstimatedPriceOut(BaseModel):
     """Estimated price returned with job creation."""
+    model_config = ConfigDict(populate_by_name=True)
     min_cents: int = Field(alias="minCents")
     max_cents: int = Field(alias="maxCents")
     currency: str = "CAD"
@@ -411,5 +412,42 @@ class EstimatedPriceOut(BaseModel):
 
 class JobCreateResponse(BaseModel):
     """Response from job creation containing the job and estimated price."""
+    model_config = ConfigDict(populate_by_name=True)
     job: MobileJobOut
     estimated_price: EstimatedPriceOut = Field(alias="estimatedPrice")
+
+
+# ---------------------------------------------------------------------------
+# Taxonomy / Onboarding
+# ---------------------------------------------------------------------------
+
+
+class ProviderTaskOut(BaseModel):
+    """Task detail for provider onboarding."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    
+    id: uuid.UUID
+    slug: str
+    name: str
+    description: str
+    level: str
+    category_id: uuid.UUID = Field(alias="categoryId")
+    regulated: bool
+    license_required: bool = Field(alias="licenseRequired")
+    hazardous: bool
+    structural: bool
+    is_active: bool = Field(alias="isActive")
+
+
+class ProviderCategoryOut(BaseModel):
+    """Category with tasks for provider onboarding."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    icon_url: Optional[str] = Field(default=None, alias="iconUrl")
+    display_order: int = Field(alias="displayOrder")
+    active_tasks_list: list[ProviderTaskOut] = Field(alias="activeTasksList")
+
+

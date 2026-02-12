@@ -427,7 +427,7 @@ export default function ScheduleScreen(): React.JSX.Element {
   // Set of dates that have jobs (for calendar dots)
   const jobDates = useMemo(() => {
     const dates = new Set<string>();
-    scheduledJobs.forEach((job) => {
+    (scheduledJobs || []).forEach((job) => {
       const date = new Date(job.scheduledAt).toISOString().split('T')[0];
       dates.add(date);
     });
@@ -436,7 +436,7 @@ export default function ScheduleScreen(): React.JSX.Element {
 
   // Jobs for selected date
   const jobsForDate = useMemo(() => {
-    return scheduledJobs.filter((job) => {
+    return (scheduledJobs || []).filter((job) => {
       const jobDate = new Date(job.scheduledAt);
       return isSameDay(jobDate, selectedDate);
     });
@@ -498,7 +498,7 @@ export default function ScheduleScreen(): React.JSX.Element {
             On-call shifts are only available for Level 4 providers.
           </Text>
         </View>
-      ) : onCallShifts.length === 0 ? (
+      ) : !onCallShifts || onCallShifts.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>No Scheduled Shifts</Text>
           <Text style={styles.emptySubtext}>

@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.models.provider import ProviderLevel, ProviderProfile, ProviderProfileStatus
 from src.models.user import AuthProvider, User, UserStatus
 
 # ---------------------------------------------------------------------------
@@ -220,6 +221,16 @@ async def register(
 
     db.add(user)
     await db.flush()  # Flush to generate ID without committing
+
+    # Create Provider Profile if applicable
+    if role_provider:
+        profile = ProviderProfile(
+            user_id=user.id,
+            current_level=ProviderLevel.LEVEL_1,
+            status=ProviderProfileStatus.ONBOARDING,
+        )
+        db.add(profile)
+        await db.flush()
 
     # Generate tokens
     tokens = create_tokens(user.id)

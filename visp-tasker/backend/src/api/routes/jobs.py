@@ -111,124 +111,158 @@ async def book_job(
     user: CurrentUser,
     body: MobileJobCreateRequest,
 ) -> dict[str, Any]:
-    # Determine priority from emergency flag
-    priority = "emergency" if body.is_emergency else "standard"
-
-    # Build schedule from scheduledAt if provided
-    schedule = None
-    if body.scheduled_at:
-        schedule = {
-            "requested_date": body.scheduled_at.date(),
-            "requested_time_start": body.scheduled_at.time(),
-            "requested_time_end": None,
-            "flexible_schedule": False,
-        }
-
+    import traceback as tb_mod
     try:
-        job = await jobService.create_job(
-            db,
-            customer_id=user.id,
-            task_id=body.service_task_id,
-            location={
-                "latitude": body.location_lat,
-                "longitude": body.location_lng,
-                "address": body.location_address,
-                "city": body.city,
-                "province_state": body.province_state,
-                "postal_zip": body.postal_zip,
-                "country": body.country,
-                "unit": body.unit,
-            },
-            schedule=schedule,
-            priority=priority,
-            is_emergency=body.is_emergency,
-            customer_notes_json=body.notes or [],
-        )
-    except jobService.TaskNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        )
+        # Determine priority from emergency flag
+        priority = "emergency" if body.is_emergency else "standard"
 
-    # Transition from DRAFT to PENDING_MATCH to kick off matching
-    try:
-        job = await jobService.update_job_status(
-            db,
-            job.id,
-            "pending_match",
-            actor_type="system",
-        )
-    except (jobService.JobNotFoundError, jobService.InvalidTransitionError):
-        pass  # Stay in DRAFT if transition fails
+        # Build schedule from scheduledAt if provided
+        schedule = None
+        if body.scheduled_at:
+            schedule = {
+                "requested_date": body.scheduled_at.date(),
+                "requested_time_start": body.scheduled_at.time(),
+                "requested_time_end": None,
+                "flexible_schedule": False,
+            }
 
-    # Attempt price estimation
-    estimated_price = EstimatedPriceOut(
-        min_cents=job.quoted_price_cents or 0,
-        max_cents=job.quoted_price_cents or 0,
-        currency=job.currency,
-        is_emergency=job.is_emergency,
-        dynamic_multiplier=None,
-    )
+        try:
+            job = await jobService.create_job(
+                db,
+                customer_id=user.id,
+                task_id=body.service_task_id,
+                location={
+                    "latitude": body.location_lat,
+                    "longitude": body.location_lng,
+                    "address": body.location_address,
+                    "city": body.city,
+                    "province_state": body.province_state,
+                    "postal_zip": body.postal_zip,
+                    "country": body.country,
+                    "unit": body.unit,
+                },
+                schedule=schedule,
+                priority=priority,
+                is_emergency=body.is_emergency,
+                customer_notes_json=body.notes or [],
+            )
+        except jobService.TaskNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+            )
 
-    # Try to calculate from the pricing engine
-    try:
-        from src.services.pricingEngine import calculate_price as calc_price
-
-        estimate = await calc_price(
-            db,
-            task_id=job.task_id,
-            latitude=job.service_latitude,
-            longitude=job.service_longitude,
-            requested_date=job.requested_date,
-            is_emergency=job.is_emergency,
-            country=job.service_country,
-        )
-        estimated_price = EstimatedPriceOut(
-            min_cents=estimate.final_price_min_cents,
-            max_cents=estimate.final_price_max_cents,
-            currency=estimate.currency,
-            is_emergency=estimate.is_emergency,
-            dynamic_multiplier=estimate.dynamic_multiplier,
-        )
-
-        # Update the job with the quoted price
-        job.quoted_price_cents = estimate.final_price_min_cents
-        job.commission_rate = estimate.commission_rate_default
-        job.commission_amount_cents = int(
-            Decimal(str(estimate.final_price_min_cents))
-            * estimate.commission_rate_default
-        )
-        job.provider_payout_cents = (
-            estimate.final_price_min_cents - job.commission_amount_cents
-        )
-        await db.flush()
-    except Exception as exc:
-        logger.warning("Price estimation failed for job %s: %s", job.id, exc)
-
-    # Start matching (best-effort for MVP)
-    try:
-        from src.services.matchingEngine import assign_provider, find_matching_providers
-
-        match_result = await find_matching_providers(db, job, max_results=1)
-        if match_result["matches"]:
-            best = match_result["matches"][0]
-            await assign_provider(
+        # Transition from DRAFT to PENDING_MATCH to kick off matching
+        try:
+            job = await jobService.update_job_status(
                 db,
                 job.id,
-                best["provider_id"],
-                match_score=float(best["composite_score"]),
+                "pending_match",
+                actor_type="system",
             )
+        except (jobService.JobNotFoundError, jobService.InvalidTransitionError):
+            pass  # Stay in DRAFT if transition fails
+
+        # Attempt price estimation
+        estimated_price = EstimatedPriceOut(
+            min_cents=job.quoted_price_cents or 0,
+            max_cents=job.quoted_price_cents or 0,
+            currency=job.currency,
+            is_emergency=job.is_emergency,
+            dynamic_multiplier=None,
+        )
+
+        # Try to calculate from the pricing engine
+        try:
+            from src.services.pricingEngine import calculate_price as calc_price
+
+            estimate = await calc_price(
+                db,
+                task_id=job.task_id,
+                latitude=job.service_latitude,
+                longitude=job.service_longitude,
+                requested_date=job.requested_date,
+                is_emergency=job.is_emergency,
+                country=job.service_country,
+            )
+            estimated_price = EstimatedPriceOut(
+                min_cents=estimate.final_price_min_cents,
+                max_cents=estimate.final_price_max_cents,
+                currency=estimate.currency,
+                is_emergency=estimate.is_emergency,
+                dynamic_multiplier=estimate.dynamic_multiplier,
+            )
+
+            # Update the job with the quoted price
+            job.quoted_price_cents = estimate.final_price_min_cents
+            job.commission_rate = estimate.commission_rate_default
+            job.commission_amount_cents = int(
+                Decimal(str(estimate.final_price_min_cents))
+                * estimate.commission_rate_default
+            )
+            job.provider_payout_cents = (
+                estimate.final_price_min_cents - job.commission_amount_cents
+            )
+            await db.flush()
+        except Exception as exc:
+            logger.warning("Price estimation failed for job %s: %s", job.id, exc)
+
+        # Start matching (best-effort for MVP)
+        try:
+            from src.services.matchingEngine import assign_provider, find_matching_providers
+
+            match_result = await find_matching_providers(db, job, max_results=1)
+            if match_result["matches"]:
+                best = match_result["matches"][0]
+                await assign_provider(
+                    db,
+                    job.id,
+                    best["provider_id"],
+                    match_score=float(best["composite_score"]),
+                )
+        except Exception as exc:
+            logger.warning("Auto-matching failed for job %s: %s", job.id, exc)
+
+        # Build mobile-friendly response
+        try:
+            job_out = MobileJobOut.model_validate(job)
+            response = JobCreateResponse(
+                job=job_out,
+                estimated_price=estimated_price,
+            )
+            return {"data": response.model_dump(by_alias=True)}
+        except Exception as exc:
+            logger.error(
+                "Failed to serialise job %s for mobile response: %s",
+                job.id,
+                exc,
+                exc_info=True,
+            )
+            # Return a minimal success response so the mobile client can navigate
+            return {
+                "data": {
+                    "job": {"id": str(job.id)},
+                    "estimatedPrice": {
+                        "minCents": estimated_price.min_cents,
+                        "maxCents": estimated_price.max_cents,
+                        "currency": "CAD",
+                        "isEmergency": body.is_emergency,
+                        "dynamicMultiplier": None,
+                    },
+                }
+            }
+
+    except HTTPException:
+        raise  # Let FastAPI handle HTTP exceptions normally
+
     except Exception as exc:
-        logger.warning("Auto-matching failed for job %s: %s", job.id, exc)
-
-    # Build mobile-friendly response
-    job_out = MobileJobOut.model_validate(job)
-    response = JobCreateResponse(
-        job=job_out,
-        estimated_price=estimated_price,
-    )
-
-    return {"data": response.model_dump(by_alias=True)}
+        # Catch-all: return the Python error in the response detail
+        error_tb = tb_mod.format_exc()
+        logger.error("book_job UNHANDLED ERROR: %s\n%s", exc, error_tb)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"book_job crashed: {type(exc).__name__}: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +436,6 @@ async def list_jobs_by_provider(
 
 @router.get(
     "/{job_id}",
-    response_model=JobOut,
     summary="Get job detail",
     description=(
         "Returns the full detail for a single job, including SLA snapshot, "
@@ -412,7 +445,7 @@ async def list_jobs_by_provider(
 async def get_job(
     db: DBSession,
     job_id: uuid.UUID,
-) -> JobOut:
+) -> dict[str, Any]:
     job = await jobService.get_job(db, job_id)
     if job is None:
         raise HTTPException(
@@ -421,7 +454,41 @@ async def get_job(
         )
 
     # Build enriched response with assignment and provider info
-    job_data = JobOut.model_validate(job).model_dump()
+    try:
+        job_data = JobOut.model_validate(job).model_dump()
+    except Exception:
+        # Fallback: manually construct the dict if Pydantic validation fails
+        job_data = {
+            "id": str(job.id),
+            "reference_number": job.reference_number,
+            "customer_id": str(job.customer_id),
+            "task_id": str(job.task_id),
+            "status": job.status.value if hasattr(job.status, 'value') else str(job.status),
+            "priority": job.priority.value if hasattr(job.priority, 'value') else str(job.priority),
+            "is_emergency": job.is_emergency,
+            "service_latitude": str(job.service_latitude),
+            "service_longitude": str(job.service_longitude),
+            "service_address": job.service_address,
+            "service_unit": job.service_unit,
+            "service_city": job.service_city,
+            "service_province_state": job.service_province_state,
+            "service_postal_zip": job.service_postal_zip,
+            "service_country": job.service_country,
+            "requested_date": str(job.requested_date) if job.requested_date else None,
+            "requested_time_start": str(job.requested_time_start) if job.requested_time_start else None,
+            "requested_time_end": str(job.requested_time_end) if job.requested_time_end else None,
+            "flexible_schedule": job.flexible_schedule,
+            "quoted_price_cents": job.quoted_price_cents,
+            "final_price_cents": job.final_price_cents,
+            "currency": job.currency,
+            "customer_notes_json": job.customer_notes_json or [],
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "cancelled_at": job.cancelled_at.isoformat() if job.cancelled_at else None,
+            "cancellation_reason": job.cancellation_reason,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        }
 
     # Attach assignment and provider info for the mobile app
     assignment_data = None
@@ -674,3 +741,37 @@ async def get_job_tracking(
     tracking = await providerService.get_job_tracking(db, job_id)
     result = JobTrackingOut(**tracking)
     return {"data": result.model_dump(by_alias=True)}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/provider-location -- Update provider location
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/provider-location",
+    summary="Update provider location",
+    description=(
+        "Called by the partner app to update the provider's current GPS "
+        "coordinates. This data is consumed by the customer tracking screen."
+    ),
+)
+async def update_provider_location(
+    db: DBSession,
+    user: CurrentUser,
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    from src.services import providerService
+
+    lat = body.get("latitude")
+    lng = body.get("longitude")
+    if lat is None or lng is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="latitude and longitude are required",
+        )
+
+    await providerService.update_provider_location(
+        db, user.id, float(lat), float(lng)
+    )
+    await db.commit()
+    return {"data": {"ok": True}}

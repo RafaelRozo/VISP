@@ -180,7 +180,7 @@ function ActiveJobCard({ job, onPress }: ActiveJobCardProps): React.JSX.Element 
               </Text>
               {job.provider ? (
                 <Text style={styles.providerRating}>
-                  {job.provider.rating.toFixed(1)} ({job.provider.completedJobs}{' '}
+                  {(job.provider.rating ?? 0).toFixed(1)} ({job.provider.completedJobs ?? 0}{' '}
                   jobs)
                 </Text>
               ) : null}
@@ -242,7 +242,7 @@ function ActiveJobCard({ job, onPress }: ActiveJobCardProps): React.JSX.Element 
           )}
 
           <Text style={styles.priceEstimate}>
-            ${(job.finalPrice ?? job.estimatedPrice).toFixed(2)}
+            ${(job.finalPrice ?? job.estimatedPrice ?? 0).toFixed(2)}
           </Text>
         </View>
       </View>

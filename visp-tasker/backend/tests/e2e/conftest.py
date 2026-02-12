@@ -31,6 +31,20 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.models.base import Base
+from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+from sqlalchemy.dialects.postgresql import INET
+from sqlalchemy import String
+
+@compiles(INET, "sqlite")
+def compile_inet_sqlite(type_, compiler, **kw):
+    return "VARCHAR(45)"
 
 # ---------------------------------------------------------------------------
 # Test IDs (stable across tests so cross-references work)
@@ -94,9 +108,10 @@ async def db_session(_test_engine) -> AsyncGenerator[AsyncSession, None]:
         expire_on_commit=False,
     )
     async with session_factory() as session:
-        async with session.begin():
-            yield session
-        # Rollback any uncommitted changes so tests are isolated
+        # Start a transaction but do not use the context manager that auto-commits
+        await session.begin()
+        yield session
+        # Always rollback at the end of the test
         await session.rollback()
 
 
@@ -404,6 +419,7 @@ def _create_test_app(db_session_override: AsyncSession):
     from src.api.routes.verification import router as verification_router
     from src.api.routes.consents import router as consents_router
     from src.api.routes.notifications import router as notifications_router
+    from src.api.routes.geolocation import router as geolocation_router
 
     app = FastAPI(title="VISP Tasker Test")
 
@@ -425,6 +441,7 @@ def _create_test_app(db_session_override: AsyncSession):
     app.include_router(verification_router, prefix="/api/v1")
     app.include_router(consents_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
+    app.include_router(geolocation_router, prefix="/api/v1")
 
     return app
 

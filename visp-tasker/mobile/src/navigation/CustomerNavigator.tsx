@@ -42,13 +42,23 @@ const defaultScreenOptions = {
   },
 };
 
-function CustomerNavigator(): React.JSX.Element {
+interface CustomerNavigatorProps {
+  initialCategoryId?: string;
+  initialCategoryName?: string;
+}
+
+function CustomerNavigator({ initialCategoryId, initialCategoryName }: CustomerNavigatorProps): React.JSX.Element {
   return (
     <Stack.Navigator screenOptions={defaultScreenOptions}>
       <Stack.Screen
         name="Category"
         component={CategoryScreen}
         options={{ title: 'Category' }}
+        initialParams={
+          initialCategoryId
+            ? { categoryId: initialCategoryId, categoryName: initialCategoryName ?? 'Category' }
+            : undefined
+        }
       />
       <Stack.Screen
         name="Subcategory"

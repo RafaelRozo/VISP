@@ -21,6 +21,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useProviderStore } from '../../stores/providerStore';
+import { useAuthStore } from '../../stores/authStore';
 import JobCard from '../../components/JobCard';
 import OnCallToggle from '../../components/OnCallToggle';
 import { ProviderTabParamList } from '../../types';
@@ -45,18 +46,19 @@ function formatCurrency(amount: number): string {
 
 export default function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<DashboardNav>();
+  const user = useAuthStore((state) => state.user);
 
   const {
     isOnline,
     isOnCall,
     activeJob,
-    pendingOffers,
-    earnings,
-    performanceScore,
+    pendingOffers = [],
+    earnings = { today: 0, thisWeek: 0, thisMonth: 0, pendingPayout: 0, totalEarned: 0 },
+    performanceScore = 0,
     providerProfile,
     isLoadingDashboard,
     isTogglingStatus,
-    onCallShifts,
+    onCallShifts = [],
     fetchDashboard,
     toggleOnline,
     toggleOnCall,
@@ -78,6 +80,7 @@ export default function DashboardScreen(): React.JSX.Element {
     : Colors.primary;
 
   const currentShift = useMemo(() => {
+    if (!onCallShifts || onCallShifts.length === 0) return null;
     const now = new Date();
     return (
       onCallShifts.find((shift) => {
@@ -249,7 +252,8 @@ export default function DashboardScreen(): React.JSX.Element {
   // ------------------------------------------
 
   const renderPendingOffers = () => {
-    if (pendingOffers.length === 0) return null;
+    const offers = Array.isArray(pendingOffers) ? pendingOffers : [];
+    if (offers.length === 0) return null;
 
     return (
       <View style={styles.section}>
@@ -261,11 +265,11 @@ export default function DashboardScreen(): React.JSX.Element {
             accessibilityLabel="View all offers"
           >
             <Text style={styles.viewAllText}>
-              View All ({pendingOffers.length})
+              View All ({offers.length})
             </Text>
           </TouchableOpacity>
         </View>
-        {pendingOffers.slice(0, 3).map((offer) => (
+        {offers.slice(0, 3).map((offer) => (
           <JobCard
             key={offer.id}
             taskName={offer.taskName}
@@ -320,7 +324,7 @@ export default function DashboardScreen(): React.JSX.Element {
           </View>
           <View style={styles.headerInfo}>
             <Text style={styles.headerGreeting}>
-              Welcome back
+              Welcome back, {user?.firstName}
             </Text>
             <Text style={styles.headerSubtext}>
               {providerProfile.completedJobs} jobs completed | Rating:{' '}

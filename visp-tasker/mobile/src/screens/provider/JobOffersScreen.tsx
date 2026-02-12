@@ -21,6 +21,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useProviderStore } from '../../stores/providerStore';
 import { JobOffer, ProviderTabParamList } from '../../types';
+import MapboxGL from '@rnmapbox/maps';
+import { Config } from '../../services/config';
+
+MapboxGL.setAccessToken(Config.mapboxAccessToken);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -202,15 +206,36 @@ function OfferCard({
           </View>
         )}
 
-        {/* Map preview placeholder */}
-        <View style={styles.mapPreview}>
-          <Text style={styles.mapPreviewText}>
-            {offer.address.city}, {offer.address.province}
-          </Text>
-          <Text style={styles.mapPreviewCoords}>
-            {offer.address.latitude.toFixed(4)},{' '}
-            {offer.address.longitude.toFixed(4)}
-          </Text>
+        {/* Map preview */}
+        <View style={styles.mapContainer}>
+          <MapboxGL.MapView
+            style={styles.map}
+            styleURL={MapboxGL.StyleURL.Street}
+            scrollEnabled={false}
+            zoomEnabled={false}
+            rotateEnabled={false}
+            pitchEnabled={false}
+            attributionEnabled={false}
+            logoEnabled={false}
+          >
+            <MapboxGL.Camera
+              zoomLevel={13}
+              centerCoordinate={[
+                offer.address.longitude,
+                offer.address.latitude,
+              ]}
+              animationMode="none"
+            />
+            <MapboxGL.PointAnnotation
+              id={`offer-loc-${offer.id}`}
+              coordinate={[
+                offer.address.longitude,
+                offer.address.latitude,
+              ]}
+            >
+              <View style={styles.mapMarker} />
+            </MapboxGL.PointAnnotation>
+          </MapboxGL.MapView>
         </View>
 
         {/* Action buttons */}
@@ -447,22 +472,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.emergencyRed,
   },
-  mapPreview: {
-    backgroundColor: Colors.surfaceLight,
+  mapContainer: {
+    height: 120,
     borderRadius: 8,
-    padding: 12,
     marginBottom: 12,
-    alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: Colors.surfaceLight,
   },
-  mapPreviewText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  map: {
+    flex: 1,
   },
-  mapPreviewCoords: {
-    fontSize: 11,
-    color: Colors.textTertiary,
+  mapMarker: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   offerActions: {
     flexDirection: 'row',

@@ -564,55 +564,99 @@ async def get_jobs_by_customer(
     )
 
 
-async def get_jobs_by_provider(
-    db: AsyncSession,
-    provider_id: uuid.UUID,
-    *,
-    status_filter: str | None = None,
-    page: int = 1,
-    page_size: int = 20,
-) -> PaginatedResult:
-    """Return a paginated list of jobs assigned to a specific provider.
-
-    Joins through job_assignments to find jobs where the provider has
-    an active (non-declined/expired) assignment.
-    """
-    from src.models.job import AssignmentStatus, JobAssignment
-
-    # Subquery: job IDs assigned to this provider
-    assignment_subq = (
-        select(JobAssignment.job_id)
-        .where(
-            JobAssignment.provider_id == provider_id,
-            JobAssignment.status.not_in([
-                AssignmentStatus.DECLINED,
-                AssignmentStatus.EXPIRED,
-            ]),
-        )
-        .scalar_subquery()
-    )
-
-    filters = [Job.id.in_(assignment_subq)]
-    if status_filter:
-        filters.append(Job.status == JobStatus(status_filter))
-
-    # Count
-    count_stmt = select(func.count(Job.id)).where(*filters)
-    total_items: int = (await db.execute(count_stmt)).scalar_one()
-
-    # Data
-    data_stmt = (
-        select(Job)
-        .where(*filters)
-        .order_by(Job.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    jobs = (await db.execute(data_stmt)).scalars().all()
-
     return PaginatedResult(
         items=jobs,
         total_items=total_items,
         page=page,
         page_size=page_size,
     )
+
+
+async def queue_job(
+    db: AsyncSession,
+    job_id: uuid.UUID,
+) -> Job:
+    """Transition a job to PENDING and broadcast it to nearby qualified providers.
+
+    1. Update status to PENDING (if not already).
+    2. Find active providers who are qualified for this task.
+    3. Filter by distance (job location vs provider home + radius).
+    4. Create JobAssignment (OFFERED) for each match.
+    """
+    from src.models.provider import (
+        ProviderProfile,
+        ProviderProfileStatus,
+    )
+    from src.models.taxonomy import ProviderTaskQualification
+    from src.models.job import JobAssignment, AssignmentStatus
+    from src.services.geoService import haversine_distance
+
+    # 1. Fetch job
+    job = await get_job(db, job_id)
+    if not job:
+        raise JobNotFoundError(job_id)
+
+    # 1b. Update status to PENDING if currently DRAFT or PENDING_MATCH
+    # If already PENDING, we just re-broadcast
+    if job.status in [JobStatus.DRAFT, JobStatus.PENDING_MATCH]:
+        job = await update_job_status(db, job.id, JobStatus.PENDING, actor_type="system")
+
+    # 2. Find qualified providers
+    # query: Active profiles + Qualified for task
+    stmt = (
+        select(ProviderProfile)
+        .join(ProviderTaskQualification)
+        .where(
+            ProviderProfile.status == ProviderProfileStatus.ACTIVE,
+            ProviderTaskQualification.task_id == job.task_id,
+            ProviderTaskQualification.qualified.is_(True),
+        )
+    )
+    result = await db.execute(stmt)
+    candidates = result.scalars().all()
+
+    # 3. Filter by location & Create Assignments
+    assignments_created = 0
+    
+    # We might want to check if assignment already exists to avoid duplicates
+    existing_assign_stmt = (
+        select(JobAssignment.provider_id)
+        .where(JobAssignment.job_id == job.id)
+    )
+    existing_provider_ids = (await db.execute(existing_assign_stmt)).scalars().all()
+    existing_set = set(existing_provider_ids)
+
+    for provider in candidates:
+        if provider.id in existing_set:
+            continue
+            
+        # Location check
+        # If provider has no location, skip (or default to allow? skip for now)
+        if provider.home_latitude is None or provider.home_longitude is None:
+            continue
+
+        dist_km = haversine_distance(
+            float(job.service_latitude),
+            float(job.service_longitude),
+            float(provider.home_latitude),
+            float(provider.home_longitude),
+        )
+
+        # check if job is within provider's radius
+        if dist_km <= float(provider.service_radius_km):
+            # Create assignment
+            assignment = JobAssignment(
+                job_id=job.id,
+                provider_id=provider.id,
+                status=AssignmentStatus.OFFERED,
+                offered_at=datetime.now(timezone.utc),
+                # Expires in 30 mins or custom time?
+                offer_expires_at=datetime.now(timezone.utc) + timedelta(minutes=30), 
+            )
+            db.add(assignment)
+            assignments_created += 1
+
+    await db.commit()
+    logger.info(f"Queued job {job.id}: Broadcasted to {assignments_created} providers.")
+    
+    return job

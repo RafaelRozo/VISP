@@ -27,6 +27,7 @@ import { Colors, getLevelColor } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
+import { taskService } from '../../services/taskService';
 import type { CustomerFlowParamList } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -36,7 +37,7 @@ import type { CustomerFlowParamList } from '../../types';
 type MatchingRouteProp = RouteProp<CustomerFlowParamList, 'Matching'>;
 type MatchingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'Matching'>;
 
-type SearchPhase = 'searching' | 'found' | 'assigning' | 'confirmed';
+type SearchPhase = 'searching' | 'found' | 'assigning' | 'confirmed' | 'timeout';
 
 // ──────────────────────────────────────────────
 // Constants
@@ -47,13 +48,15 @@ const STATUS_MESSAGES: Record<SearchPhase, string> = {
   found: 'Provider found! Confirming availability...',
   assigning: 'Assigning your tasker...',
   confirmed: 'Your tasker has been assigned!',
+  timeout: 'No providers available right now.',
 };
 
-const PHASE_TIMINGS: { phase: SearchPhase; delay: number }[] = [
-  { phase: 'searching', delay: 0 },
-  { phase: 'found', delay: 2000 },
-  { phase: 'assigning', delay: 3500 },
-  { phase: 'confirmed', delay: 5000 },
+const POLLING_INTERVAL_MS = 5000;
+const SEARCH_TIMEOUT_MS = 120_000; // 2 minutes
+
+// Status values that mean a provider has been matched
+const MATCHED_STATUSES = [
+  'matched', 'provider_accepted', 'provider_en_route', 'arrived', 'in_progress', 'completed',
 ];
 
 // ──────────────────────────────────────────────
@@ -74,6 +77,8 @@ function MatchingScreen(): React.JSX.Element {
   const pulse3 = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Hide the header back button during matching
   useEffect(() => {
@@ -137,33 +142,64 @@ function MatchingScreen(): React.JSX.Element {
     };
   }, [pulse1, pulse2, pulse3, dotScale]);
 
-  // Phase progression (MVP mock matching)
+  // Real backend polling for provider match
   useEffect(() => {
-    if (isCancelled) return;
+    if (isCancelled || phase === 'confirmed' || phase === 'timeout') return;
 
-    const timers: NodeJS.Timeout[] = [];
+    async function pollTracking() {
+      try {
+        const data = await taskService.getJobTracking(jobId);
+        const st = data.status;
 
-    PHASE_TIMINGS.forEach(({ phase: targetPhase, delay }) => {
-      const timer = setTimeout(() => {
-        if (!isCancelled) {
-          setPhase(targetPhase);
+        if (MATCHED_STATUSES.includes(st)) {
+          // Provider found!
+          setPhase('found');
+
+          // Brief delay then navigate to tracking
+          setTimeout(() => {
+            setPhase('confirmed');
+            setTimeout(() => {
+              if (!isCancelled) {
+                navigation.navigate('JobTracking', { jobId });
+              }
+            }, 1500);
+          }, 1500);
+
+          // Stop polling & timeout
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          return;
         }
-      }, delay);
-      timers.push(timer);
-    });
-
-    // Navigate to tracking after confirmed
-    const navTimer = setTimeout(() => {
-      if (!isCancelled) {
-        navigation.navigate('JobTracking', { jobId });
+      } catch (err) {
+        console.warn('[Matching] Polling error:', err);
       }
-    }, 6000);
-    timers.push(navTimer);
+    }
+
+    pollTracking();
+    pollingRef.current = setInterval(pollTracking, POLLING_INTERVAL_MS);
+
+    // 2-minute timeout
+    timeoutRef.current = setTimeout(() => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      setPhase('timeout');
+
+      Alert.alert(
+        'No Providers Available',
+        'We couldn\'t find a provider in your area right now. Your job request has been saved — you\'ll be notified when a provider becomes available.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ],
+      );
+    }, SEARCH_TIMEOUT_MS);
 
     return () => {
-      timers.forEach(clearTimeout);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [isCancelled, jobId, navigation]);
+  }, [isCancelled, jobId, navigation, phase]);
 
   // Cancel handler
   const handleCancel = useCallback(() => {
@@ -248,17 +284,17 @@ function MatchingScreen(): React.JSX.Element {
 
           {/* Phase indicator dots */}
           <View style={styles.phaseDotsContainer}>
-            {PHASE_TIMINGS.map((item, index) => {
-              const isActive = PHASE_TIMINGS.findIndex(
-                (p) => p.phase === phase,
-              ) >= index;
+            {(['searching', 'found', 'confirmed'] as SearchPhase[]).map((p, index) => {
+              const phaseOrder: SearchPhase[] = ['searching', 'found', 'confirmed'];
+              const currentIdx = phaseOrder.indexOf(phase);
+              const isActive = currentIdx >= index;
               return (
                 <View
-                  key={item.phase}
+                  key={p}
                   style={[
                     styles.phaseDot,
                     isActive && styles.phaseDotActive,
-                    item.phase === 'confirmed' && isActive && styles.phaseDotConfirmed,
+                    p === 'confirmed' && isActive && styles.phaseDotConfirmed,
                   ]}
                 />
               );

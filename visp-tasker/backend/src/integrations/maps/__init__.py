@@ -2,7 +2,7 @@
 Maps & Location integration package -- VISP-INT-MAPS-001
 ==========================================================
 
-Public API for geocoding, distance calculation, and the Google Maps
+Public API for geocoding, distance calculation, and the Mapbox
 service wrapper used throughout the VISP/Tasker platform.
 
 Typical usage::
@@ -17,7 +17,7 @@ Typical usage::
         geocode_address,
         reverse_geocode,
         validate_address,
-        GoogleMapsError,
+        MapboxError,
     )
 """
 
@@ -32,8 +32,9 @@ from src.integrations.maps.geocoder import (
     clear_geocoding_cache,
     geocode_service_address,
 )
-from src.integrations.maps.googleMapsService import (
-    GoogleMapsError,
+from src.integrations.maps.mapboxService import (
+    MapboxError,
+    GoogleMapsError,  # backward-compat alias
     geocode_address,
     get_directions,
     get_distance_matrix,
@@ -42,8 +43,9 @@ from src.integrations.maps.googleMapsService import (
 )
 
 __all__ = [
-    # googleMapsService
-    "GoogleMapsError",
+    # mapboxService
+    "MapboxError",
+    "GoogleMapsError",  # backward-compat alias
     "geocode_address",
     "reverse_geocode",
     "get_directions",

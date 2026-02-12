@@ -39,12 +39,19 @@ target 'VISPTasker' do
     # Pods for testing
   end
 
+  # Mapbox Maps requires certain pods to be dynamic frameworks
+  pre_install do |installer|
+    $RNMapboxMaps.pre_install(installer)
+  end
+
   post_install do |installer|
     react_native_post_install(
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false
     )
+
+    $RNMapboxMaps.post_install(installer)
 
     # Force minimum deployment target across all pods
     installer.pods_project.targets.each do |target|

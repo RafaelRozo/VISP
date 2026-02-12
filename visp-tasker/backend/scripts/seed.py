@@ -58,8 +58,13 @@ from src.models import (
     PricingRule,
     PricingRuleType,
     User,
+    User,
     UserStatus,
     AuthProvider,
+    ProviderLevelRecord,
+    CommissionSchedule,
+    ReviewDimension,
+    ReviewerRole,
 )
 
 # ---------------------------------------------------------------------------
@@ -256,6 +261,71 @@ async def seed_pricing_rules(session: AsyncSession) -> int:
     return inserted
 
 
+    await session.flush()
+    return inserted
+
+
+async def seed_commission_schedules(session: AsyncSession) -> int:
+    """Seed commission_schedules from commission_schedules.json."""
+    data = _load_json("commission_schedules.json")
+    if data is None:
+        return 0
+
+    inserted = 0
+    for item in data:
+        sched_id = _to_uuid(item["id"])
+        existing = await session.get(CommissionSchedule, sched_id)
+        if existing is not None:
+            continue
+
+        sched = CommissionSchedule(
+            id=sched_id,
+            level=ProviderLevel(item["level"]),
+            commission_rate_min=_to_decimal(item["commission_rate_min"]),
+            commission_rate_max=_to_decimal(item["commission_rate_max"]),
+            commission_rate_default=_to_decimal(item["commission_rate_default"]),
+            country=item.get("country", "CA"),
+            is_active=item.get("is_active", True),
+            effective_from=_to_date(item["effective_from"]),
+            effective_until=_to_date(item.get("effective_until")),
+        )
+        session.add(sched)
+        inserted += 1
+
+    await session.flush()
+    return inserted
+
+
+async def seed_review_dimensions(session: AsyncSession) -> int:
+    """Seed review_dimensions from review_dimensions.json."""
+    data = _load_json("review_dimensions.json")
+    if data is None:
+        return 0
+
+    inserted = 0
+    for item in data:
+        dim_id = _to_uuid(item["id"])
+        existing = await session.get(ReviewDimension, dim_id)
+        if existing is not None:
+            continue
+
+        dim = ReviewDimension(
+            id=dim_id,
+            name=item["name"],
+            slug=item["slug"],
+            description=item.get("description"),
+            weight=_to_decimal(item["weight"]),
+            applicable_role=ReviewerRole(item["applicable_role"]),
+            display_order=item.get("display_order", 0),
+            is_active=item.get("is_active", True),
+        )
+        session.add(dim)
+        inserted += 1
+
+    await session.flush()
+    return inserted
+
+
 async def seed_test_users(session: AsyncSession) -> int:
     """Seed test users (customers, providers, admin) from test_users.json."""
     data = _load_json("test_users.json")
@@ -352,6 +422,21 @@ async def seed_test_users(session: AsyncSession) -> int:
             )
             session.add(profile)
             inserted += 1
+            
+            # Also create a ProviderLevelRecord for their current level (qualified)
+            level_enum = ProviderLevel(profile_data["current_level"])
+            
+            # Check if level record exists (it won't if we just created the profile, but safely check)
+            # We use a deterministic ID based on provider ID to avoid duplicates if re-run
+            # But simpler: just query by provider_id + level
+            
+            level_record = ProviderLevelRecord(
+                provider_id=profile_id,
+                level=level_enum,
+                qualified=True,
+                qualified_at=datetime.utcnow(),
+            )
+            session.add(level_record)
 
     await session.flush()
     return inserted
@@ -414,6 +499,16 @@ async def run_seed() -> None:
             print("[7/7] Seeding pricing rules...")
             count = await seed_pricing_rules(session)
             print(f"       -> {count} pricing rules inserted.\n")
+
+            # Phase 8: Commission schedules
+            print("[8/10] Seeding commission schedules...")
+            count = await seed_commission_schedules(session)
+            print(f"       -> {count} commission schedules inserted.\n")
+
+            # Phase 9: Review dimensions
+            print("[9/10] Seeding review dimensions...")
+            count = await seed_review_dimensions(session)
+            print(f"       -> {count} review dimensions inserted.\n")
 
             # Phase 8: Test users (bonus)
             print("[BONUS] Seeding test users & provider profiles...")

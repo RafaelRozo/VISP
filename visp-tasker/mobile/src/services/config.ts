@@ -9,6 +9,7 @@ interface AppConfig {
   apiBaseUrl: string;
   wsBaseUrl: string;
   googleMapsApiKey: string;
+  mapboxAccessToken: string;
   stripePublishableKey: string;
   termsVersion: string;
   privacyVersion: string;
@@ -19,9 +20,10 @@ interface AppConfig {
 }
 
 const DEV_CONFIG: AppConfig = {
-  apiBaseUrl: 'http://localhost:305/api/v1',
-  wsBaseUrl: 'ws://localhost:305',
+  apiBaseUrl: 'http://192.168.1.94:8000/api/v1',
+  wsBaseUrl: 'ws://192.168.1.94:8000',
   googleMapsApiKey: '',
+  mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN || '',
   stripePublishableKey: '',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
@@ -33,14 +35,14 @@ const DEV_CONFIG: AppConfig = {
 
 const STAGING_CONFIG: AppConfig = {
   ...DEV_CONFIG,
-  apiBaseUrl: 'https://api-staging.taskerapp.com/api/v1',
-  wsBaseUrl: 'wss://api-staging.taskerapp.com',
+  apiBaseUrl: 'https://api.richieyanez.com/api/v1',
+  wsBaseUrl: 'wss://api.richieyanez.com',
 };
 
 const PROD_CONFIG: AppConfig = {
   ...DEV_CONFIG,
-  apiBaseUrl: 'https://api.taskerapp.com/api/v1',
-  wsBaseUrl: 'wss://api.taskerapp.com',
+  apiBaseUrl: 'https://api.richieyanez.com/api/v1',
+  wsBaseUrl: 'wss://api.richieyanez.com',
 };
 
 function getConfig(): AppConfig {

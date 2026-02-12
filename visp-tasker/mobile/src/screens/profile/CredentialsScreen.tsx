@@ -26,7 +26,9 @@ import {
   CredentialStatus,
   CredentialType,
 } from '../../types';
-import { get, upload as apiUpload } from '../../services/apiClient';
+import { get } from '../../services/apiClient';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { providerService } from '../../services/providerService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,10 +100,9 @@ export default function CredentialsScreen(): React.JSX.Element {
         // In production, this would open a document viewer
         Alert.alert(
           credential.label,
-          `Status: ${credential.status}\nUploaded: ${new Date(credential.uploadedAt).toLocaleDateString()}${
-            credential.expiresAt
-              ? `\nExpires: ${new Date(credential.expiresAt).toLocaleDateString()}`
-              : ''
+          `Status: ${credential.status}\nUploaded: ${new Date(credential.uploadedAt).toLocaleDateString()}${credential.expiresAt
+            ? `\nExpires: ${new Date(credential.expiresAt).toLocaleDateString()}`
+            : ''
           }`,
         );
       }
@@ -111,14 +112,43 @@ export default function CredentialsScreen(): React.JSX.Element {
 
   // Handle upload new credential
   const handleUploadDocument = useCallback(
-    (preselectedType?: CredentialType) => {
+    async (preselectedType?: CredentialType) => {
+      // Helper to perform the actual upload
+      const performUpload = async (type: CredentialType) => {
+        try {
+          const result = await launchImageLibrary({
+            mediaType: 'photo',
+            selectionLimit: 1,
+          });
+
+          if (result.didCancel || !result.assets || result.assets.length === 0) {
+            return;
+          }
+
+          const asset = result.assets[0];
+          setIsUploading(true);
+
+          await providerService.uploadCredential(
+            {
+              uri: asset.uri,
+              type: asset.type,
+              name: asset.fileName,
+            },
+            type,
+          );
+
+          Alert.alert('Success', 'Document uploaded successfully for review.');
+          fetchCredentials();
+        } catch (error) {
+          console.error('Upload failed:', error);
+          Alert.alert('Error', 'Failed to upload document. Please try again.');
+        } finally {
+          setIsUploading(false);
+        }
+      };
+
       if (preselectedType) {
-        // Go directly to file picker
-        Alert.alert(
-          'Upload Document',
-          'In production, this will open the file picker / camera to capture your document.',
-          [{ text: 'OK' }],
-        );
+        await performUpload(preselectedType);
         return;
       }
 
@@ -126,16 +156,13 @@ export default function CredentialsScreen(): React.JSX.Element {
       if (Platform.OS === 'ios') {
         ActionSheetIOS.showActionSheetWithOptions(
           {
-            options: [
-              'Cancel',
-              ...CREDENTIAL_TYPES.map((t) => t.label),
-            ],
+            options: ['Cancel', ...CREDENTIAL_TYPES.map((t) => t.label)],
             cancelButtonIndex: 0,
           },
           (buttonIndex) => {
             if (buttonIndex > 0) {
               const selectedType = CREDENTIAL_TYPES[buttonIndex - 1];
-              handleUploadDocument(selectedType.value);
+              performUpload(selectedType.value);
             }
           },
         );
@@ -148,13 +175,13 @@ export default function CredentialsScreen(): React.JSX.Element {
             { text: 'Cancel', style: 'cancel' },
             ...CREDENTIAL_TYPES.map((t) => ({
               text: t.label,
-              onPress: () => handleUploadDocument(t.value),
+              onPress: () => performUpload(t.value),
             })),
           ],
         );
       }
     },
-    [],
+    [fetchCredentials],
   );
 
   // Status counts for filter badges

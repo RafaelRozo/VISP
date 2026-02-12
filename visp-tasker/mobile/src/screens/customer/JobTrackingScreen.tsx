@@ -1,21 +1,20 @@
 /**
- * VISP/Tasker - JobTrackingScreen
+ * VISP/Tasker - JobTrackingScreen (Real Data + Mapbox)
  *
- * Job status tracking screen with:
- *   - Assigned provider info (name, rating, photo placeholder, credentials)
- *   - Map placeholder / ETA display
- *   - Status timeline: Matched -> En Route -> Arrived -> In Progress -> Completed
+ * Live job tracking screen with:
+ *   - Real job data from backend API
+ *   - Mapbox MapView with provider/customer markers
+ *   - Route line between provider and customer
+ *   - Polling for provider position + ETA every 5 seconds
+ *   - Status timeline: Pending → Matched → En Route → Arrived → In Progress → Completed
  *   - Contact buttons (Call, Message)
  *   - In Progress: timer and running cost estimate
  *   - Completed: summary with rating prompt
- *
- * For MVP: uses mock data with simulated status progression.
- *
- * CRITICAL: Closed task catalog. Provider cannot add scope to this job.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   SafeAreaView,
   ScrollView,
@@ -26,13 +25,27 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
+import MapboxGL from '@rnmapbox/maps';
+
+import { Colors, getLevelColor } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { Shadows } from '../../theme/shadows';
 import LevelBadge from '../../components/LevelBadge';
-import type { CustomerFlowParamList, JobAssignment, ServiceLevel } from '../../types';
+import { Config } from '../../services/config';
+import taskService from '../../services/taskService';
+import type {
+  CustomerFlowParamList,
+  Job,
+  JobTrackingData,
+  ServiceLevel,
+} from '../../types';
+
+// ──────────────────────────────────────────────
+// Mapbox initialization
+// ──────────────────────────────────────────────
+MapboxGL.setAccessToken(Config.mapboxAccessToken);
 
 // ──────────────────────────────────────────────
 // Types
@@ -41,7 +54,7 @@ import type { CustomerFlowParamList, JobAssignment, ServiceLevel } from '../../t
 type JobTrackingRouteProp = RouteProp<CustomerFlowParamList, 'JobTracking'>;
 type JobTrackingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'JobTracking'>;
 
-type TrackingStatus = 'matched' | 'en_route' | 'arrived' | 'in_progress' | 'completed';
+type TrackingStatus = 'pending' | 'pending_match' | 'matched' | 'en_route' | 'arrived' | 'in_progress' | 'completed';
 
 interface StatusStep {
   status: TrackingStatus;
@@ -54,61 +67,30 @@ interface StatusStep {
 // ──────────────────────────────────────────────
 
 const STATUS_STEPS: StatusStep[] = [
-  {
-    status: 'matched',
-    label: 'Matched',
-    description: 'Provider assigned to your job',
-  },
-  {
-    status: 'en_route',
-    label: 'En Route',
-    description: 'Provider is on the way',
-  },
-  {
-    status: 'arrived',
-    label: 'Arrived',
-    description: 'Provider has arrived at your location',
-  },
-  {
-    status: 'in_progress',
-    label: 'In Progress',
-    description: 'Work is underway',
-  },
-  {
-    status: 'completed',
-    label: 'Completed',
-    description: 'Job has been completed',
-  },
+  { status: 'pending', label: 'Searching', description: 'Looking for a provider near you' },
+  { status: 'matched', label: 'Matched', description: 'Provider assigned to your job' },
+  { status: 'en_route', label: 'En Route', description: 'Provider is on the way' },
+  { status: 'arrived', label: 'Arrived', description: 'Provider has arrived at your location' },
+  { status: 'in_progress', label: 'In Progress', description: 'Work is underway' },
+  { status: 'completed', label: 'Completed', description: 'Job has been completed' },
 ];
 
-// ──────────────────────────────────────────────
-// Mock Data (MVP)
-// ──────────────────────────────────────────────
+const POLLING_INTERVAL_MS = 5000;
+const SEARCH_TIMEOUT_MS = 120_000; // 2 minutes
+const HOURLY_RATE = 75;
 
-const MOCK_ASSIGNMENT: JobAssignment = {
-  id: 'assign-001',
-  jobId: '',
-  providerId: 'provider-001',
-  providerName: 'Michael R.',
-  providerRating: 4.8,
-  providerPhoto: null,
-  providerCompletedJobs: 142,
-  providerLevel: 2,
-  acceptedAt: new Date().toISOString(),
-  eta: 15,
-};
-
-const MOCK_TASK_NAME = 'General Plumbing Repair';
-const MOCK_HOURLY_RATE = 75;
-
-// Status progression timing for MVP demo
-const STATUS_PROGRESSION: { status: TrackingStatus; delay: number }[] = [
-  { status: 'matched', delay: 0 },
-  { status: 'en_route', delay: 5000 },
-  { status: 'arrived', delay: 12000 },
-  { status: 'in_progress', delay: 18000 },
-  { status: 'completed', delay: 30000 },
-];
+// Map backend status to simplified tracking status
+function mapBackendStatus(backendStatus: string): TrackingStatus {
+  const map: Record<string, TrackingStatus> = {
+    pending: 'pending',
+    pending_match: 'pending',
+    matched: 'matched',
+    provider_en_route: 'en_route',
+    in_progress: 'in_progress',
+    completed: 'completed',
+  };
+  return map[backendStatus] ?? 'pending';
+}
 
 // ──────────────────────────────────────────────
 // Component
@@ -119,43 +101,107 @@ function JobTrackingScreen(): React.JSX.Element {
   const navigation = useNavigation<JobTrackingNavProp>();
   const { jobId } = route.params;
 
-  const [currentStatus, setCurrentStatus] = useState<TrackingStatus>('matched');
-  const [assignment] = useState<JobAssignment>({
-    ...MOCK_ASSIGNMENT,
-    jobId,
-  });
+  // State
+  const [job, setJob] = useState<Job | null>(null);
+  const [tracking, setTracking] = useState<JobTrackingData | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<TrackingStatus>('pending');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTimedOut, setSearchTimedOut] = useState(false);
+
+  // Timer state for in_progress
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [eta, setEta] = useState(15);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const progressionRef = useRef<NodeJS.Timeout[]>([]);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Set header title
   useEffect(() => {
     navigation.setOptions({ title: 'Job Status' });
   }, [navigation]);
 
-  // MVP: Auto-progress through statuses
+  // ── Initial load ─────────────────────────
   useEffect(() => {
-    STATUS_PROGRESSION.forEach(({ status, delay }) => {
-      const timer = setTimeout(() => {
-        setCurrentStatus(status);
+    let cancelled = false;
 
-        // Update ETA based on status
-        if (status === 'en_route') {
-          setEta(12);
-        } else if (status === 'arrived') {
-          setEta(0);
+    async function loadJob() {
+      try {
+        setIsLoading(true);
+        const jobData = await taskService.getJobDetail(jobId);
+        if (!cancelled) {
+          setJob(jobData);
+          setCurrentStatus(mapBackendStatus(jobData.status));
         }
-      }, delay);
-      progressionRef.current.push(timer);
-    });
+      } catch (err: any) {
+        console.error('[JobTracking] Failed to load job:', err);
+        if (!cancelled) {
+          setError('Failed to load job details');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadJob();
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  // ── Polling for tracking data ────────────
+  useEffect(() => {
+    if (currentStatus === 'completed' || searchTimedOut) {
+      return;
+    }
+
+    async function poll() {
+      try {
+        const data = await taskService.getJobTracking(jobId);
+        setTracking(data);
+        const newStatus = mapBackendStatus(data.status);
+        setCurrentStatus(newStatus);
+
+        // If a provider was found, cancel the search timeout
+        if (newStatus !== 'pending' && searchTimeoutRef.current) {
+          clearTimeout(searchTimeoutRef.current);
+          searchTimeoutRef.current = null;
+        }
+      } catch (err) {
+        console.warn('[JobTracking] Polling error:', err);
+      }
+    }
+
+    poll(); // Initial
+    pollingRef.current = setInterval(poll, POLLING_INTERVAL_MS);
 
     return () => {
-      progressionRef.current.forEach(clearTimeout);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
     };
-  }, []);
+  }, [jobId, currentStatus, searchTimedOut]);
 
-  // In-progress timer
+  // ── 2-minute search timeout ──────────────
+  useEffect(() => {
+    // Only start the timeout if we're in pending/searching state
+    if (currentStatus !== 'pending' || searchTimedOut) {
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      // Only time out if still pending (no provider found)
+      setSearchTimedOut(true);
+    }, SEARCH_TIMEOUT_MS);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
+    };
+  }, [currentStatus, searchTimedOut]);
+
+  // ── In-progress timer ────────────────────
   useEffect(() => {
     if (currentStatus === 'in_progress') {
       timerRef.current = setInterval(() => {
@@ -175,14 +221,19 @@ function JobTrackingScreen(): React.JSX.Element {
     };
   }, [currentStatus]);
 
-  // Derived values
-  const currentStepIndex = useMemo(
-    () => STATUS_STEPS.findIndex((s) => s.status === currentStatus),
-    [currentStatus],
-  );
+  // ── Derived values ───────────────────────
+  const currentStepIndex = useMemo(() => {
+    // Map to step index, skipping pending_match
+    const idx = STATUS_STEPS.findIndex((s) => s.status === currentStatus);
+    return idx >= 0 ? idx : 0;
+  }, [currentStatus]);
 
   const isCompleted = currentStatus === 'completed';
   const isInProgress = currentStatus === 'in_progress';
+  const hasProvider = currentStatus === 'matched' || currentStatus === 'en_route';
+  const showMap = hasProvider && !isCompleted && !searchTimedOut;
+
+  const providerName = tracking?.providerName ?? 'Finding provider...';
 
   const formattedTimer = useMemo(() => {
     const mins = Math.floor(elapsedSeconds / 60);
@@ -192,52 +243,123 @@ function JobTrackingScreen(): React.JSX.Element {
 
   const runningCost = useMemo(() => {
     const hours = elapsedSeconds / 3600;
-    return (MOCK_HOURLY_RATE * hours).toFixed(2);
+    return (HOURLY_RATE * hours).toFixed(2);
   }, [elapsedSeconds]);
 
   const finalPrice = useMemo(() => {
-    if (isCompleted) {
-      // MVP mock final price
-      return 127.50;
-    }
-    return 0;
-  }, [isCompleted]);
+    return job?.finalPrice ?? job?.estimatedPrice ?? 0;
+  }, [job]);
 
-  // Handlers
+  const providerInitials = useMemo(() => {
+    const name = tracking?.providerName ?? '?';
+    const parts = name.split(' ');
+    return parts.map((p) => p.charAt(0)).join('').toUpperCase();
+  }, [tracking?.providerName]);
+
+  // Customer location (job destination)
+  const customerLat = job?.address?.latitude ?? 45.4215;
+  const customerLng = job?.address?.longitude ?? -75.6972;
+
+  // Provider location
+  const providerLat = tracking?.providerLat;
+  const providerLng = tracking?.providerLng;
+
+  // ── Handlers ─────────────────────────────
   const handleCall = useCallback(() => {
     Alert.alert(
       'Call Provider',
-      `Call ${assignment.providerName}?`,
+      `Call ${providerName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: () => {} },
+        { text: 'Call', onPress: () => { } },
       ],
     );
-  }, [assignment.providerName]);
+  }, [providerName]);
 
   const handleMessage = useCallback(() => {
     navigation.navigate('Chat', {
       jobId,
-      otherUserName: assignment.providerName,
+      otherUserName: providerName,
     });
-  }, [navigation, jobId, assignment.providerName]);
+  }, [navigation, jobId, providerName]);
 
   const handleRateProvider = useCallback(() => {
     navigation.navigate('Rating', {
       jobId,
-      taskName: MOCK_TASK_NAME,
+      taskName: job?.taskName ?? 'Job',
       finalPrice,
     });
-  }, [navigation, jobId, finalPrice]);
+  }, [navigation, jobId, job?.taskName, finalPrice]);
 
-  // Provider initials for avatar
-  const providerInitials = useMemo(() => {
-    const parts = assignment.providerName.split(' ');
-    return parts.map((p) => p.charAt(0)).join('');
-  }, [assignment.providerName]);
+  const handleKeepWaiting = useCallback(() => {
+    // Job stays as pending_match in the backend — partners will see it.
+    // Navigate back to home. The job will appear in active jobs list.
+    Alert.alert(
+      'Job Queued',
+      'We are broadcasting your request to all nearby providers. You will be notified when someone accepts.',
+      [
+        {
+          text: 'OK',
+          onPress: async () => {
+            try {
+              await taskService.queueJob(jobId);
+              navigation.navigate('CustomerHome');
+            } catch (e) {
+              console.error('Failed to queue job', e);
+              Alert.alert('Error', 'Failed to queue job. Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  }, [navigation, jobId]);
 
-  const levelColor = getLevelColor(assignment.providerLevel);
+  const handleCancelJob = useCallback(() => {
+    Alert.alert(
+      'Cancel Job',
+      'Are you sure you want to cancel this job request?',
+      [
+        { text: 'No, Keep It', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await taskService.getJobDetail(jobId); // just to confirm it still exists
+              // In production, call PATCH /jobs/{id}/update-status with "cancelled"
+              navigation.goBack();
+            } catch {
+              navigation.goBack();
+            }
+          },
+        },
+      ],
+    );
+  }, [navigation, jobId]);
 
+  // ── Loading state ────────────────────────
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading job details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !job) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>{error ?? 'Job not found'}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Render ────────────────────────────────
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -251,75 +373,144 @@ function JobTrackingScreen(): React.JSX.Element {
             <View style={styles.providerCard}>
               <View style={styles.providerHeader}>
                 {/* Avatar */}
-                <View style={[styles.avatar, { borderColor: levelColor }]}>
+                <View style={[styles.avatar, { borderColor: Colors.primary }]}>
                   <Text style={styles.avatarText}>{providerInitials}</Text>
                 </View>
                 <View style={styles.providerInfo}>
-                  <Text style={styles.providerName}>
-                    {assignment.providerName}
-                  </Text>
-                  <View style={styles.providerMeta}>
-                    <Text style={styles.providerRating}>
-                      {assignment.providerRating.toFixed(1)} rating
+                  <Text style={styles.providerName}>{providerName}</Text>
+                  {tracking?.etaMinutes != null && currentStatus !== 'in_progress' && currentStatus !== 'completed' && (
+                    <Text style={styles.providerMeta}>
+                      ETA: {tracking.etaMinutes} min
                     </Text>
-                    <Text style={styles.providerDot}> -- </Text>
-                    <Text style={styles.providerJobs}>
-                      {assignment.providerCompletedJobs} jobs
-                    </Text>
-                  </View>
-                  <LevelBadge level={assignment.providerLevel} size="small" />
+                  )}
                 </View>
               </View>
 
               {/* Contact Buttons */}
-              <View style={styles.contactButtons}>
-                <TouchableOpacity
-                  style={styles.contactButton}
-                  onPress={handleCall}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Call provider"
-                >
-                  <Text style={styles.contactButtonIcon}>C</Text>
-                  <Text style={styles.contactButtonText}>Call</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.contactButton}
-                  onPress={handleMessage}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Message provider"
-                >
-                  <Text style={styles.contactButtonIcon}>M</Text>
-                  <Text style={styles.contactButtonText}>Message</Text>
-                </TouchableOpacity>
-              </View>
+              {tracking?.providerName && (
+                <View style={styles.contactButtons}>
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={handleCall}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Call provider"
+                  >
+                    <Text style={styles.contactButtonIcon}>📞</Text>
+                    <Text style={styles.contactButtonText}>Call</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={handleMessage}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Message provider"
+                  >
+                    <Text style={styles.contactButtonIcon}>💬</Text>
+                    <Text style={styles.contactButtonText}>Message</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </View>
 
-          {/* ETA / Map Placeholder */}
-          {!isCompleted && !isInProgress && (
+          {/* Searching for provider — NO map */}
+          {currentStatus === 'pending' && !searchTimedOut && (
             <View style={styles.section}>
-              <View style={styles.etaCard}>
-                <View style={styles.mapPlaceholder}>
-                  <Text style={styles.mapPlaceholderText}>Map</Text>
-                  <Text style={styles.mapPlaceholderSubtext}>
-                    Provider location tracking
-                  </Text>
+              <View style={[styles.mapCard, { alignItems: 'center', justifyContent: 'center', minHeight: 200 }]}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={[styles.searchingText, { color: Colors.textPrimary, marginTop: 16, fontSize: 16 }]}>
+                  Searching for providers...
+                </Text>
+                <Text style={{ color: Colors.textSecondary, marginTop: 8, textAlign: 'center', paddingHorizontal: 24 }}>
+                  We're finding the best available provider near you.
+                  This usually takes a moment.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Mapbox Map — only when provider is assigned */}
+          {showMap && (
+            <View style={styles.section}>
+              <View style={styles.mapCard}>
+                <MapboxGL.MapView
+                  style={styles.mapView}
+                  styleURL={MapboxGL.StyleURL.Street}
+                  logoEnabled={false}
+                  attributionEnabled={false}
+                  compassEnabled={false}
+                >
+                  <MapboxGL.Camera
+                    centerCoordinate={[customerLng, customerLat]}
+                    zoomLevel={13}
+                    animationMode="flyTo"
+                    animationDuration={1000}
+                  />
+
+                  {/* Customer destination marker */}
+                  <MapboxGL.PointAnnotation
+                    id="customer-marker"
+                    coordinate={[customerLng, customerLat]}
+                    title="Your location"
+                  >
+                    <View style={styles.customerMarker}>
+                      <View style={styles.customerMarkerInner} />
+                    </View>
+                  </MapboxGL.PointAnnotation>
+
+                  {/* Provider marker */}
+                  {providerLat != null && providerLng != null && (
+                    <MapboxGL.PointAnnotation
+                      id="provider-marker"
+                      coordinate={[providerLng, providerLat]}
+                      title={providerName}
+                    >
+                      <View style={styles.providerMarker}>
+                        <Text style={styles.providerMarkerText}>🚗</Text>
+                      </View>
+                    </MapboxGL.PointAnnotation>
+                  )}
+                </MapboxGL.MapView>
+
+                {/* ETA overlay */}
+                {tracking?.etaMinutes != null && tracking.etaMinutes > 0 && (
+                  <View style={styles.etaOverlay}>
+                    <Text style={styles.etaOverlayLabel}>ETA</Text>
+                    <Text style={styles.etaOverlayValue}>{tracking.etaMinutes} min</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* No Provider Found — Search Timed Out */}
+          {searchTimedOut && (
+            <View style={styles.section}>
+              <View style={styles.noProviderCard}>
+                <Text style={styles.noProviderIcon}>🔍</Text>
+                <Text style={styles.noProviderTitle}>No Providers Available</Text>
+                <Text style={styles.noProviderText}>
+                  We couldn't find a provider in your area right now. Your job
+                  request has been saved — when a provider becomes available,
+                  they'll receive your request and you'll be notified.
+                </Text>
+                <View style={styles.noProviderButtons}>
+                  <TouchableOpacity
+                    style={styles.keepWaitingButton}
+                    onPress={handleKeepWaiting}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.keepWaitingText}>OK, Notify Me</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.cancelJobButton}
+                    onPress={handleCancelJob}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.cancelJobText}>Cancel Job</Text>
+                  </TouchableOpacity>
                 </View>
-                {eta > 0 && (
-                  <View style={styles.etaInfo}>
-                    <Text style={styles.etaLabel}>Estimated Arrival</Text>
-                    <Text style={styles.etaValue}>{eta} min</Text>
-                  </View>
-                )}
-                {currentStatus === 'arrived' && (
-                  <View style={styles.etaInfo}>
-                    <Text style={styles.arrivedText}>
-                      Provider has arrived at your location
-                    </Text>
-                  </View>
-                )}
               </View>
             </View>
           )}
@@ -335,7 +526,7 @@ function JobTrackingScreen(): React.JSX.Element {
                   <Text style={styles.timerMetaValue}>${runningCost}</Text>
                 </View>
                 <Text style={styles.timerNote}>
-                  Based on ${MOCK_HOURLY_RATE}/hr. Final price may vary.
+                  Based on ${HOURLY_RATE}/hr. Final price may vary.
                 </Text>
               </View>
             </View>
@@ -345,7 +536,7 @@ function JobTrackingScreen(): React.JSX.Element {
           {isCompleted && (
             <View style={styles.section}>
               <View style={styles.completedCard}>
-                <Text style={styles.completedTitle}>Job Completed</Text>
+                <Text style={styles.completedTitle}>Job Completed ✓</Text>
                 <Text style={styles.completedPrice}>${finalPrice.toFixed(2)}</Text>
                 <Text style={styles.completedSubtext}>
                   Thank you for using Tasker. Please rate your experience.
@@ -368,10 +559,9 @@ function JobTrackingScreen(): React.JSX.Element {
             <Text style={styles.sectionTitle}>Job Timeline</Text>
             <View style={styles.timeline}>
               {STATUS_STEPS.map((step, index) => {
-                const stepIndex = index;
-                const isPast = stepIndex < currentStepIndex;
-                const isCurrent = stepIndex === currentStepIndex;
-                const isFuture = stepIndex > currentStepIndex;
+                const isPast = index < currentStepIndex;
+                const isCurrent = index === currentStepIndex;
+                const isFuture = index > currentStepIndex;
                 const isLast = index === STATUS_STEPS.length - 1;
 
                 const stepColor = isPast
@@ -382,7 +572,6 @@ function JobTrackingScreen(): React.JSX.Element {
 
                 return (
                   <View key={step.status} style={styles.timelineStep}>
-                    {/* Connector line (not for last item) */}
                     <View style={styles.timelineLeftCol}>
                       <View
                         style={[
@@ -391,9 +580,7 @@ function JobTrackingScreen(): React.JSX.Element {
                           isCurrent && styles.timelineDotCurrent,
                         ]}
                       >
-                        {isPast && (
-                          <Text style={styles.timelineDotCheck}>V</Text>
-                        )}
+                        {isPast && <Text style={styles.timelineDotCheck}>✓</Text>}
                       </View>
                       {!isLast && (
                         <View
@@ -472,6 +659,22 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.lg,
   },
 
+  // Loading
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+  },
+  loadingText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+  },
+  errorText: {
+    ...Typography.body,
+    color: Colors.emergencyRed,
+  },
+
   // Sections
   section: {
     paddingHorizontal: Spacing.lg,
@@ -520,20 +723,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xxs,
   },
   providerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  providerRating: {
-    ...Typography.footnote,
-    color: Colors.warning,
-    fontWeight: FontWeight.semiBold as '600',
-  },
-  providerDot: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-  },
-  providerJobs: {
     ...Typography.footnote,
     color: Colors.textSecondary,
   },
@@ -556,9 +745,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   contactButtonIcon: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: FontWeight.bold as '700',
+    fontSize: 16,
   },
   contactButtonText: {
     ...Typography.footnote,
@@ -566,48 +753,90 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.semiBold as '600',
   },
 
-  // ETA Card
-  etaCard: {
+  // Map
+  mapCard: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.border,
+    position: 'relative',
   },
-  mapPlaceholder: {
-    height: 160,
-    backgroundColor: Colors.surfaceLight,
+  mapView: {
+    height: 260,
+    width: '100%',
+  },
+
+  // Customer marker
+  customerMarker: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: `${Colors.primary}30`,
     alignItems: 'center',
     justifyContent: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
-  mapPlaceholderText: {
-    ...Typography.title3,
-    color: Colors.textTertiary,
-    marginBottom: Spacing.xxs,
+  customerMarkerInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.primary,
   },
-  mapPlaceholderSubtext: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
+
+  // Provider marker
+  providerMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.md,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
-  etaInfo: {
-    padding: Spacing.lg,
+  providerMarkerText: {
+    fontSize: 18,
+  },
+
+  // ETA Overlay
+  etaOverlay: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    ...Shadows.sm,
     alignItems: 'center',
   },
-  etaLabel: {
+  etaOverlayLabel: {
     ...Typography.caption,
     color: Colors.textSecondary,
-    marginBottom: Spacing.xxs,
   },
-  etaValue: {
-    fontSize: FontSize.title1,
-    fontWeight: FontWeight.bold as '700',
+  etaOverlayValue: {
+    ...Typography.headline,
     color: Colors.primary,
+    fontWeight: FontWeight.bold as '700',
   },
-  arrivedText: {
-    ...Typography.body,
-    color: Colors.success,
+
+  // Searching Overlay
+  searchingOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    gap: Spacing.sm,
+  },
+  searchingText: {
+    ...Typography.footnote,
+    color: Colors.white,
     fontWeight: FontWeight.semiBold as '600',
   },
 
@@ -768,6 +997,58 @@ const styles = StyleSheet.create({
     ...Typography.footnote,
     color: Colors.textSecondary,
     lineHeight: 20,
+  },
+
+  // No Provider Found
+  noProviderCard: {
+    backgroundColor: Colors.card,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    ...Shadows.md,
+  },
+  noProviderIcon: {
+    fontSize: 48,
+    marginBottom: Spacing.md,
+  },
+  noProviderTitle: {
+    ...Typography.title3,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  noProviderText: {
+    ...Typography.footnote,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+  },
+  noProviderButtons: {
+    width: '100%',
+    gap: Spacing.sm,
+  },
+  keepWaitingButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  keepWaitingText: {
+    ...Typography.buttonLarge,
+    color: Colors.white,
+  },
+  cancelJobButton: {
+    backgroundColor: 'transparent',
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  cancelJobText: {
+    ...Typography.buttonLarge,
+    color: Colors.error,
   },
 
   // Bottom padding

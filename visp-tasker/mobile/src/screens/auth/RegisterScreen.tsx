@@ -12,9 +12,11 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -48,7 +50,34 @@ interface Step1Errors {
 interface Step2Errors {
   firstName?: string;
   lastName?: string;
+  phone?: string;
 }
+
+interface CountryCode {
+  code: string;
+  dial: string;
+  flag: string;
+  name: string;
+  maxDigits: number;
+}
+
+const COUNTRY_CODES: CountryCode[] = [
+  { code: 'CA', dial: '+1', flag: '🇨🇦', name: 'Canada', maxDigits: 10 },
+  { code: 'US', dial: '+1', flag: '🇺🇸', name: 'United States', maxDigits: 10 },
+  { code: 'MX', dial: '+52', flag: '🇲🇽', name: 'México', maxDigits: 10 },
+  { code: 'CO', dial: '+57', flag: '🇨🇴', name: 'Colombia', maxDigits: 10 },
+  { code: 'AR', dial: '+54', flag: '🇦🇷', name: 'Argentina', maxDigits: 10 },
+  { code: 'CL', dial: '+56', flag: '🇨🇱', name: 'Chile', maxDigits: 9 },
+  { code: 'PE', dial: '+51', flag: '🇵🇪', name: 'Perú', maxDigits: 9 },
+  { code: 'EC', dial: '+593', flag: '🇪🇨', name: 'Ecuador', maxDigits: 9 },
+  { code: 'VE', dial: '+58', flag: '🇻🇪', name: 'Venezuela', maxDigits: 10 },
+  { code: 'GT', dial: '+502', flag: '🇬🇹', name: 'Guatemala', maxDigits: 8 },
+  { code: 'CR', dial: '+506', flag: '🇨🇷', name: 'Costa Rica', maxDigits: 8 },
+  { code: 'PA', dial: '+507', flag: '🇵🇦', name: 'Panamá', maxDigits: 8 },
+  { code: 'DO', dial: '+1', flag: '🇩🇴', name: 'Rep. Dominicana', maxDigits: 10 },
+  { code: 'ES', dial: '+34', flag: '🇪🇸', name: 'España', maxDigits: 9 },
+  { code: 'BR', dial: '+55', flag: '🇧🇷', name: 'Brasil', maxDigits: 11 },
+];
 
 // ──────────────────────────────────────────────
 // Validation Helpers
@@ -80,7 +109,7 @@ function validateStep1(
   return errors;
 }
 
-function validateStep2(firstName: string, lastName: string): Step2Errors {
+function validateStep2(firstName: string, lastName: string, phone: string, country: CountryCode): Step2Errors {
   const errors: Step2Errors = {};
   if (!firstName.trim()) {
     errors.firstName = 'First name is required';
@@ -91,6 +120,12 @@ function validateStep2(firstName: string, lastName: string): Step2Errors {
     errors.lastName = 'Last name is required';
   } else if (lastName.trim().length < 2) {
     errors.lastName = 'Last name must be at least 2 characters';
+  }
+  const digits = phone.replace(/\D/g, '');
+  if (!phone.trim()) {
+    errors.phone = 'Phone number is required';
+  } else if (digits.length !== country.maxDigits) {
+    errors.phone = `Enter ${country.maxDigits} digits for ${country.name} (${country.dial})`;
   }
   return errors;
 }
@@ -169,6 +204,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   // Step 2
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryCode>(COUNTRY_CODES[0]);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [step2Errors, setStep2Errors] = useState<Step2Errors>({});
 
   // Step 3
@@ -178,6 +216,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   const passwordInputRef = useRef<TextInput>(null);
   const confirmPasswordRef = useRef<TextInput>(null);
   const lastNameRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
 
   const { register, isLoading, error, clearError } = useAuthStore();
 
@@ -199,12 +238,12 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
       if (Object.keys(errors).length > 0) return;
       setCurrentStep(2);
     } else if (currentStep === 2) {
-      const errors = validateStep2(firstName, lastName);
+      const errors = validateStep2(firstName, lastName, phone, selectedCountry);
       setStep2Errors(errors);
       if (Object.keys(errors).length > 0) return;
       setCurrentStep(3);
     }
-  }, [currentStep, email, password, confirmPassword, firstName, lastName, error, clearError]);
+  }, [currentStep, email, password, confirmPassword, firstName, lastName, phone, selectedCountry, error, clearError]);
 
   const handleBack = useCallback(() => {
     if (error) clearError();
@@ -224,18 +263,32 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     try {
       await register({
         email: email.trim().toLowerCase(),
+        phone: `${selectedCountry.dial}${phone.replace(/\D/g, '')}`,
         password,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         role: selectedRole,
         acceptedTermsVersion: Config.termsVersion,
       });
+      if (selectedRole === 'provider' || selectedRole === 'both') {
+        // Navigate to provider onboarding to select services
+        // We use reset to prevent going back to register screen
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Auth', params: { screen: 'ProviderOnboarding' } }],
+        });
+      } else {
+        // Customer goes to home
+        // Auth flow normally auto-redirects based on user state in AppNavigator
+        // But if we need manual navigation:
+        // navigation.navigate('Root');
+      }
       // On success, the auth store sets isAuthenticated = true,
       // and the navigator will redirect to the appropriate home screen.
     } catch {
       // Error is displayed by the store
     }
-  }, [email, password, firstName, lastName, selectedRole, acceptedTerms, register]);
+  }, [email, password, phone, selectedCountry, firstName, lastName, selectedRole, acceptedTerms, register, navigation]);
 
   // ── Legal Links ──────────────────────────
 
@@ -253,8 +306,8 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     EMAIL_REGEX.test(email.trim()) &&
     password.length >= Config.minPasswordLength &&
     password === confirmPassword;
-
-  const isStep2Valid = firstName.trim().length >= 2 && lastName.trim().length >= 2;
+  const phoneDigits = phone.replace(/\D/g, '');
+  const isStep2Valid = firstName.trim().length >= 2 && lastName.trim().length >= 2 && phoneDigits.length === selectedCountry.maxDigits;
 
   const isStep3Valid = selectedRole !== null && acceptedTerms;
 
@@ -488,14 +541,124 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
             autoCorrect={false}
             autoComplete="family-name"
             textContentType="familyName"
-            returnKeyType="done"
-            onSubmitEditing={handleNext}
+            returnKeyType="next"
+            onSubmitEditing={() => phoneRef.current?.focus()}
             editable={!isLoading}
           />
           {step2Errors.lastName ? (
             <Text style={styles.fieldError}>{step2Errors.lastName}</Text>
           ) : null}
         </View>
+
+        {/* Phone Number */}
+        <View style={styles.fieldContainer}>
+          <Text style={styles.label}>Phone Number</Text>
+          <View style={styles.phoneRow}>
+            {/* Country code selector */}
+            <TouchableOpacity
+              style={[
+                styles.countryCodeButton,
+                step2Errors.phone ? styles.inputError : null,
+              ]}
+              onPress={() => setShowCountryPicker(true)}
+              activeOpacity={0.7}
+              disabled={isLoading}
+            >
+              <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
+              <Text style={styles.countryDial}>{selectedCountry.dial}</Text>
+              <Text style={styles.countryArrow}>▼</Text>
+            </TouchableOpacity>
+
+            {/* Phone input */}
+            <TextInput
+              ref={phoneRef}
+              style={[
+                styles.input,
+                styles.phoneInput,
+                step2Errors.phone ? styles.inputError : null,
+              ]}
+              value={phone}
+              onChangeText={(text) => {
+                // Only allow digits
+                const digitsOnly = text.replace(/\D/g, '');
+                // Limit to maxDigits
+                const limited = digitsOnly.slice(0, selectedCountry.maxDigits);
+                setPhone(limited);
+                if (step2Errors.phone) {
+                  setStep2Errors((prev) => ({ ...prev, phone: undefined }));
+                }
+              }}
+              placeholder={`${'0'.repeat(selectedCountry.maxDigits)}`}
+              placeholderTextColor={Colors.inputPlaceholder}
+              keyboardType="number-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="tel"
+              textContentType="telephoneNumber"
+              maxLength={selectedCountry.maxDigits}
+              returnKeyType="done"
+              onSubmitEditing={handleNext}
+              editable={!isLoading}
+            />
+          </View>
+          <Text style={styles.phoneHint}>
+            {phoneDigits.length}/{selectedCountry.maxDigits} digits
+          </Text>
+          {step2Errors.phone ? (
+            <Text style={styles.fieldError}>{step2Errors.phone}</Text>
+          ) : null}
+        </View>
+
+        {/* Country Code Picker Modal */}
+        <Modal
+          visible={showCountryPicker}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowCountryPicker(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Country Code</Text>
+              <TouchableOpacity
+                onPress={() => setShowCountryPicker(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={styles.modalCloseText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={COUNTRY_CODES}
+              keyExtractor={(item) => item.code}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.countryRow,
+                    item.code === selectedCountry.code && styles.countryRowSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedCountry(item);
+                    // Clear phone if it exceeds new max digits
+                    const digits = phone.replace(/\D/g, '');
+                    if (digits.length > item.maxDigits) {
+                      setPhone(digits.slice(0, item.maxDigits));
+                    }
+                    setShowCountryPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.countryRowFlag}>{item.flag}</Text>
+                  <Text style={styles.countryRowName}>{item.name}</Text>
+                  <Text style={styles.countryRowDial}>{item.dial}</Text>
+                  {item.code === selectedCountry.code && (
+                    <Text style={styles.countryRowCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.countryRowSeparator} />}
+              contentContainerStyle={styles.countryListContent}
+            />
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -953,6 +1116,112 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.primary,
     fontWeight: '600',
+  },
+
+  // ── Phone + Country Code ──────────────
+  phoneRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  countryCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.inputBackground,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    paddingHorizontal: Spacing.md,
+    height: 52,
+    gap: 6,
+  },
+  countryFlag: {
+    fontSize: 20,
+  },
+  countryDial: {
+    ...Typography.body,
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+  countryArrow: {
+    fontSize: 8,
+    color: Colors.textTertiary,
+    marginLeft: 2,
+  },
+  phoneInput: {
+    flex: 1,
+  },
+  phoneHint: {
+    ...Typography.caption,
+    color: Colors.textTertiary,
+    marginTop: Spacing.xxs,
+    textAlign: 'right',
+  },
+
+  // ── Country Picker Modal ──────────────
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+    backgroundColor: Colors.surface,
+  },
+  modalTitle: {
+    ...Typography.title3,
+    color: Colors.textPrimary,
+  },
+  modalCloseButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  modalCloseText: {
+    ...Typography.body,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  countryListContent: {
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+  },
+  countryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  countryRowSelected: {
+    backgroundColor: `${Colors.primary}15`,
+    marginHorizontal: -Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.sm,
+  },
+  countryRowFlag: {
+    fontSize: 24,
+  },
+  countryRowName: {
+    ...Typography.body,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  countryRowDial: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  countryRowCheck: {
+    fontSize: 18,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  countryRowSeparator: {
+    height: 1,
+    backgroundColor: Colors.divider,
   },
 });
 

@@ -21,9 +21,17 @@ import {
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import MapboxGL from '@rnmapbox/maps';
+
+import { Config } from '../../services/config';
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
 import { useProviderStore } from '../../stores/providerStore';
 import { JobStatus, ProviderTabParamList } from '../../types';
+
+// ---------------------------------------------------------------------------
+// Mapbox initialization
+// ---------------------------------------------------------------------------
+MapboxGL.setAccessToken(Config.mapboxAccessToken);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -358,9 +366,9 @@ export default function ActiveJobScreen(): React.JSX.Element {
       Alert.alert(
         'Legal Acknowledgment Required',
         `Before starting work, please confirm:\n\n` +
-          `1. I understand this task is limited to "${activeJob.taskName}" only.\n\n` +
-          `2. I am acting as an independent contractor.\n\n` +
-          `Additional services cannot be performed without a new job request.`,
+        `1. I understand this task is limited to "${activeJob.taskName}" only.\n\n` +
+        `2. I am acting as an independent contractor.\n\n` +
+        `Additional services cannot be performed without a new job request.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -543,13 +551,37 @@ export default function ActiveJobScreen(): React.JSX.Element {
           {activeJob.address.postalCode}
         </Text>
 
-        {/* Map placeholder */}
-        <View style={styles.mapPlaceholder}>
-          <Text style={styles.mapPlaceholderText}>
-            {activeJob.address.latitude.toFixed(4)},{' '}
-            {activeJob.address.longitude.toFixed(4)}
-          </Text>
-          <Text style={styles.mapPlaceholderLabel}>Map View</Text>
+        {/* Mapbox Map View */}
+        <View style={styles.mapContainer}>
+          <MapboxGL.MapView
+            style={styles.map}
+            styleURL={MapboxGL.StyleURL.Street}
+            scrollEnabled={false} // Disable scroll inside ScrollView
+            zoomEnabled={true}
+            rotateEnabled={false}
+            pitchEnabled={false}
+            attributionEnabled={false}
+            logoEnabled={false}
+          >
+            <MapboxGL.Camera
+              zoomLevel={14}
+              centerCoordinate={[
+                activeJob.address.longitude,
+                activeJob.address.latitude,
+              ]}
+              animationMode="flyTo"
+              animationDuration={2000}
+            />
+            <MapboxGL.PointAnnotation
+              id="customer-location"
+              coordinate={[
+                activeJob.address.longitude,
+                activeJob.address.latitude,
+              ]}
+            >
+              <View style={styles.customerMarker} />
+            </MapboxGL.PointAnnotation>
+          </MapboxGL.MapView>
         </View>
 
         <TouchableOpacity
@@ -985,6 +1017,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.emergencyRed,
     textAlign: 'center',
+  },
+  mapContainer: {
+    height: 180,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: Colors.surfaceLight,
+  },
+  map: {
+    flex: 1,
+  },
+  customerMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   bottomSpacer: {
     height: 32,

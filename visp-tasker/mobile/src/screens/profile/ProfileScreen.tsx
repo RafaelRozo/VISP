@@ -6,7 +6,7 @@
  * and logout button.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,7 +30,6 @@ import {
   User,
 } from '../../types';
 import { patch, upload } from '../../services/apiClient';
-import { clearTokens } from '../../services/apiClient';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -141,32 +140,14 @@ const avatarStyles = StyleSheet.create({
 // Main Component
 // ---------------------------------------------------------------------------
 
-// Placeholder data: in production these come from an auth store
-const MOCK_USER: User = {
-  id: '1',
-  email: 'john.doe@example.com',
-  phone: '+1 (416) 555-0123',
-  firstName: 'John',
-  lastName: 'Doe',
-  role: 'both',
-  avatarUrl: null,
-  isVerified: true,
-  createdAt: '2025-01-15T10:00:00Z',
-  updatedAt: '2025-06-01T10:00:00Z',
-};
+import { useAuthStore } from '../../stores/authStore';
+import { useProviderStore } from '../../stores/providerStore';
 
-const MOCK_PROVIDER_PROFILE: ProviderProfile = {
-  id: 'p1',
-  userId: '1',
-  level: 2 as ServiceLevel,
-  performanceScore: 85,
-  isOnline: false,
-  isOnCall: false,
-  completedJobs: 47,
-  rating: 4.7,
-  stripeConnectStatus: 'active',
-  credentials: [],
-};
+// ... (existing imports)
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 const MOCK_LEVEL_PROGRESS: LevelProgressInfo = {
   currentLevel: 2 as ServiceLevel,
@@ -199,33 +180,61 @@ const MOCK_LEVEL_PROGRESS: LevelProgressInfo = {
 export default function ProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<ProfileNav>();
 
-  // In production, user and provider profile come from stores
-  const [user] = useState<User>(MOCK_USER);
-  const [providerProfile] = useState<ProviderProfile | null>(
-    MOCK_PROVIDER_PROFILE,
-  );
+  // Get real user data from stores
+  const { user, setUser, logout } = useAuthStore();
+  const { providerProfile } = useProviderStore();
+
   const [levelProgress] = useState<LevelProgressInfo>(MOCK_LEVEL_PROGRESS);
   const [isEditing, setIsEditing] = useState(false);
-  const [editFirstName, setEditFirstName] = useState(user.firstName);
-  const [editLastName, setEditLastName] = useState(user.lastName);
+
+  // Initialize edit state with user data (safely handle null user)
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const isProvider = user.role === 'provider' || user.role === 'both';
+  // Update local edit state when user changes (e.g. after save)
+  useEffect(() => {
+    if (user) {
+      setEditFirstName(user.firstName);
+      setEditLastName(user.lastName);
+      setEditPhone(user.phone || '');
+    }
+  }, [user]);
+
+  const isProvider = user?.role === 'provider' || user?.role === 'both';
+
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   const handleChangeAvatar = useCallback(() => {
     Alert.alert('Change Photo', 'Choose a source for your profile photo.', [
-      { text: 'Camera', onPress: () => {} },
-      { text: 'Photo Library', onPress: () => {} },
+      { text: 'Camera', onPress: () => { } },
+      { text: 'Photo Library', onPress: () => { } },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, []);
 
   const handleSaveProfile = useCallback(async () => {
+    if (!user) return;
     setIsSaving(true);
     try {
       await patch('/users/me', {
         firstName: editFirstName,
         lastName: editLastName,
+        phone: editPhone,
+      });
+      // Update store
+      setUser({
+        ...user,
+        firstName: editFirstName,
+        lastName: editLastName,
+        phone: editPhone,
       });
       setIsEditing(false);
     } catch {
@@ -233,7 +242,7 @@ export default function ProfileScreen(): React.JSX.Element {
     } finally {
       setIsSaving(false);
     }
-  }, [editFirstName, editLastName]);
+  }, [editFirstName, editLastName, editPhone, user, setUser]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Logout', 'Are you sure you want to log out?', [
@@ -242,12 +251,11 @@ export default function ProfileScreen(): React.JSX.Element {
         text: 'Logout',
         style: 'destructive',
         onPress: () => {
-          clearTokens();
-          // Navigation to auth flow will be handled by the auth state listener
+          logout();
         },
       },
     ]);
-  }, []);
+  }, [logout]);
 
   return (
     <ScrollView
@@ -284,6 +292,15 @@ export default function ProfileScreen(): React.JSX.Element {
               placeholderTextColor={Colors.inputPlaceholder}
               autoCapitalize="words"
             />
+            <Text style={styles.fieldLabel}>Phone</Text>
+            <TextInput
+              style={styles.input}
+              value={editPhone}
+              onChangeText={setEditPhone}
+              placeholder="Phone number"
+              placeholderTextColor={Colors.inputPlaceholder}
+              keyboardType="phone-pad"
+            />
             <View style={styles.editActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -291,6 +308,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   setIsEditing(false);
                   setEditFirstName(user.firstName);
                   setEditLastName(user.lastName);
+                  setEditPhone(user.phone || '');
                 }}
                 accessibilityRole="button"
               >
@@ -392,10 +410,19 @@ export default function ProfileScreen(): React.JSX.Element {
         <View style={styles.linksCard}>
           <TouchableOpacity
             style={styles.linkRow}
+            onPress={() => navigation.navigate('ProviderOnboarding')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.linkText}>My Services</Text>
+            <Text style={styles.linkArrow}>{'\u203A'}</Text>
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity
+            style={styles.linkRow}
             onPress={() => navigation.navigate('Credentials')}
             accessibilityRole="button"
           >
-            <Text style={styles.linkText}>My Credentials</Text>
+            <Text style={styles.linkText}>Credentials & Documents</Text>
             <Text style={styles.linkArrow}>{'\u203A'}</Text>
           </TouchableOpacity>
           <View style={styles.divider} />
@@ -421,18 +448,15 @@ export default function ProfileScreen(): React.JSX.Element {
         </TouchableOpacity>
       </View>
 
-      {/* Logout */}
       <TouchableOpacity
         style={styles.logoutButton}
         onPress={handleLogout}
-        activeOpacity={0.7}
         accessibilityRole="button"
-        accessibilityLabel="Log out"
       >
-        <Text style={styles.logoutButtonText}>Log Out</Text>
+        <Text style={styles.logoutButtonText}>Logout</Text>
       </TouchableOpacity>
 
-      <View style={styles.bottomSpacer} />
+      <Text style={styles.versionText}>v1.0.0 (Build 42)</Text>
     </ScrollView>
   );
 }
@@ -448,6 +472,10 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingTop: 24,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   infoCard: {
     backgroundColor: Colors.surface,
@@ -580,19 +608,23 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 8,
+    marginBottom: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: Colors.emergencyRed,
-    paddingVertical: 14,
+    borderColor: Colors.error,
     alignItems: 'center',
   },
   logoutButtonText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
-    color: Colors.emergencyRed,
+    color: Colors.error,
   },
-  bottomSpacer: {
-    height: 32,
+  versionText: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: Colors.textTertiary,
+    marginBottom: 32,
   },
 });

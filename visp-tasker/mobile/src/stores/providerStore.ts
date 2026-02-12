@@ -57,6 +57,7 @@ interface ProviderState {
   error: string | null;
 
   // Actions
+  fetchProviderProfile: () => Promise<void>;
   fetchDashboard: () => Promise<void>;
   fetchOffers: () => Promise<void>;
   fetchEarnings: () => Promise<void>;
@@ -373,6 +374,19 @@ function extractErrorMessage(err: unknown): string {
 export const useProviderStore = create<ProviderState>((set, getState) => ({
   ...initialState,
 
+  fetchProviderProfile: async () => {
+    try {
+      const response = await get<{ data: ProviderProfile }>('/provider/profile');
+      set({ providerProfile: response.data });
+    } catch (error) {
+      console.error('Failed to fetch provider profile:', error);
+      // Fallback to mock if dev?
+      if (__DEV__) {
+        set({ providerProfile: MOCK_PROFILE });
+      }
+    }
+  },
+
   fetchDashboard: async () => {
     set({ isLoadingDashboard: true, error: null });
     try {
@@ -386,37 +400,23 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
 
       set({
         providerProfile: dashboard.profile,
-        isOnline: dashboard.profile.isOnline,
-        isOnCall: dashboard.profile.isOnCall,
-        activeJob: dashboard.activeJob,
-        pendingOffers: dashboard.pendingOffers,
-        earnings: dashboard.earnings,
-        performanceScore: dashboard.performanceScore,
+        isOnline: dashboard.profile?.isOnline ?? false,
+        isOnCall: dashboard.profile?.isOnCall ?? false,
+        activeJob: dashboard.activeJob ?? null,
+        pendingOffers: dashboard.pendingOffers ?? [],
+        earnings: dashboard.earnings ?? initialEarnings,
+        performanceScore: dashboard.performanceScore ?? 0,
+        onCallShifts: getState().onCallShifts ?? [],
+        scheduledJobs: getState().scheduledJobs ?? [],
         isLoadingDashboard: false,
       });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Using mock data for provider dashboard:',
-          extractErrorMessage(err),
-        );
-        const mockOffers = createMockOffers();
-        set({
-          providerProfile: MOCK_PROFILE,
-          isOnline: MOCK_PROFILE.isOnline,
-          isOnCall: MOCK_PROFILE.isOnCall,
-          activeJob: MOCK_ACTIVE_JOB,
-          pendingOffers: mockOffers,
-          earnings: MOCK_EARNINGS,
-          performanceScore: MOCK_PROFILE.performanceScore,
-          isLoadingDashboard: false,
-          error: null,
-        });
-        return;
-      }
+      const message = extractErrorMessage(err);
       set({
+        error: message,
         isLoadingDashboard: false,
-        error: extractErrorMessage(err),
+        onCallShifts: getState().onCallShifts ?? [],
+        scheduledJobs: getState().scheduledJobs ?? [],
       });
     }
   },
@@ -427,18 +427,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
       const offers = await get<JobOffer[]>('/provider/offers');
       set({ pendingOffers: offers, isLoadingOffers: false });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Using mock data for provider offers:',
-          extractErrorMessage(err),
-        );
-        set({
-          pendingOffers: createMockOffers(),
-          isLoadingOffers: false,
-          error: null,
-        });
-        return;
-      }
       set({
         isLoadingOffers: false,
         error: extractErrorMessage(err),
@@ -462,20 +450,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
         isLoadingEarnings: false,
       });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Using mock data for provider earnings:',
-          extractErrorMessage(err),
-        );
-        set({
-          earnings: MOCK_EARNINGS,
-          weeklyEarnings: MOCK_WEEKLY_EARNINGS,
-          payouts: MOCK_PAYOUTS,
-          isLoadingEarnings: false,
-          error: null,
-        });
-        return;
-      }
       set({
         isLoadingEarnings: false,
         error: extractErrorMessage(err),
@@ -497,19 +471,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
         isLoadingSchedule: false,
       });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Using mock data for provider schedule:',
-          extractErrorMessage(err),
-        );
-        set({
-          scheduledJobs: createMockScheduledJobs(),
-          onCallShifts: MOCK_ON_CALL_SHIFTS,
-          isLoadingSchedule: false,
-          error: null,
-        });
-        return;
-      }
       set({
         isLoadingSchedule: false,
         error: extractErrorMessage(err),
@@ -526,14 +487,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
       await patch('/provider/status', { isOnline: newStatus });
       set({ isOnline: newStatus, isTogglingStatus: false });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Mock toggling online status:',
-          extractErrorMessage(err),
-        );
-        set({ isOnline: newStatus, isTogglingStatus: false, error: null });
-        return;
-      }
       set({
         isTogglingStatus: false,
         error: extractErrorMessage(err),
@@ -550,14 +503,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
       await patch('/provider/status', { isOnCall: newStatus });
       set({ isOnCall: newStatus, isTogglingStatus: false });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Mock toggling on-call status:',
-          extractErrorMessage(err),
-        );
-        set({ isOnCall: newStatus, isTogglingStatus: false, error: null });
-        return;
-      }
       set({
         isTogglingStatus: false,
         error: extractErrorMessage(err),
@@ -574,42 +519,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
         pendingOffers: state.pendingOffers.filter((o) => o.id !== offerId),
       }));
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Mock accepting offer:',
-          extractErrorMessage(err),
-        );
-        const currentOffers = getState().pendingOffers;
-        const accepted = currentOffers.find((o) => o.id === offerId);
-        if (accepted) {
-          const mockJob: Job = {
-            id: accepted.jobId,
-            customerId: 'customer-001',
-            providerId: 'provider-001',
-            taskId: 'task-' + offerId,
-            taskName: accepted.taskName,
-            categoryName: accepted.categoryName,
-            status: 'accepted',
-            level: accepted.level,
-            scheduledAt: null,
-            startedAt: null,
-            completedAt: null,
-            estimatedPrice: accepted.estimatedPrice,
-            finalPrice: null,
-            provider: null,
-            address: accepted.address,
-            slaDeadline: accepted.slaDeadline,
-            createdAt: accepted.createdAt,
-            updatedAt: new Date().toISOString(),
-          };
-          set({
-            activeJob: mockJob,
-            pendingOffers: currentOffers.filter((o) => o.id !== offerId),
-            error: null,
-          });
-        }
-        return;
-      }
       set({ error: extractErrorMessage(err) });
     }
   },
@@ -622,17 +531,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
         pendingOffers: state.pendingOffers.filter((o) => o.id !== offerId),
       }));
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Mock declining offer:',
-          extractErrorMessage(err),
-        );
-        set((state) => ({
-          pendingOffers: state.pendingOffers.filter((o) => o.id !== offerId),
-          error: null,
-        }));
-        return;
-      }
       set({ error: extractErrorMessage(err) });
     }
   },
@@ -649,32 +547,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
         set({ activeJob: updatedJob });
       }
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Mock updating job status:',
-          extractErrorMessage(err),
-        );
-        if (status === 'completed') {
-          set({ activeJob: null, error: null });
-        } else {
-          const current = getState().activeJob;
-          if (current) {
-            set({
-              activeJob: {
-                ...current,
-                status,
-                startedAt:
-                  status === 'in_progress'
-                    ? new Date().toISOString()
-                    : current.startedAt,
-                updatedAt: new Date().toISOString(),
-              },
-              error: null,
-            });
-          }
-        }
-        return;
-      }
       set({ error: extractErrorMessage(err) });
     }
   },
@@ -685,17 +557,6 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
       const job = await get<Job>(`/provider/jobs/${jobId}`);
       set({ activeJob: job });
     } catch (err: unknown) {
-      if (__DEV__) {
-        console.warn(
-          'DEV: Using mock data for active job:',
-          extractErrorMessage(err),
-        );
-        set({
-          activeJob: { ...MOCK_ACTIVE_JOB, id: jobId },
-          error: null,
-        });
-        return;
-      }
       set({ error: extractErrorMessage(err) });
     }
   },

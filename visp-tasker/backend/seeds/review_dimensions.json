@@ -1,0 +1,62 @@
+[
+    {
+        "id": "a0000001-0000-0000-0000-000000000000",
+        "name": "Quality",
+        "slug": "quality",
+        "description": "Quality of the work performed",
+        "weight": "0.400",
+        "applicable_role": "provider",
+        "display_order": 1,
+        "is_active": true
+    },
+    {
+        "id": "a0000002-0000-0000-0000-000000000000",
+        "name": "Punctuality",
+        "slug": "punctuality",
+        "description": "Arrived on time and efficient",
+        "weight": "0.200",
+        "applicable_role": "provider",
+        "display_order": 2,
+        "is_active": true
+    },
+    {
+        "id": "a0000003-0000-0000-0000-000000000000",
+        "name": "Communication",
+        "slug": "communication",
+        "description": "Clear and polite communication",
+        "weight": "0.200",
+        "applicable_role": "provider",
+        "display_order": 3,
+        "is_active": true
+    },
+    {
+        "id": "a0000004-0000-0000-0000-000000000000",
+        "name": "Professionalism",
+        "slug": "professionalism",
+        "description": "Professional conduct and appearance",
+        "weight": "0.200",
+        "applicable_role": "provider",
+        "display_order": 4,
+        "is_active": true
+    },
+    {
+        "id": "b0000001-0000-0000-0000-000000000000",
+        "name": "Communication",
+        "slug": "cust_communication",
+        "description": "Responsiveness and clarity",
+        "weight": "0.500",
+        "applicable_role": "customer",
+        "display_order": 1,
+        "is_active": true
+    },
+    {
+        "id": "b0000002-0000-0000-0000-000000000000",
+        "name": "Respect",
+        "slug": "cust_respect",
+        "description": "Respectful treatment of provider",
+        "weight": "0.500",
+        "applicable_role": "customer",
+        "display_order": 2,
+        "is_active": true
+    }
+]
