@@ -220,6 +220,19 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
         );
         return;
       }
+      if (job.status === 'matched') {
+        Alert.alert(
+          'Waiting for Provider',
+          'Your job has been sent to a provider. Waiting for them to review and accept.',
+        );
+        return;
+      }
+      if (job.status === 'pending_approval') {
+        // Navigate to MyJobs tab where the inline Approve/Reject card is shown
+        navigation.navigate('MyJobs');
+        return;
+      }
+      // Only provider_accepted and later statuses go to tracking
       navigation.navigate('JobTracking', { jobId: job.id });
     },
     [navigation],

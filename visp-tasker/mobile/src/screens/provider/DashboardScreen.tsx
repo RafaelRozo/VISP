@@ -6,9 +6,10 @@
  * performance score display.
  */
 
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -24,7 +25,8 @@ import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
 import JobCard from '../../components/JobCard';
 import OnCallToggle from '../../components/OnCallToggle';
-import { ProviderTabParamList } from '../../types';
+import { taxonomyService } from '../../services/taxonomyService';
+import { ProviderTabParamList, ServiceLevel } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +50,9 @@ export default function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<DashboardNav>();
   const user = useAuthStore((state) => state.user);
 
+  // Track whether the provider has selected any services
+  const [hasServices, setHasServices] = useState<boolean | null>(null);
+
   const {
     isOnline,
     isOnCall,
@@ -62,11 +67,17 @@ export default function DashboardScreen(): React.JSX.Element {
     fetchDashboard,
     toggleOnline,
     toggleOnCall,
+    acceptOffer,
+    declineOffer,
   } = useProviderStore();
 
   // Initial load
   useEffect(() => {
     fetchDashboard();
+    // Check if provider has selected any services
+    taxonomyService.getMyServices()
+      .then((res) => setHasServices(res.taskIds.length > 0))
+      .catch(() => setHasServices(null));
   }, [fetchDashboard]);
 
   // Pull-to-refresh
@@ -260,7 +271,7 @@ export default function DashboardScreen(): React.JSX.Element {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Incoming Offers</Text>
           <TouchableOpacity
-            onPress={() => navigation.navigate('JobOffers')}
+            onPress={() => navigation.navigate('JobsTab')}
             accessibilityRole="button"
             accessibilityLabel="View all offers"
           >
@@ -270,20 +281,73 @@ export default function DashboardScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
         {offers.slice(0, 3).map((offer) => (
-          <JobCard
-            key={offer.id}
-            taskName={offer.taskName}
-            categoryName={offer.categoryName}
-            customerArea={offer.customerArea}
-            distanceKm={offer.distanceKm}
-            estimatedPrice={offer.estimatedPrice}
-            level={offer.level}
-            status="pending"
-            scheduledAt={null}
-            slaDeadline={offer.slaDeadline}
-            onPress={() => navigation.navigate('JobOffers')}
-          />
+          <View key={offer.assignmentId}>
+            <JobCard
+              taskName={offer.task.name}
+              categoryName={offer.task.categoryName ?? 'Service'}
+              customerArea={offer.serviceCity ?? offer.serviceAddress}
+              distanceKm={offer.distanceKm ?? 0}
+              estimatedPrice={offer.pricing.quotedPriceCents ? offer.pricing.quotedPriceCents / 100 : 0}
+              level={(parseInt(offer.task.level.replace(/\D/g, ''), 10) || 1) as ServiceLevel}
+              status="pending"
+              scheduledAt={null}
+              slaDeadline={null}
+              onPress={() => navigation.navigate('JobsTab')}
+            />
+            {/* Accept / Decline buttons */}
+            <View style={styles.offerActions}>
+              <TouchableOpacity
+                style={styles.declineButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Decline Offer',
+                    `Decline ${offer.task.name}?`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Decline',
+                        style: 'destructive',
+                        onPress: () => declineOffer(offer.jobId),
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Text style={styles.declineButtonText}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.acceptButton}
+                onPress={() => acceptOffer(offer.jobId)}
+              >
+                <Text style={styles.acceptButtonText}>Accept</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         ))}
+      </View>
+    );
+  };
+
+  // ------------------------------------------
+  // Setup services prompt
+  // ------------------------------------------
+
+  const renderSetupServicesPrompt = () => {
+    if (hasServices !== false) return null;
+    return (
+      <View style={styles.setupCard}>
+        <Text style={styles.setupIcon}>⚙️</Text>
+        <Text style={styles.setupTitle}>Set Up Your Services</Text>
+        <Text style={styles.setupText}>
+          Select the services you offer so you can start receiving job offers from clients near you.
+        </Text>
+        <TouchableOpacity
+          style={styles.setupButton}
+          onPress={() => navigation.navigate('ProviderOnboarding' as any)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.setupButtonText}>Select My Services</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -333,6 +397,8 @@ export default function DashboardScreen(): React.JSX.Element {
           </View>
         </View>
       )}
+
+      {renderSetupServicesPrompt()}
 
       {renderAvailabilityToggle()}
 
@@ -557,5 +623,77 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 32,
+  },
+  // Setup services prompt
+  setupCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 24,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  setupIcon: {
+    fontSize: 36,
+    marginBottom: 12,
+  },
+  setupTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.textPrimary,
+    marginBottom: 8,
+  },
+  setupText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center' as const,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  setupButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    alignItems: 'center' as const,
+  },
+  setupButtonText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.white,
+  },
+  // Offer action buttons
+  offerActions: {
+    flexDirection: 'row' as const,
+    justifyContent: 'flex-end' as const,
+    paddingHorizontal: 16,
+    marginTop: -4,
+    marginBottom: 12,
+    gap: 10,
+  },
+  declineButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  declineButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.error,
+  },
+  acceptButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    backgroundColor: Colors.success,
+  },
+  acceptButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.white,
   },
 });

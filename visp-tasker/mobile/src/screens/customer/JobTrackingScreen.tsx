@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -68,7 +69,7 @@ interface StatusStep {
 
 const STATUS_STEPS: StatusStep[] = [
   { status: 'pending', label: 'Searching', description: 'Looking for a provider near you' },
-  { status: 'matched', label: 'Matched', description: 'Provider assigned to your job' },
+  { status: 'matched', label: 'Matched', description: 'Provider has been assigned' },
   { status: 'en_route', label: 'En Route', description: 'Provider is on the way' },
   { status: 'arrived', label: 'Arrived', description: 'Provider has arrived at your location' },
   { status: 'in_progress', label: 'In Progress', description: 'Work is underway' },
@@ -81,15 +82,21 @@ const HOURLY_RATE = 75;
 
 // Map backend status to simplified tracking status
 function mapBackendStatus(backendStatus: string): TrackingStatus {
+  const normalized = backendStatus.toLowerCase();
   const map: Record<string, TrackingStatus> = {
     pending: 'pending',
     pending_match: 'pending',
     matched: 'matched',
+    pending_approval: 'matched',
+    scheduled: 'matched',
+    accepted: 'matched',
+    provider_accepted: 'matched',
+    en_route: 'en_route',
     provider_en_route: 'en_route',
     in_progress: 'in_progress',
     completed: 'completed',
   };
-  return map[backendStatus] ?? 'pending';
+  return map[normalized] ?? 'pending';
 }
 
 // ──────────────────────────────────────────────
@@ -230,10 +237,14 @@ function JobTrackingScreen(): React.JSX.Element {
 
   const isCompleted = currentStatus === 'completed';
   const isInProgress = currentStatus === 'in_progress';
-  const hasProvider = currentStatus === 'matched' || currentStatus === 'en_route';
-  const showMap = hasProvider && !isCompleted && !searchTimedOut;
+  // Use tracking providerName, or fall back to provider info from job detail
+  const jobProviderName = job?.provider
+    ? `${job.provider.firstName} ${job.provider.lastName}`.trim()
+    : null;
+  const hasProvider = tracking?.providerName != null || jobProviderName != null;
+  const showMap = (currentStatus !== 'pending' && currentStatus !== 'completed' && !searchTimedOut) || hasProvider;
 
-  const providerName = tracking?.providerName ?? 'Finding provider...';
+  const providerName = tracking?.providerName ?? jobProviderName ?? 'Finding provider...';
 
   const formattedTimer = useMemo(() => {
     const mins = Math.floor(elapsedSeconds / 60);
@@ -266,15 +277,17 @@ function JobTrackingScreen(): React.JSX.Element {
 
   // ── Handlers ─────────────────────────────
   const handleCall = useCallback(() => {
-    Alert.alert(
-      'Call Provider',
-      `Call ${providerName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: () => { } },
-      ],
-    );
-  }, [providerName]);
+    const phone = tracking?.providerPhone;
+    if (phone) {
+      Linking.openURL(`tel:${phone}`);
+    } else {
+      Alert.alert(
+        'Phone Unavailable',
+        'Provider phone number is not yet available.',
+        [{ text: 'OK' }],
+      );
+    }
+  }, [tracking?.providerPhone]);
 
   const handleMessage = useCallback(() => {
     navigation.navigate('Chat', {
@@ -449,27 +462,25 @@ function JobTrackingScreen(): React.JSX.Element {
                   />
 
                   {/* Customer destination marker */}
-                  <MapboxGL.PointAnnotation
+                  <MapboxGL.MarkerView
                     id="customer-marker"
                     coordinate={[customerLng, customerLat]}
-                    title="Your location"
                   >
                     <View style={styles.customerMarker}>
                       <View style={styles.customerMarkerInner} />
                     </View>
-                  </MapboxGL.PointAnnotation>
+                  </MapboxGL.MarkerView>
 
                   {/* Provider marker */}
                   {providerLat != null && providerLng != null && (
-                    <MapboxGL.PointAnnotation
+                    <MapboxGL.MarkerView
                       id="provider-marker"
                       coordinate={[providerLng, providerLat]}
-                      title={providerName}
                     >
                       <View style={styles.providerMarker}>
                         <Text style={styles.providerMarkerText}>🚗</Text>
                       </View>
-                    </MapboxGL.PointAnnotation>
+                    </MapboxGL.MarkerView>
                   )}
                 </MapboxGL.MapView>
 

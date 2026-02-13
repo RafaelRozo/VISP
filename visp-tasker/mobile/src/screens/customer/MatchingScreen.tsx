@@ -189,7 +189,19 @@ function MatchingScreen(): React.JSX.Element {
         [
           {
             text: 'OK',
-            onPress: () => navigation.goBack(),
+            onPress: () => {
+              // Navigate to CustomerHome in root stack
+              // MatchingScreen → CustomerNavigator → RootStack
+              const rootNav = navigation.getParent();
+              if (rootNav) {
+                rootNav.reset({
+                  index: 0,
+                  routes: [{ name: 'CustomerHome' as any }],
+                });
+              } else {
+                navigation.goBack();
+              }
+            },
           },
         ],
       );

@@ -191,6 +191,7 @@ export default function ProfileScreen(): React.JSX.Element {
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+52');
   const [isSaving, setIsSaving] = useState(false);
 
   // Update local edit state when user changes (e.g. after save)
@@ -198,7 +199,20 @@ export default function ProfileScreen(): React.JSX.Element {
     if (user) {
       setEditFirstName(user.firstName);
       setEditLastName(user.lastName);
-      setEditPhone(user.phone || '');
+      // Parse country code from stored phone (e.g. "+526142545794" or "+52 6142545794")
+      const rawPhone = user.phone || '';
+      const knownCodes = ['+52', '+57', '+54', '+44', '+34', '+1'];
+      let foundCode = '+52'; // default
+      let phoneNumber = rawPhone;
+      for (const code of knownCodes) {
+        if (rawPhone.startsWith(code)) {
+          foundCode = code;
+          phoneNumber = rawPhone.slice(code.length).replace(/^\s+/, '');
+          break;
+        }
+      }
+      setCountryCode(foundCode);
+      setEditPhone(phoneNumber);
     }
   }, [user]);
 
@@ -224,17 +238,18 @@ export default function ProfileScreen(): React.JSX.Element {
     if (!user) return;
     setIsSaving(true);
     try {
+      const fullPhone = editPhone ? `${countryCode}${editPhone}` : '';
       await patch('/users/me', {
         firstName: editFirstName,
         lastName: editLastName,
-        phone: editPhone,
+        phone: fullPhone,
       });
       // Update store
       setUser({
         ...user,
         firstName: editFirstName,
         lastName: editLastName,
-        phone: editPhone,
+        phone: fullPhone,
       });
       setIsEditing(false);
     } catch {
@@ -242,7 +257,7 @@ export default function ProfileScreen(): React.JSX.Element {
     } finally {
       setIsSaving(false);
     }
-  }, [editFirstName, editLastName, editPhone, user, setUser]);
+  }, [editFirstName, editLastName, editPhone, countryCode, user, setUser]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Logout', 'Are you sure you want to log out?', [
@@ -293,14 +308,49 @@ export default function ProfileScreen(): React.JSX.Element {
               autoCapitalize="words"
             />
             <Text style={styles.fieldLabel}>Phone</Text>
-            <TextInput
-              style={styles.input}
-              value={editPhone}
-              onChangeText={setEditPhone}
-              placeholder="Phone number"
-              placeholderTextColor={Colors.inputPlaceholder}
-              keyboardType="phone-pad"
-            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: Colors.inputBackground,
+                  borderWidth: 1,
+                  borderColor: Colors.inputBorder,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  justifyContent: 'center',
+                  minWidth: 90,
+                }}
+                onPress={() => {
+                  const codes = [
+                    { label: '🇲🇽 +52', value: '+52' },
+                    { label: '🇺🇸 +1', value: '+1' },
+                    { label: '🇨🇦 +1', value: '+1' },
+                    { label: '🇬🇧 +44', value: '+44' },
+                    { label: '🇪🇸 +34', value: '+34' },
+                    { label: '🇨🇴 +57', value: '+57' },
+                    { label: '🇦🇷 +54', value: '+54' },
+                  ];
+                  Alert.alert('Select Country Code', '', codes.map(c => ({
+                    text: c.label,
+                    onPress: () => setCountryCode(c.value),
+                  })));
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Select country code"
+              >
+                <Text style={{ fontSize: 15, color: Colors.textPrimary, fontWeight: '500' }}>
+                  {countryCode}
+                </Text>
+              </TouchableOpacity>
+              <TextInput
+                style={[styles.input, { flex: 1, marginTop: 0 }]}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="Phone number"
+                placeholderTextColor={Colors.inputPlaceholder}
+                keyboardType="phone-pad"
+              />
+            </View>
             <View style={styles.editActions}>
               <TouchableOpacity
                 style={styles.cancelButton}

@@ -34,7 +34,9 @@ class JobStatus(str, enum.Enum):
     DRAFT = "draft"
     PENDING_MATCH = "pending_match"
     MATCHED = "matched"
-    PROVIDER_ACCEPTED = "provider_accepted"
+    PENDING_APPROVAL = "pending_approval"      # provider interested, customer reviewing
+    SCHEDULED = "scheduled"                    # customer approved, waiting for job day
+    PROVIDER_ACCEPTED = "provider_accepted"    # legacy / direct accept
     PROVIDER_EN_ROUTE = "provider_en_route"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"

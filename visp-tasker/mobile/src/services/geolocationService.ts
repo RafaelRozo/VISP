@@ -1,5 +1,123 @@
+import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import Geolocation from '@react-native-community/geolocation';
 import apiClient from './apiClient';
 
+// ─── Native Device Location ─────────────────────────────────────────────────
+
+export interface DevicePosition {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    timestamp: number;
+}
+
+/**
+ * Request location permission from the user.
+ * Returns true if permission was granted.
+ */
+export async function requestLocationPermission(): Promise<boolean> {
+    if (Platform.OS === 'ios') {
+        // iOS: requestAuthorization triggers the native permission dialog
+        return new Promise((resolve) => {
+            Geolocation.requestAuthorization(
+                () => resolve(true),                    // success
+                () => resolve(false),                   // error
+            );
+        });
+    }
+
+    // Android
+    try {
+        const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+                title: 'Location Permission',
+                message: 'Taskr needs access to your location to find nearby providers.',
+                buttonPositive: 'Allow',
+                buttonNegative: 'Deny',
+            },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Get the device's current GPS position.
+ */
+export function getCurrentPosition(): Promise<DevicePosition> {
+    return new Promise((resolve, reject) => {
+        Geolocation.getCurrentPosition(
+            (pos) => {
+                resolve({
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy ?? 0,
+                    timestamp: pos.timestamp,
+                });
+            },
+            (err) => reject(err),
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 10000,
+            },
+        );
+    });
+}
+
+/**
+ * Watch the device position for continuous tracking.
+ * Returns a watchId that can be used to clear the watch.
+ */
+export function watchPosition(
+    onUpdate: (pos: DevicePosition) => void,
+    onError?: (err: any) => void,
+): number {
+    return Geolocation.watchPosition(
+        (pos) => {
+            onUpdate({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy ?? 0,
+                timestamp: pos.timestamp,
+            });
+        },
+        onError ?? (() => { }),
+        {
+            enableHighAccuracy: true,
+            distanceFilter: 10,   // metres between updates
+            interval: 5000,       // Android only: ms between updates
+            fastestInterval: 2000,
+        },
+    );
+}
+
+/**
+ * Stop watching a position.
+ */
+export function clearWatch(watchId: number): void {
+    Geolocation.clearWatch(watchId);
+}
+
+/**
+ * Get device GPS position and send to backend to save.
+ * Updates both users.last_latitude/longitude and provider_profiles.home_latitude/longitude.
+ */
+export async function saveUserLocation(): Promise<void> {
+    try {
+        const pos = await getCurrentPosition();
+        await apiClient.post('/users/me/location', {
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+        });
+    } catch (err) {
+        console.warn('Failed to save user location:', err);
+    }
+}
+
+// ─── Backend Geo API ────────────────────────────────────────────────────────
 export interface GeocodeResult {
     lat: number;
     lng: number;

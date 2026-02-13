@@ -61,9 +61,11 @@ class PaginatedResponse(BaseModel):
 
 class ProviderStatusUpdateRequest(BaseModel):
     """Request body for updating provider availability status."""
-    status: str = Field(
+    isOnline: Optional[bool] = None
+    status: Optional[str] = Field(
+        default=None,
         pattern=r"^(ONLINE|OFFLINE|ON_CALL|BUSY)$",
-        description="Provider availability status",
+        description="Provider availability status (legacy)",
     )
 
 
@@ -119,6 +121,8 @@ class ProviderDashboardOut(BaseModel):
 
 class OfferTaskInfo(BaseModel):
     """Task metadata within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     id: uuid.UUID
     name: str
     level: str
@@ -127,6 +131,8 @@ class OfferTaskInfo(BaseModel):
 
 class OfferCustomerInfo(BaseModel):
     """Minimal customer info within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     id: uuid.UUID
     display_name: Optional[str] = Field(default=None, alias="displayName")
     rating: Optional[Decimal] = None
@@ -134,6 +140,8 @@ class OfferCustomerInfo(BaseModel):
 
 class OfferPricingInfo(BaseModel):
     """Pricing details within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     quoted_price_cents: Optional[int] = Field(default=None, alias="quotedPriceCents")
     commission_rate: Optional[Decimal] = Field(default=None, alias="commissionRate")
     estimated_payout_cents: Optional[int] = Field(default=None, alias="estimatedPayoutCents")
@@ -142,6 +150,8 @@ class OfferPricingInfo(BaseModel):
 
 class OfferSLAInfo(BaseModel):
     """SLA targets within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     response_time_min: Optional[int] = Field(default=None, alias="responseTimeMin")
     arrival_time_min: Optional[int] = Field(default=None, alias="arrivalTimeMin")
     completion_time_min: Optional[int] = Field(default=None, alias="completionTimeMin")
@@ -149,7 +159,7 @@ class OfferSLAInfo(BaseModel):
 
 class JobOfferOut(BaseModel):
     """A pending job offer for a provider."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     assignment_id: uuid.UUID = Field(alias="assignmentId")
     job_id: uuid.UUID = Field(alias="jobId")
@@ -188,7 +198,7 @@ class OfferRejectRequest(BaseModel):
 
 class AssignmentOut(BaseModel):
     """Assignment record after accepting an offer."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     job_id: uuid.UUID = Field(alias="jobId")
@@ -237,7 +247,7 @@ class EarningsSummaryOut(BaseModel):
 
 class UpcomingJobOut(BaseModel):
     """An upcoming scheduled job."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     job_id: uuid.UUID = Field(alias="jobId")
     reference_number: str = Field(alias="referenceNumber")
@@ -253,7 +263,7 @@ class UpcomingJobOut(BaseModel):
 
 class OnCallShiftOut(BaseModel):
     """An on-call shift."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     shift_start: datetime = Field(alias="shiftStart")
@@ -324,11 +334,14 @@ class CredentialsSummaryOut(BaseModel):
 
 class JobTrackingOut(BaseModel):
     """Real-time job tracking information."""
+    model_config = ConfigDict(populate_by_name=True)
     provider_lat: Optional[Decimal] = Field(default=None, alias="providerLat")
     provider_lng: Optional[Decimal] = Field(default=None, alias="providerLng")
     eta_minutes: Optional[int] = Field(default=None, alias="etaMinutes")
     status: str
     provider_name: Optional[str] = Field(default=None, alias="providerName")
+    provider_phone: Optional[str] = Field(default=None, alias="providerPhone")
+    provider_level: Optional[str] = Field(default=None, alias="providerLevel")
     updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
 

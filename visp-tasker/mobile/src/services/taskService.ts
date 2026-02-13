@@ -378,7 +378,7 @@ async function getActiveJobs(): Promise<Job[]> {
     taskId: j.taskId,
     taskName: j.taskName ?? j.referenceNumber ?? 'Job',
     categoryName: j.categoryName ?? '',
-    status: (j.status ?? 'pending').replace(/_/g, '_') as JobStatus,
+    status: ((j.status ?? 'pending') as string).toLowerCase() as JobStatus,
     level: 1 as ServiceLevel,
     scheduledAt: j.scheduledAt ?? null,
     startedAt: j.startedAt ?? null,
@@ -406,15 +406,17 @@ async function getJobDetail(jobId: string): Promise<Job> {
   const data = response.data?.data ?? response.data;
   const j = data?.job ?? data;
 
-  // Backend JobOut uses snake_case; fallback to camelCase for safety
+  // Read provider from /jobs/{id} response
+  const providerInfo = data?.provider ?? null;
+
   return {
     id: j.id,
     customerId: j.customer_id ?? j.customerId ?? '',
-    providerId: null,
+    providerId: providerInfo?.id ?? null,
     taskId: j.task_id ?? j.taskId ?? '',
     taskName: j.task_name ?? j.taskName ?? j.reference_number ?? j.referenceNumber ?? 'Job',
     categoryName: j.category_name ?? j.categoryName ?? '',
-    status: (j.status ?? 'pending') as JobStatus,
+    status: ((j.status ?? 'pending') as string).toLowerCase() as JobStatus,
     level: 1 as ServiceLevel,
     scheduledAt: j.scheduled_at ?? j.scheduledAt ?? null,
     startedAt: j.started_at ?? j.startedAt ?? null,
@@ -423,7 +425,14 @@ async function getJobDetail(jobId: string): Promise<Job> {
     finalPrice: (j.final_price_cents ?? j.finalPriceCents)
       ? (j.final_price_cents ?? j.finalPriceCents) / 100
       : null,
-    provider: null,
+    provider: providerInfo ? {
+      id: providerInfo.id,
+      firstName: (providerInfo.displayName ?? 'Provider').split(' ')[0],
+      lastName: (providerInfo.displayName ?? '').split(' ').slice(1).join(' ') || '',
+      avatarUrl: providerInfo.avatarUrl ?? null,
+      rating: providerInfo.rating ?? 0,
+      completedJobs: providerInfo.completedJobs ?? 0,
+    } : null,
     address: {
       street: j.service_address ?? j.serviceAddress ?? '',
       city: j.service_city ?? j.serviceCity ?? '',
@@ -449,17 +458,41 @@ async function getJobTracking(jobId: string): Promise<JobTrackingData> {
     etaMinutes: data.etaMinutes ?? null,
     status: data.status ?? 'unknown',
     providerName: data.providerName ?? null,
+    providerPhone: data.providerPhone ?? null,
+    providerLevel: data.providerLevel ?? null,
     updatedAt: data.updatedAt ?? null,
   };
 }
 
-// ──────────────────────────────────────────────
-// Export
-// ──────────────────────────────────────────────
-
-// ...
 async function queueJob(jobId: string): Promise<void> {
   await apiClient.post(`/jobs/${jobId}/queue`);
+}
+
+// ──────────────────────────────────────────────
+// Customer Provider Approval
+// ──────────────────────────────────────────────
+
+interface PendingProviderInfo {
+  providerId: string;
+  displayName: string;
+  level: number;
+  yearsExperience: number | null;
+  rating: number | null;
+  profilePhotoUrl: string | null;
+  bio: string | null;
+}
+
+async function getPendingProvider(jobId: string): Promise<PendingProviderInfo | null> {
+  const resp = await apiClient.get<{ data: PendingProviderInfo | null }>(`/jobs/${jobId}/pending-provider`);
+  return resp.data?.data ?? null;
+}
+
+async function approveProvider(jobId: string): Promise<void> {
+  await apiClient.post(`/jobs/${jobId}/approve-provider`);
+}
+
+async function rejectProvider(jobId: string): Promise<void> {
+  await apiClient.post(`/jobs/${jobId}/reject-provider`);
 }
 
 export const taskService = {
@@ -474,6 +507,9 @@ export const taskService = {
   getJobDetail,
   getJobTracking,
   queueJob,
+  getPendingProvider,
+  approveProvider,
+  rejectProvider,
 };
 
 export default taskService;

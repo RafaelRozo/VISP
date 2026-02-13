@@ -69,8 +69,22 @@ VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.CANCELLED_BY_SYSTEM,
     },
     JobStatus.MATCHED: {
-        JobStatus.PROVIDER_ACCEPTED,
-        JobStatus.PENDING_MATCH,  # provider declined, re-enter matching
+        JobStatus.PENDING_APPROVAL,    # provider interested → customer reviews
+        JobStatus.PROVIDER_ACCEPTED,   # legacy / direct accept fallback
+        JobStatus.PENDING_MATCH,       # provider declined, re-enter matching
+        JobStatus.CANCELLED_BY_CUSTOMER,
+        JobStatus.CANCELLED_BY_PROVIDER,
+        JobStatus.CANCELLED_BY_SYSTEM,
+    },
+    JobStatus.PENDING_APPROVAL: {
+        JobStatus.SCHEDULED,           # customer approved the provider
+        JobStatus.MATCHED,             # customer rejected → re-match
+        JobStatus.CANCELLED_BY_CUSTOMER,
+        JobStatus.CANCELLED_BY_PROVIDER,
+        JobStatus.CANCELLED_BY_SYSTEM,
+    },
+    JobStatus.SCHEDULED: {
+        JobStatus.PROVIDER_EN_ROUTE,   # provider starts navigating on job day
         JobStatus.CANCELLED_BY_CUSTOMER,
         JobStatus.CANCELLED_BY_PROVIDER,
         JobStatus.CANCELLED_BY_SYSTEM,
@@ -116,6 +130,8 @@ _CUSTOMER_CANCELLABLE: frozenset[JobStatus] = frozenset({
     JobStatus.DRAFT,
     JobStatus.PENDING_MATCH,
     JobStatus.MATCHED,
+    JobStatus.PENDING_APPROVAL,
+    JobStatus.SCHEDULED,
 })
 
 # Statuses in which the provider can cancel (after they have been involved)

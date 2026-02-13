@@ -67,6 +67,9 @@ interface ProviderState {
   acceptOffer: (offerId: string) => Promise<void>;
   declineOffer: (offerId: string) => Promise<void>;
   updateJobStatus: (jobId: string, status: JobStatus) => Promise<void>;
+  startNavigation: (jobId: string) => Promise<void>;
+  arriveAtJob: (jobId: string) => Promise<void>;
+  completeJob: (jobId: string) => Promise<void>;
   fetchActiveJob: (jobId: string) => Promise<void>;
   clearError: () => void;
   reset: () => void;
@@ -165,67 +168,58 @@ function createMockOffers(): JobOffer[] {
   const now = Date.now();
   return [
     {
-      id: 'offer-001',
+      assignmentId: 'assign-001',
       jobId: 'job-pending-001',
-      taskName: 'Bathroom Cleaning - Deep',
-      categoryName: 'Cleaning',
-      level: 1,
-      customerArea: 'North York, ON',
+      referenceNumber: 'TSK-MOCK01',
+      status: 'offered',
+      isEmergency: false,
+      serviceAddress: '456 Elm Avenue',
+      serviceCity: 'North York',
+      serviceLatitude: 43.7615,
+      serviceLongitude: -79.4111,
+      task: { id: 'task-001', name: 'Bathroom Cleaning - Deep', level: '1', categoryName: 'Cleaning' },
+      customer: { id: 'cust-001', displayName: 'John Smith', rating: 4.5 },
+      pricing: { quotedPriceCents: 6000, commissionRate: 0.25, estimatedPayoutCents: 4500, currency: 'CAD' },
+      sla: { responseTimeMin: 30, arrivalTimeMin: 60, completionTimeMin: 120 },
       distanceKm: 3.2,
-      estimatedPrice: 45.0,
-      slaDeadline: null,
-      expiresAt: new Date(now + 10 * 60 * 1000).toISOString(),
-      address: {
-        street: '456 Elm Avenue',
-        city: 'North York',
-        province: 'ON',
-        postalCode: 'M2N 6K1',
-        latitude: 43.7615,
-        longitude: -79.4111,
-      },
-      createdAt: new Date(now - 2 * 60 * 1000).toISOString(),
+      offeredAt: new Date(now - 2 * 60 * 1000).toISOString(),
+      offerExpiresAt: new Date(now + 10 * 60 * 1000).toISOString(),
     },
     {
-      id: 'offer-002',
+      assignmentId: 'assign-002',
       jobId: 'job-pending-002',
-      taskName: 'Ceiling Fan Installation',
-      categoryName: 'Electrical',
-      level: 2,
-      customerArea: 'Scarborough, ON',
+      referenceNumber: 'TSK-MOCK02',
+      status: 'offered',
+      isEmergency: false,
+      serviceAddress: '789 Kennedy Road',
+      serviceCity: 'Scarborough',
+      serviceLatitude: 43.7315,
+      serviceLongitude: -79.2631,
+      task: { id: 'task-002', name: 'Ceiling Fan Installation', level: '2', categoryName: 'Electrical' },
+      customer: { id: 'cust-002', displayName: 'Jane Doe', rating: 4.8 },
+      pricing: { quotedPriceCents: 16000, commissionRate: 0.20, estimatedPayoutCents: 12000, currency: 'CAD' },
+      sla: { responseTimeMin: null as any, arrivalTimeMin: null as any, completionTimeMin: null as any },
       distanceKm: 8.7,
-      estimatedPrice: 120.0,
-      slaDeadline: null,
-      expiresAt: new Date(now + 15 * 60 * 1000).toISOString(),
-      address: {
-        street: '789 Kennedy Road',
-        city: 'Scarborough',
-        province: 'ON',
-        postalCode: 'M1K 2C3',
-        latitude: 43.7315,
-        longitude: -79.2631,
-      },
-      createdAt: new Date(now - 5 * 60 * 1000).toISOString(),
+      offeredAt: new Date(now - 5 * 60 * 1000).toISOString(),
+      offerExpiresAt: new Date(now + 15 * 60 * 1000).toISOString(),
     },
     {
-      id: 'offer-003',
+      assignmentId: 'assign-003',
       jobId: 'job-pending-003',
-      taskName: 'Emergency Pipe Burst Repair',
-      categoryName: 'Plumbing',
-      level: 4,
-      customerArea: 'Etobicoke, ON',
+      referenceNumber: 'TSK-MOCK03',
+      status: 'offered',
+      isEmergency: true,
+      serviceAddress: '100 The Queensway',
+      serviceCity: 'Etobicoke',
+      serviceLatitude: 43.6291,
+      serviceLongitude: -79.4951,
+      task: { id: 'task-003', name: 'Emergency Pipe Burst Repair', level: '4', categoryName: 'Plumbing' },
+      customer: { id: 'cust-003', displayName: 'Bob Wilson' },
+      pricing: { quotedPriceCents: 35000, commissionRate: 0.15, estimatedPayoutCents: 25000, currency: 'CAD' },
+      sla: { responseTimeMin: 15, arrivalTimeMin: 30, completionTimeMin: 60 },
       distanceKm: 5.1,
-      estimatedPrice: 250.0,
-      slaDeadline: new Date(now + 45 * 60 * 1000).toISOString(),
-      expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
-      address: {
-        street: '100 The Queensway',
-        city: 'Etobicoke',
-        province: 'ON',
-        postalCode: 'M8Z 1N6',
-        latitude: 43.6291,
-        longitude: -79.4951,
-      },
-      createdAt: new Date(now - 1 * 60 * 1000).toISOString(),
+      offeredAt: new Date(now - 1 * 60 * 1000).toISOString(),
+      offerExpiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
     },
   ];
 }
@@ -424,9 +418,11 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
   fetchOffers: async () => {
     set({ isLoadingOffers: true, error: null });
     try {
-      const offers = await get<JobOffer[]>('/provider/offers');
+      const response = await get<{ items: JobOffer[] }>('/provider/offers');
+      const offers = response?.items ?? (Array.isArray(response) ? response : []);
       set({ pendingOffers: offers, isLoadingOffers: false });
     } catch (err: unknown) {
+      console.error('[fetchOffers] ERROR:', err);
       set({
         isLoadingOffers: false,
         error: extractErrorMessage(err),
@@ -461,13 +457,50 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
     set({ isLoadingSchedule: true, error: null });
     try {
       const data = await get<{
-        scheduledJobs: ScheduledJob[];
-        onCallShifts: OnCallShift[];
+        upcoming: Array<{
+          jobId: string;
+          referenceNumber: string;
+          status: string;
+          serviceAddress: string | null;
+          serviceCity: string | null;
+          requestedDate: string | null;
+          requestedTimeStart: string | null;
+          requestedTimeEnd: string | null;
+          taskName: string | null;
+          isEmergency: boolean;
+        }>;
+        shifts: OnCallShift[];
       }>('/provider/schedule');
 
+      // Map backend "upcoming" to ScheduledJob shape expected by ScheduleScreen
+      const scheduledJobs: ScheduledJob[] = (data.upcoming || []).map((j) => {
+        // Build scheduledAt from requestedDate + requestedTimeStart.
+        // IMPORTANT: "2026-02-14" alone is parsed as UTC midnight which shifts
+        // to the previous day in negative UTC offsets. Appending T00:00:00 forces
+        // local-timezone interpretation.
+        let scheduledAt: string;
+        if (j.requestedDate && j.requestedTimeStart) {
+          scheduledAt = `${j.requestedDate}T${j.requestedTimeStart}`;
+        } else if (j.requestedDate) {
+          scheduledAt = `${j.requestedDate}T00:00:00`;
+        } else {
+          scheduledAt = new Date().toISOString();
+        }
+
+        return {
+          id: j.jobId,
+          taskName: j.taskName || 'Job',
+          customerArea: j.serviceCity || j.serviceAddress || '',
+          status: j.status as any,
+          scheduledAt,
+          estimatedDurationMinutes: 60,
+          level: 1 as any,
+        };
+      });
+
       set({
-        scheduledJobs: data.scheduledJobs,
-        onCallShifts: data.onCallShifts,
+        scheduledJobs,
+        onCallShifts: data.shifts || [],
         isLoadingSchedule: false,
       });
     } catch (err: unknown) {
@@ -510,43 +543,82 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
     }
   },
 
-  acceptOffer: async (offerId: string) => {
+  acceptOffer: async (jobId: string) => {
     set({ error: null });
     try {
-      const job = await post<Job>(`/provider/offers/${offerId}/accept`);
+      // Backend returns {assignment: AssignmentOut}, not a Job object
+      await post(`/provider/offers/${jobId}/accept`);
       set((state) => ({
-        activeJob: job,
-        pendingOffers: state.pendingOffers.filter((o) => o.id !== offerId),
+        pendingOffers: state.pendingOffers.filter((o) => o.jobId !== jobId),
+      }));
+      // Refresh dashboard, schedule, and offers so the accepted job
+      // shows up in the correct tab (Schedule) rather than disappearing.
+      getState().fetchDashboard();
+      getState().fetchSchedule();
+    } catch (err: unknown) {
+      console.error('[acceptOffer] ERROR:', err);
+      set({ error: extractErrorMessage(err) });
+    }
+  },
+
+  declineOffer: async (jobId: string) => {
+    set({ error: null });
+    try {
+      await post(`/provider/offers/${jobId}/reject`);
+      set((state) => ({
+        pendingOffers: state.pendingOffers.filter((o) => o.jobId !== jobId),
       }));
     } catch (err: unknown) {
       set({ error: extractErrorMessage(err) });
     }
   },
 
-  declineOffer: async (offerId: string) => {
-    set({ error: null });
-    try {
-      await post(`/provider/offers/${offerId}/decline`);
-      set((state) => ({
-        pendingOffers: state.pendingOffers.filter((o) => o.id !== offerId),
-      }));
-    } catch (err: unknown) {
-      set({ error: extractErrorMessage(err) });
-    }
-  },
-
-  updateJobStatus: async (jobId: string, status: JobStatus) => {
+  updateJobStatus: async (jobId: string, newStatus: JobStatus) => {
     set({ error: null });
     try {
       const updatedJob = await patch<Job>(`/provider/jobs/${jobId}/status`, {
-        status,
+        status: newStatus,
       });
-      if (status === 'completed') {
+      if (newStatus === 'completed') {
         set({ activeJob: null });
       } else {
         set({ activeJob: updatedJob });
       }
     } catch (err: unknown) {
+      set({ error: extractErrorMessage(err) });
+    }
+  },
+
+  startNavigation: async (jobId: string) => {
+    set({ error: null });
+    try {
+      await post(`/provider/jobs/${jobId}/en-route`);
+      getState().fetchDashboard();
+    } catch (err: unknown) {
+      console.error('[startNavigation] ERROR:', err);
+      set({ error: extractErrorMessage(err) });
+    }
+  },
+
+  arriveAtJob: async (jobId: string) => {
+    set({ error: null });
+    try {
+      await post(`/provider/jobs/${jobId}/arrive`);
+      getState().fetchDashboard();
+    } catch (err: unknown) {
+      console.error('[arriveAtJob] ERROR:', err);
+      set({ error: extractErrorMessage(err) });
+    }
+  },
+
+  completeJob: async (jobId: string) => {
+    set({ error: null });
+    try {
+      await post(`/provider/jobs/${jobId}/complete`);
+      set({ activeJob: null });
+      getState().fetchDashboard();
+    } catch (err: unknown) {
+      console.error('[completeJob] ERROR:', err);
       set({ error: extractErrorMessage(err) });
     }
   },

@@ -20,10 +20,10 @@ interface AppConfig {
 }
 
 const DEV_CONFIG: AppConfig = {
-  apiBaseUrl: 'http://192.168.1.94:8000/api/v1',
-  wsBaseUrl: 'ws://192.168.1.94:8000',
+  apiBaseUrl: 'https://api.richieyanez.com/api/v1',
+  wsBaseUrl: 'wss://api.richieyanez.com',
   googleMapsApiKey: '',
-  mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN || '',
+  mapboxAccessToken: '', // MAPBOX_KEY_REMOVED_FOR_GIT
   stripePublishableKey: '',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',

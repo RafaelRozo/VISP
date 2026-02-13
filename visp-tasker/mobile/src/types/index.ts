@@ -92,13 +92,23 @@ export interface ServiceTask {
 
 export type JobStatus =
   | 'pending'
+  | 'draft'
+  | 'pending_match'
   | 'matched'
+  | 'pending_approval'
+  | 'scheduled'
   | 'accepted'
+  | 'provider_accepted'
   | 'en_route'
+  | 'provider_en_route'
   | 'in_progress'
   | 'completed'
   | 'cancelled'
-  | 'disputed';
+  | 'cancelled_by_customer'
+  | 'cancelled_by_provider'
+  | 'cancelled_by_system'
+  | 'disputed'
+  | 'refunded';
 
 export interface Job {
   id: string;
@@ -180,19 +190,51 @@ export interface PaginatedResponse<T> {
 // Job Offers (Provider)
 // ──────────────────────────────────────────────
 
-export interface JobOffer {
+export interface OfferTaskInfo {
   id: string;
+  name: string;
+  level: string;
+  categoryName?: string;
+}
+
+export interface OfferCustomerInfo {
+  id: string;
+  displayName?: string;
+  rating?: number;
+}
+
+export interface OfferPricingInfo {
+  quotedPriceCents?: number;
+  commissionRate?: number;
+  estimatedPayoutCents?: number;
+  currency: string;
+}
+
+export interface OfferSLAInfo {
+  responseTimeMin?: number;
+  arrivalTimeMin?: number;
+  completionTimeMin?: number;
+}
+
+export interface JobOffer {
+  assignmentId: string;
   jobId: string;
-  taskName: string;
-  categoryName: string;
-  level: ServiceLevel;
-  customerArea: string;
-  distanceKm: number;
-  estimatedPrice: number;
-  slaDeadline: string | null;
-  expiresAt: string;
-  address: JobAddress;
-  createdAt: string;
+  referenceNumber: string;
+  status: string;
+  isEmergency: boolean;
+  serviceAddress: string;
+  serviceCity?: string;
+  serviceLatitude: number;
+  serviceLongitude: number;
+  requestedDate?: string;
+  requestedTimeStart?: string;
+  task: OfferTaskInfo;
+  customer: OfferCustomerInfo;
+  pricing: OfferPricingInfo;
+  sla: OfferSLAInfo;
+  distanceKm?: number;
+  offeredAt: string;
+  offerExpiresAt?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -348,7 +390,7 @@ export interface ChatMessage {
 
 export type ProviderTabParamList = {
   Dashboard: undefined;
-  JobOffers: undefined;
+  JobsTab: undefined;
   ActiveJob: { jobId: string };
   Earnings: undefined;
   Schedule: undefined;
@@ -570,6 +612,8 @@ export interface JobTrackingData {
   etaMinutes: number | null;
   status: string;
   providerName: string | null;
+  providerPhone: string | null;
+  providerLevel: string | null;
   updatedAt: string | null;
 }
 

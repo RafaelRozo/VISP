@@ -50,10 +50,29 @@ from src.api.schemas.provider import (
     DataResponse,
     ProviderCategoryOut,
 )
-from src.services import providerService, taxonomy_service
+from src.services import providerService, taxonomy_service, jobService
 
 
 router = APIRouter(prefix="/provider", tags=["Provider"])
+
+# Backend enums use provider_accepted / provider_en_route but mobile expects
+# simplified names.
+_MOBILE_STATUS_MAP: dict[str, str] = {
+    "pending_match": "pending_match",
+    "matched": "matched",
+    "pending_approval": "pending_approval",
+    "scheduled": "scheduled",
+    "provider_accepted": "accepted",
+    "provider_en_route": "en_route",
+    "in_progress": "in_progress",
+    "completed": "completed",
+    "cancelled_by_customer": "cancelled",
+    "cancelled_by_provider": "cancelled",
+    "cancelled_by_system": "cancelled",
+}
+
+def _mobile_status(backend_status: str) -> str:
+    return _MOBILE_STATUS_MAP.get(backend_status, backend_status)
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +182,7 @@ async def get_dashboard(
         "userId": str(profile.user_id),
         "level": level_int,
         "performanceScore": float(profile.internal_score) if profile.internal_score else 0,
-        "isOnline": False,  # TODO: read from availability status
+        "isOnline": profile.is_online,
         "isOnCall": False,
         "completedJobs": 0,  # TODO: count from job_assignments
         "rating": 0.0,  # TODO: compute from reviews
@@ -171,10 +190,94 @@ async def get_dashboard(
         "credentials": creds_out,
     }
 
+    # 3. Active job — find the most recent accepted/en_route/in_progress assignment
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    active_assignment_stmt = (
+        sa_select(JobAssignment)
+        .where(
+            JobAssignment.provider_id == profile.id,
+            JobAssignment.status.in_([
+                AssignmentStatus.ACCEPTED,
+            ]),
+        )
+        .order_by(JobAssignment.responded_at.desc())
+        .limit(1)
+    )
+    active_assignment = (await db.execute(active_assignment_stmt)).scalar_one_or_none()
+
+    active_job_out = None
+    if active_assignment:
+        job_stmt = sa_select(Job).where(Job.id == active_assignment.job_id)
+        active_job = (await db.execute(job_stmt)).scalar_one_or_none()
+        if active_job and active_job.status in (
+            JobStatus.PENDING_APPROVAL,
+            JobStatus.SCHEDULED,
+            JobStatus.PROVIDER_ACCEPTED,
+            JobStatus.PROVIDER_EN_ROUTE,
+            JobStatus.IN_PROGRESS,
+        ):
+            from src.models.service import ServiceTask
+            task_stmt = sa_select(ServiceTask).where(ServiceTask.id == active_job.task_id)
+            task = (await db.execute(task_stmt)).scalar_one_or_none()
+
+            active_job_out = {
+                "id": str(active_job.id),
+                "referenceNumber": active_job.reference_number,
+                "status": _mobile_status(active_job.status.value),
+                "taskName": task.name if task else "Service",
+                "categoryName": task.category.name if task and hasattr(task, 'category') and task.category else None,
+                "serviceAddress": active_job.service_address,
+                "serviceCity": active_job.service_city,
+                "address": {
+                    "street": active_job.service_address or "",
+                    "city": active_job.service_city or "",
+                    "latitude": float(active_job.service_latitude) if active_job.service_latitude else 0,
+                    "longitude": float(active_job.service_longitude) if active_job.service_longitude else 0,
+                },
+                "isEmergency": active_job.is_emergency,
+                "quotedPriceCents": active_job.quoted_price_cents,
+                "startedAt": active_job.started_at.isoformat() if active_job.started_at else None,
+                "completedAt": active_job.completed_at.isoformat() if active_job.completed_at else None,
+            }
+
+    # 4. Pending offers — reuse the offers logic
+    try:
+        raw_offers = await providerService.get_pending_offers(db, profile.id)
+        from src.api.schemas.provider import (
+            JobOfferOut, OfferTaskInfo, OfferCustomerInfo,
+            OfferPricingInfo, OfferSLAInfo,
+        )
+        pending_offers_out = []
+        for offer in raw_offers:
+            item = JobOfferOut(
+                assignment_id=offer["assignment_id"],
+                job_id=offer["job_id"],
+                reference_number=offer["reference_number"],
+                status=offer["status"],
+                is_emergency=offer["is_emergency"],
+                service_address=offer["service_address"],
+                service_city=offer["service_city"],
+                service_latitude=offer["service_latitude"],
+                service_longitude=offer["service_longitude"],
+                requested_date=offer["requested_date"],
+                requested_time_start=offer["requested_time_start"],
+                task=OfferTaskInfo(**offer["task"]),
+                customer=OfferCustomerInfo(**offer["customer"]),
+                pricing=OfferPricingInfo(**offer["pricing"]),
+                sla=OfferSLAInfo(**offer["sla"]),
+                distance_km=offer["distance_km"],
+                offered_at=offer["offered_at"],
+                offer_expires_at=offer["offer_expires_at"],
+            )
+            pending_offers_out.append(item.model_dump(by_alias=True))
+    except Exception:
+        pending_offers_out = []
+
     return {"data": {
         "profile": profile_out,
-        "activeJob": None,  # TODO: query active assignments
-        "pendingOffers": [],  # TODO: query pending offers
+        "activeJob": active_job_out,
+        "pendingOffers": pending_offers_out,
         "earnings": {
             "today": 0,
             "thisWeek": 0,
@@ -395,34 +498,232 @@ async def reject_offer(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /api/v1/provider/status
+# GET /api/v1/provider/jobs/{job_id}
 # ---------------------------------------------------------------------------
 
-@router.patch(
-    "/status",
-    summary="Update provider availability status",
-    description="Set the provider's availability status: ONLINE, OFFLINE, ON_CALL, or BUSY.",
+@router.get(
+    "/jobs/{job_id}",
+    summary="Get active job details",
+    description="Fetch full details of a job assigned to this provider.",
 )
-async def update_status(
+async def get_job_detail(
     db: DBSession,
     user: CurrentUser,
-    body: ProviderStatusUpdateRequest,
+    job_id: uuid.UUID,
 ) -> dict[str, Any]:
+    from src.models.job import Job, JobAssignment
+    from src.models.service import ServiceTask
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import selectinload
+
     try:
-        profile = await providerService.get_provider_profile(db, user.id)
+        provider_id = await _get_provider_id(db, user)
     except providerService.ProviderNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User does not have a provider profile.",
         )
 
-    # For MVP: store the status on the provider profile.
-    # In production this would update a Redis presence key.
-    # The provider_profiles table doesn't have an availability_status column,
-    # so we use a lightweight approach: log it and return success.
-    # TODO: Add availability_status column or use Redis.
+    job_stmt = sa_select(Job).where(Job.id == job_id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
 
-    return {"data": {"status": body.status}}
+    task_stmt = (
+        sa_select(ServiceTask)
+        .options(selectinload(ServiceTask.category))
+        .where(ServiceTask.id == job.task_id)
+    )
+    task = (await db.execute(task_stmt)).scalar_one_or_none()
+
+    return {"data": {
+        "id": str(job.id),
+        "referenceNumber": job.reference_number,
+        "status": _mobile_status(job.status.value),
+        "taskName": task.name if task else "Service",
+        "categoryName": task.category.name if task and task.category else None,
+        "serviceAddress": job.service_address,
+        "serviceCity": job.service_city,
+        "address": {
+            "street": job.service_address or "",
+            "city": job.service_city or "",
+            "latitude": float(job.service_latitude) if job.service_latitude else 0,
+            "longitude": float(job.service_longitude) if job.service_longitude else 0,
+        },
+        "isEmergency": job.is_emergency,
+        "quotedPriceCents": job.quoted_price_cents,
+        "startedAt": job.started_at.isoformat() if job.started_at else None,
+        "completedAt": job.completed_at.isoformat() if job.completed_at else None,
+    }}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/provider/jobs/{job_id}/en-route
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/jobs/{job_id}/en-route",
+    summary="Mark provider as en route",
+    description="Provider starts navigating to the customer location.",
+)
+async def start_en_route(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    try:
+        job = await jobService.update_job_status(
+            db,
+            job_id,
+            "provider_en_route",
+            actor_id=provider_id,
+            actor_type="provider",
+        )
+    except jobService.JobNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+    except jobService.InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+    return {"data": {"jobId": str(job.id), "status": _mobile_status(job.status.value)}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/provider/jobs/{job_id}/arrive
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/jobs/{job_id}/arrive",
+    summary="Mark provider as arrived / start job",
+    description="Provider has arrived at customer location. Job transitions to in_progress.",
+)
+async def arrive_at_job(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    try:
+        job = await jobService.update_job_status(
+            db,
+            job_id,
+            "in_progress",
+            actor_id=provider_id,
+            actor_type="provider",
+        )
+    except jobService.JobNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+    except jobService.InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+    return {"data": {"jobId": str(job.id), "status": _mobile_status(job.status.value), "startedAt": job.started_at.isoformat() if job.started_at else None}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/provider/jobs/{job_id}/complete
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/jobs/{job_id}/complete",
+    summary="Complete a job",
+    description="Provider marks the job as completed.",
+)
+async def complete_job(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    try:
+        job = await jobService.update_job_status(
+            db,
+            job_id,
+            "completed",
+            actor_id=provider_id,
+            actor_type="provider",
+        )
+    except jobService.JobNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found.",
+        )
+    except jobService.InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+    return {"data": {"jobId": str(job.id), "status": _mobile_status(job.status.value), "completedAt": job.completed_at.isoformat() if job.completed_at else None}}
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/provider/status
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/status",
+    summary="Update provider availability status",
+    description="Set the provider's online/offline status.",
+)
+async def update_status(
+    db: DBSession,
+    user: CurrentUser,
+    body: ProviderStatusUpdateRequest,
+) -> dict[str, Any]:
+    from src.models.provider import ProviderProfile
+    from sqlalchemy import select as sa_select
+
+    stmt = sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+    profile = (await db.execute(stmt)).scalar_one_or_none()
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    # Accept both formats: {isOnline: bool} or {status: "ONLINE"}
+    if body.isOnline is not None:
+        profile.is_online = body.isOnline
+    elif body.status:
+        profile.is_online = body.status.upper() == "ONLINE"
+
+    await db.commit()
+    await db.refresh(profile)
+
+    return {"data": {"isOnline": profile.is_online}}
 
 
 # ---------------------------------------------------------------------------

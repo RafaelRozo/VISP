@@ -207,21 +207,40 @@ async def book_job(
         except Exception as exc:
             logger.warning("Price estimation failed for job %s: %s", job.id, exc)
 
-        # Start matching (best-effort for MVP)
+        # Broadcast OFFERED assignments to ALL qualified providers.
+        # The job stays in PENDING_MATCH — it only transitions when a
+        # provider manually accepts the offer.
         try:
-            from src.services.matchingEngine import assign_provider, find_matching_providers
+            from src.services.matchingEngine import find_matching_providers
+            from src.models.job import JobAssignment, AssignmentStatus
+            from datetime import timedelta
 
-            match_result = await find_matching_providers(db, job, max_results=1)
-            if match_result["matches"]:
-                best = match_result["matches"][0]
-                await assign_provider(
-                    db,
-                    job.id,
-                    best["provider_id"],
-                    match_score=float(best["composite_score"]),
+            match_result = await find_matching_providers(db, job, max_results=20)
+            now_utc = datetime.now(timezone.utc)
+            for m in match_result.get("matches", []):
+                # Create OFFERED assignment for each qualified provider
+                sla_response_deadline = None
+                if job.sla_response_time_min:
+                    sla_response_deadline = now_utc + timedelta(
+                        minutes=job.sla_response_time_min
+                    )
+                offer = JobAssignment(
+                    job_id=job.id,
+                    provider_id=m["provider_id"],
+                    status=AssignmentStatus.OFFERED,
+                    offered_at=now_utc,
+                    match_score=Decimal(str(m["composite_score"])),
+                    sla_response_deadline=sla_response_deadline,
                 )
+                db.add(offer)
+            await db.flush()
+            logger.info(
+                "Broadcast %d offers for job %s",
+                len(match_result.get("matches", [])),
+                job.id,
+            )
         except Exception as exc:
-            logger.warning("Auto-matching failed for job %s: %s", job.id, exc)
+            logger.warning("Offer broadcast failed for job %s: %s", job.id, exc)
 
         # Build mobile-friendly response
         try:
@@ -285,6 +304,7 @@ async def get_active_jobs(
     from sqlalchemy.orm import selectinload
 
     from src.models.job import Job, JobStatus
+    from src.models.taxonomy import ServiceTask
 
     terminal_statuses = {
         JobStatus.COMPLETED,
@@ -307,7 +327,33 @@ async def get_active_jobs(
     result = await db.execute(stmt)
     jobs = result.scalars().all()
 
-    items = [MobileJobOut.model_validate(j).model_dump(by_alias=True) for j in jobs]
+    # Build task name cache
+    task_ids = {j.task_id for j in jobs if j.task_id}
+    task_map: dict = {}
+    if task_ids:
+        task_stmt = (
+            select(ServiceTask)
+            .options(selectinload(ServiceTask.category))
+            .where(ServiceTask.id.in_(task_ids))
+        )
+        tasks = (await db.execute(task_stmt)).scalars().all()
+        for t in tasks:
+            task_map[t.id] = {
+                "name": t.name,
+                "categoryName": t.category.name if t.category else None,
+            }
+
+    from src.api.routes.providers import _mobile_status
+
+    items = []
+    for j in jobs:
+        item = MobileJobOut.model_validate(j).model_dump(by_alias=True)
+        # Convert backend enum (UPPERCASE) to mobile-friendly lowercase
+        item["status"] = _mobile_status(j.status.value)
+        task_info = task_map.get(j.task_id, {})
+        item["taskName"] = task_info.get("name", j.reference_number)
+        item["categoryName"] = task_info.get("categoryName")
+        items.append(item)
 
     return {
         "data": {
@@ -454,8 +500,12 @@ async def get_job(
         )
 
     # Build enriched response with assignment and provider info
+    from src.api.routes.providers import _mobile_status
+
     try:
         job_data = JobOut.model_validate(job).model_dump()
+        # Convert UPPERCASE enum to mobile-friendly lowercase
+        job_data["status"] = _mobile_status(job.status.value)
     except Exception:
         # Fallback: manually construct the dict if Pydantic validation fails
         job_data = {
@@ -463,7 +513,9 @@ async def get_job(
             "reference_number": job.reference_number,
             "customer_id": str(job.customer_id),
             "task_id": str(job.task_id),
-            "status": job.status.value if hasattr(job.status, 'value') else str(job.status),
+            "status": _mobile_status(
+                job.status.value if hasattr(job.status, 'value') else str(job.status)
+            ),
             "priority": job.priority.value if hasattr(job.priority, 'value') else str(job.priority),
             "is_emergency": job.is_emergency,
             "service_latitude": str(job.service_latitude),
@@ -553,6 +605,9 @@ async def get_job(
                         ),
                         "level": provider.current_level.value,
                         "avatarUrl": provider.user.avatar_url,
+                        "phone": provider.user.phone,
+                        "rating": float(provider.average_rating) if provider.average_rating else None,
+                        "completedJobs": provider.total_completed_jobs or 0,
                     }
             except Exception:
                 pass
@@ -736,9 +791,11 @@ async def get_job_tracking(
     db: DBSession,
     job_id: uuid.UUID,
 ) -> dict[str, Any]:
+    from src.api.routes.providers import _mobile_status
     from src.services import providerService
 
     tracking = await providerService.get_job_tracking(db, job_id)
+    tracking["status"] = _mobile_status(tracking["status"])
     result = JobTrackingOut(**tracking)
     return {"data": result.model_dump(by_alias=True)}
 
@@ -775,3 +832,250 @@ async def update_provider_location(
     )
     await db.commit()
     return {"data": {"ok": True}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/approve-provider -- Customer approves provider
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{job_id}/approve-provider",
+    summary="Customer approves the assigned provider",
+    description=(
+        "After a provider accepts an offer, the customer reviews and "
+        "approves them. Job transitions from PENDING_APPROVAL to SCHEDULED."
+    ),
+)
+async def approve_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    # Load job
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is in {job.status.value}, expected pending_approval",
+        )
+
+    # Transition to SCHEDULED
+    job.status = JobStatus.SCHEDULED
+
+    await db.commit()
+    return {"data": {"ok": True, "status": "scheduled"}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/reject-provider -- Customer rejects provider
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{job_id}/reject-provider",
+    summary="Customer rejects the assigned provider",
+    description=(
+        "Customer rejects the provider. The assignment is reverted, and "
+        "the job goes back to MATCHED status for re-matching."
+    ),
+)
+async def reject_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    # Load job
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is in {job.status.value}, expected pending_approval",
+        )
+
+    # Find the accepted assignment and revert it
+    asgn_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.ACCEPTED,
+    )
+    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
+    if assignment:
+        assignment.status = AssignmentStatus.DECLINED
+        assignment.responded_at = datetime.now(timezone.utc)
+
+    # Back to MATCHED for re-matching
+    job.status = JobStatus.MATCHED
+
+    await db.commit()
+    return {"data": {"ok": True, "status": "matched"}}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/jobs/{job_id}/pending-provider  -- Provider info for approval
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{job_id}/pending-provider",
+    summary="Get provider info for customer approval",
+    description=(
+        "Returns the provider's public info for the customer to review "
+        "before approving or rejecting."
+    ),
+)
+async def get_pending_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+    from src.models.provider import ProviderProfile
+    from src.models.user import User
+
+    # Load job (must be owned by customer)
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        return {"data": None}
+
+    # Find accepted assignment
+    asgn_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.ACCEPTED,
+    )
+    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
+    if assignment is None:
+        return {"data": None}
+
+    # Load provider profile + user
+    prov_stmt = (
+        select(ProviderProfile)
+        .options(selectinload(ProviderProfile.user))
+        .where(ProviderProfile.id == assignment.provider_id)
+    )
+    provider = (await db.execute(prov_stmt)).scalar_one_or_none()
+    if provider is None:
+        return {"data": None}
+
+    user_record = provider.user
+
+    return {"data": {
+        "providerId": str(provider.id),
+        "displayName": (
+            user_record.display_name
+            or f"{user_record.first_name} {user_record.last_name}"
+            if user_record else "Unknown"
+        ),
+        "level": int(provider.current_level.value) if provider.current_level else 1,
+        "yearsExperience": provider.years_experience,
+        "rating": None,  # TODO: aggregate from reviews
+        "profilePhotoUrl": user_record.avatar_url if user_record else None,
+        "bio": provider.bio,
+    }}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/approve-provider  -- Customer approves provider
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{job_id}/approve-provider",
+    summary="Approve the matched provider",
+    description=(
+        "Customer approves the provider. Transitions job to PROVIDER_ACCEPTED "
+        "so the provider can begin traveling to the service location."
+    ),
+)
+async def approve_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    # Must be owned by this customer
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not pending approval (current: {job.status.value})",
+        )
+
+    # Transition job to PROVIDER_ACCEPTED
+    job.status = JobStatus.PROVIDER_ACCEPTED
+
+    await db.commit()
+    logger.info("Customer %s approved provider for job %s", user.id, job_id)
+
+    return {"data": {"ok": True, "status": job.status.value}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/reject-provider  -- Customer rejects provider
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{job_id}/reject-provider",
+    summary="Reject the matched provider",
+    description=(
+        "Customer rejects the provider. The job goes back to PENDING_MATCH "
+        "and the assignment is marked DECLINED so matching can retry."
+    ),
+)
+async def reject_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    # Must be owned by this customer
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not pending approval (current: {job.status.value})",
+        )
+
+    # Mark the accepted assignment as DECLINED
+    asgn_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.ACCEPTED,
+    )
+    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
+    if assignment:
+        assignment.status = AssignmentStatus.DECLINED
+
+    # Send job back to PENDING_MATCH for re-matching
+    job.status = JobStatus.PENDING_MATCH
+
+    await db.commit()
+    logger.info("Customer %s rejected provider for job %s", user.id, job_id)
+
+    return {"data": {"ok": True, "status": job.status.value}}

@@ -133,14 +133,16 @@ export default function ProviderOnboardingScreen() {
         // Refresh profile to get new status/level
         // await fetchProviderProfile(); // optional if store has it
 
-        // Navigate home
-        // If we are in Auth stack -> Login or Home?
-        // Usually Auth -> ProviderHome
-        // But if we are pushed from Register, we might need to reset navigation
-        navigation.reset({
-            index: 0,
-            routes: [{ name: 'ProviderHome' }],
-        });
+        // If we can go back (came from Profile/Dashboard), just go back
+        if (navigation.canGoBack()) {
+            navigation.goBack();
+        } else {
+            // First-time onboarding from registration — reset to ProviderHome
+            navigation.reset({
+                index: 0,
+                routes: [{ name: 'ProviderHome' }],
+            });
+        }
     };
 
     if (isLoading) {

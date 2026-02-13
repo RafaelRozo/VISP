@@ -16,21 +16,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useProviderStore } from '../../stores/providerStore';
-import { JobOffer, ProviderTabParamList } from '../../types';
+import { JobOffer } from '../../types';
 import MapboxGL from '@rnmapbox/maps';
 import { Config } from '../../services/config';
 
 MapboxGL.setAccessToken(Config.mapboxAccessToken);
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type OffersNav = NativeStackNavigationProp<ProviderTabParamList, 'JobOffers'>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,14 +33,8 @@ function getTimeRemaining(expiresAt: string): {
   seconds: number;
   isExpired: boolean;
 } {
-  const now = Date.now();
-  const expiry = new Date(expiresAt).getTime();
-  const diff = expiry - now;
-
-  if (diff <= 0) {
-    return { minutes: 0, seconds: 0, isExpired: true };
-  }
-
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return { minutes: 0, seconds: 0, isExpired: true };
   return {
     minutes: Math.floor(diff / 60000),
     seconds: Math.floor((diff % 60000) / 1000),
@@ -56,42 +42,42 @@ function getTimeRemaining(expiresAt: string): {
   };
 }
 
-function formatDistance(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  return `${km.toFixed(1)} km`;
+function formatDistance(km: number | undefined): string {
+  if (km === undefined || km === null) return '—';
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
 }
 
-function formatSLA(deadline: string | null): string {
-  if (!deadline) return 'No SLA';
-  const date = new Date(deadline);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatPrice(cents: number | undefined): string {
+  if (cents === undefined || cents === null) return '—';
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 // ---------------------------------------------------------------------------
 // Offer Timer Hook
 // ---------------------------------------------------------------------------
 
-function useOfferTimer(expiresAt: string) {
-  const [remaining, setRemaining] = useState(() => getTimeRemaining(expiresAt));
+function useOfferTimer(expiresAt: string | undefined) {
+  const fallback = { minutes: 99, seconds: 0, isExpired: false };
+  const [time, setTime] = useState(() =>
+    expiresAt ? getTimeRemaining(expiresAt) : fallback,
+  );
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (!expiresAt) return;
     intervalRef.current = setInterval(() => {
-      const updated = getTimeRemaining(expiresAt);
-      setRemaining(updated);
-      if (updated.isExpired && intervalRef.current) {
+      const next = getTimeRemaining(expiresAt);
+      setTime(next);
+      if (next.isExpired && intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     }, 1000);
-
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [expiresAt]);
 
-  return remaining;
+  return time;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +86,8 @@ function useOfferTimer(expiresAt: string) {
 
 interface OfferCardProps {
   offer: JobOffer;
-  onAccept: (offerId: string) => void;
-  onDecline: (offerId: string) => void;
+  onAccept: (jobId: string) => void;
+  onDecline: (jobId: string) => void;
   isProcessing: boolean;
 }
 
@@ -111,8 +97,9 @@ function OfferCard({
   onDecline,
   isProcessing,
 }: OfferCardProps): React.JSX.Element {
-  const timer = useOfferTimer(offer.expiresAt);
-  const levelColor = getLevelColor(offer.level);
+  const timer = useOfferTimer(offer.offerExpiresAt);
+  const levelNum = parseInt(offer.task.level.replace(/\D/g, ''), 10) || 1;
+  const levelColor = getLevelColor(levelNum as 1 | 2 | 3 | 4);
 
   const timerColor = timer.isExpired
     ? Colors.textTertiary
@@ -125,14 +112,16 @@ function OfferCard({
     : `${String(timer.minutes).padStart(2, '0')}:${String(timer.seconds).padStart(2, '0')}`;
 
   const handleAccept = useCallback(() => {
+    const totalPrice = formatPrice(offer.pricing.quotedPriceCents);
+    const yourPay = formatPrice(offer.pricing.estimatedPayoutCents);
     Alert.alert(
       'Accept Offer',
-      `Accept the "${offer.taskName}" job for $${offer.estimatedPrice.toFixed(2)}?`,
+      `Accept "${offer.task.name}"?\n\nTotal: ${totalPrice}\nYour Pay: ${yourPay}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Accept',
-          onPress: () => onAccept(offer.id),
+          onPress: () => onAccept(offer.jobId),
         },
       ],
     );
@@ -147,11 +136,11 @@ function OfferCard({
         {
           text: 'Decline',
           style: 'destructive',
-          onPress: () => onDecline(offer.id),
+          onPress: () => onDecline(offer.jobId),
         },
       ],
     );
-  }, [offer.id, onDecline]);
+  }, [offer.jobId, onDecline]);
 
   return (
     <View style={styles.offerCard}>
@@ -163,10 +152,10 @@ function OfferCard({
         <View style={styles.offerHeader}>
           <View style={styles.offerHeaderLeft}>
             <Text style={styles.offerTaskName} numberOfLines={1}>
-              {offer.taskName}
+              {offer.task.name}
             </Text>
             <Text style={styles.offerCategory} numberOfLines={1}>
-              {offer.categoryName}
+              {offer.task.categoryName ?? 'Service'} • {offer.referenceNumber}
             </Text>
           </View>
           <View style={[styles.timerBadge, { borderColor: timerColor }]}>
@@ -181,7 +170,7 @@ function OfferCard({
           <View style={styles.offerDetailItem}>
             <Text style={styles.offerDetailLabel}>Location</Text>
             <Text style={styles.offerDetailValue} numberOfLines={1}>
-              {offer.customerArea}
+              {offer.serviceCity ?? offer.serviceAddress}
             </Text>
           </View>
           <View style={styles.offerDetailItem}>
@@ -191,18 +180,34 @@ function OfferCard({
             </Text>
           </View>
           <View style={styles.offerDetailItem}>
-            <Text style={styles.offerDetailLabel}>Pay</Text>
+            <Text style={styles.offerDetailLabel}>Total</Text>
+            <Text style={styles.offerDetailValue}>
+              {formatPrice(offer.pricing.quotedPriceCents)}
+            </Text>
+          </View>
+          <View style={styles.offerDetailItem}>
+            <Text style={styles.offerDetailLabel}>Your Pay</Text>
             <Text style={styles.offerPriceValue}>
-              ${offer.estimatedPrice.toFixed(2)}
+              {formatPrice(offer.pricing.estimatedPayoutCents)}
             </Text>
           </View>
         </View>
 
-        {/* SLA deadline */}
-        {offer.slaDeadline && (
+        {/* Customer info */}
+        {offer.customer.displayName && (
           <View style={styles.slaRow}>
-            <Text style={styles.slaLabel}>SLA Deadline:</Text>
-            <Text style={styles.slaValue}>{formatSLA(offer.slaDeadline)}</Text>
+            <Text style={styles.slaLabel}>Customer:</Text>
+            <Text style={styles.slaValue}>
+              {offer.customer.displayName}
+              {offer.customer.rating ? ` ★${offer.customer.rating}` : ''}
+            </Text>
+          </View>
+        )}
+
+        {/* Emergency badge */}
+        {offer.isEmergency && (
+          <View style={styles.slaRow}>
+            <Text style={styles.slaLabel}>🚨 EMERGENCY</Text>
           </View>
         )}
 
@@ -221,20 +226,20 @@ function OfferCard({
             <MapboxGL.Camera
               zoomLevel={13}
               centerCoordinate={[
-                offer.address.longitude,
-                offer.address.latitude,
+                Number(offer.serviceLongitude),
+                Number(offer.serviceLatitude),
               ]}
               animationMode="none"
             />
-            <MapboxGL.PointAnnotation
-              id={`offer-loc-${offer.id}`}
+            <MapboxGL.MarkerView
+              id={`offer-loc-${offer.assignmentId}`}
               coordinate={[
-                offer.address.longitude,
-                offer.address.latitude,
+                Number(offer.serviceLongitude),
+                Number(offer.serviceLatitude),
               ]}
             >
               <View style={styles.mapMarker} />
-            </MapboxGL.PointAnnotation>
+            </MapboxGL.MarkerView>
           </MapboxGL.MapView>
         </View>
 
@@ -285,7 +290,6 @@ function OfferCard({
 // ---------------------------------------------------------------------------
 
 export default function JobOffersScreen(): React.JSX.Element {
-  const navigation = useNavigation<OffersNav>();
   const {
     pendingOffers,
     isLoadingOffers,
@@ -301,10 +305,10 @@ export default function JobOffersScreen(): React.JSX.Element {
   }, [fetchOffers]);
 
   const handleAccept = useCallback(
-    async (offerId: string) => {
-      setProcessingId(offerId);
+    async (jobId: string) => {
+      setProcessingId(jobId);
       try {
-        await acceptOffer(offerId);
+        await acceptOffer(jobId);
       } finally {
         setProcessingId(null);
       }
@@ -313,10 +317,10 @@ export default function JobOffersScreen(): React.JSX.Element {
   );
 
   const handleDecline = useCallback(
-    async (offerId: string) => {
-      setProcessingId(offerId);
+    async (jobId: string) => {
+      setProcessingId(jobId);
       try {
-        await declineOffer(offerId);
+        await declineOffer(jobId);
       } finally {
         setProcessingId(null);
       }
@@ -330,13 +334,13 @@ export default function JobOffersScreen(): React.JSX.Element {
         offer={item}
         onAccept={handleAccept}
         onDecline={handleDecline}
-        isProcessing={processingId === item.id}
+        isProcessing={processingId === item.jobId}
       />
     ),
     [handleAccept, handleDecline, processingId],
   );
 
-  const keyExtractor = useCallback((item: JobOffer) => item.id, []);
+  const keyExtractor = useCallback((item: JobOffer) => item.assignmentId, []);
 
   const renderEmpty = useCallback(() => {
     if (isLoadingOffers) return null;

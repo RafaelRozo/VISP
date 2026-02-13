@@ -105,6 +105,7 @@ from src.api.routes import (  # noqa: E402
     providers,
     scoring,
     tasks,
+    users,
     verification,
 )
 
@@ -125,6 +126,7 @@ app.include_router(payments.router, prefix=_prefix)
 app.include_router(chat.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
 app.include_router(geolocation.router, prefix=_prefix)
+app.include_router(users.router, prefix=_prefix)
 
 
 # ---------------------------------------------------------------------------

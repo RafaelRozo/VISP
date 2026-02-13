@@ -312,7 +312,7 @@ function useJobTimer(startedAt: string | null): string {
 export default function ActiveJobScreen(): React.JSX.Element {
   const route = useRoute<ActiveJobRoute>();
   const navigation = useNavigation<ActiveJobNav>();
-  const { activeJob, updateJobStatus, fetchActiveJob, error } =
+  const { activeJob, startNavigation, arriveAtJob, completeJob, fetchActiveJob, error } =
     useProviderStore();
 
   const [isUpdating, setIsUpdating] = useState(false);
@@ -377,7 +377,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
               setLegalAcknowledged(true);
               setIsUpdating(true);
               try {
-                await updateJobStatus(jobId, action.next);
+                await arriveAtJob(jobId);
               } finally {
                 setIsUpdating(false);
               }
@@ -400,8 +400,12 @@ export default function ActiveJobScreen(): React.JSX.Element {
         onPress: async () => {
           setIsUpdating(true);
           try {
-            await updateJobStatus(jobId, action.next);
-            if (action.next === 'completed') {
+            if (action.next === 'en_route') {
+              await startNavigation(jobId);
+            } else if (action.next === 'in_progress') {
+              await arriveAtJob(jobId);
+            } else if (action.next === 'completed') {
+              await completeJob(jobId);
               navigation.goBack();
             }
           } finally {
@@ -410,7 +414,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
         },
       },
     ]);
-  }, [activeJob, jobId, updateJobStatus, navigation, legalAcknowledged]);
+  }, [activeJob, jobId, startNavigation, arriveAtJob, completeJob, navigation, legalAcknowledged]);
 
   // Photo capture handlers
   const handleCaptureBeforePhoto = useCallback(() => {
@@ -572,7 +576,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
               animationMode="flyTo"
               animationDuration={2000}
             />
-            <MapboxGL.PointAnnotation
+            <MapboxGL.MarkerView
               id="customer-location"
               coordinate={[
                 activeJob.address.longitude,
@@ -580,7 +584,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
               ]}
             >
               <View style={styles.customerMarker} />
-            </MapboxGL.PointAnnotation>
+            </MapboxGL.MarkerView>
           </MapboxGL.MapView>
         </View>
 

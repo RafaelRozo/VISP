@@ -45,6 +45,8 @@ function statusLabel(status: string): string {
         draft: 'Draft',
         pending_match: 'Searching for Tasker',
         matched: 'Tasker Assigned',
+        pending_approval: 'Provider Review',
+        scheduled: 'Scheduled',
         provider_accepted: 'Tasker Accepted',
         provider_en_route: 'Tasker En Route',
         arrived: 'Tasker Arrived',
@@ -61,6 +63,8 @@ function statusLabel(status: string): string {
 
 function statusColor(status: string): string {
     if (PENDING_STATUSES.includes(status)) return Colors.warning;
+    if (status === 'pending_approval') return '#FF8C00';
+    if (status === 'scheduled') return Colors.info ?? '#5B9BD5';
     if (['matched', 'provider_accepted', 'provider_en_route', 'arrived'].includes(status)) return Colors.info ?? '#5B9BD5';
     if (status === 'in_progress') return Colors.primary;
     if (status === 'completed') return Colors.success;
@@ -139,16 +143,88 @@ function MyJobsScreen(): React.JSX.Element {
                 );
                 return;
             }
+            if (job.status === 'matched') {
+                Alert.alert(
+                    'Waiting for Provider',
+                    'Your job has been sent to a provider. Waiting for them to review and accept.',
+                );
+                return;
+            }
+            if (job.status === 'pending_approval') {
+                // The inline card with Approve/Reject is shown in the list.
+                // Just scroll — no navigation needed.
+                Alert.alert(
+                    'Provider Review',
+                    'Review the provider info below and tap Approve or Reject.',
+                );
+                return;
+            }
+            // Only provider_accepted and later statuses go to tracking
             navigation.navigate('JobTracking', { jobId: job.id });
         },
         [navigation],
     );
+
+    // ── Provider info cache for pending_approval jobs ─
+    const [providerInfoMap, setProviderInfoMap] = useState<Record<string, any>>({});
+
+    // Fetch provider info for pending_approval jobs
+    useEffect(() => {
+        const pendingApprovalJobs = jobs.filter(j => j.status === 'pending_approval');
+        pendingApprovalJobs.forEach(async (job) => {
+            if (providerInfoMap[job.id]) return;
+            try {
+                const info = await taskService.getPendingProvider(job.id);
+                if (info) {
+                    setProviderInfoMap(prev => ({ ...prev, [job.id]: info }));
+                }
+            } catch {
+                // ignore
+            }
+        });
+    }, [jobs]);
+
+    // ── Approve / Reject provider ─────────────
+    const handleApproveProvider = useCallback(async (jobId: string) => {
+        try {
+            await taskService.approveProvider(jobId);
+            Alert.alert('✅ Approved', 'Your job has been scheduled!');
+            fetchJobs(true);
+        } catch {
+            Alert.alert('Error', 'Failed to approve provider.');
+        }
+    }, [fetchJobs]);
+
+    const handleRejectProvider = useCallback((jobId: string) => {
+        Alert.alert(
+            'Reject Provider',
+            'Are you sure? The job will be re-matched with another provider.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Reject',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await taskService.rejectProvider(jobId);
+                            Alert.alert('Provider Rejected', 'We\'ll find you another provider.');
+                            fetchJobs(true);
+                        } catch {
+                            Alert.alert('Error', 'Failed to reject provider.');
+                        }
+                    },
+                },
+            ],
+        );
+    }, [fetchJobs]);
 
     // ── Render job card ──────────────────────
     const renderJobCard = useCallback(
         ({ item }: { item: Job }) => {
             const color = statusColor(item.status);
             const isPending = PENDING_STATUSES.includes(item.status);
+            const isPendingApproval = item.status === 'pending_approval';
+            const providerInfo = providerInfoMap[item.id];
 
             return (
                 <TouchableOpacity
@@ -181,6 +257,40 @@ function MyJobsScreen(): React.JSX.Element {
                         </Text>
                     ) : null}
 
+                    {/* Provider info for pending_approval */}
+                    {isPendingApproval && providerInfo && (
+                        <View style={styles.providerReviewCard}>
+                            <Text style={styles.providerReviewTitle}>Provider wants to accept your job</Text>
+                            <View style={styles.providerInfoRow}>
+                                <View style={[styles.providerLevel, { backgroundColor: color }]}>
+                                    <Text style={styles.providerLevelText}>L{providerInfo.level}</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.providerName}>{providerInfo.displayName}</Text>
+                                    {providerInfo.yearsExperience && (
+                                        <Text style={styles.providerDetail}>
+                                            {providerInfo.yearsExperience} yrs experience
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                            <View style={styles.approvalButtons}>
+                                <TouchableOpacity
+                                    style={styles.rejectButton}
+                                    onPress={() => handleRejectProvider(item.id)}
+                                >
+                                    <Text style={styles.rejectButtonText}>Reject</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.approveButton}
+                                    onPress={() => handleApproveProvider(item.id)}
+                                >
+                                    <Text style={styles.approveButtonText}>Approve ✓</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    )}
+
                     <View style={styles.jobFooter}>
                         <Text style={styles.jobDate}>
                             {formatDate(item.createdAt)}
@@ -194,7 +304,7 @@ function MyJobsScreen(): React.JSX.Element {
                 </TouchableOpacity>
             );
         },
-        [handleJobPress],
+        [handleJobPress, providerInfoMap, handleApproveProvider, handleRejectProvider],
     );
 
     // ── Empty state ──────────────────────────
@@ -418,6 +528,74 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
         textAlign: 'center',
         lineHeight: 20,
+    },
+    // Provider review card
+    providerReviewCard: {
+        backgroundColor: '#FFF8F0',
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        marginTop: Spacing.sm,
+        marginBottom: Spacing.sm,
+        borderWidth: 1,
+        borderColor: '#FF8C0030',
+    },
+    providerReviewTitle: {
+        ...Typography.caption1,
+        fontWeight: '700' as const,
+        color: '#FF8C00',
+        marginBottom: Spacing.sm,
+    },
+    providerInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: Spacing.md,
+    },
+    providerLevel: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: Spacing.sm,
+    },
+    providerLevelText: {
+        fontSize: 14,
+        fontWeight: '800' as const,
+        color: '#fff',
+    },
+    providerName: {
+        ...Typography.headline,
+        color: Colors.textPrimary,
+    },
+    providerDetail: {
+        ...Typography.caption1,
+        color: Colors.textSecondary,
+    },
+    approvalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: Spacing.sm,
+    },
+    rejectButton: {
+        paddingVertical: Spacing.xs,
+        paddingHorizontal: Spacing.lg,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.error,
+    },
+    rejectButtonText: {
+        ...Typography.headline,
+        color: Colors.error,
+    },
+    approveButton: {
+        paddingVertical: Spacing.xs,
+        paddingHorizontal: Spacing.lg,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.success,
+    },
+    approveButtonText: {
+        ...Typography.headline,
+        color: '#fff',
     },
 });
 

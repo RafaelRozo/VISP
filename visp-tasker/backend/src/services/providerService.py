@@ -264,12 +264,16 @@ async def get_pending_offers(
     Returns a list of enriched offer dicts with job, task, customer,
     pricing, SLA, and distance information.
     """
-    # Fetch assignments with status OFFERED for this provider
+    # Fetch assignments with status OFFERED for this provider,
+    # but ONLY for jobs that are still in MATCHED status (not yet accepted
+    # by anyone).
     stmt = (
         select(JobAssignment)
+        .join(Job, Job.id == JobAssignment.job_id)
         .where(
             JobAssignment.provider_id == provider_id,
             JobAssignment.status == AssignmentStatus.OFFERED,
+            Job.status.in_([JobStatus.MATCHED, JobStatus.PENDING_MATCH]),
         )
         .order_by(JobAssignment.offered_at.desc())
     )
@@ -398,7 +402,8 @@ async def accept_offer(
 ) -> JobAssignment:
     """Accept a pending job offer.
 
-    Transitions the assignment to ACCEPTED and the job to PROVIDER_ACCEPTED.
+    Transitions the assignment to ACCEPTED and the job to PENDING_APPROVAL
+    so the customer can review the provider before confirming.
 
     Raises:
         OfferNotFoundError: If no pending offer exists.
@@ -422,16 +427,31 @@ async def accept_offer(
     assignment.responded_at = now
     assignment.sla_response_met = True  # They responded
 
-    # Update job status
+    # Update job status to PENDING_APPROVAL (customer must approve)
     job_stmt = select(Job).where(Job.id == job_id)
     job = (await db.execute(job_stmt)).scalar_one_or_none()
     if job and job.status in (JobStatus.MATCHED, JobStatus.PENDING_MATCH):
-        job.status = JobStatus.PROVIDER_ACCEPTED
+        job.status = JobStatus.PENDING_APPROVAL
+
+    # Cancel all other OFFERED assignments for this job so other providers
+    # no longer see it in their offers list.
+    cancel_stmt = (
+        select(JobAssignment)
+        .where(
+            JobAssignment.job_id == job_id,
+            JobAssignment.provider_id != provider_id,
+            JobAssignment.status == AssignmentStatus.OFFERED,
+        )
+    )
+    other_offers = (await db.execute(cancel_stmt)).scalars().all()
+    for other in other_offers:
+        other.status = AssignmentStatus.REJECTED
+        other.responded_at = now
 
     await db.flush()
 
     logger.info(
-        "Provider %s accepted offer for job %s (assignment=%s)",
+        "Provider %s accepted offer for job %s → PENDING_APPROVAL",
         provider_id,
         job_id,
         assignment.id,
@@ -599,10 +619,11 @@ async def get_schedule(
         .where(
             Job.id.in_(provider_job_ids),
             Job.status.in_([
+                JobStatus.SCHEDULED,
+                JobStatus.PENDING_APPROVAL,
                 JobStatus.PROVIDER_ACCEPTED,
                 JobStatus.PROVIDER_EN_ROUTE,
                 JobStatus.IN_PROGRESS,
-                JobStatus.MATCHED,
             ]),
         )
         .order_by(Job.requested_date.asc().nullslast(), Job.created_at.asc())
@@ -767,10 +788,26 @@ async def get_job_tracking(
     )
     assignment = (await db.execute(assignment_stmt)).scalar_one_or_none()
 
+    # Fallback: if no ACCEPTED/COMPLETED, try OFFERED (provider not yet accepted
+    # but was offered the job)
+    if assignment is None:
+        offered_stmt = (
+            select(JobAssignment)
+            .where(
+                JobAssignment.job_id == job_id,
+                JobAssignment.status == AssignmentStatus.OFFERED,
+            )
+            .order_by(JobAssignment.match_score.desc().nullslast())
+            .limit(1)
+        )
+        assignment = (await db.execute(offered_stmt)).scalar_one_or_none()
+
     provider_lat = None
     provider_lng = None
     eta_minutes = None
     provider_name = None
+    provider_phone = None
+    provider_level = None
 
     if assignment is not None:
         # Load provider + user
@@ -786,6 +823,8 @@ async def get_job_tracking(
                 provider.user.display_name
                 or f"{provider.user.first_name} {provider.user.last_name}"
             )
+            provider_phone = provider.user.phone
+            provider_level = provider.current_level.value if hasattr(provider.current_level, 'value') else str(provider.current_level)
 
             # Use user's last known location (in production: Redis location stream)
             if provider.user.last_latitude is not None:
@@ -810,5 +849,27 @@ async def get_job_tracking(
         "eta_minutes": eta_minutes,
         "status": job.status.value,
         "provider_name": provider_name,
+        "provider_phone": provider_phone,
+        "provider_level": provider_level,
         "updated_at": datetime.now(timezone.utc),
     }
+
+
+async def update_provider_location(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    latitude: float,
+    longitude: float,
+) -> None:
+    """Store provider's current GPS position on their User record.
+
+    In production this would write to Redis. For MVP we store on the
+    User model so that ``get_job_tracking`` can read it back.
+    """
+    stmt = select(User).where(User.id == user_id)
+    user = (await db.execute(stmt)).scalar_one_or_none()
+    if user is None:
+        return
+    user.last_latitude = latitude
+    user.last_longitude = longitude
+    await db.flush()

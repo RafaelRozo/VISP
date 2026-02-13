@@ -112,6 +112,9 @@ class ProviderProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     available_for_emergency: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    is_online: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
 
     # Profile content
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -9,12 +9,13 @@
  * - Type-safe navigation params throughout
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Colors } from '../theme/colors';
+import { requestLocationPermission, saveUserLocation } from '../services/geolocationService';
 
 import type {
   AuthStackParamList,
@@ -166,10 +167,13 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
-// Provider stack for ActiveJob + Chat (nested inside tab)
-const ProviderJobStack = createNativeStackNavigator<
-  Pick<ProviderTabParamList, 'JobOffers' | 'ActiveJob' | 'Chat'>
->();
+// Provider stack for JobOffers + ActiveJob + Chat (nested inside tab)
+type ProviderJobStackParamList = {
+  JobOffers: undefined;
+  ActiveJob: { jobId: string };
+  Chat: { jobId: string; otherUserName: string };
+};
+const ProviderJobStack = createNativeStackNavigator<ProviderJobStackParamList>();
 
 // ---------------------------------------------------------------------------
 // Tab Navigators
@@ -330,7 +334,7 @@ function ProviderTabNavigator(): React.JSX.Element {
         }}
       />
       <ProviderTab.Screen
-        name="JobOffers"
+        name="JobsTab"
         component={ProviderJobStackNavigator}
         options={{
           title: 'Jobs',
@@ -382,6 +386,17 @@ function ProviderTabNavigator(): React.JSX.Element {
 export default function AppNavigator(): React.JSX.Element {
   const { isAuthenticated, isRestoring, user } = useAuthStore();
   const userRole = user?.role ?? 'customer';
+
+  // Request location permission and save position once authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      requestLocationPermission().then((granted) => {
+        if (granted) {
+          saveUserLocation();
+        }
+      });
+    }
+  }, [isAuthenticated]);
 
   if (isRestoring) {
     return (
