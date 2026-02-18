@@ -17,10 +17,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
 import { useProviderStore } from '../../stores/providerStore';
 import { OnCallShift, ScheduledJob, TimeOffRequest } from '../../types';
 import { post } from '../../services/apiClient';
+
+// How many minutes before the job start time the provider can begin navigation
+const EARLY_START_MINUTES = 10;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -215,14 +219,25 @@ const calendarStyles = StyleSheet.create({
 
 interface ScheduledJobItemProps {
   job: ScheduledJob;
+  onPress: (job: ScheduledJob) => void;
 }
 
-function ScheduledJobItem({ job }: ScheduledJobItemProps): React.JSX.Element {
+function ScheduledJobItem({ job, onPress }: ScheduledJobItemProps): React.JSX.Element {
   const levelColor = getLevelColor(job.level);
   const statusColor = getStatusColor(job.status);
 
+  // Check if we're within the start window
+  const jobStart = new Date(job.scheduledAt);
+  const now = new Date();
+  const minutesUntilStart = (jobStart.getTime() - now.getTime()) / 60000;
+  const canStart = minutesUntilStart <= EARLY_START_MINUTES;
+
   return (
-    <View style={jobItemStyles.container}>
+    <TouchableOpacity
+      style={jobItemStyles.container}
+      onPress={() => onPress(job)}
+      activeOpacity={0.7}
+    >
       <View style={[jobItemStyles.levelStrip, { backgroundColor: levelColor }]} />
       <View style={jobItemStyles.content}>
         <View style={jobItemStyles.header}>
@@ -244,8 +259,15 @@ function ScheduledJobItem({ job }: ScheduledJobItemProps): React.JSX.Element {
           </Text>
           <Text style={jobItemStyles.locationText}>{job.customerArea}</Text>
         </View>
+        {canStart && (
+          <View style={jobItemStyles.startRouteContainer}>
+            <View style={jobItemStyles.startRouteBadge}>
+              <Text style={jobItemStyles.startRouteText}>▶ Start Route</Text>
+            </View>
+          </View>
+        )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -300,6 +322,21 @@ const jobItemStyles = StyleSheet.create({
   locationText: {
     fontSize: 13,
     color: Colors.textTertiary,
+  },
+  startRouteContainer: {
+    marginTop: 8,
+    alignItems: 'flex-start',
+  },
+  startRouteBadge: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  startRouteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.white,
   },
 });
 
@@ -458,6 +495,30 @@ export default function ScheduleScreen(): React.JSX.Element {
   // Tab content renderers
   // ------------------------------------------
 
+  const navigation = useNavigation<any>();
+
+  const handleJobPress = useCallback((job: ScheduledJob) => {
+    const jobStart = new Date(job.scheduledAt);
+    const now = new Date();
+    const minutesUntilStart = (jobStart.getTime() - now.getTime()) / 60000;
+
+    if (minutesUntilStart > EARLY_START_MINUTES) {
+      const mins = Math.ceil(minutesUntilStart - EARLY_START_MINUTES);
+      Alert.alert(
+        'Too Early',
+        `You can start this job ${mins} minute${mins !== 1 ? 's' : ''} from now (${EARLY_START_MINUTES} minutes before the scheduled time).`,
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+
+    // Navigate to ActiveJob screen in the Jobs tab stack
+    navigation.navigate('JobsTab', {
+      screen: 'ActiveJob',
+      params: { jobId: job.id },
+    });
+  }, [navigation]);
+
   const renderJobsTab = () => (
     <View>
       <CalendarStrip
@@ -483,7 +544,7 @@ export default function ScheduleScreen(): React.JSX.Element {
         </View>
       ) : (
         jobsForDate.map((job) => (
-          <ScheduledJobItem key={job.id} job={job} />
+          <ScheduledJobItem key={job.id} job={job} onPress={handleJobPress} />
         ))
       )}
     </View>

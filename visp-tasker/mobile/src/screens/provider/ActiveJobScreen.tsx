@@ -11,8 +11,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Linking,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +25,8 @@ import { Config } from '../../services/config';
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
 import { useProviderStore } from '../../stores/providerStore';
 import { JobStatus, ProviderTabParamList } from '../../types';
+import { watchPosition, clearWatch, getCurrentPosition } from '../../services/geolocationService';
+import { post } from '../../services/apiClient';
 
 // ---------------------------------------------------------------------------
 // Mapbox initialization
@@ -320,6 +320,17 @@ export default function ActiveJobScreen(): React.JSX.Element {
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [legalAcknowledged, setLegalAcknowledged] = useState(false);
 
+  // GPS tracking state
+  const [providerLat, setProviderLat] = useState<number | null>(null);
+  const [providerLng, setProviderLng] = useState<number | null>(null);
+  const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const broadcastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastBroadcastRef = useRef<{ lat: number; lng: number } | null>(null);
+  const cameraRef = useRef<MapboxGL.Camera>(null);
+
   const { jobId } = route.params;
 
   // Timer for in_progress jobs
@@ -332,27 +343,138 @@ export default function ActiveJobScreen(): React.JSX.Element {
     }
   }, [activeJob, jobId, fetchActiveJob]);
 
-  // Navigate to customer location
-  const openNavigation = useCallback(() => {
+  // --- Haversine distance in metres ---
+  const haversineMetres = useCallback(
+    (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6371000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    },
+    [],
+  );
+
+  // --- Fetch route from Mapbox Directions API ---
+  const fetchRoute = useCallback(
+    async (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
+      try {
+        const url =
+          `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+          `${fromLng},${fromLat};${toLng},${toLat}` +
+          `?geometries=geojson&overview=full&access_token=${Config.mapboxAccessToken}`;
+        const resp = await fetch(url);
+        const json = await resp.json();
+        if (json.routes && json.routes.length > 0) {
+          const r = json.routes[0];
+          setRouteCoords(r.geometry.coordinates as [number, number][]);
+          setDistanceKm(r.distance / 1000);
+          setEtaMinutes(Math.ceil(r.duration / 60));
+        }
+      } catch (err) {
+        console.warn('[ActiveJob] Failed to fetch route:', err);
+      }
+    },
+    [],
+  );
+
+  // --- Start GPS tracking when en_route ---
+  useEffect(() => {
     if (!activeJob) return;
-    const { latitude, longitude } = activeJob.address;
-    const label = encodeURIComponent(
-      `${activeJob.address.street}, ${activeJob.address.city}`,
-    );
+    const isEnRoute = activeJob.status === 'en_route';
 
-    const url = Platform.select({
-      ios: `maps:0,0?q=${label}&ll=${latitude},${longitude}`,
-      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`,
-    });
+    if (isEnRoute) {
+      // Get initial position
+      getCurrentPosition()
+        .then((pos) => {
+          setProviderLat(pos.latitude);
+          setProviderLng(pos.longitude);
+          // Fetch route from current pos to customer
+          if (activeJob.address) {
+            fetchRoute(
+              pos.latitude,
+              pos.longitude,
+              activeJob.address.latitude,
+              activeJob.address.longitude,
+            );
+          }
+        })
+        .catch((err) => console.warn('[ActiveJob] Initial position error:', err));
 
-    if (url) {
-      Linking.openURL(url).catch(() => {
-        Linking.openURL(
-          `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
-        );
+      // Watch continuous position updates
+      watchIdRef.current = watchPosition((pos) => {
+        setProviderLat(pos.latitude);
+        setProviderLng(pos.longitude);
       });
+
+      // Broadcast location to backend every 5 seconds
+      broadcastTimerRef.current = setInterval(async () => {
+        const lat = providerLat;
+        const lng = providerLng;
+        if (lat == null || lng == null) return;
+
+        // Skip if position hasn't changed significantly
+        const last = lastBroadcastRef.current;
+        if (last && haversineMetres(last.lat, last.lng, lat, lng) < 5) return;
+
+        try {
+          await post('/jobs/provider-location', {
+            latitude: lat,
+            longitude: lng,
+          });
+          lastBroadcastRef.current = { lat, lng };
+        } catch (err) {
+          console.warn('[ActiveJob] Location broadcast error:', err);
+        }
+      }, 5000);
     }
-  }, [activeJob]);
+
+    return () => {
+      if (watchIdRef.current != null) {
+        clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (broadcastTimerRef.current) {
+        clearInterval(broadcastTimerRef.current);
+        broadcastTimerRef.current = null;
+      }
+    };
+  }, [activeJob?.status, activeJob?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Re-fetch route when position changes significantly ---
+  useEffect(() => {
+    if (
+      activeJob?.status !== 'en_route' ||
+      providerLat == null ||
+      providerLng == null ||
+      !activeJob?.address
+    )
+      return;
+
+    const dist = haversineMetres(
+      providerLat,
+      providerLng,
+      activeJob.address.latitude,
+      activeJob.address.longitude,
+    );
+    setDistanceKm(dist / 1000);
+    // Rough ETA: average 30 km/h in city
+    setEtaMinutes(Math.ceil((dist / 1000 / 30) * 60));
+  }, [providerLat, providerLng, activeJob?.address, activeJob?.status, haversineMetres]);
+
+  // --- Proximity: within 100m of customer? ---
+  const isNearCustomer = !!(activeJob?.address &&
+    providerLat != null &&
+    providerLng != null &&
+    haversineMetres(
+      providerLat,
+      providerLng,
+      activeJob.address.latitude,
+      activeJob.address.longitude,
+    ) < 100);
 
   // Handle status update with legal acknowledgment for start job
   const handleStatusUpdate = useCallback(async () => {
@@ -544,9 +666,9 @@ export default function ActiveJobScreen(): React.JSX.Element {
         </View>
       </View>
 
-      {/* Customer location card */}
+      {/* Live Navigation Map */}
       <View style={styles.locationCard}>
-        <Text style={styles.sectionTitle}>Customer Location</Text>
+        <Text style={styles.sectionTitle}>Navigation</Text>
         <Text style={styles.addressText}>
           {activeJob.address.street}
         </Text>
@@ -555,12 +677,32 @@ export default function ActiveJobScreen(): React.JSX.Element {
           {activeJob.address.postalCode}
         </Text>
 
+        {/* ETA / Distance Overlay */}
+        {activeJob.status === 'en_route' && distanceKm != null && (
+          <View style={styles.etaOverlay}>
+            <Text style={styles.etaText}>
+              {distanceKm < 1
+                ? `${Math.round(distanceKm * 1000)} m`
+                : `${distanceKm.toFixed(1)} km`}
+            </Text>
+            <Text style={styles.etaSeparator}>•</Text>
+            <Text style={styles.etaText}>
+              {etaMinutes != null ? `${etaMinutes} min` : '...'}
+            </Text>
+            {isNearCustomer && (
+              <View style={styles.nearBadge}>
+                <Text style={styles.nearBadgeText}>Nearby!</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Mapbox Map View */}
         <View style={styles.mapContainer}>
           <MapboxGL.MapView
             style={styles.map}
             styleURL={MapboxGL.StyleURL.Street}
-            scrollEnabled={false} // Disable scroll inside ScrollView
+            scrollEnabled={true}
             zoomEnabled={true}
             rotateEnabled={false}
             pitchEnabled={false}
@@ -568,14 +710,56 @@ export default function ActiveJobScreen(): React.JSX.Element {
             logoEnabled={false}
           >
             <MapboxGL.Camera
-              zoomLevel={14}
-              centerCoordinate={[
-                activeJob.address.longitude,
-                activeJob.address.latitude,
-              ]}
+              ref={cameraRef}
+              zoomLevel={13}
+              centerCoordinate={
+                providerLat != null && providerLng != null
+                  ? [providerLng, providerLat]
+                  : [activeJob.address.longitude, activeJob.address.latitude]
+              }
               animationMode="flyTo"
-              animationDuration={2000}
+              animationDuration={1000}
             />
+
+            {/* Route line */}
+            {routeCoords && routeCoords.length > 0 && (
+              <MapboxGL.ShapeSource
+                id="route-source"
+                shape={{
+                  type: 'Feature',
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: routeCoords,
+                  },
+                  properties: {},
+                }}
+              >
+                <MapboxGL.LineLayer
+                  id="route-line"
+                  style={{
+                    lineColor: Colors.primary,
+                    lineWidth: 4,
+                    lineOpacity: 0.8,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+              </MapboxGL.ShapeSource>
+            )}
+
+            {/* Provider position marker */}
+            {providerLat != null && providerLng != null && (
+              <MapboxGL.MarkerView
+                id="provider-location"
+                coordinate={[providerLng, providerLat]}
+              >
+                <View style={styles.providerMarker}>
+                  <View style={styles.providerMarkerInner} />
+                </View>
+              </MapboxGL.MarkerView>
+            )}
+
+            {/* Customer destination marker */}
             <MapboxGL.MarkerView
               id="customer-location"
               coordinate={[
@@ -587,16 +771,6 @@ export default function ActiveJobScreen(): React.JSX.Element {
             </MapboxGL.MarkerView>
           </MapboxGL.MapView>
         </View>
-
-        <TouchableOpacity
-          style={styles.navigateButton}
-          onPress={openNavigation}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Open navigation to customer location"
-        >
-          <Text style={styles.navigateButtonText}>Open Navigation</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Before/after photos */}
@@ -1040,6 +1214,54 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderWidth: 2,
     borderColor: Colors.white,
+  },
+  providerMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(33,150,243,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  providerMarkerInner: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#2196F3',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  etaOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceLight,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  etaText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  etaSeparator: {
+    fontSize: 15,
+    color: Colors.textTertiary,
+    marginHorizontal: 8,
+  },
+  nearBadge: {
+    marginLeft: 8,
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  nearBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.white,
   },
   bottomSpacer: {
     height: 32,

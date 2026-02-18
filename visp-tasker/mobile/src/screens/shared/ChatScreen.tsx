@@ -3,8 +3,7 @@
  *
  * Full chat interface shared between customer and provider flows.
  * Displays message history with sent/received bubbles, text input,
- * typing indicator, and auto-scroll to newest message. Falls back
- * to local state when the API is not available in development.
+ * typing indicator, and auto-scroll to newest message.
  *
  * Navigation params: { jobId: string, otherUserName: string }
  */
@@ -32,46 +31,6 @@ import type { ChatMessage, RootStackParamList } from '../../types';
 
 type ChatRoute = RouteProp<RootStackParamList, 'Chat'>;
 
-// ---------------------------------------------------------------------------
-// Mock data for __DEV__ fallback
-// ---------------------------------------------------------------------------
-
-function createMockMessages(
-  jobId: string,
-  currentUserId: string,
-  otherUserName: string,
-): ChatMessage[] {
-  const now = Date.now();
-  return [
-    {
-      id: 'msg-001',
-      jobId,
-      senderId: 'other-user-001',
-      senderName: otherUserName,
-      message: `Hi, I am heading to your location for the service.`,
-      createdAt: new Date(now - 30 * 60 * 1000).toISOString(),
-      isOwnMessage: false,
-    },
-    {
-      id: 'msg-002',
-      jobId,
-      senderId: currentUserId,
-      senderName: 'You',
-      message: 'Great, I will be home. The door code is 1234.',
-      createdAt: new Date(now - 28 * 60 * 1000).toISOString(),
-      isOwnMessage: true,
-    },
-    {
-      id: 'msg-003',
-      jobId,
-      senderId: 'other-user-001',
-      senderName: otherUserName,
-      message: 'Got it, thanks! I should arrive in about 15 minutes.',
-      createdAt: new Date(now - 25 * 60 * 1000).toISOString(),
-      isOwnMessage: false,
-    },
-  ];
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -98,10 +57,7 @@ export default function ChatScreen(): React.JSX.Element {
       const data = await get<ChatMessage[]>(`/jobs/${jobId}/messages`);
       setMessages(data);
     } catch {
-      if (__DEV__) {
-        console.warn('DEV: Using mock data for chat messages');
-        setMessages(createMockMessages(jobId, currentUserId, otherUserName));
-      }
+      console.error('[ChatScreen] Failed to fetch messages');
     } finally {
       setIsLoading(false);
     }
@@ -138,14 +94,7 @@ export default function ChatScreen(): React.JSX.Element {
           prev.map((m) => (m.id === optimisticMessage.id ? sent : m)),
         );
       } catch {
-        if (__DEV__) {
-          console.warn('DEV: Message stored locally (API not available)');
-          // Simulate typing indicator from the other user
-          setIsTyping(true);
-          setTimeout(() => {
-            setIsTyping(false);
-          }, 2000);
-        }
+        console.error('[ChatScreen] Failed to send message');
         // Keep the optimistic message in the list regardless
       } finally {
         setIsSending(false);

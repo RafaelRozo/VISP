@@ -8,6 +8,17 @@
 
 export type UserRole = 'customer' | 'provider' | 'both';
 
+export interface UserDefaultAddress {
+  street: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  country: string;
+  latitude: number | null;
+  longitude: number | null;
+  formattedAddress?: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -19,6 +30,17 @@ export interface User {
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  defaultAddress?: UserDefaultAddress | null;
+  stripeCustomerId?: string | null;
+}
+
+export interface PaymentMethodInfo {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
 }
 
 export interface AuthTokens {
@@ -271,7 +293,7 @@ export interface WeeklyEarnings {
 // Provider Profile & Credentials
 // ──────────────────────────────────────────────
 
-export type CredentialStatus = 'pending' | 'approved' | 'expired' | 'rejected';
+export type CredentialStatus = 'awaiting_upload' | 'pending' | 'approved' | 'expired' | 'rejected';
 
 export type CredentialType =
   | 'criminal_record_check'

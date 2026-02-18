@@ -94,14 +94,18 @@ function RatingScreen(): React.JSX.Element {
     navigation.setOptions({ title: 'Rate & Pay' });
   }, [navigation]);
 
-  // Cost breakdown
+  // Cost breakdown — uses real rates when available, defaults otherwise
   const costBreakdown = useMemo(() => {
-    const labor = finalPrice * 0.85;
-    const platformFee = finalPrice * 0.15;
-    const tax = finalPrice * 0.13;
+    // Platform fee rate comes from job data; default to 15% if not provided
+    const feeRate = (route.params as any)?.platformFeeRate ?? 0.15;
+    const taxRate = (route.params as any)?.taxRate ?? 0.13;
+
+    const platformFee = finalPrice * feeRate;
+    const labor = finalPrice - platformFee;
+    const tax = finalPrice * taxRate;
     const total = finalPrice + tax;
     return { labor, platformFee, tax, total };
-  }, [finalPrice]);
+  }, [finalPrice, route.params]);
 
   // Tags to show based on rating
   const visibleTags = useMemo(() => {
@@ -150,27 +154,10 @@ function RatingScreen(): React.JSX.Element {
         ],
       );
     } catch {
-      // MVP fallback
-      if (__DEV__) {
-        console.warn('[RatingScreen] API failed, using mock for MVP');
-        Alert.alert(
-          'Thank You',
-          'Your rating has been submitted. Payment will be processed.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                navigation.popToTop();
-              },
-            },
-          ],
-        );
-      } else {
-        Alert.alert(
-          'Submission Failed',
-          'Unable to submit your rating. Please try again.',
-        );
-      }
+      Alert.alert(
+        'Submission Failed',
+        'Unable to submit your rating. Please try again.',
+      );
     } finally {
       setIsSubmitting(false);
     }

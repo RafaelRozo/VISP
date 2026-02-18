@@ -10,11 +10,11 @@ Calculates job prices based on:
   - Peak / holidays: up to 2.5x
 - Multipliers stack multiplicatively but are capped at the dynamic_multiplier_max
 
-Commission ranges per level:
-- Level 1: 15-20% (default 17.5%)
-- Level 2: 12-18% (default 15%)
-- Level 3:  8-12% (default 10%)
-- Level 4: 15-25% (default 20%)
+Commission ranges per level (from commission_schedules.json):
+- Level 1: 15-20% (default 20%)
+- Level 2: 12-18% (default 18%)
+- Level 3: 10-15% (default 15%)
+- Level 4:  5-10% (default 10%)
 
 All methods are async and accept an ``AsyncSession`` for transactional safety.
 """
@@ -85,22 +85,22 @@ DEFAULT_COMMISSION: dict[ProviderLevel, dict[str, Decimal]] = {
     ProviderLevel.LEVEL_1: {
         "min": Decimal("0.1500"),
         "max": Decimal("0.2000"),
-        "default": Decimal("0.1750"),
+        "default": Decimal("0.2000"),
     },
     ProviderLevel.LEVEL_2: {
         "min": Decimal("0.1200"),
         "max": Decimal("0.1800"),
-        "default": Decimal("0.1500"),
+        "default": Decimal("0.1800"),
     },
     ProviderLevel.LEVEL_3: {
-        "min": Decimal("0.0800"),
-        "max": Decimal("0.1200"),
-        "default": Decimal("0.1000"),
+        "min": Decimal("0.1000"),
+        "max": Decimal("0.1500"),
+        "default": Decimal("0.1500"),
     },
     ProviderLevel.LEVEL_4: {
-        "min": Decimal("0.1500"),
-        "max": Decimal("0.2500"),
-        "default": Decimal("0.2000"),
+        "min": Decimal("0.0500"),
+        "max": Decimal("0.1000"),
+        "default": Decimal("0.1000"),
     },
 }
 

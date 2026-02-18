@@ -99,14 +99,14 @@ export default function ProviderOnboardingScreen() {
             const selectedTasks = allTasks.filter(t => selectedTaskIds.has(t.id));
 
             const restricted = selectedTasks.filter(t =>
-                t.regulated || t.licenseRequired || t.hazardous || t.structural
+                t.regulated || t.licenseRequired || t.certificationRequired || t.hazardous || t.structural
             );
 
             if (restricted.length > 0) {
                 const names = restricted.map(t => `• ${t.name}`).join('\n');
                 Alert.alert(
                     'Services Saved ✓',
-                    `Your services have been saved.\n\nThe following require verification before activation:\n${names}\n\nPlease upload documents in Profile > Credentials.`,
+                    `Your services have been saved.\n\nThe following require documents before activation:\n${names}\n\nPlease upload the required documents in Profile > Credentials.`,
                     [
                         {
                             text: 'OK',
@@ -192,7 +192,9 @@ export default function ProviderOnboardingScreen() {
                                 <View style={styles.tasksList}>
                                     {category.tasks.map((task) => {
                                         const isSelected = selectedTaskIds.has(task.id);
-                                        const isRestricted = task.regulated || task.licenseRequired;
+                                        const needsLicense = task.licenseRequired;
+                                        const needsCertification = task.certificationRequired;
+                                        const isRegulated = task.regulated && !needsLicense && !needsCertification;
 
                                         return (
                                             <TouchableOpacity
@@ -215,10 +217,22 @@ export default function ProviderOnboardingScreen() {
                                                     ]}>
                                                         {task.name}
                                                     </Text>
-                                                    {isRestricted && (
+                                                    {needsLicense && (
                                                         <View style={styles.restrictedBadge}>
                                                             <Text style={{ fontSize: 12 }}>🛡</Text>
                                                             <Text style={styles.restrictedText}>Requires License</Text>
+                                                        </View>
+                                                    )}
+                                                    {needsCertification && (
+                                                        <View style={styles.restrictedBadge}>
+                                                            <Text style={{ fontSize: 12 }}>📄</Text>
+                                                            <Text style={[styles.restrictedText, { color: Colors.primary }]}>Requires Certificate</Text>
+                                                        </View>
+                                                    )}
+                                                    {isRegulated && (
+                                                        <View style={styles.restrictedBadge}>
+                                                            <Text style={{ fontSize: 12 }}>⚠️</Text>
+                                                            <Text style={styles.restrictedText}>Regulated</Text>
                                                         </View>
                                                     )}
                                                 </View>

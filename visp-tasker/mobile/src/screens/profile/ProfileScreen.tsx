@@ -24,12 +24,15 @@ import { Colors, getLevelColor } from '../../theme/colors';
 import LevelProgress from '../../components/LevelProgress';
 import {
   LevelProgressInfo,
+  PaymentMethodInfo,
   ProfileStackParamList,
   ProviderProfile,
   ServiceLevel,
   User,
+  UserDefaultAddress,
 } from '../../types';
-import { patch, upload } from '../../services/apiClient';
+import { get, patch, post } from '../../services/apiClient';
+import { geolocationService } from '../../services/geolocationService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -149,32 +152,11 @@ import { useProviderStore } from '../../stores/providerStore';
 // Main Component
 // ---------------------------------------------------------------------------
 
-const MOCK_LEVEL_PROGRESS: LevelProgressInfo = {
-  currentLevel: 2 as ServiceLevel,
-  nextLevel: 3 as ServiceLevel,
-  progressPercent: 65,
-  requirements: [
-    {
-      label: 'Complete 50 jobs',
-      description: '47 of 50 completed',
-      isMet: false,
-    },
-    {
-      label: 'Trade license uploaded',
-      description: 'Upload a valid trade license',
-      isMet: false,
-    },
-    {
-      label: 'Maintain 4.5+ rating',
-      description: 'Current rating: 4.7',
-      isMet: true,
-    },
-    {
-      label: '$2M insurance certificate',
-      description: 'Upload proof of $2M liability insurance',
-      isMet: false,
-    },
-  ],
+const INITIAL_LEVEL_PROGRESS: LevelProgressInfo = {
+  currentLevel: 1 as ServiceLevel,
+  nextLevel: 2 as ServiceLevel,
+  progressPercent: 0,
+  requirements: [],
 };
 
 export default function ProfileScreen(): React.JSX.Element {
@@ -184,7 +166,36 @@ export default function ProfileScreen(): React.JSX.Element {
   const { user, setUser, logout } = useAuthStore();
   const { providerProfile } = useProviderStore();
 
-  const [levelProgress] = useState<LevelProgressInfo>(MOCK_LEVEL_PROGRESS);
+  // Compute level progress from real profile data
+  const levelProgress = React.useMemo<LevelProgressInfo>(() => {
+    if (!providerProfile) return INITIAL_LEVEL_PROGRESS;
+    const currentLevel = (providerProfile.level ?? 1) as ServiceLevel;
+    const nextLevel = Math.min(currentLevel + 1, 4) as ServiceLevel;
+    // Use completedJobs and rating from real dashboard data
+    const completedJobs = providerProfile.completedJobs ?? 0;
+    const rating = providerProfile.rating ?? 0;
+    // Rough progress estimate based on level thresholds
+    const jobThresholds: Record<number, number> = { 1: 25, 2: 50, 3: 100, 4: 999 };
+    const threshold = jobThresholds[currentLevel] ?? 25;
+    const progressPercent = Math.min(Math.round((completedJobs / threshold) * 100), 100);
+    return {
+      currentLevel,
+      nextLevel,
+      progressPercent,
+      requirements: [
+        {
+          label: `Complete ${threshold} jobs`,
+          description: `${completedJobs} of ${threshold} completed`,
+          isMet: completedJobs >= threshold,
+        },
+        {
+          label: 'Maintain 4.5+ rating',
+          description: `Current rating: ${rating.toFixed(1)}`,
+          isMet: rating >= 4.5,
+        },
+      ],
+    };
+  }, [providerProfile]);
   const [isEditing, setIsEditing] = useState(false);
 
   // Initialize edit state with user data (safely handle null user)
@@ -193,6 +204,17 @@ export default function ProfileScreen(): React.JSX.Element {
   const [editPhone, setEditPhone] = useState('');
   const [countryCode, setCountryCode] = useState('+52');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Address state
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [addressInput, setAddressInput] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
+
+  // Payment state
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodInfo[]>([]);
+  const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const [isAddingCard, setIsAddingCard] = useState(false);
 
   // Update local edit state when user changes (e.g. after save)
   useEffect(() => {
@@ -258,6 +280,104 @@ export default function ProfileScreen(): React.JSX.Element {
       setIsSaving(false);
     }
   }, [editFirstName, editLastName, editPhone, countryCode, user, setUser]);
+
+  // ── Address handlers ──
+  const handleAddressSearch = useCallback(async (text: string) => {
+    setAddressInput(text);
+    if (text.length >= 4) {
+      try {
+        const result = await geolocationService.geocodeAddress(text);
+        if (result && result.formatted_address) {
+          const parsed = geolocationService.parseAddress(result.formatted_address);
+          setAddressSuggestions([{
+            formattedAddress: result.formatted_address,
+            latitude: result.lat,
+            longitude: result.lng,
+            street: parsed.street,
+            city: parsed.city,
+            province: parsed.province,
+            postalCode: parsed.postalCode,
+            country: parsed.country || 'CA',
+          }]);
+        } else {
+          setAddressSuggestions([]);
+        }
+      } catch {
+        setAddressSuggestions([]);
+      }
+    } else {
+      setAddressSuggestions([]);
+    }
+  }, []);
+
+  const handleSelectAddress = useCallback(async (addr: any) => {
+    if (!user) return;
+    setIsSavingAddress(true);
+    try {
+      const addressPayload: UserDefaultAddress = {
+        street: addr.street || '',
+        city: addr.city || '',
+        province: addr.province || '',
+        postalCode: addr.postalCode || '',
+        country: addr.country || 'CA',
+        latitude: addr.latitude,
+        longitude: addr.longitude,
+        formattedAddress: addr.formattedAddress,
+      };
+      await patch('/users/me', { defaultAddress: addressPayload });
+      setUser({ ...user, defaultAddress: addressPayload });
+      setIsEditingAddress(false);
+      setAddressInput('');
+      setAddressSuggestions([]);
+    } catch {
+      Alert.alert('Error', 'Failed to save address.');
+    } finally {
+      setIsSavingAddress(false);
+    }
+  }, [user, setUser]);
+
+  // ── Payment handlers ──
+  const fetchPaymentMethods = useCallback(async () => {
+    setIsLoadingPayments(true);
+    try {
+      const res = await get<{ methods: PaymentMethodInfo[] }>('/users/me/payment-methods');
+      setPaymentMethods(res?.methods ?? []);
+    } catch {
+      // No payment methods
+    } finally {
+      setIsLoadingPayments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPaymentMethods();
+  }, [fetchPaymentMethods]);
+
+  const handleAddCard = useCallback(async () => {
+    setIsAddingCard(true);
+    try {
+      const res = await post<{ clientSecret: string; customerId: string }>(
+        '/users/me/payment-setup-intent',
+        {},
+      );
+      // For now, show the client secret info — full Stripe SDK integration
+      // requires @stripe/stripe-react-native which needs native setup.
+      Alert.alert(
+        'Add Payment Method',
+        'To add a card, Stripe SDK integration is required.\n\n'
+        + 'SetupIntent created successfully.\n'
+        + `Customer ID: ${res.customerId}`,
+        [{ text: 'OK' }],
+      );
+      // After real Stripe SDK is installed, replace with:
+      // const { error } = await confirmSetupIntent(res.clientSecret, { ... });
+      // if (!error) fetchPaymentMethods();
+    } catch {
+      Alert.alert('Error', 'Failed to initialize card setup.');
+    } finally {
+      setIsAddingCard(false);
+    }
+  }, []);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Logout', 'Are you sure you want to log out?', [
@@ -448,6 +568,108 @@ export default function ProfileScreen(): React.JSX.Element {
             })}
           </Text>
         </View>
+      </View>
+
+      {/* Saved Address */}
+      <View style={styles.infoCard}>
+        <View style={styles.nameRow}>
+          <Text style={[styles.infoLabel, { fontWeight: '600', fontSize: 15 }]}>📍 Saved Address</Text>
+          <TouchableOpacity
+            onPress={() => setIsEditingAddress(!isEditingAddress)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.editLink}>
+              {user.defaultAddress ? 'Change' : 'Add'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {user.defaultAddress ? (
+          <View style={{ marginTop: 8 }}>
+            <Text style={[styles.infoValue, { marginBottom: 2 }]}>
+              {user.defaultAddress.formattedAddress || user.defaultAddress.street}
+            </Text>
+            <Text style={styles.infoLabel}>
+              {user.defaultAddress.city}{user.defaultAddress.province ? `, ${user.defaultAddress.province}` : ''}
+              {user.defaultAddress.postalCode ? ` ${user.defaultAddress.postalCode}` : ''}
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.infoLabel, { marginTop: 8 }]}>No address saved</Text>
+        )}
+
+        {isEditingAddress && (
+          <View style={{ marginTop: 12 }}>
+            <TextInput
+              style={styles.input}
+              value={addressInput}
+              onChangeText={handleAddressSearch}
+              placeholder="Search your address..."
+              placeholderTextColor={Colors.inputPlaceholder}
+              autoCapitalize="words"
+              returnKeyType="search"
+            />
+            {isSavingAddress && (
+              <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 8 }} />
+            )}
+            {addressSuggestions.length > 0 && (
+              <View style={{ marginTop: 8, backgroundColor: Colors.surface, borderRadius: 8, borderWidth: 1, borderColor: Colors.border }}>
+                {addressSuggestions.map((s, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={{ padding: 12, borderBottomWidth: i < addressSuggestions.length - 1 ? 1 : 0, borderBottomColor: Colors.border }}
+                    onPress={() => handleSelectAddress(s)}
+                  >
+                    <Text style={[styles.infoValue, { fontSize: 14 }]}>{s.formattedAddress}</Text>
+                    <Text style={[styles.infoLabel, { fontSize: 12, marginTop: 2 }]}>
+                      {s.city}, {s.province} {s.postalCode}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Payment Methods */}
+      <View style={styles.infoCard}>
+        <View style={styles.nameRow}>
+          <Text style={[styles.infoLabel, { fontWeight: '600', fontSize: 15 }]}>💳 Payment Method</Text>
+          <TouchableOpacity
+            onPress={handleAddCard}
+            disabled={isAddingCard}
+            accessibilityRole="button"
+          >
+            <Text style={styles.editLink}>
+              {isAddingCard ? 'Adding...' : 'Add Card'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {isLoadingPayments ? (
+          <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 12 }} />
+        ) : paymentMethods.length > 0 ? (
+          <View style={{ marginTop: 8 }}>
+            {paymentMethods.map((pm) => (
+              <View key={pm.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                <Text style={{ fontSize: 20, marginRight: 10 }}>
+                  {pm.brand === 'visa' ? '💳' : pm.brand === 'mastercard' ? '💳' : '💳'}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.infoValue}>
+                    {pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1)} •••• {pm.last4}
+                  </Text>
+                  <Text style={[styles.infoLabel, { fontSize: 12 }]}>
+                    Expires {pm.expMonth}/{pm.expYear}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={[styles.infoLabel, { marginTop: 8 }]}>No payment method saved</Text>
+        )}
       </View>
 
       {/* Provider level progress */}

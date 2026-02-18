@@ -4,6 +4,10 @@
  * List of provider credentials with status for each (pending, approved,
  * expired, rejected), upload new credential, document type selection,
  * expiry date display, and re-upload for expired credentials.
+ *
+ * Pending service requirements are merged into the main list as "pending"
+ * credential items — they appear under the "All" and "Pending" tabs with
+ * an upload prompt when tapped.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -28,7 +32,7 @@ import {
 } from '../../types';
 import { get } from '../../services/apiClient';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { providerService } from '../../services/providerService';
+import { providerService, PendingCredential } from '../../services/providerService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,41 +50,110 @@ const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
 ];
 
 // ---------------------------------------------------------------------------
+// Helpers — convert pending requirements into Credential-like objects
+// ---------------------------------------------------------------------------
+
+function pendingToCredential(item: PendingCredential): Credential {
+  const credType: CredentialType =
+    item.requiredType === 'license' ? 'trade_license' : 'certification';
+
+  // Map upload status to credential status
+  let status: CredentialStatus = 'pending';
+  if (item.uploadStatus === 'not_uploaded') {
+    status = 'awaiting_upload';
+  } else if (item.uploadStatus === 'pending_review') {
+    status = 'pending';
+  } else if (item.uploadStatus === 'verified') {
+    status = 'approved';
+  } else if (item.uploadStatus === 'rejected') {
+    status = 'rejected';
+  } else if (item.uploadStatus === 'expired') {
+    status = 'expired';
+  }
+
+  return {
+    id: `pending-${item.taskId}`,
+    type: credType,
+    label: `${item.taskName} — ${item.badge}`,
+    status,
+    documentUrl: null,
+    expiresAt: null,
+    rejectionReason: null,
+    uploadedAt: item.uploadStatus === 'not_uploaded' ? '' : new Date().toISOString(),
+    reviewedAt: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
 export default function CredentialsScreen(): React.JSX.Element {
   const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [pendingReqs, setPendingReqs] = useState<PendingCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [filter, setFilter] = useState<FilterOption>('all');
 
-  // Fetch credentials
-  const fetchCredentials = useCallback(async () => {
+  // Fetch credentials + pending requirements
+  const fetchAll = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await get<Credential[]>('/provider/credentials');
-      setCredentials(data);
-    } catch {
-      // On error, show empty list -- error handling via store in production
+      const [creds, pending] = await Promise.all([
+        get<Credential[]>('/provider/credentials').catch(() => [] as Credential[]),
+        providerService.getPendingCredentials().catch(() => [] as PendingCredential[]),
+      ]);
+      setCredentials(creds);
+      setPendingReqs(pending);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchCredentials();
-  }, [fetchCredentials]);
+    fetchAll();
+  }, [fetchAll]);
 
-  // Filter credentials
+  // Merge pending requirements into the credential list
+  const pendingAsCredentials = pendingReqs.map(pendingToCredential);
+  const allCredentials = [...pendingAsCredentials, ...credentials];
+
+  // Filter
   const filteredCredentials =
     filter === 'all'
-      ? credentials
-      : credentials.filter((c) => c.status === filter);
+      ? allCredentials
+      : allCredentials.filter((c) => c.status === filter);
 
-  // Handle credential tap
+  // Handle credential or pending-requirement tap
   const handleCredentialPress = useCallback(
     (credential: Credential) => {
+      // Check if this is a pending requirement (synthetic credential)
+      if (credential.id.startsWith('pending-')) {
+        const taskId = credential.id.replace('pending-', '');
+        const pendingItem = pendingReqs.find((p) => p.taskId === taskId);
+
+        if (pendingItem && (pendingItem.uploadStatus === 'not_uploaded' || pendingItem.uploadStatus === 'rejected')) {
+          Alert.alert(
+            'Upload Document',
+            `"${pendingItem.taskName}" requires a ${pendingItem.requiredType === 'license' ? 'license' : 'certificate'} to activate.\n\nWould you like to upload the document now?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Upload',
+                onPress: () => handlePendingUpload(pendingItem),
+              },
+            ],
+          );
+        } else if (pendingItem && pendingItem.uploadStatus === 'pending_review') {
+          Alert.alert(
+            'Under Review',
+            `Your document for "${pendingItem.taskName}" is being reviewed. You'll be notified once it's approved.`,
+          );
+        }
+        return;
+      }
+
+      // Regular credential tap
       if (
         credential.status === 'expired' ||
         credential.status === 'rejected'
@@ -97,7 +170,6 @@ export default function CredentialsScreen(): React.JSX.Element {
           ],
         );
       } else if (credential.documentUrl) {
-        // In production, this would open a document viewer
         Alert.alert(
           credential.label,
           `Status: ${credential.status}\nUploaded: ${new Date(credential.uploadedAt).toLocaleDateString()}${credential.expiresAt
@@ -107,13 +179,55 @@ export default function CredentialsScreen(): React.JSX.Element {
         );
       }
     },
-    [],
+    [pendingReqs],
   );
 
-  // Handle upload new credential
+  // Handle upload for a pending requirement
+  const handlePendingUpload = useCallback(
+    async (item: PendingCredential) => {
+      try {
+        const result = await launchImageLibrary({
+          mediaType: 'photo',
+          selectionLimit: 1,
+        });
+
+        if (result.didCancel || !result.assets || result.assets.length === 0) {
+          return;
+        }
+
+        const asset = result.assets[0];
+        setIsUploading(true);
+
+        const credType = item.requiredType === 'license' ? 'trade_license' : 'certification';
+
+        await providerService.uploadCredential(
+          {
+            uri: asset.uri,
+            type: asset.type,
+            name: asset.fileName,
+          },
+          credType,
+          item.taskId,
+        );
+
+        Alert.alert(
+          'Document Uploaded',
+          `Your document for "${item.taskName}" has been submitted for review. You'll be notified once it's approved.`,
+        );
+        fetchAll();
+      } catch (error) {
+        console.error('Upload failed:', error);
+        Alert.alert('Error', 'Failed to upload document. Please try again.');
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [fetchAll],
+  );
+
+  // Handle upload new credential (generic)
   const handleUploadDocument = useCallback(
     async (preselectedType?: CredentialType) => {
-      // Helper to perform the actual upload
       const performUpload = async (type: CredentialType) => {
         try {
           const result = await launchImageLibrary({
@@ -138,7 +252,7 @@ export default function CredentialsScreen(): React.JSX.Element {
           );
 
           Alert.alert('Success', 'Document uploaded successfully for review.');
-          fetchCredentials();
+          fetchAll();
         } catch (error) {
           console.error('Upload failed:', error);
           Alert.alert('Error', 'Failed to upload document. Please try again.');
@@ -152,7 +266,6 @@ export default function CredentialsScreen(): React.JSX.Element {
         return;
       }
 
-      // Show type picker
       if (Platform.OS === 'ios') {
         ActionSheetIOS.showActionSheetWithOptions(
           {
@@ -167,7 +280,6 @@ export default function CredentialsScreen(): React.JSX.Element {
           },
         );
       } else {
-        // Android: use an Alert with buttons (or in production a bottom sheet)
         Alert.alert(
           'Select Document Type',
           'Choose the type of credential to upload.',
@@ -181,11 +293,11 @@ export default function CredentialsScreen(): React.JSX.Element {
         );
       }
     },
-    [fetchCredentials],
+    [fetchAll],
   );
 
   // Status counts for filter badges
-  const statusCounts = credentials.reduce(
+  const statusCounts = allCredentials.reduce(
     (acc, c) => {
       acc[c.status] = (acc[c.status] || 0) + 1;
       return acc;
@@ -209,15 +321,16 @@ export default function CredentialsScreen(): React.JSX.Element {
         {(
           [
             { key: 'all' as FilterOption, label: 'All' },
-            { key: 'approved' as FilterOption, label: 'Approved' },
+            { key: 'awaiting_upload' as FilterOption, label: 'Upload' },
             { key: 'pending' as FilterOption, label: 'Pending' },
+            { key: 'approved' as FilterOption, label: 'Approved' },
             { key: 'expired' as FilterOption, label: 'Expired' },
             { key: 'rejected' as FilterOption, label: 'Rejected' },
           ] as const
         ).map((tab) => {
           const count =
             tab.key === 'all'
-              ? credentials.length
+              ? allCredentials.length
               : statusCounts[tab.key] || 0;
 
           return (
@@ -270,7 +383,7 @@ export default function CredentialsScreen(): React.JSX.Element {
         <Text style={styles.emptyTitle}>No Credentials</Text>
         <Text style={styles.emptySubtext}>
           Upload your credentials to get verified and start receiving jobs.
-          Required documents depend on your target service level.
+          Required documents depend on your selected services.
         </Text>
       </View>
     );
@@ -288,7 +401,7 @@ export default function CredentialsScreen(): React.JSX.Element {
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
-            onRefresh={fetchCredentials}
+            onRefresh={fetchAll}
             tintColor={Colors.primary}
             colors={[Colors.primary]}
           />

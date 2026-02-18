@@ -65,6 +65,19 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     phone_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Default address (saved from profile for booking auto-fill)
+    default_address_street: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    default_address_city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    default_address_province: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    default_address_postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    default_address_country: Mapped[Optional[str]] = mapped_column(String(5), nullable=True, server_default="CA")
+    default_address_latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    default_address_longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    default_address_formatted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Stripe
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     # Location
     last_latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     last_longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)

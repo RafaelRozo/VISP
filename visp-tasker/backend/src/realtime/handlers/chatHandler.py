@@ -40,6 +40,7 @@ from src.api.deps import async_session_factory
 from src.models.chat import ChatMessage, MessageType
 from src.models.job import Job, JobStatus
 from src.models.user import User
+from src.services import notificationService
 
 from ..socketServer import (
     broadcast_to_job,
@@ -303,6 +304,49 @@ async def handle_send_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         "Chat message sent: job=%s sender=%s type=%s len=%d",
         job_id, sender_id, message_type.value, len(message_text),
     )
+
+    # Push notification to the recipient (the other participant)
+    try:
+        if job:
+            # Determine recipient: if sender is customer, notify provider; and vice versa
+            recipient_id = None
+            if str(job.customer_id) == sender_id:
+                # Sender is customer, find the provider
+                from src.models.job import AssignmentStatus, JobAssignment
+                from src.models.provider import ProviderProfile
+
+                async with async_session_factory() as notify_db:
+                    assign_stmt = select(JobAssignment.provider_id).where(
+                        JobAssignment.job_id == uuid.UUID(job_id),
+                        JobAssignment.status == AssignmentStatus.ACCEPTED,
+                    )
+                    assign_result = await notify_db.execute(assign_stmt)
+                    assign_row = assign_result.first()
+                    if assign_row:
+                        prov_stmt = select(ProviderProfile.user_id).where(
+                            ProviderProfile.id == assign_row.provider_id,
+                        )
+                        prov_result = await notify_db.execute(prov_stmt)
+                        prov_row = prov_result.first()
+                        if prov_row:
+                            recipient_id = prov_row.user_id
+            else:
+                # Sender is provider, notify customer
+                recipient_id = job.customer_id
+
+            if recipient_id:
+                async with async_session_factory() as notify_db:
+                    await notificationService.notify_chat_message(
+                        job_id=uuid.UUID(job_id),
+                        recipient_id=recipient_id,
+                        sender_name=sender_name,
+                        message_preview=message_text,
+                        db=notify_db,
+                    )
+                    await notify_db.commit()
+    except Exception:
+        logger.exception("Failed to send chat push for job=%s", job_id)
+
     return {
         "ok": True,
         "message_id": str(message_id),

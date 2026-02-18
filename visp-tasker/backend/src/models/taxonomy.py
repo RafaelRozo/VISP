@@ -70,6 +70,7 @@ class ServiceTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Regulatory / safety flags
     regulated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     license_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    certification_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     hazardous: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     structural: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     emergency_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

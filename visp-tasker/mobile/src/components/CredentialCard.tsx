@@ -50,6 +50,11 @@ const STATUS_CONFIG: Record<
   CredentialStatus,
   { label: string; color: string; bgColor: string }
 > = {
+  awaiting_upload: {
+    label: 'Upload Required',
+    color: '#FF6B35',
+    bgColor: 'rgba(255, 107, 53, 0.15)',
+  },
   pending: {
     label: 'Pending Review',
     color: Colors.warning,
@@ -104,13 +109,16 @@ function CredentialCard({
   const expiringSoon = isExpiringSoon(credential.expiresAt);
 
   const needsAction =
-    credential.status === 'expired' || credential.status === 'rejected';
+    credential.status === 'awaiting_upload' ||
+    credential.status === 'expired' ||
+    credential.status === 'rejected';
 
   return (
     <TouchableOpacity
       style={[
         styles.container,
-        needsAction && styles.containerAction,
+        credential.status === 'awaiting_upload' && styles.containerUpload,
+        (credential.status === 'expired' || credential.status === 'rejected') && styles.containerAction,
       ]}
       onPress={() => onPress(credential)}
       activeOpacity={0.7}
@@ -195,6 +203,11 @@ const styles = StyleSheet.create({
   containerAction: {
     borderWidth: 1,
     borderColor: Colors.emergencyRed,
+  },
+  containerUpload: {
+    borderWidth: 1,
+    borderColor: '#FF6B35',
+    borderStyle: 'dashed',
   },
   iconContainer: {
     marginRight: 12,

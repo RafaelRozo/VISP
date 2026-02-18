@@ -193,15 +193,16 @@ async def book_job(
                 dynamic_multiplier=estimate.dynamic_multiplier,
             )
 
-            # Update the job with the quoted price
-            job.quoted_price_cents = estimate.final_price_min_cents
+            # Update the job with the quoted price (midpoint of range = same as customer estimate)
+            midpoint_cents = (estimate.final_price_min_cents + estimate.final_price_max_cents) // 2
+            job.quoted_price_cents = midpoint_cents
             job.commission_rate = estimate.commission_rate_default
             job.commission_amount_cents = int(
-                Decimal(str(estimate.final_price_min_cents))
+                Decimal(str(midpoint_cents))
                 * estimate.commission_rate_default
             )
             job.provider_payout_cents = (
-                estimate.final_price_min_cents - job.commission_amount_cents
+                midpoint_cents - job.commission_amount_cents
             )
             await db.flush()
         except Exception as exc:
@@ -975,6 +976,15 @@ async def get_pending_provider(
 
     user_record = provider.user
 
+    # Compute avg rating from reviews
+    from src.models.review import Review as _Review
+    from sqlalchemy import func as _func
+    _avg_stmt = select(_func.avg(_Review.overall_rating)).where(
+        _Review.reviewee_id == provider.user_id
+    )
+    _avg_raw = (await db.execute(_avg_stmt)).scalar()
+    _prov_rating = round(float(_avg_raw), 2) if _avg_raw else None
+
     return {"data": {
         "providerId": str(provider.id),
         "displayName": (
@@ -984,7 +994,7 @@ async def get_pending_provider(
         ),
         "level": int(provider.current_level.value) if provider.current_level else 1,
         "yearsExperience": provider.years_experience,
-        "rating": None,  # TODO: aggregate from reviews
+        "rating": _prov_rating,
         "profilePhotoUrl": user_record.avatar_url if user_record else None,
         "bio": provider.bio,
     }}
@@ -1079,3 +1089,130 @@ async def reject_provider(
     logger.info("Customer %s rejected provider for job %s", user.id, job_id)
 
     return {"data": {"ok": True, "status": job.status.value}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/rating  -- Customer submits job rating
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BaseModel, Field as _Field
+
+class RatingSubmitRequest(_BaseModel):
+    rating: int = _Field(ge=1, le=5, description="Star rating 1-5")
+    tags: list[str] = _Field(default_factory=list, description="Feedback tag IDs")
+    feedback: Optional[str] = _Field(default=None, description="Optional text feedback")
+
+
+@router.post(
+    "/{job_id}/rating",
+    summary="Submit a job rating",
+    description=(
+        "Customer submits a star rating, optional feedback tags, and optional "
+        "text feedback for a completed job. Creates a Review record with the "
+        "customer as reviewer and the assigned provider as reviewee."
+    ),
+)
+async def submit_job_rating(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: RatingSubmitRequest,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+    from src.models.review import Review, ReviewStatus, ReviewerRole
+    from src.models.provider import ProviderProfile
+
+    # 1. Load job -- must belong to this customer and be completed
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not completed (current: {job.status.value})",
+        )
+
+    # 2. Check for duplicate review
+    existing_review_stmt = select(Review).where(
+        Review.job_id == job_id,
+        Review.reviewer_id == user.id,
+    )
+    existing = (await db.execute(existing_review_stmt)).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="You have already rated this job",
+        )
+
+    # 3. Find the assigned provider's user_id
+    assignment_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.COMPLETED,
+    )
+    assignment = (await db.execute(assignment_stmt)).scalar_one_or_none()
+    if assignment is None:
+        # Fallback: try accepted assignment
+        assignment_stmt2 = select(JobAssignment).where(
+            JobAssignment.job_id == job_id,
+            JobAssignment.status == AssignmentStatus.ACCEPTED,
+        )
+        assignment = (await db.execute(assignment_stmt2)).scalar_one_or_none()
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No provider assignment found for this job",
+        )
+
+    # Get provider's user_id from ProviderProfile
+    provider_stmt = select(ProviderProfile).where(
+        ProviderProfile.id == assignment.provider_id,
+    )
+    provider = (await db.execute(provider_stmt)).scalar_one_or_none()
+    if provider is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Provider profile not found",
+        )
+
+    reviewee_user_id = provider.user_id
+
+    # 4. Build tags as comma-separated comment prefix
+    tags_text = ", ".join(body.tags) if body.tags else ""
+    comment_parts = []
+    if tags_text:
+        comment_parts.append(f"[Tags: {tags_text}]")
+    if body.feedback:
+        comment_parts.append(body.feedback)
+    comment = " ".join(comment_parts) if comment_parts else None
+
+    # 5. Create the Review
+    review = Review(
+        job_id=job_id,
+        reviewer_id=user.id,
+        reviewee_id=reviewee_user_id,
+        reviewer_role=ReviewerRole.CUSTOMER,
+        overall_rating=Decimal(str(body.rating)),
+        comment=comment,
+        status=ReviewStatus.PUBLISHED,
+    )
+    db.add(review)
+    await db.flush()
+
+    logger.info(
+        "Customer %s rated job %s with %d stars",
+        user.id, job_id, body.rating,
+    )
+
+    await db.commit()
+
+    return {"data": {
+        "reviewId": str(review.id),
+        "rating": body.rating,
+        "tags": body.tags,
+        "feedback": body.feedback,
+        "message": "Rating submitted successfully",
+    }}

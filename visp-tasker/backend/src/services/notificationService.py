@@ -116,7 +116,9 @@ def _should_send(
         NotificationType.JOB_STARTED,
         NotificationType.JOB_COMPLETED,
         NotificationType.JOB_CANCELLED,
+        NotificationType.JOB_REMINDER,
         NotificationType.PROVIDER_EN_ROUTE,
+        NotificationType.PROVIDER_ARRIVED,
     }
     payment_types = {
         NotificationType.PAYMENT_RECEIVED,
@@ -939,4 +941,172 @@ async def notify_payout_sent(
         db=db,
         sound="default",
         priority="normal",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API -- Provider arrival & job reminders
+# ---------------------------------------------------------------------------
+
+async def notify_provider_arrived(
+    job_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Notify a customer that the provider has arrived at the job location.
+
+    Args:
+        job_id: The UUID of the job.
+        customer_id: The UUID of the customer to notify.
+        db: Async database session.
+
+    Returns:
+        True if the notification was sent or stored successfully.
+    """
+    job = await db.get(Job, job_id)
+    if not job:
+        logger.error("notify_provider_arrived: Job %s not found", job_id)
+        return False
+
+    title = "📍 Provider Arrived"
+    body = (
+        f"Your provider has arrived for job #{job.reference_number} "
+        f"and is ready to start."
+    )
+    data = {
+        "type": NotificationType.PROVIDER_ARRIVED.value,
+        "job_id": str(job_id),
+        "reference_number": job.reference_number,
+        "screen": "customer/job-tracking",
+    }
+
+    logger.info(
+        "Sending provider arrived notification: job=%s, customer=%s",
+        job_id,
+        customer_id,
+    )
+
+    return await _send_to_user(
+        user_id=customer_id,
+        title=title,
+        body=body,
+        notification_type=NotificationType.PROVIDER_ARRIVED,
+        data=data,
+        db=db,
+        sound="default",
+        priority="high",
+    )
+
+
+async def notify_job_reminder(
+    job_id: uuid.UUID,
+    provider_id: uuid.UUID,
+    minutes_until_start: int,
+    db: AsyncSession,
+) -> bool:
+    """Remind a provider that a scheduled job is starting soon.
+
+    Args:
+        job_id: The UUID of the upcoming job.
+        provider_id: The UUID of the provider to remind.
+        minutes_until_start: Minutes until the scheduled start time.
+        db: Async database session.
+
+    Returns:
+        True if the notification was sent or stored successfully.
+    """
+    job = await db.get(Job, job_id)
+    if not job:
+        logger.error("notify_job_reminder: Job %s not found", job_id)
+        return False
+
+    title = "⏰ Job Starting Soon"
+    body = (
+        f"Your job #{job.reference_number} starts in {minutes_until_start} "
+        f"minute{'s' if minutes_until_start != 1 else ''}. "
+        f"Please prepare to head to the location."
+    )
+    data = {
+        "type": NotificationType.JOB_REMINDER.value,
+        "job_id": str(job_id),
+        "reference_number": job.reference_number,
+        "screen": "provider/job-detail",
+        "minutes_until_start": str(minutes_until_start),
+    }
+
+    logger.info(
+        "Sending job reminder: job=%s, provider=%s, minutes=%d",
+        job_id,
+        provider_id,
+        minutes_until_start,
+    )
+
+    return await _send_to_user(
+        user_id=provider_id,
+        title=title,
+        body=body,
+        notification_type=NotificationType.JOB_REMINDER,
+        data=data,
+        db=db,
+        sound="default",
+        priority="high",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API -- Chat notifications
+# ---------------------------------------------------------------------------
+
+async def notify_chat_message(
+    job_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    sender_name: str,
+    message_preview: str,
+    db: AsyncSession,
+) -> bool:
+    """Notify a user about a new chat message for a job.
+
+    Intended for offline users who are not currently connected via
+    WebSocket. The chat handler should check if the recipient has an
+    active socket connection before calling this.
+
+    Args:
+        job_id: The UUID of the job the chat belongs to.
+        recipient_id: The UUID of the user to notify.
+        sender_name: Display name of the message sender.
+        message_preview: Truncated preview of the message text.
+        db: Async database session.
+
+    Returns:
+        True if the notification was sent or stored successfully.
+    """
+    # Truncate the preview to 100 characters
+    if len(message_preview) > 100:
+        message_preview = message_preview[:97] + "..."
+
+    title = f"💬 {sender_name}"
+    body = message_preview
+    data = {
+        "type": NotificationType.CHAT_MESSAGE.value,
+        "job_id": str(job_id),
+        "screen": "chat",
+        "sender_name": sender_name,
+    }
+
+    logger.info(
+        "Sending chat message notification: job=%s, recipient=%s, sender=%s",
+        job_id,
+        recipient_id,
+        sender_name,
+    )
+
+    return await _send_to_user(
+        user_id=recipient_id,
+        title=title,
+        body=body,
+        notification_type=NotificationType.CHAT_MESSAGE,
+        data=data,
+        db=db,
+        sound="default",
+        priority="high",
     )

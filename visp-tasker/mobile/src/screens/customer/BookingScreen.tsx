@@ -503,7 +503,7 @@ function BookingScreen(): React.JSX.Element {
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
             <Text style={styles.ctaPriceLabel}>
-              {task.estimatedPrice > 0 ? 'Estimated' : 'From'}
+              {task.estimatedPrice > 0 ? 'Estimated' : 'Range'}
             </Text>
             <Text style={styles.ctaPriceValue}>
               {task.estimatedPrice > 0

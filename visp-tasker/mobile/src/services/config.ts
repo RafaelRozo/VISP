@@ -23,7 +23,7 @@ const DEV_CONFIG: AppConfig = {
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
   googleMapsApiKey: '',
-  mapboxAccessToken: '', // MAPBOX_KEY_REMOVED_FOR_GIT
+  mapboxAccessToken: '',
   stripePublishableKey: '',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',

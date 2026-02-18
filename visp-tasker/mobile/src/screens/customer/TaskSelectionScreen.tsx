@@ -37,6 +37,7 @@ import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { Shadows } from '../../theme/shadows';
 import { useTaskStore } from '../../stores/taskStore';
+import { useAuthStore } from '../../stores/authStore';
 import { PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
 import { geolocationService } from '../../services/geolocationService';
 import LevelBadge from '../../components/LevelBadge';
@@ -139,6 +140,28 @@ function TaskSelectionScreen(): React.JSX.Element {
   useEffect(() => {
     fetchTaskDetail(taskId);
   }, [taskId, fetchTaskDetail]);
+
+  // Auto-fill address from saved profile
+  const user = useAuthStore((state) => state.user);
+  useEffect(() => {
+    if (user?.defaultAddress && !address) {
+      const saved = user.defaultAddress;
+      const autoAddress: AddressInfo = {
+        placeId: 'saved-profile',
+        formattedAddress: saved.formattedAddress || `${saved.street}, ${saved.city}`,
+        latitude: saved.latitude ?? 0,
+        longitude: saved.longitude ?? 0,
+        streetNumber: '',
+        street: saved.street,
+        city: saved.city,
+        province: saved.province,
+        postalCode: saved.postalCode,
+        country: saved.country || 'CA',
+      };
+      setAddress(autoAddress);
+      setAddressInput(autoAddress.formattedAddress);
+    }
+  }, [user, address, setAddress]);
 
   // Set header title
   useEffect(() => {
@@ -665,14 +688,21 @@ function TaskSelectionScreen(): React.JSX.Element {
 
         {/* Confirm booking CTA */}
         <View style={styles.ctaContainer}>
-          {estimatedPrice > 0 && (
+          {estimatedPrice > 0 ? (
             <View style={styles.ctaPriceInfo}>
               <Text style={styles.ctaPriceLabel}>Estimated</Text>
               <Text style={styles.ctaPriceValue}>
                 ${estimatedPrice.toFixed(2)}
               </Text>
             </View>
-          )}
+          ) : taskDetail ? (
+            <View style={styles.ctaPriceInfo}>
+              <Text style={styles.ctaPriceLabel}>Range</Text>
+              <Text style={styles.ctaPriceValue}>
+                ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
+              </Text>
+            </View>
+          ) : null}
           <TouchableOpacity
             style={[
               styles.confirmButton,

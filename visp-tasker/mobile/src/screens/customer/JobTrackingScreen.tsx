@@ -78,7 +78,6 @@ const STATUS_STEPS: StatusStep[] = [
 
 const POLLING_INTERVAL_MS = 5000;
 const SEARCH_TIMEOUT_MS = 120_000; // 2 minutes
-const HOURLY_RATE = 75;
 
 // Map backend status to simplified tracking status
 function mapBackendStatus(backendStatus: string): TrackingStatus {
@@ -121,6 +120,9 @@ function JobTrackingScreen(): React.JSX.Element {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Route line state
+  const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
 
   // Set header title
   useEffect(() => {
@@ -253,9 +255,10 @@ function JobTrackingScreen(): React.JSX.Element {
   }, [elapsedSeconds]);
 
   const runningCost = useMemo(() => {
-    const hours = elapsedSeconds / 3600;
-    return (HOURLY_RATE * hours).toFixed(2);
-  }, [elapsedSeconds]);
+    // Use actual estimated/final price from the job data instead of hardcoded rate
+    const price = job?.finalPrice ?? job?.estimatedPrice ?? 0;
+    return price.toFixed(2);
+  }, [job?.finalPrice, job?.estimatedPrice]);
 
   const finalPrice = useMemo(() => {
     return job?.finalPrice ?? job?.estimatedPrice ?? 0;
@@ -274,6 +277,33 @@ function JobTrackingScreen(): React.JSX.Element {
   // Provider location
   const providerLat = tracking?.providerLat;
   const providerLng = tracking?.providerLng;
+
+  // --- Fetch route from provider to customer when provider position updates ---
+  useEffect(() => {
+    if (
+      providerLat == null ||
+      providerLng == null ||
+      currentStatus === 'completed' ||
+      currentStatus === 'in_progress'
+    )
+      return;
+
+    (async () => {
+      try {
+        const url =
+          `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+          `${providerLng},${providerLat};${customerLng},${customerLat}` +
+          `?geometries=geojson&overview=full&access_token=${Config.mapboxAccessToken}`;
+        const resp = await fetch(url);
+        const json = await resp.json();
+        if (json.routes && json.routes.length > 0) {
+          setRouteCoords(json.routes[0].geometry.coordinates as [number, number][]);
+        }
+      } catch (err) {
+        console.warn('[JobTracking] Route fetch error:', err);
+      }
+    })();
+  }, [providerLat, providerLng, customerLat, customerLng, currentStatus]);
 
   // ── Handlers ─────────────────────────────
   const handleCall = useCallback(() => {
@@ -455,11 +485,44 @@ function JobTrackingScreen(): React.JSX.Element {
                   compassEnabled={false}
                 >
                   <MapboxGL.Camera
-                    centerCoordinate={[customerLng, customerLat]}
-                    zoomLevel={13}
+                    centerCoordinate={
+                      providerLat != null && providerLng != null
+                        ? [
+                          (Number(providerLng) + customerLng) / 2,
+                          (Number(providerLat) + customerLat) / 2,
+                        ]
+                        : [customerLng, customerLat]
+                    }
+                    zoomLevel={12}
                     animationMode="flyTo"
                     animationDuration={1000}
                   />
+
+                  {/* Route line from provider to customer */}
+                  {routeCoords && routeCoords.length > 0 && (
+                    <MapboxGL.ShapeSource
+                      id="tracking-route-source"
+                      shape={{
+                        type: 'Feature',
+                        geometry: {
+                          type: 'LineString',
+                          coordinates: routeCoords,
+                        },
+                        properties: {},
+                      }}
+                    >
+                      <MapboxGL.LineLayer
+                        id="tracking-route-line"
+                        style={{
+                          lineColor: Colors.primary,
+                          lineWidth: 4,
+                          lineOpacity: 0.8,
+                          lineCap: 'round',
+                          lineJoin: 'round',
+                        }}
+                      />
+                    </MapboxGL.ShapeSource>
+                  )}
 
                   {/* Customer destination marker */}
                   <MapboxGL.MarkerView
@@ -475,7 +538,7 @@ function JobTrackingScreen(): React.JSX.Element {
                   {providerLat != null && providerLng != null && (
                     <MapboxGL.MarkerView
                       id="provider-marker"
-                      coordinate={[providerLng, providerLat]}
+                      coordinate={[Number(providerLng), Number(providerLat)]}
                     >
                       <View style={styles.providerMarker}>
                         <Text style={styles.providerMarkerText}>🚗</Text>
@@ -492,6 +555,17 @@ function JobTrackingScreen(): React.JSX.Element {
                   </View>
                 )}
               </View>
+
+              {/* Provider arrived banner */}
+              {(currentStatus === 'arrived' || currentStatus === 'in_progress') && (
+                <View style={styles.arrivedBanner}>
+                  <Text style={styles.arrivedBannerText}>
+                    {currentStatus === 'arrived'
+                      ? '🏠 Provider has arrived at your location!'
+                      : '🔧 Work is in progress'}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -537,7 +611,7 @@ function JobTrackingScreen(): React.JSX.Element {
                   <Text style={styles.timerMetaValue}>${runningCost}</Text>
                 </View>
                 <Text style={styles.timerNote}>
-                  Based on ${HOURLY_RATE}/hr. Final price may vary.
+                  Estimated price. Final price may vary.
                 </Text>
               </View>
             </View>
@@ -1060,6 +1134,21 @@ const styles = StyleSheet.create({
   cancelJobText: {
     ...Typography.buttonLarge,
     color: Colors.error,
+  },
+
+  // Arrived banner
+  arrivedBanner: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+  },
+  arrivedBannerText: {
+    fontSize: FontSize.body,
+    fontWeight: FontWeight.bold as any,
+    color: '#FFFFFF',
   },
 
   // Bottom padding

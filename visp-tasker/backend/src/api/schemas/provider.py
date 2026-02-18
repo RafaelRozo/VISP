@@ -447,6 +447,7 @@ class ProviderTaskOut(BaseModel):
     category_id: uuid.UUID = Field(alias="categoryId")
     regulated: bool
     license_required: bool = Field(alias="licenseRequired")
+    certification_required: bool = Field(alias="certificationRequired")
     hazardous: bool
     structural: bool
     is_active: bool = Field(alias="isActive")

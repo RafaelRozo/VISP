@@ -3,8 +3,8 @@
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTRootView.h>
 
-// Firebase (uncomment when GoogleService-Info.plist is configured)
-// @import Firebase;
+// Firebase
+@import Firebase;
 
 @implementation AppDelegate
 
@@ -15,8 +15,8 @@
   // Set initial props for the root React component
   self.initialProps = @{};
 
-  // Initialize Firebase (uncomment when GoogleService-Info.plist is configured)
-  // [FIRApp configure];
+  // Initialize Firebase
+  [FIRApp configure];
 
   // Register for remote notifications
   UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
@@ -45,8 +45,8 @@
 - (void)application:(UIApplication *)application
     didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
 {
-  // Forward to Firebase or custom handler
-  // [FIRMessaging messaging].APNSToken = deviceToken;
+  // Forward APNS token to Firebase Cloud Messaging
+  [FIRMessaging messaging].APNSToken = deviceToken;
 }
 
 - (void)application:(UIApplication *)application

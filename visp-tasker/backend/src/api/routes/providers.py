@@ -22,7 +22,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, UploadFile, File, Form
 
 from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.provider import (
@@ -177,6 +177,29 @@ async def get_dashboard(
 
     level_int = int(profile.current_level.value) if profile.current_level else 1
 
+    # Compute real stats from DB
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+    from src.models.review import Review
+    from sqlalchemy import func as sa_func
+
+    # Count completed jobs for this provider
+    completed_count_stmt = (
+        sa_select(sa_func.count(JobAssignment.id))
+        .where(
+            JobAssignment.provider_id == profile.id,
+            JobAssignment.status == AssignmentStatus.COMPLETED,
+        )
+    )
+    completed_count = (await db.execute(completed_count_stmt)).scalar() or 0
+
+    # Average rating from reviews where this provider is the reviewee
+    avg_rating_stmt = (
+        sa_select(sa_func.avg(Review.overall_rating))
+        .where(Review.reviewee_id == profile.user_id)
+    )
+    avg_rating_raw = (await db.execute(avg_rating_stmt)).scalar()
+    avg_rating = round(float(avg_rating_raw), 2) if avg_rating_raw else 0.0
+
     profile_out = {
         "id": str(profile.id),
         "userId": str(profile.user_id),
@@ -184,14 +207,13 @@ async def get_dashboard(
         "performanceScore": float(profile.internal_score) if profile.internal_score else 0,
         "isOnline": profile.is_online,
         "isOnCall": False,
-        "completedJobs": 0,  # TODO: count from job_assignments
-        "rating": 0.0,  # TODO: compute from reviews
+        "completedJobs": completed_count,
+        "rating": avg_rating,
         "stripeConnectStatus": "not_connected" if not profile.stripe_account_id else "active",
         "credentials": creds_out,
     }
 
     # 3. Active job — find the most recent accepted/en_route/in_progress assignment
-    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
 
     active_assignment_stmt = (
         sa_select(JobAssignment)
@@ -837,7 +859,104 @@ async def get_credentials(
 
 
 # ---------------------------------------------------------------------------
-# Onboarding / Taxonomy
+# POST /api/v1/provider/credentials  — upload a credential document
+# ---------------------------------------------------------------------------
+
+# Map mobile type strings → backend CredentialType enum
+_MOBILE_CRED_TYPE_MAP: dict[str, str] = {
+    "trade_license": "license",
+    "certification": "certification",
+    "criminal_record_check": "background_check",
+    "insurance_certificate": "certification",
+    "portfolio": "portfolio",
+    "drivers_license": "license",
+}
+
+
+@router.post(
+    "/credentials",
+    summary="Upload a credential document",
+    description="Upload a new credential document for verification review.",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_credential(
+    db: DBSession,
+    user: CurrentUser,
+    file: UploadFile = File(...),
+    type: str = Form(...),
+    task_id: Optional[str] = Form(None),
+) -> dict[str, Any]:
+    import os
+    from datetime import datetime, timezone
+    from src.models.verification import ProviderCredential, CredentialType, CredentialStatus
+    from src.models.taxonomy import ServiceTask
+    from sqlalchemy import select as sa_select
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    # Map mobile type string to backend enum
+    mapped_type = _MOBILE_CRED_TYPE_MAP.get(type, type)
+    try:
+        cred_type = CredentialType(mapped_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid credential type: {type}",
+        )
+
+    # Save file to uploads directory
+    uploads_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "uploads",
+        "credentials",
+        str(provider_id),
+    )
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    safe_filename = f"{uuid.uuid4()}_{file.filename or 'upload.jpg'}"
+    file_path = os.path.join(uploads_dir, safe_filename)
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Determine credential name: use task name if task_id provided, else filename
+    cred_name = file.filename or "Uploaded Document"
+    if task_id:
+        task_stmt = sa_select(ServiceTask).where(ServiceTask.id == task_id)
+        task_obj = (await db.execute(task_stmt)).scalar_one_or_none()
+        if task_obj:
+            cred_name = task_obj.name
+
+    # Create the credential record
+    credential = ProviderCredential(
+        id=uuid.uuid4(),
+        provider_id=provider_id,
+        credential_type=cred_type,
+        name=cred_name,
+        status=CredentialStatus.PENDING_REVIEW,
+        document_url=f"/uploads/credentials/{provider_id}/{safe_filename}",
+    )
+    db.add(credential)
+    await db.commit()
+    await db.refresh(credential)
+
+    return {
+        "data": {
+            "id": str(credential.id),
+            "type": credential.credential_type.value,
+            "status": credential.status.value,
+            "documentUrl": credential.document_url,
+            "createdAt": credential.created_at.isoformat() if credential.created_at else None,
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 
 @router.get(
@@ -872,6 +991,7 @@ async def get_provider_taxonomy(db: DBSession) -> Any:
                     "category_id": t.category_id,
                     "regulated": t.regulated,
                     "license_required": t.license_required,
+                    "certification_required": t.certification_required,
                     "hazardous": t.hazardous,
                     "structural": t.structural,
                     "is_active": t.is_active,
@@ -1008,6 +1128,7 @@ async def update_services(
         is_restricted = (
             task.regulated or
             task.license_required or
+            task.certification_required or
             task.hazardous or
             task.structural
         )
@@ -1025,3 +1146,107 @@ async def update_services(
     await db.commit()
     return {"message": "Services updated successfully"}
 
+
+# ---------------------------------------------------------------------------
+# GET /provider/pending-credentials — services needing document upload
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/pending-credentials",
+    summary="Get services that need credential upload",
+)
+async def get_pending_credentials(
+    db: DBSession,
+    user: CurrentUser,
+) -> Any:
+    """Return unqualified services requiring docs, grouped by requirement type.
+
+    Each item includes the service name, what document type is needed
+    (license vs certification), and the current qualification status.
+    """
+    from src.models.provider import ProviderProfile
+    from src.models.taxonomy import ProviderTaskQualification, ServiceTask
+    from sqlalchemy import select as sa_select
+    from sqlalchemy.orm import selectinload
+
+    profile_stmt = sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+    profile = (await db.execute(profile_stmt)).scalar_one_or_none()
+
+    if profile is None:
+        return {"data": []}
+
+    # Fetch qualifications that are NOT qualified (pending approval)
+    qual_stmt = (
+        sa_select(ProviderTaskQualification)
+        .options(selectinload(ProviderTaskQualification.task))
+        .where(
+            ProviderTaskQualification.provider_id == profile.id,
+            ProviderTaskQualification.qualified == False,  # noqa: E712
+        )
+    )
+    result = await db.execute(qual_stmt)
+    unqualified = result.scalars().all()
+
+    # Also fetch existing credentials for this provider to check upload status
+    from src.models.verification import ProviderCredential
+    cred_stmt = sa_select(ProviderCredential).where(
+        ProviderCredential.provider_id == profile.id,
+    )
+    cred_result = await db.execute(cred_stmt)
+    existing_creds = cred_result.scalars().all()
+
+    # Build lookup: map by credential name (lower) AND by credential_type
+    cred_by_name = {c.name.lower(): c for c in existing_creds}
+    cred_by_type: dict[str, list] = {}
+    for c in existing_creds:
+        cred_by_type.setdefault(c.credential_type.value, []).append(c)
+
+    pending = []
+    for qual in unqualified:
+        task = qual.task
+        if not task:
+            continue
+
+        # Determine required doc type
+        if task.license_required:
+            required_type = "license"
+            badge = "🛡 License Required"
+        elif task.certification_required:
+            required_type = "certification"
+            badge = "📄 Certificate Required"
+        elif task.regulated:
+            required_type = "certification"
+            badge = "⚠️ Regulated — Document Required"
+        elif task.hazardous or task.structural:
+            required_type = "certification"
+            badge = "📄 Document Required"
+        else:
+            continue  # Not a doc-required task
+
+        # Check if a credential has been uploaded for this task
+        # First try exact name match, then fall back to credential_type match
+        matching_cred = cred_by_name.get(task.name.lower())
+        if not matching_cred:
+            # Fallback: find any credential with matching type
+            type_key = "license" if required_type == "license" else "certification"
+            type_creds = cred_by_type.get(type_key, [])
+            if type_creds:
+                matching_cred = type_creds[0]  # Use the most recent one
+
+        upload_status = "not_uploaded"
+        credential_id = None
+        if matching_cred:
+            upload_status = matching_cred.status.value  # pending_review, verified, etc.
+            credential_id = str(matching_cred.id)
+
+        pending.append({
+            "taskId": str(task.id),
+            "taskName": task.name,
+            "taskSlug": task.slug,
+            "requiredType": required_type,
+            "badge": badge,
+            "uploadStatus": upload_status,
+            "credentialId": credential_id,
+        })
+
+    return {"data": pending}

@@ -9,6 +9,7 @@ export interface ProviderTask {
     categoryId: string;
     regulated: boolean;
     licenseRequired: boolean;
+    certificationRequired: boolean;
     hazardous: boolean;
     structural: boolean;
     isActive: boolean;
