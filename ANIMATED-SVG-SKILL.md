@@ -58,6 +58,7 @@ SMIL (Synchronized Multimedia Integration Language) is native SVG animation — 
 ```
 
 **Easing with keySplines:**
+
 - Linear: `calcMode="linear"` (default)
 - Ease in-out: `calcMode="spline" keySplines="0.42 0 0.58 1"`
 - Ease in: `calcMode="spline" keySplines="0.42 0 1 1"`
@@ -102,6 +103,7 @@ CSS keyframes work exactly like in HTML — target SVG elements by class or ID.
 ```
 
 **CRITICAL CSS-in-SVG gotcha:** `transform-origin` in SVG behaves differently than in HTML. When targeting SVG elements with CSS transforms, use:
+
 ```css
 /* Method 1: percentage-based origin (relative to element's bounding box) */
 transform-origin: 50% 50%;
@@ -222,6 +224,7 @@ Animate between two SVG paths using SMIL `<animate attributeName="d">`:
 ```
 
 **Path morphing rules:**
+
 - Both paths MUST have the same number of path commands
 - Both paths MUST use the same command types (L→L, C→C, etc.)
 - Convert all relative commands to absolute for reliability
@@ -590,6 +593,7 @@ fill="currentColor"   <!-- inherits CSS color property -->
 ## Complete Animation Patterns
 
 ### Loading Spinner (pure SMIL)
+
 ```xml
 <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
   <circle cx="25" cy="25" r="20" fill="none" stroke="#6366f1" stroke-width="3"
@@ -605,6 +609,7 @@ fill="currentColor"   <!-- inherits CSS color property -->
 ```
 
 ### Heartbeat / Pulse Ring
+
 ```xml
 <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
   <circle cx="50" cy="50" r="20" fill="#ec4899"/>
@@ -624,6 +629,7 @@ fill="currentColor"   <!-- inherits CSS color property -->
 ```
 
 ### Morphing Blob
+
 ```xml
 <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
   <path fill="#6366f1" transform="translate(100,100)">

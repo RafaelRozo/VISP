@@ -35,6 +35,7 @@ Glass only looks good over rich backgrounds. Never place glass on white or flat 
 ### Recommended Background Patterns
 
 **Gradient Orbs (most popular)**
+
 ```css
 body {
   min-height: 100vh;
@@ -72,6 +73,7 @@ body::after {
 ```
 
 **Mesh Gradient**
+
 ```css
 background: linear-gradient(135deg, 
   #667eea 0%, 
@@ -82,6 +84,7 @@ background: linear-gradient(135deg,
 ```
 
 **Dark Aurora**
+
 ```css
 background: 
   radial-gradient(ellipse at 20% 50%, rgba(120, 40, 200, 0.4) 0%, transparent 50%),
@@ -95,6 +98,7 @@ background:
 ## Glass Surface Recipes
 
 ### Standard Glass Card
+
 ```css
 .glass-card {
   background: rgba(255, 255, 255, 0.10);
@@ -110,6 +114,7 @@ background:
 ```
 
 ### Frosted Dark Glass (premium look)
+
 ```css
 .glass-dark {
   background: rgba(10, 10, 30, 0.55);
@@ -125,6 +130,7 @@ background:
 ```
 
 ### Colored Glass (tinted panels)
+
 ```css
 .glass-purple {
   background: rgba(120, 40, 200, 0.15);
@@ -139,6 +145,7 @@ background:
 ```
 
 ### Glass Navbar
+
 ```css
 .glass-nav {
   background: rgba(255, 255, 255, 0.07);
@@ -195,6 +202,7 @@ p {
 ## Interactive Elements
 
 ### Glass Button
+
 ```css
 .btn-glass {
   background: rgba(255, 255, 255, 0.15);
@@ -223,6 +231,7 @@ p {
 ```
 
 ### Glow Button (primary CTA)
+
 ```css
 .btn-glow {
   background: linear-gradient(135deg, rgba(120, 80, 255, 0.8), rgba(60, 180, 255, 0.8));
@@ -248,6 +257,7 @@ p {
 ```
 
 ### Glass Input Field
+
 ```css
 .input-glass {
   background: rgba(255, 255, 255, 0.07);
@@ -278,6 +288,7 @@ p {
 ## Depth & Layering
 
 Glassmorphism achieves depth by stacking multiple glass layers. Each layer should have:
+
 - Slightly different opacity
 - Slightly different blur value
 - Correct z-index ordering
@@ -388,6 +399,7 @@ Glass elements should feel alive and fluid:
 When writing React components, use inline styles or Tailwind. Always include `-webkit-backdrop-filter` for Safari support.
 
 ### Tailwind + Custom CSS Pattern
+
 ```jsx
 // Glass Card Component
 const GlassCard = ({ children, className = '' }) => (
@@ -407,6 +419,7 @@ const GlassCard = ({ children, className = '' }) => (
 ```
 
 ### Full Page Background Pattern in React
+
 ```jsx
 const GlassPage = () => (
   <div style={{ 
