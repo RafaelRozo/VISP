@@ -1,8 +1,10 @@
 # Python
 venv/
+venv*/
 __pycache__/
 *.pyc
 .env
+_env
 
 # Node
 node_modules/

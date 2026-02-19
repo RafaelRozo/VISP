@@ -1,5 +1,5 @@
 """
-SQLAlchemy declarative base and shared mixins for the VISP/Tasker platform.
+SQLAlchemy declarative base and shared mixins for the VISP platform.
 """
 
 import uuid

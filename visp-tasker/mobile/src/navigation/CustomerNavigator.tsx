@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Customer Flow Navigator
+ * VISP - Customer Flow Navigator
  *
  * Stack navigator for the complete customer booking flow:
  * Category -> Subcategory -> TaskSelection -> Booking -> Matching -> JobTracking -> Rating
@@ -22,6 +22,8 @@ import BookingScreen from '../screens/customer/BookingScreen';
 import MatchingScreen from '../screens/customer/MatchingScreen';
 import JobTrackingScreen from '../screens/customer/JobTrackingScreen';
 import RatingScreen from '../screens/customer/RatingScreen';
+import TipScreen from '../screens/customer/TipScreen';
+import PriceProposalScreen from '../screens/customer/PriceProposalScreen';
 import ChatScreen from '../screens/shared/ChatScreen';
 
 const Stack = createNativeStackNavigator<CustomerFlowParamList>();
@@ -100,6 +102,22 @@ function CustomerNavigator({ initialCategoryId, initialCategoryName }: CustomerN
           title: 'Rate & Pay',
           headerBackVisible: false,
           gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
+        name="Tip"
+        component={TipScreen}
+        options={{
+          title: 'Add a Tip',
+          headerBackVisible: false,
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
+        name="PriceProposal"
+        component={PriceProposalScreen}
+        options={{
+          title: 'Price Proposals',
         }}
       />
       <Stack.Screen

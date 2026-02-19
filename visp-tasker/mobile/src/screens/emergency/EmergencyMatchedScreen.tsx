@@ -1,11 +1,13 @@
 /**
- * VISP/Tasker - EmergencyMatchedScreen
+ * VISP - EmergencyMatchedScreen
  *
  * Provider found notification screen.
  * Features:
  *   - Provider name, photo, rating, level badge
  *   - ETA display
  *   - Provider en-route animation
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useEffect, useCallback, useRef } from 'react';
@@ -13,18 +15,17 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Image,
   Animated,
-  SafeAreaView,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { AnimatedCheckmark } from '../../components/animations';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import LevelBadge from '../../components/LevelBadge';
 import SLATimer from '../../components/SLATimer';
@@ -111,9 +112,9 @@ function EmergencyMatchedScreen(): React.JSX.Element {
   const slaDeadline = activeJob?.slaDeadline || new Date(Date.now() + sla.arrivalTimeMinutes * 60000).toISOString();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
-        {/* Success check animation */}
+        {/* Success check animation - SVG AnimatedCheckmark with spring entry */}
         <Animated.View
           style={[
             styles.checkContainer,
@@ -122,9 +123,7 @@ function EmergencyMatchedScreen(): React.JSX.Element {
             },
           ]}
         >
-          <View style={styles.checkCircle}>
-            <Text style={styles.checkIcon}>V</Text>
-          </View>
+          <AnimatedCheckmark size={80} color="#27AE60" />
         </Animated.View>
 
         <Text style={styles.matchedTitle}>Provider Found!</Text>
@@ -132,77 +131,79 @@ function EmergencyMatchedScreen(): React.JSX.Element {
           A Level 4 emergency provider has been dispatched
         </Text>
 
-        {/* Provider card */}
+        {/* Provider card - elevated glass */}
         {provider && (
           <Animated.View
             style={[
-              styles.providerCard,
+              styles.providerCardWrapper,
               {
                 transform: [{ translateY: slideAnim }],
                 opacity: fadeAnim,
               },
             ]}
           >
-            {/* Provider avatar */}
-            <View style={styles.providerAvatarContainer}>
-              {provider.photoUrl ? (
-                <Image
-                  source={{ uri: provider.photoUrl }}
-                  style={styles.providerAvatar}
-                  accessibilityLabel={`Photo of ${provider.firstName}`}
-                />
-              ) : (
-                <View style={styles.providerAvatarPlaceholder}>
-                  <Text style={styles.providerAvatarInitial}>
-                    {provider.firstName.charAt(0)}
+            <GlassCard variant="elevated" style={styles.providerCard}>
+              {/* Provider avatar */}
+              <View style={styles.providerAvatarContainer}>
+                {provider.photoUrl ? (
+                  <Image
+                    source={{ uri: provider.photoUrl }}
+                    style={styles.providerAvatar}
+                    accessibilityLabel={`Photo of ${provider.firstName}`}
+                  />
+                ) : (
+                  <View style={styles.providerAvatarPlaceholder}>
+                    <Text style={styles.providerAvatarInitial}>
+                      {provider.firstName.charAt(0)}
+                    </Text>
+                  </View>
+                )}
+                <LevelBadge level={provider.level} size="small" style={styles.providerBadge} />
+              </View>
+
+              {/* Provider info */}
+              <Text style={styles.providerName}>
+                {provider.firstName} {provider.lastName.charAt(0)}.
+              </Text>
+
+              <View style={styles.providerStats}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {provider.rating.toFixed(1)}
                   </Text>
+                  <Text style={styles.statLabel}>Rating</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {provider.completedJobs}
+                  </Text>
+                  <Text style={styles.statLabel}>Jobs</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>
+                    {provider.yearsExperience}yr
+                  </Text>
+                  <Text style={styles.statLabel}>Experience</Text>
+                </View>
+              </View>
+
+              {/* Specializations - glass chips */}
+              {provider.specializations.length > 0 && (
+                <View style={styles.specializationsRow}>
+                  {provider.specializations.slice(0, 3).map((spec, idx) => (
+                    <View key={idx} style={styles.specChip}>
+                      <Text style={styles.specChipText}>{spec}</Text>
+                    </View>
+                  ))}
                 </View>
               )}
-              <LevelBadge level={provider.level} size="small" style={styles.providerBadge} />
-            </View>
-
-            {/* Provider info */}
-            <Text style={styles.providerName}>
-              {provider.firstName} {provider.lastName.charAt(0)}.
-            </Text>
-
-            <View style={styles.providerStats}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>
-                  {provider.rating.toFixed(1)}
-                </Text>
-                <Text style={styles.statLabel}>Rating</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>
-                  {provider.completedJobs}
-                </Text>
-                <Text style={styles.statLabel}>Jobs</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>
-                  {provider.yearsExperience}yr
-                </Text>
-                <Text style={styles.statLabel}>Experience</Text>
-              </View>
-            </View>
-
-            {/* Specializations */}
-            {provider.specializations.length > 0 && (
-              <View style={styles.specializationsRow}>
-                {provider.specializations.slice(0, 3).map((spec, idx) => (
-                  <View key={idx} style={styles.specChip}>
-                    <Text style={styles.specChipText}>{spec}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            </GlassCard>
           </Animated.View>
         )}
 
-        {/* ETA display */}
+        {/* ETA display - glass card */}
         <Animated.View
           style={[
             styles.etaContainer,
@@ -213,11 +214,13 @@ function EmergencyMatchedScreen(): React.JSX.Element {
           ]}
         >
           {activeJob?.etaMinutes !== undefined && (
-            <View style={styles.etaCard}>
-              <Text style={styles.etaLabel}>Estimated Arrival</Text>
-              <Text style={styles.etaValue}>{activeJob.etaMinutes}</Text>
-              <Text style={styles.etaUnit}>minutes</Text>
-            </View>
+            <GlassCard variant="standard" style={styles.etaCardBorder}>
+              <View style={styles.etaContent}>
+                <Text style={styles.etaLabel}>Estimated Arrival</Text>
+                <Text style={styles.etaValue}>{activeJob.etaMinutes}</Text>
+                <Text style={styles.etaUnit}>minutes</Text>
+              </View>
+            </GlassCard>
           )}
         </Animated.View>
 
@@ -231,20 +234,17 @@ function EmergencyMatchedScreen(): React.JSX.Element {
           />
         </View>
 
-        {/* Proceed button */}
+        {/* Proceed button - red glow */}
         <View style={styles.ctaContainer}>
-          <TouchableOpacity
-            style={styles.trackButton}
+          <GlassButton
+            title="Track Provider"
             onPress={handleProceedToTracking}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Track provider on map"
-          >
-            <Text style={styles.trackButtonText}>Track Provider</Text>
-          </TouchableOpacity>
+            variant="glow"
+            style={styles.trackButton}
+          />
         </View>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -252,63 +252,43 @@ function EmergencyMatchedScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
   },
 
-  // Check animation
+  // Check animation — now powered by AnimatedCheckmark SVG component
   checkContainer: {
     marginTop: Spacing.huge,
     marginBottom: Spacing.xl,
-  },
-  checkCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.success,
     alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.lg,
-  },
-  checkIcon: {
-    fontSize: 36,
-    fontWeight: FontWeight.bold,
-    color: Colors.white,
   },
 
   // Matched text
   matchedTitle: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: Spacing.sm,
   },
   matchedSubtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
     marginBottom: Spacing.xxl,
   },
 
   // Provider card
-  providerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
+  providerCardWrapper: {
     width: '100%',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
     marginBottom: Spacing.xl,
-    ...Shadows.md,
+  },
+  providerCard: {
+    alignItems: 'center',
   },
   providerAvatarContainer: {
     position: 'relative',
@@ -319,22 +299,22 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     borderWidth: 3,
-    borderColor: Colors.primary,
+    borderColor: Colors.emergencyRed,
   },
   providerAvatarPlaceholder: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
-    borderColor: Colors.primary,
+    borderColor: Colors.emergencyRed,
   },
   providerAvatarInitial: {
     fontSize: FontSize.title1,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
   },
   providerBadge: {
     position: 'absolute',
@@ -343,7 +323,7 @@ const styles = StyleSheet.create({
   },
   providerName: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
   },
   providerStats: {
@@ -357,18 +337,18 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.bold,
   },
   statLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginTop: 2,
   },
   statDivider: {
     width: 1,
     height: 30,
-    backgroundColor: Colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
   specializationsRow: {
     flexDirection: 'row',
@@ -377,14 +357,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   specChip: {
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xxs,
-    borderRadius: BorderRadius.xs,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   specChipText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
 
   // ETA
@@ -392,28 +374,26 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: Spacing.lg,
   },
-  etaCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
+  etaCardBorder: {
+    borderColor: 'rgba(231, 76, 60, 0.30)',
+  },
+  etaContent: {
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: `${Colors.primary}30`,
   },
   etaLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   etaValue: {
     fontSize: 48,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
   },
   etaUnit: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 
   // SLA
@@ -431,17 +411,17 @@ const styles = StyleSheet.create({
     right: Spacing.lg,
   },
   trackButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.md,
-  },
-  trackButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    paddingVertical: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
   },
 });
 

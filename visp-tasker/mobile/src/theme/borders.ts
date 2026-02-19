@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker Design System - Border Radii and Borders
+ * VISP Design System - Border Radii and Borders
  */
 
 export const BorderRadius = {

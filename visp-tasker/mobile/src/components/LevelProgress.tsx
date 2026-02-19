@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - LevelProgress Component
+ * VISP - LevelProgress Component
  *
  * Visual progress indicator for provider level advancement showing
  * current level badge, requirements checklist, progress bar, and
@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { Colors, getLevelColor } from '../theme/colors';
+import { GlassStyles } from '../theme/glass';
 import { LevelProgressInfo, ServiceLevel } from '../types';
 
 // Enable LayoutAnimation on Android
@@ -211,16 +212,10 @@ function LevelProgress({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    ...GlassStyles.card,
     padding: 16,
     marginHorizontal: 16,
     marginVertical: 6,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   levelRow: {
     flexDirection: 'row',
@@ -276,7 +271,7 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     height: 8,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -289,7 +284,9 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
   },
   maxLevelBanner: {
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(39, 174, 96, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(39, 174, 96, 0.25)',
     borderRadius: 8,
     padding: 12,
     alignItems: 'center',
@@ -301,7 +298,7 @@ const styles = StyleSheet.create({
   },
   requirementsSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
     paddingTop: 12,
   },
   expandButton: {
@@ -340,7 +337,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success,
   },
   checkCircleUnmet: {
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
   },
   checkMark: {
     fontSize: 14,

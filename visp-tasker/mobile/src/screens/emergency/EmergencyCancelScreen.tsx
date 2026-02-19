@@ -1,11 +1,13 @@
 /**
- * VISP/Tasker - EmergencyCancelScreen
+ * VISP - EmergencyCancelScreen
  *
  * Cancellation confirmation screen.
  * Features:
  *   - Cancellation fee notice
  *   - Reason selection (predefined options)
  *   - "Confirm Cancel" button
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -15,17 +17,15 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  SafeAreaView,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import { CANCELLATION_REASONS } from '../../services/emergencyService';
 import type { EmergencyFlowParamList, CancellationReason } from '../../types';
@@ -109,7 +109,7 @@ function EmergencyCancelScreen(): React.JSX.Element {
   // Already cancelled
   if (cancelled) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.cancelledContainer}>
           <View style={styles.cancelledIcon}>
             <Text style={styles.cancelledIconText}>X</Text>
@@ -120,7 +120,7 @@ function EmergencyCancelScreen(): React.JSX.Element {
           </Text>
 
           {cancellationFee > 0 && (
-            <View style={styles.feeCard}>
+            <GlassCard variant="dark" style={styles.feeCard}>
               <Text style={styles.feeLabel}>Cancellation Fee</Text>
               <Text style={styles.feeValue}>
                 ${cancellationFee.toFixed(2)}
@@ -128,139 +128,116 @@ function EmergencyCancelScreen(): React.JSX.Element {
               <Text style={styles.feeNote}>
                 This fee will be charged to your payment method on file.
               </Text>
-            </View>
+            </GlassCard>
           )}
 
-          <TouchableOpacity
-            style={styles.doneButton}
+          <GlassButton
+            title="Return Home"
             onPress={handleDone}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Return to home screen"
-          >
-            <Text style={styles.doneButtonText}>Return Home</Text>
-          </TouchableOpacity>
+            variant="glow"
+            style={styles.doneButton}
+          />
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Cancel Emergency Request?</Text>
-            <Text style={styles.subtitle}>
-              Are you sure you want to cancel? If a provider has already been
-              dispatched, a cancellation fee may apply.
-            </Text>
-          </View>
-
-          {/* Cancellation fee warning */}
-          <View style={styles.section}>
-            <View style={styles.warningCard}>
-              <Text style={styles.warningTitle}>Cancellation Fee</Text>
-              <Text style={styles.warningText}>
-                Depending on the status of your request, a cancellation fee
-                of up to $50 may be charged. If the provider has already been
-                dispatched and is en route, the fee covers their travel costs.
-              </Text>
-            </View>
-          </View>
-
-          {/* Reason selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Reason for cancellation</Text>
-            <View style={styles.reasonsContainer}>
-              {CANCELLATION_REASONS.map((reason: CancellationReason) => {
-                const isSelected = selectedCancellationReason === reason.id;
-                return (
-                  <TouchableOpacity
-                    key={reason.id}
-                    style={[
-                      styles.reasonCard,
-                      isSelected && styles.reasonCardSelected,
-                    ]}
-                    onPress={() => handleSelectReason(reason.id)}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={reason.label}
-                  >
-                    <View
-                      style={[
-                        styles.reasonRadio,
-                        isSelected && styles.reasonRadioSelected,
-                      ]}
-                    >
-                      {isSelected && <View style={styles.reasonRadioInner} />}
-                    </View>
-                    <Text
-                      style={[
-                        styles.reasonText,
-                        isSelected && styles.reasonTextSelected,
-                      ]}
-                    >
-                      {reason.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Error */}
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Action buttons */}
-        <View style={styles.ctaContainer}>
-          <TouchableOpacity
-            style={styles.keepButton}
-            onPress={handleGoBack}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Keep my emergency request"
-          >
-            <Text style={styles.keepButtonText}>Keep Request</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.cancelConfirmButton,
-              (!selectedCancellationReason || isCancelling) &&
-                styles.cancelConfirmButtonDisabled,
-            ]}
-            onPress={handleConfirmCancel}
-            disabled={!selectedCancellationReason || isCancelling}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Confirm cancellation"
-            accessibilityState={{
-              disabled: !selectedCancellationReason || isCancelling,
-            }}
-          >
-            {isCancelling ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Text style={styles.cancelConfirmButtonText}>
-                Confirm Cancel
-              </Text>
-            )}
-          </TouchableOpacity>
+    <GlassBackground>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Cancel Emergency Request?</Text>
+          <Text style={styles.subtitle}>
+            Are you sure you want to cancel? If a provider has already been
+            dispatched, a cancellation fee may apply.
+          </Text>
         </View>
+
+        {/* Cancellation fee warning - glass card with red tint */}
+        <View style={styles.section}>
+          <GlassCard variant="dark" style={styles.warningCard}>
+            <Text style={styles.warningTitle}>Cancellation Fee</Text>
+            <Text style={styles.warningText}>
+              Depending on the status of your request, a cancellation fee
+              of up to $50 may be charged. If the provider has already been
+              dispatched and is en route, the fee covers their travel costs.
+            </Text>
+          </GlassCard>
+        </View>
+
+        {/* Reason selection - glass list items */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Reason for cancellation</Text>
+          <View style={styles.reasonsContainer}>
+            {CANCELLATION_REASONS.map((reason: CancellationReason) => {
+              const isSelected = selectedCancellationReason === reason.id;
+              return (
+                <TouchableOpacity
+                  key={reason.id}
+                  style={[
+                    styles.reasonCard,
+                    isSelected && styles.reasonCardSelected,
+                  ]}
+                  onPress={() => handleSelectReason(reason.id)}
+                  activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={reason.label}
+                >
+                  <View
+                    style={[
+                      styles.reasonRadio,
+                      isSelected && styles.reasonRadioSelected,
+                    ]}
+                  >
+                    {isSelected && <View style={styles.reasonRadioInner} />}
+                  </View>
+                  <Text
+                    style={[
+                      styles.reasonText,
+                      isSelected && styles.reasonTextSelected,
+                    ]}
+                  >
+                    {reason.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Error */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Action buttons - glass CTA bar */}
+      <View style={styles.ctaContainer}>
+        <GlassButton
+          title="Keep Request"
+          onPress={handleGoBack}
+          variant="glow"
+          style={styles.keepButton}
+        />
+
+        <GlassButton
+          title={isCancelling ? '' : 'Confirm Cancel'}
+          onPress={handleConfirmCancel}
+          variant="outline"
+          disabled={!selectedCancellationReason || isCancelling}
+          loading={isCancelling}
+          style={styles.cancelConfirmButton}
+        />
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -268,15 +245,11 @@ function EmergencyCancelScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
+const EMERGENCY_RED = 'rgba(231, 76, 60, 1)';
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
+const EMERGENCY_RED_BORDER = 'rgba(231, 76, 60, 0.30)';
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   scrollView: {
     flex: 1,
   },
@@ -292,12 +265,12 @@ const styles = StyleSheet.create({
   },
   title: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
   },
   subtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 22,
   },
 
@@ -308,17 +281,13 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
   },
 
-  // Warning
+  // Warning - glass card with red border
   warningCard: {
-    backgroundColor: `${Colors.emergencyRed}10`,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.emergencyRed}30`,
+    borderColor: EMERGENCY_RED_BORDER,
   },
   warningTitle: {
     ...Typography.headline,
@@ -327,33 +296,42 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 20,
   },
 
-  // Reasons
+  // Reasons - glass list items
   reasonsContainer: {
     gap: Spacing.sm,
   },
   reasonCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   reasonCardSelected: {
     borderColor: Colors.emergencyRed,
-    backgroundColor: `${Colors.emergencyRed}08`,
+    backgroundColor: 'rgba(231, 76, 60, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+      },
+      android: { elevation: 4 },
+    }),
   },
   reasonRadio: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
@@ -366,10 +344,19 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: Colors.emergencyRed,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+      },
+      android: { elevation: 3 },
+    }),
   },
   reasonText: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     flex: 1,
   },
   reasonTextSelected: {
@@ -380,61 +367,47 @@ const styles = StyleSheet.create({
   errorContainer: {
     marginHorizontal: Spacing.lg,
     padding: Spacing.md,
-    backgroundColor: `${Colors.error}15`,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: `${Colors.error}30`,
+    borderColor: EMERGENCY_RED_BORDER,
   },
   errorText: {
     ...Typography.footnote,
-    color: Colors.error,
+    color: Colors.emergencyRed,
   },
 
-  // CTA
+  // CTA - glass bar
   ctaContainer: {
     flexDirection: 'row',
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.80)',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.lg,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   keepButton: {
     flex: 1,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  keepButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 6 },
+    }),
   },
   cancelConfirmButton: {
     flex: 1,
-    backgroundColor: Colors.emergencyRed,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelConfirmButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-  },
-  cancelConfirmButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    borderColor: EMERGENCY_RED_BORDER,
   },
 
   // Cancelled state
   cancelledContainer: {
     flex: 1,
-    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
@@ -443,42 +416,48 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.emergencyRed,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.xl,
-    ...Shadows.md,
+    borderWidth: 1,
+    borderColor: EMERGENCY_RED_BORDER,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 10 },
+    }),
   },
   cancelledIconText: {
     fontSize: 32,
     fontWeight: FontWeight.bold,
-    color: Colors.white,
+    color: '#FFFFFF',
   },
   cancelledTitle: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
     textAlign: 'center',
   },
   cancelledDescription: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
     marginBottom: Spacing.xxl,
   },
   feeCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.xl,
     width: '100%',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: `${Colors.emergencyRed}30`,
+    borderColor: EMERGENCY_RED_BORDER,
     marginBottom: Spacing.xxl,
   },
   feeLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginBottom: Spacing.sm,
   },
   feeValue: {
@@ -489,21 +468,21 @@ const styles = StyleSheet.create({
   },
   feeNote: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     textAlign: 'center',
   },
   doneButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     paddingHorizontal: Spacing.giant,
-    alignItems: 'center',
-    ...Shadows.md,
-  },
-  doneButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
   },
 });
 

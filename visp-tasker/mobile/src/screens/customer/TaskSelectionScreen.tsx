@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - TaskSelectionScreen
+ * VISP - TaskSelectionScreen
  *
  * Pre-booking confirmation screen.
  * Features:
@@ -13,6 +13,8 @@
  *   - "Confirm Booking" button
  *
  * CRITICAL: No free-text notes. Only predefined selection options.
+ *
+ * Glass redesign: GlassBackground + GlassCard + GlassInput + GlassButton
  */
 
 import React, { useEffect, useCallback, useState, useMemo } from 'react';
@@ -22,20 +24,19 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Switch,
-  ActivityIndicator,
-  SafeAreaView,
   Alert,
   Platform,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
 import { PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
@@ -331,19 +332,19 @@ function TaskSelectionScreen(): React.JSX.Element {
   // Loading
   if (isLoadingDetail || !taskDetail) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+          <AnimatedSpinner size={48} color={Colors.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   const levelColor = getLevelColor(taskDetail.level);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -353,7 +354,7 @@ function TaskSelectionScreen(): React.JSX.Element {
         >
           {/* Task summary card */}
           <View style={styles.section}>
-            <View style={styles.taskSummaryCard}>
+            <GlassCard variant="elevated">
               <View style={styles.taskSummaryHeader}>
                 <Text style={styles.taskSummaryName}>{taskDetail.name}</Text>
                 <LevelBadge level={taskDetail.level} size="small" />
@@ -369,30 +370,27 @@ function TaskSelectionScreen(): React.JSX.Element {
                   ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
                 </Text>
               </View>
-            </View>
+            </GlassCard>
           </View>
 
           {/* Address input */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Service Address</Text>
-            <View style={styles.addressInputContainer}>
-              <Text style={styles.addressIcon}>P</Text>
-              <TextInput
-                style={styles.addressInput}
-                placeholder="Enter your address..."
-                placeholderTextColor={Colors.inputPlaceholder}
-                value={addressInput}
-                onChangeText={handleAddressChange}
-                autoCapitalize="words"
-                returnKeyType="done"
-                accessibilityLabel="Service address"
-                accessibilityHint="Enter the address where you need the service"
-              />
-            </View>
+            <GlassInput
+              label=""
+              placeholder="Enter your address..."
+              value={addressInput}
+              onChangeText={handleAddressChange}
+              autoCapitalize="words"
+              returnKeyType="done"
+              accessibilityLabel="Service address"
+              accessibilityHint="Enter the address where you need the service"
+              icon={<Text style={styles.addressIcon}>P</Text>}
+            />
 
             {/* Address suggestions */}
             {showSuggestions && addressSuggestions.length > 0 && (
-              <View style={styles.suggestionsContainer}>
+              <GlassCard variant="dark" padding={0} style={styles.suggestionsContainer}>
                 {addressSuggestions.map((suggestion) => (
                   <TouchableOpacity
                     key={suggestion.placeId}
@@ -408,7 +406,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                     </Text>
                   </TouchableOpacity>
                 ))}
-              </View>
+              </GlassCard>
             )}
 
             {address && (
@@ -481,8 +479,8 @@ function TaskSelectionScreen(): React.JSX.Element {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Select Time</Text>
               {isLoadingTimeSlots ? (
-                <ActivityIndicator
-                  size="small"
+                <AnimatedSpinner
+                  size={24}
                   color={Colors.primary}
                   style={styles.timeSlotsLoader}
                 />
@@ -532,25 +530,27 @@ function TaskSelectionScreen(): React.JSX.Element {
 
           {/* Flexible schedule toggle */}
           <View style={styles.section}>
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleInfo}>
-                <Text style={styles.toggleLabel}>Flexible Schedule</Text>
-                <Text style={styles.toggleDescription}>
-                  Let us find the best available time for you
-                </Text>
+            <GlassCard variant="standard">
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleInfo}>
+                  <Text style={styles.toggleLabel}>Flexible Schedule</Text>
+                  <Text style={styles.toggleDescription}>
+                    Let us find the best available time for you
+                  </Text>
+                </View>
+                <Switch
+                  value={isFlexibleSchedule}
+                  onValueChange={handleToggleFlexible}
+                  trackColor={{
+                    false: 'rgba(255, 255, 255, 0.12)',
+                    true: 'rgba(120, 80, 255, 0.5)',
+                  }}
+                  thumbColor={isFlexibleSchedule ? 'rgba(120, 80, 255, 1)' : 'rgba(255, 255, 255, 0.5)'}
+                  ios_backgroundColor="rgba(255, 255, 255, 0.12)"
+                  accessibilityLabel="Flexible schedule toggle"
+                />
               </View>
-              <Switch
-                value={isFlexibleSchedule}
-                onValueChange={handleToggleFlexible}
-                trackColor={{
-                  false: Colors.border,
-                  true: `${Colors.primary}80`,
-                }}
-                thumbColor={isFlexibleSchedule ? Colors.primary : Colors.textTertiary}
-                ios_backgroundColor={Colors.border}
-                accessibilityLabel="Flexible schedule toggle"
-              />
-            </View>
+            </GlassCard>
           </View>
 
           {/* Priority selection */}
@@ -566,7 +566,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                       styles.priorityCard,
                       isSelected && {
                         borderColor: option.color,
-                        backgroundColor: `${option.color}10`,
+                        backgroundColor: `${option.color}18`,
                       },
                     ]}
                     onPress={() => handleSelectPriority(option.value)}
@@ -655,23 +655,25 @@ function TaskSelectionScreen(): React.JSX.Element {
           {/* Price estimate */}
           {estimatedPrice > 0 && (
             <View style={styles.section}>
-              <View style={styles.estimateCard}>
-                <Text style={styles.estimateLabel}>Estimated Total</Text>
-                <Text style={styles.estimatePrice}>
-                  ${estimatedPrice.toFixed(2)}
-                </Text>
-                {isLoadingEstimate && (
-                  <ActivityIndicator
-                    size="small"
-                    color={Colors.primary}
-                    style={styles.estimateLoader}
-                  />
-                )}
-                <Text style={styles.estimateNote}>
-                  Final price may vary based on actual scope of work.
-                  You will be notified of any changes before they are applied.
-                </Text>
-              </View>
+              <GlassCard variant="elevated" style={styles.estimateCardBorder}>
+                <View style={styles.estimateCardContent}>
+                  <Text style={styles.estimateLabel}>Estimated Total</Text>
+                  <Text style={styles.estimatePrice}>
+                    ${estimatedPrice.toFixed(2)}
+                  </Text>
+                  {isLoadingEstimate && (
+                    <AnimatedSpinner
+                      size={24}
+                      color={Colors.primary}
+                      style={styles.estimateLoader}
+                    />
+                  )}
+                  <Text style={styles.estimateNote}>
+                    Final price may vary based on actual scope of work.
+                    You will be notified of any changes before they are applied.
+                  </Text>
+                </View>
+              </GlassCard>
             </View>
           )}
 
@@ -703,23 +705,16 @@ function TaskSelectionScreen(): React.JSX.Element {
               </Text>
             </View>
           ) : null}
-          <TouchableOpacity
-            style={[
-              styles.confirmButton,
-              !isFormValid && styles.confirmButtonDisabled,
-            ]}
+          <GlassButton
+            title="Continue"
+            variant="glow"
             onPress={handleConfirmBooking}
             disabled={!isFormValid}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Continue to booking confirmation"
-            accessibilityState={{ disabled: !isFormValid }}
-          >
-            <Text style={styles.confirmButtonText}>Continue</Text>
-          </TouchableOpacity>
+            style={styles.confirmButtonStyle}
+          />
         </View>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -728,13 +723,8 @@ function TaskSelectionScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -750,18 +740,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
 
   // Task summary
-  taskSummaryCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   taskSummaryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -770,13 +756,13 @@ const styles = StyleSheet.create({
   },
   taskSummaryName: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     flex: 1,
     marginRight: Spacing.sm,
   },
   taskSummaryDescription: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     marginBottom: Spacing.md,
   },
   taskSummaryMeta: {
@@ -786,7 +772,7 @@ const styles = StyleSheet.create({
   },
   taskSummaryDuration: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.45)',
   },
   taskSummaryPrice: {
     fontSize: FontSize.callout,
@@ -794,66 +780,44 @@ const styles = StyleSheet.create({
   },
 
   // Address
-  addressInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: Spacing.md,
-    height: 48,
-  },
   addressIcon: {
     fontSize: 16,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.45)',
     fontWeight: FontWeight.bold,
-    marginRight: Spacing.sm,
-  },
-  addressInput: {
-    flex: 1,
-    ...Typography.body,
-    color: Colors.inputText,
-    paddingVertical: 0,
   },
   suggestionsContainer: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
     marginTop: Spacing.xs,
-    overflow: 'hidden',
   },
   suggestionItem: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   suggestionText: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   suggestionSubtext: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.45)',
     marginTop: 2,
   },
   selectedAddressCard: {
-    backgroundColor: `${Colors.success}10`,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(39, 174, 96, 0.12)',
+    borderRadius: 12,
     padding: Spacing.md,
     marginTop: Spacing.sm,
     borderWidth: 1,
-    borderColor: `${Colors.success}30`,
+    borderColor: 'rgba(39, 174, 96, 0.25)',
   },
   selectedAddressText: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   selectedAddressSubtext: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     marginTop: 2,
   },
 
@@ -865,32 +829,32 @@ const styles = StyleSheet.create({
     width: 72,
     paddingVertical: Spacing.md,
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.subtle,
   },
   dateCardSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.2)',
+    borderColor: 'rgba(120, 80, 255, 0.6)',
   },
   dateDayOfWeek: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.xxs,
   },
   dateDayOfMonth: {
     fontSize: FontSize.title3,
     fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.xxs,
   },
   dateMonth: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   dateTextSelected: {
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 1)',
   },
 
   // Time slots
@@ -902,37 +866,37 @@ const styles = StyleSheet.create({
   timeSlot: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.subtle,
   },
   timeSlotSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.2)',
+    borderColor: 'rgba(120, 80, 255, 0.6)',
   },
   timeSlotDisabled: {
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
     opacity: 0.4,
   },
   timeSlotText: {
     ...Typography.footnote,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.medium,
   },
   timeSlotTextSelected: {
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 1)',
   },
   timeSlotTextDisabled: {
-    color: Colors.textDisabled,
+    color: 'rgba(255, 255, 255, 0.3)',
   },
   timeSlotsLoader: {
     padding: Spacing.lg,
   },
   noSlotsText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
     paddingVertical: Spacing.lg,
   },
@@ -942,11 +906,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   toggleInfo: {
     flex: 1,
@@ -954,12 +913,12 @@ const styles = StyleSheet.create({
   },
   toggleLabel: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: 2,
   },
   toggleDescription: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
 
   // Priority
@@ -967,11 +926,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   priorityCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 16,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.subtle,
   },
   priorityHeader: {
     flexDirection: 'row',
@@ -983,7 +942,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm,
@@ -995,7 +954,7 @@ const styles = StyleSheet.create({
   },
   priorityLabel: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     flex: 1,
   },
   priorityMultiplier: {
@@ -1004,14 +963,14 @@ const styles = StyleSheet.create({
   },
   priorityDescription: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginLeft: 32,
   },
 
   // Notes
   notesSubtitle: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.45)',
     marginBottom: Spacing.md,
   },
   notesContainer: {
@@ -1022,35 +981,33 @@ const styles = StyleSheet.create({
   noteChip: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.subtle,
   },
   noteChipSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.2)',
+    borderColor: 'rgba(120, 80, 255, 0.6)',
   },
   noteChipText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   noteChipTextSelected: {
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 1)',
   },
 
   // Estimate
-  estimateCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+  estimateCardBorder: {
+    borderColor: 'rgba(120, 80, 255, 0.4)',
+  },
+  estimateCardContent: {
     alignItems: 'center',
   },
   estimateLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.xs,
   },
   estimatePrice: {
@@ -1064,7 +1021,7 @@ const styles = StyleSheet.create({
   },
   estimateNote: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     textAlign: 'center',
     lineHeight: 16,
   },
@@ -1073,10 +1030,10 @@ const styles = StyleSheet.create({
   errorContainer: {
     marginHorizontal: Spacing.lg,
     padding: Spacing.md,
-    backgroundColor: `${Colors.error}15`,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: `${Colors.error}30`,
+    borderColor: 'rgba(231, 76, 60, 0.3)',
     marginBottom: Spacing.lg,
   },
   errorText: {
@@ -1096,40 +1053,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.85)',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.lg,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 20,
+      },
+      android: { elevation: 12 },
+    }),
   },
   ctaPriceInfo: {
     flexDirection: 'column',
   },
   ctaPriceLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   ctaPriceValue: {
     fontSize: FontSize.title2,
     fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
-  confirmButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.md,
+  confirmButtonStyle: {
     minWidth: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.sm,
-  },
-  confirmButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-    ...Shadows.none,
-  },
-  confirmButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
   },
 
   // Loading
@@ -1140,7 +1090,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginTop: Spacing.md,
   },
 });

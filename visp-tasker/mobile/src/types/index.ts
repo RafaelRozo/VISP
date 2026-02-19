@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Shared TypeScript type definitions
+ * VISP - Shared TypeScript type definitions
  */
 
 // ──────────────────────────────────────────────
@@ -118,6 +118,7 @@ export type JobStatus =
   | 'pending_match'
   | 'matched'
   | 'pending_approval'
+  | 'pending_price_agreement'
   | 'scheduled'
   | 'accepted'
   | 'provider_accepted'
@@ -149,6 +150,10 @@ export interface Job {
   provider: JobProvider | null;
   address: JobAddress;
   slaDeadline: string | null;
+  pricingModel: PricingModel | null;
+  hourlyRateCents: number | null;
+  actualDurationMinutes: number | null;
+  estimatedDurationMinutes: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -238,6 +243,8 @@ export interface OfferSLAInfo {
   completionTimeMin?: number;
 }
 
+export type PricingModel = 'TIME_BASED' | 'NEGOTIATED' | 'EMERGENCY_NEGOTIATED';
+
 export interface JobOffer {
   assignmentId: string;
   jobId: string;
@@ -257,6 +264,22 @@ export interface JobOffer {
   distanceKm?: number;
   offeredAt: string;
   offerExpiresAt?: string;
+  pricingModel?: PricingModel;
+}
+
+// ──────────────────────────────────────────────
+// Service Catalog (Provider)
+// ──────────────────────────────────────────────
+
+export interface ServiceCatalogItem {
+  id: string;
+  name: string;
+  categoryId: string;
+  categoryName: string;
+  level: string;
+  estimatedDurationMin: number;
+  rateDescription: string;
+  isAvailable: boolean;
 }
 
 // ──────────────────────────────────────────────
@@ -325,6 +348,7 @@ export interface ProviderProfile {
   completedJobs: number;
   rating: number;
   stripeConnectStatus: 'not_connected' | 'pending' | 'active' | 'restricted';
+  stripeAccountId?: string | null;
   credentials: Credential[];
 }
 
@@ -407,6 +431,39 @@ export interface ChatMessage {
 }
 
 // ──────────────────────────────────────────────
+// Tips
+// ──────────────────────────────────────────────
+
+export type TipStatus = 'pending' | 'paid' | 'failed';
+
+export interface Tip {
+  id: string;
+  jobId: string;
+  amountCents: number;
+  status: TipStatus;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+// ──────────────────────────────────────────────
+// Price Proposals
+// ──────────────────────────────────────────────
+
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+
+export interface PriceProposal {
+  id: string;
+  jobId: string;
+  proposedById: string;
+  proposedByRole: 'provider' | 'customer';
+  proposedPriceCents: number;
+  description: string;
+  status: ProposalStatus;
+  respondedAt: string | null;
+  createdAt: string;
+}
+
+// ──────────────────────────────────────────────
 // Extended Navigation
 // ──────────────────────────────────────────────
 
@@ -432,6 +489,7 @@ export type ProfileStackParamList = {
   Verification: undefined;
   Settings: undefined;
   ProviderOnboarding: undefined;
+  PaymentMethods: undefined;
 };
 
 export type AuthStackParamList = {
@@ -671,6 +729,8 @@ export type CustomerFlowParamList = {
   Matching: { jobId: string; taskName: string };
   JobTracking: { jobId: string };
   Rating: { jobId: string; taskName: string; finalPrice: number };
+  Tip: { jobId: string; taskName: string; finalPrice: number; providerName?: string };
+  PriceProposal: { jobId: string; taskName: string; level: ServiceLevel; guideMin?: number; guideMax?: number };
   Chat: { jobId: string; otherUserName: string };
 };
 

@@ -1,5 +1,5 @@
 # =============================================================================
-# Cloudflare Tunnel Configuration - VISP Tasker API
+# Cloudflare Tunnel Configuration - VISP API
 # =============================================================================
 # This file configures the Cloudflare tunnel to expose the API
 # Place in: ~/.cloudflared/config.yml or /etc/cloudflared/config.yml

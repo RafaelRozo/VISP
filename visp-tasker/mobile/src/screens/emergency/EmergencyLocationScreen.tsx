@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - EmergencyLocationScreen
+ * VISP - EmergencyLocationScreen
  *
  * Map view with current location for emergency services.
  * Features:
@@ -7,6 +7,8 @@
  *   - Address confirmation or manual entry
  *   - "Confirm Location" button
  *   - GPS accuracy indicator
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -15,21 +17,18 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  SafeAreaView,
   Alert,
   Platform,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
-import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
+import { Typography, FontWeight } from '../../theme/typography';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import type { EmergencyFlowParamList, AddressInfo } from '../../types';
 
@@ -228,126 +227,113 @@ function EmergencyLocationScreen(): React.JSX.Element {
     : undefined;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Map */}
-        <View style={styles.mapContainer}>
-          {isLoadingLocation ? (
-            <View style={styles.mapLoading}>
-              <ActivityIndicator size="large" color={Colors.emergencyRed} />
-              <Text style={styles.mapLoadingText}>
-                Acquiring your location...
-              </Text>
-            </View>
-          ) : (
-            <>
-              <MapView
-                ref={mapRef}
-                style={styles.map}
-                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                region={mapRegion}
-                showsUserLocation={false}
-                showsMyLocationButton={false}
-                customMapStyle={darkMapStyle}
-                accessibilityLabel="Emergency location map"
-              >
-                {currentLocation && (
-                  <Marker
-                    coordinate={currentLocation}
-                    title="Your Location"
-                    anchor={{ x: 0.5, y: 0.5 }}
-                  >
-                    <View style={styles.markerOuter}>
-                      <View style={styles.markerInner} />
-                    </View>
-                  </Marker>
-                )}
-              </MapView>
-
-              {/* GPS accuracy indicator */}
-              <View style={styles.accuracyBadge}>
-                <View
-                  style={[
-                    styles.accuracyDot,
-                    { backgroundColor: accuracy.color },
-                  ]}
-                />
-                <Text style={styles.accuracyText}>{accuracy.label}</Text>
-                {accuracy.meters < 9999 && (
-                  <Text style={styles.accuracyMeters}>
-                    ({Math.round(accuracy.meters)}m)
-                  </Text>
-                )}
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* Address panel */}
-        <View style={styles.addressPanel}>
-          <Text style={styles.panelTitle}>Emergency Location</Text>
-
-          {/* Address input */}
-          <View style={styles.addressInputRow}>
-            <View style={styles.addressInputContainer}>
-              <TextInput
-                style={styles.addressInput}
-                placeholder="Enter address manually..."
-                placeholderTextColor={Colors.inputPlaceholder}
-                value={addressText}
-                onChangeText={handleAddressChange}
-                returnKeyType="done"
-                onSubmitEditing={handleManualAddressConfirm}
-                accessibilityLabel="Emergency address input"
-              />
-            </View>
+    <GlassBackground>
+      {/* Map */}
+      <View style={styles.mapContainer}>
+        {isLoadingLocation ? (
+          <View style={styles.mapLoading}>
+            <AnimatedSpinner size={48} color={Colors.emergencyRed} />
+            <Text style={styles.mapLoadingText}>
+              Acquiring your location...
+            </Text>
           </View>
-
-          {/* Use current location button */}
-          {currentLocation && (
-            <TouchableOpacity
-              style={styles.useLocationButton}
-              onPress={handleUseCurrentLocation}
-              activeOpacity={0.7}
-              accessibilityLabel="Use my current location"
+        ) : (
+          <>
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              region={mapRegion}
+              showsUserLocation={false}
+              showsMyLocationButton={false}
+              customMapStyle={darkMapStyle}
+              accessibilityLabel="Emergency location map"
             >
-              <View style={styles.locationIcon}>
-                <View style={styles.locationDot} />
-              </View>
-              <Text style={styles.useLocationText}>
-                Use my current location
-              </Text>
-            </TouchableOpacity>
-          )}
+              {currentLocation && (
+                <Marker
+                  coordinate={currentLocation}
+                  title="Your Location"
+                  anchor={{ x: 0.5, y: 0.5 }}
+                >
+                  <View style={styles.markerOuter}>
+                    <View style={styles.markerInner} />
+                  </View>
+                </Marker>
+              )}
+            </MapView>
 
-          {/* Confirmed address display */}
-          {confirmedAddress && !isEditingAddress && (
-            <View style={styles.confirmedCard}>
-              <Text style={styles.confirmedLabel}>Selected Location</Text>
-              <Text style={styles.confirmedAddress}>
-                {confirmedAddress.formattedAddress}
-              </Text>
+            {/* GPS accuracy indicator - glass overlay */}
+            <View style={styles.accuracyBadge}>
+              <View
+                style={[
+                  styles.accuracyDot,
+                  { backgroundColor: accuracy.color },
+                ]}
+              />
+              <Text style={styles.accuracyText}>{accuracy.label}</Text>
+              {accuracy.meters < 9999 && (
+                <Text style={styles.accuracyMeters}>
+                  ({Math.round(accuracy.meters)}m)
+                </Text>
+              )}
             </View>
-          )}
-
-          {/* Confirm button */}
-          <TouchableOpacity
-            style={[
-              styles.confirmButton,
-              !confirmedAddress && styles.confirmButtonDisabled,
-            ]}
-            onPress={handleConfirmLocation}
-            disabled={!confirmedAddress}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Confirm emergency location"
-            accessibilityState={{ disabled: !confirmedAddress }}
-          >
-            <Text style={styles.confirmButtonText}>Confirm Location</Text>
-          </TouchableOpacity>
-        </View>
+          </>
+        )}
       </View>
-    </SafeAreaView>
+
+      {/* Address panel - glass bottom sheet */}
+      <View style={styles.addressPanel}>
+        <Text style={styles.panelTitle}>Emergency Location</Text>
+
+        {/* Address input - glass themed */}
+        <GlassInput
+          label="Address"
+          placeholder="Enter address manually..."
+          value={addressText}
+          onChangeText={handleAddressChange}
+          returnKeyType="done"
+          onSubmitEditing={handleManualAddressConfirm}
+          accessibilityLabel="Emergency address input"
+          containerStyle={styles.addressInputContainer}
+        />
+
+        {/* Use current location button */}
+        {currentLocation && (
+          <TouchableOpacity
+            style={styles.useLocationButton}
+            onPress={handleUseCurrentLocation}
+            activeOpacity={0.7}
+            accessibilityLabel="Use my current location"
+          >
+            <View style={styles.locationIcon}>
+              <View style={styles.locationDot} />
+            </View>
+            <Text style={styles.useLocationText}>
+              Use my current location
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Confirmed address display */}
+        {confirmedAddress && !isEditingAddress && (
+          <GlassCard variant="dark" style={styles.confirmedCard}>
+            <Text style={styles.confirmedLabel}>Selected Location</Text>
+            <Text style={styles.confirmedAddress}>
+              {confirmedAddress.formattedAddress}
+            </Text>
+          </GlassCard>
+        )}
+
+        {/* Confirm button - red glow */}
+        <GlassButton
+          title="Confirm Location"
+          onPress={handleConfirmLocation}
+          variant="glow"
+          disabled={!confirmedAddress}
+          style={styles.confirmButton}
+        />
+      </View>
+    </GlassBackground>
   );
 }
 
@@ -355,16 +341,9 @@ function EmergencyLocationScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
 
+const styles = StyleSheet.create({
   // Map
   mapContainer: {
     flex: 1,
@@ -377,11 +356,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.55)',
   },
   mapLoadingText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     marginTop: Spacing.md,
   },
 
@@ -390,7 +369,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: `${Colors.emergencyRed}30`,
+    backgroundColor: 'rgba(231, 76, 60, 0.30)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -403,20 +382,28 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.emergencyRed,
   },
 
-  // Accuracy badge
+  // Accuracy badge - glass overlay
   accuracyBadge: {
     position: 'absolute',
     top: Spacing.lg,
     left: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.65)',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.sm,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+      },
+      android: { elevation: 6 },
+    }),
   },
   accuracyDot: {
     width: 8,
@@ -426,50 +413,44 @@ const styles = StyleSheet.create({
   },
   accuracyText: {
     ...Typography.caption,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.medium,
   },
   accuracyMeters: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginLeft: Spacing.xs,
   },
 
-  // Address panel
+  // Address panel - glass bottom sheet
   addressPanel: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
+    backgroundColor: 'rgba(10, 10, 30, 0.75)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.xxl,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.xl,
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -12 },
+        shadowOpacity: 0.5,
+        shadowRadius: 40,
+      },
+      android: { elevation: 12 },
+    }),
   },
   panelTitle: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.lg,
   },
 
   // Address input
-  addressInputRow: {
-    marginBottom: Spacing.md,
-  },
   addressInputContainer: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: Spacing.md,
-    height: 48,
-    justifyContent: 'center',
-  },
-  addressInput: {
-    ...Typography.body,
-    color: Colors.inputText,
-    paddingVertical: 0,
+    marginBottom: Spacing.md,
   },
 
   // Use current location
@@ -483,7 +464,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: `${Colors.primary}20`,
+    backgroundColor: 'rgba(231, 76, 60, 0.20)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm,
@@ -492,26 +473,22 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.emergencyRed,
   },
   useLocationText: {
     ...Typography.body,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
     fontWeight: FontWeight.medium,
   },
 
   // Confirmed address
   confirmedCard: {
-    backgroundColor: `${Colors.success}10`,
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
     marginBottom: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.success}30`,
+    borderColor: 'rgba(231, 76, 60, 0.25)',
   },
   confirmedLabel: {
     ...Typography.caption,
-    color: Colors.success,
+    color: Colors.emergencyRed,
     fontWeight: FontWeight.semiBold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -519,26 +496,21 @@ const styles = StyleSheet.create({
   },
   confirmedAddress: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
 
-  // Confirm button
+  // Confirm button - red glow override
   confirmButton: {
-    backgroundColor: Colors.emergencyRed,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.md,
-  },
-  confirmButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-    ...Shadows.none,
-  },
-  confirmButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
   },
 });
 

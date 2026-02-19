@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Task Selection Zustand Store
+ * VISP - Task Selection Zustand Store
  *
  * Manages state for the task selection flow: browsing categories,
  * viewing task details, selecting options, and creating bookings.

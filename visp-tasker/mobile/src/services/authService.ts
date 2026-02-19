@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Authentication Service
+ * VISP - Authentication Service
  *
  * Handles all authentication-related API calls: login, register, social auth,
  * password reset, and secure token management via react-native-keychain.
@@ -21,7 +21,7 @@ import type {
 // Constants
 // ──────────────────────────────────────────────
 
-const KEYCHAIN_SERVICE = 'com.tasker.auth';
+const KEYCHAIN_SERVICE = 'com.visp.auth';
 const KEYCHAIN_TOKEN_KEY = 'auth_tokens';
 const KEYCHAIN_USER_KEY = 'auth_user';
 

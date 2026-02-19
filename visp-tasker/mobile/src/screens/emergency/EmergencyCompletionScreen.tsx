@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - EmergencyCompletionScreen
+ * VISP - EmergencyCompletionScreen
  *
  * Job completion summary and rating.
  * Features:
@@ -7,6 +7,8 @@
  *   - Time breakdown
  *   - Rate provider (1-5 stars + dimensions)
  *   - Payment confirmation
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useEffect, useCallback, useState } from 'react';
@@ -16,17 +18,16 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  SafeAreaView,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { AnimatedCheckmark } from '../../components/animations';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import LevelBadge from '../../components/LevelBadge';
 import type { EmergencyFlowParamList, RatingDimension } from '../../types';
@@ -65,7 +66,7 @@ function StarRating({ value, onSelect, size = 36 }: StarRatingProps): React.JSX.
               starStyles.star,
               {
                 fontSize: size,
-                color: value >= star ? Colors.warning : Colors.textTertiary,
+                color: value >= star ? Colors.warning : 'rgba(255, 255, 255, 0.20)',
               },
             ]}
           >
@@ -171,7 +172,7 @@ function EmergencyCompletionScreen(): React.JSX.Element {
   const timeBreakdown = activeJob?.timeBreakdown;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
@@ -179,30 +180,30 @@ function EmergencyCompletionScreen(): React.JSX.Element {
       >
         {/* Completion header */}
         <View style={styles.header}>
-          <View style={styles.completionIcon}>
-            <Text style={styles.completionIconText}>V</Text>
-          </View>
+          <AnimatedCheckmark size={80} color="#27AE60" />
           <Text style={styles.title}>Job Complete</Text>
           <Text style={styles.subtitle}>
             Your emergency service has been completed
           </Text>
         </View>
 
-        {/* Final price */}
+        {/* Final price - glass card */}
         <View style={styles.section}>
-          <View style={styles.priceCard}>
-            <Text style={styles.priceLabel}>Final Price</Text>
-            <Text style={styles.priceValue}>
-              ${activeJob?.finalPrice?.toFixed(2) || '0.00'}
-            </Text>
-          </View>
+          <GlassCard variant="elevated" style={styles.priceCardBorder}>
+            <View style={styles.priceContent}>
+              <Text style={styles.priceLabel}>Final Price</Text>
+              <Text style={styles.priceValue}>
+                ${activeJob?.finalPrice?.toFixed(2) || '0.00'}
+              </Text>
+            </View>
+          </GlassCard>
         </View>
 
-        {/* Time breakdown */}
+        {/* Time breakdown - glass card */}
         {timeBreakdown && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Time Breakdown</Text>
-            <View style={styles.breakdownCard}>
+            <GlassCard variant="dark">
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Response Time</Text>
                 <Text style={styles.breakdownValue}>
@@ -228,14 +229,14 @@ function EmergencyCompletionScreen(): React.JSX.Element {
                   {timeBreakdown.totalTimeMinutes} min
                 </Text>
               </View>
-            </View>
+            </GlassCard>
           </View>
         )}
 
-        {/* Provider info */}
+        {/* Provider info - glass card */}
         {provider && (
           <View style={styles.section}>
-            <View style={styles.providerCard}>
+            <GlassCard variant="standard">
               <View style={styles.providerRow}>
                 <View style={styles.providerAvatar}>
                   <Text style={styles.providerInitial}>
@@ -249,17 +250,16 @@ function EmergencyCompletionScreen(): React.JSX.Element {
                   <LevelBadge level={provider.level} size="small" />
                 </View>
               </View>
-            </View>
+            </GlassCard>
           </View>
         )}
 
-        {/* Rating section */}
+        {/* Rating section - glass card */}
         {!ratingSubmitted ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Rate Your Experience</Text>
 
-            {/* Overall rating */}
-            <View style={styles.ratingCard}>
+            <GlassCard variant="standard" style={styles.ratingCard}>
               <Text style={styles.ratingSubtitle}>Overall Rating</Text>
               <StarRating value={overallRating} onSelect={handleOverallRating} />
 
@@ -281,53 +281,41 @@ function EmergencyCompletionScreen(): React.JSX.Element {
                 ))}
               </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.submitRatingButton,
-                  overallRating === 0 && styles.submitRatingButtonDisabled,
-                ]}
+              <GlassButton
+                title="Submit Rating"
                 onPress={handleSubmitRating}
-                disabled={overallRating === 0 || isSubmittingRating}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Submit rating"
-              >
-                {isSubmittingRating ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
-                ) : (
-                  <Text style={styles.submitRatingText}>Submit Rating</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+                variant="glow"
+                disabled={overallRating === 0}
+                loading={isSubmittingRating}
+                style={styles.submitRatingButton}
+              />
+            </GlassCard>
           </View>
         ) : (
           <View style={styles.section}>
-            <View style={styles.ratingSubmittedCard}>
+            <GlassCard variant="dark" style={styles.ratingSubmittedCard}>
               <Text style={styles.ratingSubmittedText}>
                 Thank you for your feedback!
               </Text>
-            </View>
+            </GlassCard>
           </View>
         )}
 
-        {/* Payment confirmation */}
+        {/* Payment confirmation - glass */}
         <View style={styles.section}>
           {!paymentConfirmed ? (
-            <TouchableOpacity
-              style={styles.paymentButton}
+            <GlassButton
+              title="Confirm Payment"
               onPress={handleConfirmPayment}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Confirm payment"
-            >
-              <Text style={styles.paymentButtonText}>Confirm Payment</Text>
-            </TouchableOpacity>
+              variant="glow"
+              style={styles.paymentButton}
+            />
           ) : (
-            <View style={styles.paymentConfirmedCard}>
+            <GlassCard variant="dark" style={styles.paymentConfirmedCard}>
               <Text style={styles.paymentConfirmedText}>
                 Payment Confirmed
               </Text>
-            </View>
+            </GlassCard>
           )}
         </View>
 
@@ -338,23 +326,19 @@ function EmergencyCompletionScreen(): React.JSX.Element {
           </View>
         )}
 
-        {/* Done button */}
+        {/* Done button - glass outline */}
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.doneButton}
+          <GlassButton
+            title="Done"
             onPress={handleDone}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Return to home"
-          >
-            <Text style={styles.doneButtonText}>Done</Text>
-          </TouchableOpacity>
+            variant="outline"
+          />
         </View>
 
         {/* Bottom padding */}
         <View style={styles.bottomPadding} />
       </ScrollView>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -362,48 +346,30 @@ function EmergencyCompletionScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollContent: {
     paddingTop: Spacing.xl,
   },
 
-  // Header
+  // Header — completion icon now uses AnimatedCheckmark SVG component
   header: {
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.xxl,
   },
-  completionIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.success,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-    ...Shadows.md,
-  },
-  completionIconText: {
-    fontSize: 28,
-    fontWeight: FontWeight.bold,
-    color: Colors.white,
-  },
   title: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.sm,
   },
   subtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
   },
 
@@ -414,38 +380,30 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
   },
 
-  // Price
-  priceCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.xxl,
+  // Price - elevated glass
+  priceCardBorder: {
+    borderColor: 'rgba(231, 76, 60, 0.30)',
+  },
+  priceContent: {
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    paddingVertical: Spacing.md,
   },
   priceLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginBottom: Spacing.sm,
   },
   priceValue: {
     fontSize: 44,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
   },
 
   // Breakdown
-  breakdownCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   breakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -454,36 +412,29 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   breakdownValue: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.medium,
   },
   breakdownDivider: {
     height: 1,
-    backgroundColor: Colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     marginVertical: Spacing.sm,
   },
   breakdownLabelBold: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   breakdownValueBold: {
     ...Typography.headline,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
     fontWeight: FontWeight.bold,
   },
 
   // Provider
-  providerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   providerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -492,17 +443,17 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: Colors.emergencyRed,
   },
   providerInitial: {
     fontSize: FontSize.title3,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
   },
   providerInfo: {
     flex: 1,
@@ -510,21 +461,16 @@ const styles = StyleSheet.create({
   },
   providerName: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
 
   // Rating
   ratingCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
   },
   ratingSubtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.lg,
   },
   dimensionsContainer: {
@@ -539,32 +485,26 @@ const styles = StyleSheet.create({
   },
   dimensionLabel: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     flex: 1,
   },
   submitRatingButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.xxl,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     marginTop: Spacing.xl,
-    minWidth: 180,
-    alignItems: 'center',
-  },
-  submitRatingButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-  },
-  submitRatingText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
+    paddingHorizontal: Spacing.xxl,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 8 },
+    }),
   },
   ratingSubmittedCard: {
-    backgroundColor: `${Colors.success}10`,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
+    borderColor: 'rgba(39, 174, 96, 0.30)',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: `${Colors.success}30`,
   },
   ratingSubmittedText: {
     ...Typography.headline,
@@ -573,24 +513,21 @@ const styles = StyleSheet.create({
 
   // Payment
   paymentButton: {
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    ...Shadows.md,
-  },
-  paymentButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    backgroundColor: 'rgba(39, 174, 96, 0.8)',
+    paddingVertical: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(39, 174, 96, 0.6)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 8 },
+    }),
   },
   paymentConfirmedCard: {
-    backgroundColor: `${Colors.success}10`,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
+    borderColor: 'rgba(39, 174, 96, 0.30)',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: `${Colors.success}30`,
   },
   paymentConfirmedText: {
     ...Typography.headline,
@@ -601,29 +538,15 @@ const styles = StyleSheet.create({
   errorContainer: {
     marginHorizontal: Spacing.lg,
     padding: Spacing.md,
-    backgroundColor: `${Colors.error}15`,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: `${Colors.error}30`,
+    borderColor: 'rgba(231, 76, 60, 0.30)',
     marginBottom: Spacing.lg,
   },
   errorText: {
     ...Typography.footnote,
-    color: Colors.error,
-  },
-
-  // Done
-  doneButton: {
-    backgroundColor: 'transparent',
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.textTertiary,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-  },
-  doneButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.textSecondary,
+    color: Colors.emergencyRed,
   },
 
   // Bottom padding

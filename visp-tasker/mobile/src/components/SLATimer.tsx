@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - SLATimer Component
+ * VISP - SLATimer Component
  *
  * Countdown timer for emergency SLA deadlines.
  * Color-coded based on remaining percentage:
@@ -22,6 +22,7 @@ import { Colors } from '../theme/colors';
 import { Spacing } from '../theme/spacing';
 import { FontSize, FontWeight } from '../theme/typography';
 import { BorderRadius } from '../theme/borders';
+import { GlassStyles } from '../theme/glass';
 
 // ──────────────────────────────────────────────
 // Types
@@ -203,9 +204,7 @@ function SLATimer({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
+    ...GlassStyles.card,
     padding: Spacing.lg,
     alignItems: 'center',
   },
@@ -237,7 +236,7 @@ const styles = StyleSheet.create({
   progressBarContainer: {
     width: '100%',
     height: 4,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     borderRadius: 2,
     overflow: 'hidden',
   },

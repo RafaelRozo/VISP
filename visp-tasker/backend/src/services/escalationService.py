@@ -1,5 +1,5 @@
 """
-Auto-Escalation Service for VISP/Tasker -- VISP-BE-ESCALATION-008.
+Auto-Escalation Service for VISP -- VISP-BE-ESCALATION-008.
 
 Automatically detects when a job should be escalated to a higher service level
 based on trigger keywords found in text (customer notes, chat messages, task

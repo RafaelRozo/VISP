@@ -1,0 +1,38 @@
+[
+  {
+    "id": "eval-0",
+    "prompt": "Create a glassmorphism pricing card with 3 tiers (Basic, Pro, Enterprise). Make it look premium.",
+    "expectations": [
+      "Output contains backdrop-filter or backdropFilter",
+      "Output contains -webkit-backdrop-filter or WebkitBackdropFilter",
+      "Background uses rgba with low alpha (under 0.3) for glass effect",
+      "A vivid gradient or dark background is present behind the glass elements",
+      "Border uses rgba white for the glass edge",
+      "Hover effects are present on buttons or cards",
+      "Text is white or near-white for legibility"
+    ]
+  },
+  {
+    "id": "eval-1",
+    "prompt": "Build a glassmorphism login form with email, password fields and a sign in button. Dark theme.",
+    "expectations": [
+      "backdrop-filter blur is present on the form panel",
+      "Input fields have glass styling (rgba background, no opaque fill)",
+      "Background has gradient or orb elements behind the glass",
+      "Form has entry animation or transition",
+      "Button has hover state with glow or lift effect",
+      "-webkit-backdrop-filter is included for Safari"
+    ]
+  },
+  {
+    "id": "eval-2",
+    "prompt": "Make a glassmorphism dashboard navbar with logo, nav links, and a CTA button.",
+    "expectations": [
+      "Navbar uses backdrop-filter blur",
+      "Navbar background is translucent (rgba), not opaque",
+      "Border is only on bottom of navbar",
+      "CTA button has distinct glass or glow styling",
+      "Navbar is sticky/fixed positioned"
+    ]
+  }
+]

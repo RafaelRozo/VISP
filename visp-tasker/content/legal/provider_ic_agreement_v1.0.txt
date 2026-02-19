@@ -1,4 +1,4 @@
-VISP/TASKER INDEPENDENT CONTRACTOR AGREEMENT
+VISP INDEPENDENT CONTRACTOR AGREEMENT
 Version 1.0 — Effective Date: January 1, 2026
 
 THIS INDEPENDENT CONTRACTOR AGREEMENT ("AGREEMENT") IS ENTERED INTO
@@ -6,7 +6,7 @@ BETWEEN VISP TECHNOLOGIES INC. ("VISP", "COMPANY") AND THE INDIVIDUAL
 ACCEPTING THESE TERMS ("PROVIDER", "CONTRACTOR", "YOU").
 
 RECITALS
-WHEREAS VISP operates the Tasker platform, a technology marketplace
+WHEREAS VISP operates the VISP platform, a technology marketplace
 connecting customers with independent service providers; and WHEREAS
 the Provider wishes to offer services through the Platform as an
 independent contractor;

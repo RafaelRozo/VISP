@@ -1,14 +1,13 @@
 /**
- * VISP/Tasker - Login Screen
+ * VISP - Login Screen
  *
- * Email + password login with social sign-in (Apple, Google),
- * phone login option, forgot-password and registration links.
+ * Email + password login with forgot-password and registration links.
+ * Dark glassmorphism design with animated entry.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -22,8 +21,11 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../theme';
+import { Colors, Spacing, Typography } from '../../theme';
+import { GlassStyles } from '../../theme/glass';
 import { useAuthStore } from '../../stores/authStore';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { AnimatedLogo, MorphingBlob } from '../../components/animations';
 import type { RootStackParamList } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -71,8 +73,26 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
   const passwordRef = useRef<TextInput>(null);
 
-  const { login, loginWithApple, loginWithGoogle, demoLogin, isLoading, error, clearError } =
-    useAuthStore();
+  const { login, isLoading, error, clearError } = useAuthStore();
+
+  // ── Entry Animation ────────────────────────
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
 
   // ── Handlers ─────────────────────────────
 
@@ -124,41 +144,6 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
     }
   }, [email, password, login]);
 
-  const handleAppleLogin = useCallback(async () => {
-    try {
-      // In production, this would call appleAuth.performRequest() first
-      // to get the identity token from Apple's native SDK.
-      // For now, we show a placeholder alert.
-      Alert.alert(
-        'Apple Sign In',
-        'Apple Sign In will be configured with your Apple Developer account.',
-      );
-    } catch {
-      // Error handled by store
-    }
-  }, []);
-
-  const handleGoogleLogin = useCallback(async () => {
-    try {
-      // In production, this would call GoogleSignin.signIn() first
-      // to get the server auth code from Google's SDK.
-      Alert.alert(
-        'Google Sign In',
-        'Google Sign In will be configured with your Google Cloud project.',
-      );
-    } catch {
-      // Error handled by store
-    }
-  }, []);
-
-  const handlePhoneLogin = useCallback(() => {
-    // Navigate to phone login flow (to be implemented)
-    Alert.alert(
-      'Phone Login',
-      'Phone number login will be available once OTP service is configured.',
-    );
-  }, []);
-
   const handleForgotPassword = useCallback(() => {
     navigation.navigate('ForgotPassword');
   }, [navigation]);
@@ -177,203 +162,144 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
   // ── Render ───────────────────────────────
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <GlassBackground>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        {/* Logo / Brand */}
-        <View style={styles.logoSection}>
-          <View style={styles.logoPlaceholder}>
-            <Text style={styles.logoText}>T</Text>
-          </View>
-          <Text style={styles.brandName}>Tasker</Text>
-          <Text style={styles.tagline}>Home services, simplified</Text>
-        </View>
-
-        {/* Server Error */}
-        {error ? (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{error}</Text>
-          </View>
-        ) : null}
-
-        {/* Email Field */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View
             style={[
-              styles.input,
-              touched.email && formErrors.email ? styles.inputError : null,
+              styles.animatedContent,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
             ]}
-            value={email}
-            onChangeText={handleEmailChange}
-            onBlur={() => handleBlur('email')}
-            placeholder="you@example.com"
-            placeholderTextColor={Colors.inputPlaceholder}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            textContentType="emailAddress"
-            returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-            editable={!isLoading}
-          />
-          {touched.email && formErrors.email ? (
-            <Text style={styles.fieldError}>{formErrors.email}</Text>
-          ) : null}
-        </View>
+          >
+            {/* Logo / Brand */}
+            <View style={styles.logoSection}>
+              <MorphingBlob
+                size={250}
+                color="#7850FF"
+                opacity={0.15}
+                style={styles.morphingBlob}
+              />
+              <AnimatedLogo size={100} />
+              <Text style={styles.brandName}>VISP</Text>
+              <Text style={styles.tagline}>Home services, simplified</Text>
+            </View>
 
-        {/* Password Field */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordContainer}>
-            <TextInput
-              ref={passwordRef}
-              style={[
-                styles.input,
-                styles.passwordInput,
-                touched.password && formErrors.password
-                  ? styles.inputError
-                  : null,
-              ]}
-              value={password}
-              onChangeText={handlePasswordChange}
-              onBlur={() => handleBlur('password')}
-              placeholder="Enter your password"
-              placeholderTextColor={Colors.inputPlaceholder}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="password"
-              textContentType="password"
-              returnKeyType="go"
-              onSubmitEditing={handleLogin}
-              editable={!isLoading}
+            {/* Server Error */}
+            {error ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>{error}</Text>
+              </View>
+            ) : null}
+
+            {/* Login Form Card */}
+            <GlassCard variant="dark" padding={24} style={styles.formCard}>
+              {/* Email Field */}
+              <GlassInput
+                label="EMAIL"
+                value={email}
+                onChangeText={handleEmailChange}
+                onBlur={() => handleBlur('email')}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                editable={!isLoading}
+                error={touched.email ? formErrors.email : undefined}
+                containerStyle={styles.fieldSpacing}
+              />
+
+              {/* Password Field */}
+              <View style={styles.fieldSpacing}>
+                <Text style={styles.inputLabel}>PASSWORD</Text>
+                <View
+                  style={[
+                    GlassStyles.input,
+                    styles.passwordRow,
+                    touched.password && formErrors.password
+                      ? GlassStyles.inputError
+                      : undefined,
+                  ]}
+                >
+                  <TextInput
+                    ref={passwordRef}
+                    style={styles.passwordTextInput}
+                    value={password}
+                    onChangeText={handlePasswordChange}
+                    onBlur={() => handleBlur('password')}
+                    placeholder="Enter your password"
+                    placeholderTextColor="rgba(255, 255, 255, 0.35)"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="password"
+                    textContentType="password"
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
+                    editable={!isLoading}
+                  />
+                  <Pressable
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    hitSlop={8}
+                    style={styles.showPasswordButton}
+                  >
+                    <Text style={styles.showPasswordText}>
+                      {showPassword ? 'Hide' : 'Show'}
+                    </Text>
+                  </Pressable>
+                </View>
+                {touched.password && formErrors.password ? (
+                  <Text style={styles.fieldError}>{formErrors.password}</Text>
+                ) : null}
+              </View>
+
+              {/* Forgot Password */}
+              <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={handleForgotPassword}
+                disabled={isLoading}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            </GlassCard>
+
+            {/* Sign In Button */}
+            <GlassButton
+              title="Sign In"
+              variant="glow"
+              onPress={handleLogin}
+              disabled={!isFormValid || isLoading}
+              loading={isLoading}
+              style={styles.signInButton}
             />
-            <Pressable
-              style={styles.showPasswordButton}
-              onPress={() => setShowPassword((prev) => !prev)}
-              hitSlop={8}
-            >
-              <Text style={styles.showPasswordText}>
-                {showPassword ? 'Hide' : 'Show'}
+
+            {/* Create Account */}
+            <View style={styles.createAccountRow}>
+              <Text style={styles.createAccountLabel}>
+                {"Don't have an account? "}
               </Text>
-            </Pressable>
-          </View>
-          {touched.password && formErrors.password ? (
-            <Text style={styles.fieldError}>{formErrors.password}</Text>
-          ) : null}
-        </View>
-
-        {/* Forgot Password */}
-        <TouchableOpacity
-          style={styles.forgotPasswordButton}
-          onPress={handleForgotPassword}
-          disabled={isLoading}
-        >
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-        </TouchableOpacity>
-
-        {/* Login Button */}
-        <TouchableOpacity
-          style={[
-            styles.loginButton,
-            (!isFormValid || isLoading) && styles.loginButtonDisabled,
-          ]}
-          onPress={handleLogin}
-          disabled={!isFormValid || isLoading}
-          activeOpacity={0.8}
-        >
-          {isLoading ? (
-            <ActivityIndicator color={Colors.white} size="small" />
-          ) : (
-            <Text style={styles.loginButtonText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or continue with</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Social Login Buttons */}
-        <View style={styles.socialRow}>
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={handleAppleLogin}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.socialIcon}>  </Text>
-            <Text style={styles.socialButtonText}>Apple</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={handleGoogleLogin}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.socialIcon}>G</Text>
-            <Text style={styles.socialButtonText}>Google</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Phone Login */}
-        <TouchableOpacity
-          style={styles.phoneLoginButton}
-          onPress={handlePhoneLogin}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.phoneLoginText}>Sign in with Phone Number</Text>
-        </TouchableOpacity>
-
-        {/* Create Account */}
-        <View style={styles.createAccountRow}>
-          <Text style={styles.createAccountLabel}>
-            {"Don't have an account? "}
-          </Text>
-          <TouchableOpacity onPress={handleCreateAccount} disabled={isLoading}>
-            <Text style={styles.createAccountLink}>Create Account</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Demo Login (MVP Testing) */}
-        <View style={styles.demoSection}>
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>demo access</Text>
-            <View style={styles.dividerLine} />
-          </View>
-          <View style={styles.demoRow}>
-            <TouchableOpacity
-              style={[styles.demoButton, styles.demoCustomer]}
-              onPress={() => demoLogin('customer')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.demoButtonText}>Customer Demo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.demoButton, styles.demoProvider]}
-              onPress={() => demoLogin('provider')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.demoButtonText}>Provider Demo</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+              <TouchableOpacity onPress={handleCreateAccount} disabled={isLoading}>
+                <Text style={styles.createAccountLink}>Create Account</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </GlassBackground>
   );
 }
 
@@ -382,197 +308,114 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
+  flex: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.xxl,
     paddingTop: Spacing.giant,
     paddingBottom: Spacing.xxxl,
+    justifyContent: 'center',
+  },
+  animatedContent: {
+    flex: 0,
   },
 
   // ── Logo ───────────────────────────────
   logoSection: {
     alignItems: 'center',
-    marginBottom: Spacing.xxxl,
+    marginBottom: Spacing.huge,
   },
-  logoPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-    ...Shadows.lg,
-  },
-  logoText: {
-    ...Typography.largeTitle,
-    color: Colors.white,
+  morphingBlob: {
+    position: 'absolute',
+    top: -60,
+    left: -60,
+    zIndex: -1,
   },
   brandName: {
-    ...Typography.title1,
-    color: Colors.textPrimary,
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 2,
     marginBottom: Spacing.xs,
   },
   tagline: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 
   // ── Error Banner ───────────────────────
   errorBanner: {
     backgroundColor: 'rgba(231, 76, 60, 0.15)',
     borderWidth: 1,
-    borderColor: Colors.error,
-    borderRadius: BorderRadius.sm,
+    borderColor: 'rgba(231, 76, 60, 0.4)',
+    borderRadius: 12,
     padding: Spacing.md,
     marginBottom: Spacing.lg,
   },
   errorBannerText: {
     ...Typography.footnote,
-    color: Colors.error,
+    color: '#E74C3C',
     textAlign: 'center',
   },
 
-  // ── Fields ─────────────────────────────
-  fieldContainer: {
+  // ── Form Card ──────────────────────────
+  formCard: {
+    marginBottom: Spacing.xxl,
+  },
+  fieldSpacing: {
     marginBottom: Spacing.lg,
   },
-  label: {
-    ...Typography.footnote,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.sm,
-    fontWeight: '500',
+  inputLabel: {
+    ...Typography.label,
+    color: 'rgba(255, 255, 255, 0.55)',
+    marginBottom: Spacing.xs,
   },
-  input: {
-    backgroundColor: Colors.inputBackground,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    color: Colors.inputText,
+
+  // ── Password ───────────────────────────
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordTextInput: {
+    flex: 1,
+    color: '#FFFFFF',
     fontSize: 16,
-  },
-  inputError: {
-    borderColor: Colors.error,
-  },
-  fieldError: {
-    ...Typography.caption,
-    color: Colors.error,
-    marginTop: Spacing.xs,
-  },
-  passwordContainer: {
-    position: 'relative',
-  },
-  passwordInput: {
-    paddingRight: 64,
+    padding: 0,
   },
   showPasswordButton: {
-    position: 'absolute',
-    right: Spacing.lg,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
+    paddingLeft: Spacing.sm,
   },
   showPasswordText: {
     ...Typography.footnote,
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 0.9)',
     fontWeight: '600',
+  },
+  fieldError: {
+    ...Typography.caption,
+    color: '#E74C3C',
+    marginTop: Spacing.xs,
   },
 
   // ── Forgot Password ───────────────────
   forgotPasswordButton: {
     alignSelf: 'flex-end',
-    marginBottom: Spacing.xxl,
+    marginTop: Spacing.sm,
   },
   forgotPasswordText: {
     ...Typography.footnote,
-    color: Colors.primary,
+    color: 'rgba(255, 255, 255, 0.5)',
     fontWeight: '500',
   },
 
-  // ── Login Button ──────────────────────
-  loginButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 50,
-    ...Shadows.md,
-  },
-  loginButtonDisabled: {
-    backgroundColor: Colors.surfaceLight,
-    ...Shadows.none,
-  },
-  loginButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-  },
-
-  // ── Divider ───────────────────────────
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: Spacing.xxl,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.divider,
-  },
-  dividerText: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    marginHorizontal: Spacing.md,
-  },
-
-  // ── Social Buttons ────────────────────
-  socialRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing.lg,
-  },
-  socialButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
-  },
-  socialIcon: {
-    fontSize: 18,
-    color: Colors.textPrimary,
-  },
-  socialButtonText: {
-    ...Typography.buttonSmall,
-    color: Colors.textPrimary,
-  },
-
-  // ── Phone Login ───────────────────────
-  phoneLoginButton: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
+  // ── Sign In Button ─────────────────────
+  signInButton: {
     marginBottom: Spacing.xxl,
-  },
-  phoneLoginText: {
-    ...Typography.buttonSmall,
-    color: Colors.textSecondary,
+    minHeight: 52,
   },
 
-  // ── Create Account ────────────────────
+  // ── Create Account ─────────────────────
   createAccountRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -580,38 +423,12 @@ const styles = StyleSheet.create({
   },
   createAccountLabel: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   createAccountLink: {
     ...Typography.body,
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 0.9)',
     fontWeight: '600',
-  },
-
-  // ── Demo Section ───────────────────────
-  demoSection: {
-    marginTop: Spacing.xl,
-  },
-  demoRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  demoButton: {
-    flex: 1,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  demoCustomer: {
-    backgroundColor: '#27AE60',
-  },
-  demoProvider: {
-    backgroundColor: '#9B59B6',
-  },
-  demoButtonText: {
-    ...Typography.buttonSmall,
-    color: Colors.white,
-    fontWeight: '700',
   },
 });
 

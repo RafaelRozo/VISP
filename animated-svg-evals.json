@@ -1,0 +1,62 @@
+[
+  {
+    "id": "eval-0",
+    "prompt": "Create an animated SVG loading spinner that looks premium and modern. Pure SVG, no external libraries.",
+    "expectations": [
+      "Output is a valid SVG file with xmlns attribute",
+      "Output contains viewBox attribute (not just static width/height)",
+      "Animation uses SMIL animateTransform or CSS @keyframes",
+      "repeatCount='indefinite' or animation-iteration-count:infinite is present",
+      "Design has visual style beyond a plain gray circle — uses color or gradient",
+      "No external dependencies or library imports",
+      "Animation uses easing (calcMode spline or CSS cubic-bezier)"
+    ]
+  },
+  {
+    "id": "eval-1",
+    "prompt": "Make an animated SVG of a morphing blob shape that changes form continuously. Use vivid colors.",
+    "expectations": [
+      "Output contains an animate element with attributeName='d' (path morphing)",
+      "Both/all path values in the morph have identical command structure",
+      "Animation loops indefinitely",
+      "Color is vivid — gradient or saturated fill, not plain gray or black",
+      "Background is not plain white — uses dark or gradient fill",
+      "At least one easing curve is applied to the morph"
+    ]
+  },
+  {
+    "id": "eval-2",
+    "prompt": "Create an animated SVG that draws a signature or logo using the stroke dashoffset technique.",
+    "expectations": [
+      "stroke-dasharray and stroke-dashoffset are both present",
+      "A keyframe or animate element transitions stroke-dashoffset to 0",
+      "Path has stroke styling (fill:none or minimal, stroke with color)",
+      "Animation has a natural drawing feel — not instant",
+      "Output is self-contained SVG with no external dependencies"
+    ]
+  },
+  {
+    "id": "eval-3",
+    "prompt": "Build an animated SVG particle field — 30+ dots floating and connecting with lines when near each other.",
+    "expectations": [
+      "Output contains a <script> block using createElementNS for SVG element creation",
+      "CDATA wrapper is present around script content",
+      "requestAnimationFrame is used for the animation loop",
+      "At least 30 particles are created",
+      "Connection lines drawn between nearby particles based on distance",
+      "Dark background is used to make particles visible"
+    ]
+  },
+  {
+    "id": "eval-4",
+    "prompt": "Create an animated SVG bar chart where the bars rise up with a staggered entrance animation.",
+    "expectations": [
+      "At least 4 bar elements are present",
+      "Bars animate from scale 0 to 1 (scaleY) or height 0 to full height",
+      "Stagger delays are applied so bars rise one after another",
+      "transform-origin is set to bottom of bars so they grow upward",
+      "Animation has bounce or overshoot easing (cubic-bezier with >1 values or spring-like)",
+      "Design uses color — not plain gray bars"
+    ]
+  }
+]

@@ -1,4 +1,4 @@
-"""VISP/Tasker API -- Main Application Entry Point
+"""VISP API -- Main Application Entry Point
 
 Creates the FastAPI application, configures CORS middleware, registers
 all API route modules under the /api/v1 prefix, and mounts the Socket.IO
@@ -102,9 +102,11 @@ from src.api.routes import (  # noqa: E402
     notifications,
     payments,
     pricing,
+    proposals,
     providers,
     scoring,
     tasks,
+    tips,
     users,
     verification,
 )
@@ -123,6 +125,8 @@ app.include_router(scoring.router, prefix=_prefix)
 app.include_router(pricing.router, prefix=_prefix)
 app.include_router(escalations.router, prefix=_prefix)
 app.include_router(payments.router, prefix=_prefix)
+app.include_router(proposals.router, prefix=_prefix)
+app.include_router(tips.router, prefix=_prefix)
 app.include_router(chat.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
 app.include_router(geolocation.router, prefix=_prefix)

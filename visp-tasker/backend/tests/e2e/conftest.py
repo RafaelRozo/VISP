@@ -1,5 +1,5 @@
 """
-E2E test fixtures for VISP/Tasker backend.
+E2E test fixtures for VISP backend.
 
 Provides:
 - An in-process FastAPI test app with all routes registered
@@ -421,7 +421,7 @@ def _create_test_app(db_session_override: AsyncSession):
     from src.api.routes.notifications import router as notifications_router
     from src.api.routes.geolocation import router as geolocation_router
 
-    app = FastAPI(title="VISP Tasker Test")
+    app = FastAPI(title="VISP Test")
 
     # Override DB dependency
     async def _override_get_db():

@@ -1,9 +1,11 @@
 /**
- * VISP/Tasker - EmergencyTypeScreen
+ * VISP - EmergencyTypeScreen
  *
  * Grid of emergency types (plumbing, electrical, HVAC, gas, structural, etc.)
  * Red-themed UI with urgent feel. Large icons, clear labels.
  * Each type maps to L4 emergency tasks.
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useCallback } from 'react';
@@ -13,15 +15,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard } from '../../components/glass';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
-import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
+import { Typography, FontWeight } from '../../theme/typography';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import { EMERGENCY_TYPES } from '../../services/emergencyService';
 import type { EmergencyFlowParamList, EmergencyType, EmergencyTypeConfig } from '../../types';
@@ -95,39 +96,37 @@ function EmergencyTypeScreen(): React.JSX.Element {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.emergencyBadge}>
-            <Text style={styles.emergencyBadgeText}>EMERGENCY</Text>
-          </View>
-          <Text style={styles.title}>What type of emergency?</Text>
-          <Text style={styles.subtitle}>
-            Select the emergency type below. Level 4 providers will be
-            dispatched immediately with SLA guarantees.
-          </Text>
+    <GlassBackground>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.emergencyBadge}>
+          <Text style={styles.emergencyBadgeText}>EMERGENCY</Text>
         </View>
-
-        {/* Emergency warning */}
-        <View style={styles.warningBanner}>
-          <Text style={styles.warningText}>
-            If you are in immediate danger, call 911 first.
-          </Text>
-        </View>
-
-        {/* Emergency type grid */}
-        <ScrollView
-          style={styles.gridScrollView}
-          contentContainerStyle={styles.gridContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.grid}>
-            {EMERGENCY_TYPES.map(renderEmergencyType)}
-          </View>
-        </ScrollView>
+        <Text style={styles.title}>What type of emergency?</Text>
+        <Text style={styles.subtitle}>
+          Select the emergency type below. Level 4 providers will be
+          dispatched immediately with SLA guarantees.
+        </Text>
       </View>
-    </SafeAreaView>
+
+      {/* Emergency warning */}
+      <View style={styles.warningBanner}>
+        <Text style={styles.warningText}>
+          If you are in immediate danger, call 911 first.
+        </Text>
+      </View>
+
+      {/* Emergency type grid */}
+      <ScrollView
+        style={styles.gridScrollView}
+        contentContainerStyle={styles.gridContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.grid}>
+          {EMERGENCY_TYPES.map(renderEmergencyType)}
+        </View>
+      </ScrollView>
+    </GlassBackground>
   );
 }
 
@@ -135,16 +134,12 @@ function EmergencyTypeScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+const EMERGENCY_RED = 'rgba(231, 76, 60, 1)';
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
+const EMERGENCY_RED_TINT = 'rgba(231, 76, 60, 0.15)';
+const EMERGENCY_RED_BORDER = 'rgba(231, 76, 60, 0.30)';
 
+const styles = StyleSheet.create({
   // Header
   header: {
     paddingHorizontal: Spacing.lg,
@@ -152,43 +147,52 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   emergencyBadge: {
-    backgroundColor: Colors.emergencyRed,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.xs,
+    borderRadius: 8,
     alignSelf: 'flex-start',
     marginBottom: Spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
   },
   emergencyBadgeText: {
     ...Typography.label,
-    color: Colors.white,
+    color: '#FFFFFF',
     fontWeight: FontWeight.heavy,
     letterSpacing: 1.5,
   },
   title: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.sm,
   },
   subtitle: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     lineHeight: 22,
   },
 
   // Warning
   warningBanner: {
-    backgroundColor: `${Colors.emergencyRed}15`,
+    backgroundColor: 'rgba(231, 76, 60, 0.10)',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: `${Colors.emergencyRed}30`,
+    borderColor: EMERGENCY_RED_BORDER,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     marginBottom: Spacing.md,
   },
   warningText: {
     ...Typography.footnote,
-    color: Colors.emergencyRed,
+    color: EMERGENCY_RED,
     fontWeight: FontWeight.semiBold,
     textAlign: 'center',
   },
@@ -208,21 +212,29 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
 
-  // Type card
+  // Type card - glass with red tint
   typeCard: {
     width: '47%',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: `${Colors.emergencyRed}20`,
-    ...Shadows.sm,
+    borderColor: EMERGENCY_RED_BORDER,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+      },
+      android: { elevation: 6 },
+    }),
   },
   typeIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: BorderRadius.md,
-    backgroundColor: `${Colors.emergencyRed}15`,
+    borderRadius: 12,
+    backgroundColor: EMERGENCY_RED_TINT,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
@@ -232,12 +244,12 @@ const styles = StyleSheet.create({
   },
   typeLabel: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.xs,
   },
   typeDescription: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 16,
   },
 });

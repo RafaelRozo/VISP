@@ -1,8 +1,8 @@
-# VISP Tasker API - Guía Completa de Testing
+# VISP API - Guía Completa de Testing
 
 ## 📋 Resumen del Backend
 
-El backend FastAPI de VISP Tasker expone **~60 endpoints** organizados en **14 módulos** bajo el prefijo `/api/v1`.
+El backend FastAPI de VISP expone **~60 endpoints** organizados en **14 módulos** bajo el prefijo `/api/v1`.
 
 ---
 

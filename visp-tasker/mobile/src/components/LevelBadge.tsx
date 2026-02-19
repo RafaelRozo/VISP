@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - LevelBadge Component
+ * VISP - LevelBadge Component
  *
  * Colored badge that displays the provider/task service level.
  * Level 1: Green #27AE60 "Helper"
@@ -16,6 +16,7 @@ import { Colors, getLevelColor } from '../theme/colors';
 import { Spacing } from '../theme/spacing';
 import { FontSize, FontWeight } from '../theme/typography';
 import { BorderRadius } from '../theme/borders';
+import { GlassStyles } from '../theme/glass';
 import type { ServiceLevel } from '../types';
 
 // ──────────────────────────────────────────────
@@ -100,9 +101,13 @@ function LevelBadge({
     paddingHorizontal: config.paddingHorizontal,
     paddingVertical: config.paddingVertical,
     borderRadius: config.borderRadius,
-    backgroundColor: `${color}20`,
+    backgroundColor: `${color}18`,
     borderWidth: 1,
-    borderColor: `${color}60`,
+    borderColor: `${color}40`,
+    shadowColor: color,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   };
 
   const textStyle: TextStyle = {

@@ -1,5 +1,5 @@
 """
-VISP/Tasker Real-time Module
+VISP Real-time Module
 ==============================
 
 WebSocket server and event handlers for real-time communication.

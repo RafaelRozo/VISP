@@ -1,5 +1,5 @@
 """
-Shared FastAPI dependencies for the VISP/Tasker backend.
+Shared FastAPI dependencies for the VISP backend.
 
 Provides the async database session dependency used by all route handlers,
 and authentication dependencies for extracting the current user from JWT

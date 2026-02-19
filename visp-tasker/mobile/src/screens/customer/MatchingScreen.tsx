@@ -1,9 +1,9 @@
 /**
- * VISP/Tasker - MatchingScreen
+ * VISP - MatchingScreen (Glass Redesign)
  *
- * Animated "Finding your tasker..." screen.
+ * Animated "Finding your provider..." screen.
  * Features:
- *   - Pulsing search animation
+ *   - Pulsing search animation in glass panel
  *   - Status text updates during search
  *   - Cancel button
  *   - For MVP: simulates matching with a 3-second timer
@@ -15,18 +15,17 @@ import {
   Alert,
   Animated,
   Easing,
-  SafeAreaView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, getLevelColor } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { PulseRing, AnimatedCheckmark } from '../../components/animations';
+import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
 import { taskService } from '../../services/taskService';
 import type { CustomerFlowParamList } from '../../types';
 
@@ -46,8 +45,8 @@ type SearchPhase = 'searching' | 'found' | 'assigning' | 'confirmed' | 'timeout'
 const STATUS_MESSAGES: Record<SearchPhase, string> = {
   searching: 'Finding available providers near you...',
   found: 'Provider found! Confirming availability...',
-  assigning: 'Assigning your tasker...',
-  confirmed: 'Your tasker has been assigned!',
+  assigning: 'Assigning your provider...',
+  confirmed: 'Your provider has been assigned!',
   timeout: 'No providers available right now.',
 };
 
@@ -72,11 +71,7 @@ function MatchingScreen(): React.JSX.Element {
   const [isCancelled, setIsCancelled] = useState(false);
 
   // Animation values
-  const pulse1 = useRef(new Animated.Value(0)).current;
-  const pulse2 = useRef(new Animated.Value(0)).current;
-  const pulse3 = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -87,31 +82,8 @@ function MatchingScreen(): React.JSX.Element {
     });
   }, [navigation]);
 
-  // Pulse animations
+  // Center dot pulse animation
   useEffect(() => {
-    function createPulseAnimation(animValue: Animated.Value, delay: number) {
-      return Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(animValue, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(animValue, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-    }
-
-    const anim1 = createPulseAnimation(pulse1, 0);
-    const anim2 = createPulseAnimation(pulse2, 600);
-    const anim3 = createPulseAnimation(pulse3, 1200);
-
     const dotAnim = Animated.loop(
       Animated.sequence([
         Animated.timing(dotScale, {
@@ -129,18 +101,12 @@ function MatchingScreen(): React.JSX.Element {
       ]),
     );
 
-    anim1.start();
-    anim2.start();
-    anim3.start();
     dotAnim.start();
 
     return () => {
-      anim1.stop();
-      anim2.stop();
-      anim3.stop();
       dotAnim.stop();
     };
-  }, [pulse1, pulse2, pulse3, dotScale]);
+  }, [dotScale]);
 
   // Real backend polling for provider match
   useEffect(() => {
@@ -191,7 +157,6 @@ function MatchingScreen(): React.JSX.Element {
             text: 'OK',
             onPress: () => {
               // Navigate to CustomerHome in root stack
-              // MatchingScreen → CustomerNavigator → RootStack
               const rootNav = navigation.getParent();
               if (rootNav) {
                 rootNav.reset({
@@ -232,38 +197,10 @@ function MatchingScreen(): React.JSX.Element {
     );
   }, [navigation]);
 
-  // Render pulsing ring
-  const renderPulse = (
-    animValue: Animated.Value,
-    size: number,
-  ): React.JSX.Element => {
-    const scale = animValue.interpolate({
-      inputRange: [0, 1],
-      outputRange: [1, size / 60],
-    });
-
-    const opacity = animValue.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.6, 0],
-    });
-
-    return (
-      <Animated.View
-        style={[
-          styles.pulseRing,
-          {
-            transform: [{ scale }],
-            opacity,
-          },
-        ]}
-      />
-    );
-  };
-
   const isCompleted = phase === 'confirmed';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         {/* Top section: task name */}
         <View style={styles.topSection}>
@@ -271,25 +208,44 @@ function MatchingScreen(): React.JSX.Element {
           <Text style={styles.taskName}>{taskName}</Text>
         </View>
 
-        {/* Center animation */}
+        {/* Center animation inside glass panel */}
         <View style={styles.animationContainer}>
-          <View style={styles.pulseContainer}>
-            {renderPulse(pulse1, 200)}
-            {renderPulse(pulse2, 260)}
-            {renderPulse(pulse3, 320)}
+          <GlassCard variant="dark" padding={Spacing.xxl} style={styles.glassAnimPanel}>
+            <View style={styles.pulseContainer}>
+              {/* SVG PulseRing animation replaces manual Animated.View rings */}
+              {!isCompleted && (
+                <PulseRing
+                  size={220}
+                  color="#7850FF"
+                  ringCount={3}
+                  duration={2000}
+                  centerRadius={20}
+                  maxRadius={100}
+                />
+              )}
 
-            <Animated.View
-              style={[
-                styles.centerDot,
-                isCompleted && styles.centerDotConfirmed,
-                { transform: [{ scale: dotScale }] },
-              ]}
-            >
-              <Text style={styles.centerDotText}>
-                {isCompleted ? 'OK' : 'T'}
-              </Text>
-            </Animated.View>
-          </View>
+              {/* AnimatedCheckmark for confirmed state */}
+              {isCompleted && (
+                <AnimatedCheckmark
+                  size={100}
+                  color={Colors.success}
+                />
+              )}
+
+              {/* Overlay center dot with text label when searching */}
+              {!isCompleted && (
+                <Animated.View
+                  style={[
+                    styles.centerDot,
+                    styles.centerDotOverlay,
+                    { transform: [{ scale: dotScale }] },
+                  ]}
+                >
+                  <Text style={styles.centerDotText}>V</Text>
+                </Animated.View>
+              )}
+            </View>
+          </GlassCard>
 
           {/* Status text */}
           <Text style={styles.statusText}>{STATUS_MESSAGES[phase]}</Text>
@@ -317,24 +273,21 @@ function MatchingScreen(): React.JSX.Element {
         {/* Bottom section: cancel */}
         <View style={styles.bottomSection}>
           {!isCompleted && (
-            <TouchableOpacity
-              style={styles.cancelButton}
+            <GlassButton
+              title="Cancel"
+              variant="outline"
               onPress={handleCancel}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel booking request"
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+              style={styles.cancelButtonStyle}
+            />
           )}
 
           <Text style={styles.footerText}>
-            Tasker acts as a platform intermediary only.
+            VISP acts as a platform intermediary only.
             {'\n'}Providers are independent service professionals.
           </Text>
         </View>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -343,13 +296,8 @@ function MatchingScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
     justifyContent: 'space-between',
   },
 
@@ -361,12 +309,12 @@ const styles = StyleSheet.create({
   },
   taskLabel: {
     ...Typography.label,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginBottom: Spacing.xs,
   },
   taskName: {
     ...Typography.title2,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     textAlign: 'center',
   },
 
@@ -375,40 +323,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pulseContainer: {
-    width: 320,
-    height: 320,
+  glassAnimPanel: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: Spacing.xxl,
     marginBottom: Spacing.xxl,
   },
-  pulseRing: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
-    borderColor: Colors.primary,
+  pulseContainer: {
+    width: 280,
+    height: 280,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   centerDot: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  centerDotConfirmed: {
-    backgroundColor: Colors.success,
+  centerDotOverlay: {
+    position: 'absolute',
   },
   centerDotText: {
     fontSize: FontSize.title2,
     fontWeight: FontWeight.bold as '700',
-    color: Colors.white,
+    color: '#FFFFFF',
   },
   statusText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
     paddingHorizontal: Spacing.xxl,
     marginBottom: Spacing.xl,
@@ -421,10 +366,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   phaseDotActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.8)',
   },
   phaseDotConfirmed: {
     backgroundColor: Colors.success,
@@ -436,22 +381,13 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.huge,
     paddingHorizontal: Spacing.xxl,
   },
-  cancelButton: {
+  cancelButtonStyle: {
     paddingHorizontal: Spacing.xxxl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
     marginBottom: Spacing.xl,
-  },
-  cancelButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.textSecondary,
   },
   footerText: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
     textAlign: 'center',
     lineHeight: 16,
   },

@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - EmergencyMap Component
+ * VISP - EmergencyMap Component
  *
  * Map component used throughout the emergency flow.
  * Features:
@@ -30,6 +30,7 @@ import { Spacing } from '../theme/spacing';
 import { FontSize, FontWeight } from '../theme/typography';
 import { BorderRadius } from '../theme/borders';
 import { Shadows } from '../theme/shadows';
+import { GlassStyles } from '../theme/glass';
 
 // ──────────────────────────────────────────────
 // Types
@@ -325,14 +326,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: Spacing.lg,
     right: Spacing.lg,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    ...GlassStyles.darkPanel,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.md,
   },
   etaLabel: {
     fontSize: FontSize.caption,

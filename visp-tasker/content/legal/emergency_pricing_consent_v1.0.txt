@@ -1,4 +1,4 @@
-VISP/TASKER EMERGENCY DYNAMIC PRICING CONSENT
+VISP EMERGENCY DYNAMIC PRICING CONSENT
 Version 1.0 — Effective Date: January 1, 2026
 
 THIS EMERGENCY DYNAMIC PRICING CONSENT ("CONSENT") MUST BE ACCEPTED
@@ -7,7 +7,7 @@ READ CAREFULLY AS EMERGENCY SERVICES ARE SUBJECT TO PREMIUM AND
 VARIABLE PRICING.
 
 1. DYNAMIC PRICING DISCLOSURE
-1.1. Emergency services provided through the Tasker platform (Level 4)
+1.1. Emergency services provided through the VISP platform (Level 4)
      are subject to dynamic pricing. This means that the price you pay
      for an emergency service may be significantly higher than the
      standard rate for the same type of work performed as a non-emergency

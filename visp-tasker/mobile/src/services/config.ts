@@ -1,9 +1,15 @@
 /**
- * VISP/Tasker - Application Configuration
+ * VISP - Application Configuration
  *
  * Environment-specific configuration values.
  * In production, these would be sourced from react-native-config or similar.
+ *
+ * Required environment variables (set in .env file):
+ *   MAPBOX_ACCESS_TOKEN - Mapbox public access token
  */
+import RNConfig from 'react-native-config';
+
+const MAPBOX_TOKEN = RNConfig.MAPBOX_ACCESS_TOKEN ?? process.env.MAPBOX_ACCESS_TOKEN ?? '';
 
 interface AppConfig {
   apiBaseUrl: string;
@@ -20,15 +26,15 @@ interface AppConfig {
 }
 
 const DEV_CONFIG: AppConfig = {
-  apiBaseUrl: 'https://api.richieyanez.com/api/v1',
-  wsBaseUrl: 'wss://api.richieyanez.com',
+  apiBaseUrl: 'http://localhost:305/api/v1',
+  wsBaseUrl: 'ws://localhost:305',
   googleMapsApiKey: '',
-  mapboxAccessToken: '',
+  mapboxAccessToken: MAPBOX_TOKEN,
   stripePublishableKey: '',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
-  appStoreUrl: 'https://apps.apple.com/app/tasker/id000000000',
-  supportEmail: 'support@taskerapp.com',
+  appStoreUrl: 'https://apps.apple.com/app/visp/id000000000',
+  supportEmail: 'support@vispapp.com',
   minPasswordLength: 8,
   tokenRefreshThresholdMs: 5 * 60 * 1000, // 5 minutes before expiry
 };

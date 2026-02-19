@@ -2,7 +2,7 @@
 WebSocket Server -- VISP-INT-REALTIME-004
 ==========================================
 
-Main Socket.IO server for the VISP/Tasker platform. Handles real-time
+Main Socket.IO server for the VISP platform. Handles real-time
 bidirectional communication between mobile clients and the backend for:
 
   - Job lifecycle events (offers, acceptance, status transitions)

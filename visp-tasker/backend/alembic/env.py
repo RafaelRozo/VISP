@@ -1,5 +1,5 @@
 """
-Alembic environment configuration for VISP/Tasker.
+Alembic environment configuration for VISP.
 
 This env.py supports async migrations via asyncpg. It imports all SQLAlchemy
 models so that ``Base.metadata`` is fully populated for autogeneration.

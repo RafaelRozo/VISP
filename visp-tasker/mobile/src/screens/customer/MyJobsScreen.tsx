@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - My Jobs Screen
+ * VISP - My Jobs Screen (Glass Redesign)
  *
  * Displays the customer's jobs grouped by status:
  *   - Active (pending_match, matched, provider_en_route, arrived, in_progress)
@@ -8,20 +8,20 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
     Alert,
     FlatList,
     RefreshControl,
-    SafeAreaView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../theme';
+import { GlassBackground, GlassCard } from '../../components/glass';
+import { Colors, Spacing, Typography, BorderRadius, GlassStyles } from '../../theme';
 import { FontWeight } from '../../theme/typography';
 import taskService from '../../services/taskService';
 import type { Job, RootStackParamList } from '../../types';
@@ -43,13 +43,13 @@ const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 function statusLabel(status: string): string {
     const map: Record<string, string> = {
         draft: 'Draft',
-        pending_match: 'Searching for Tasker',
-        matched: 'Tasker Assigned',
+        pending_match: 'Searching for Provider',
+        matched: 'Provider Assigned',
         pending_approval: 'Provider Review',
         scheduled: 'Scheduled',
-        provider_accepted: 'Tasker Accepted',
-        provider_en_route: 'Tasker En Route',
-        arrived: 'Tasker Arrived',
+        provider_accepted: 'Provider Accepted',
+        provider_en_route: 'Provider En Route',
+        arrived: 'Provider Arrived',
         in_progress: 'In Progress',
         completed: 'Completed',
         cancelled_by_customer: 'Cancelled',
@@ -138,8 +138,8 @@ function MyJobsScreen(): React.JSX.Element {
         (job: Job) => {
             if (PENDING_STATUSES.includes(job.status)) {
                 Alert.alert(
-                    'Searching for a Tasker',
-                    'We\'re still looking for the best available Tasker in your area. You\'ll be notified as soon as one is assigned. Hang tight!',
+                    'Searching for a Provider',
+                    'We\'re still looking for the best available provider in your area. You\'ll be notified as soon as one is assigned. Hang tight!',
                 );
                 return;
             }
@@ -151,8 +151,6 @@ function MyJobsScreen(): React.JSX.Element {
                 return;
             }
             if (job.status === 'pending_approval') {
-                // The inline card with Approve/Reject is shown in the list.
-                // Just scroll — no navigation needed.
                 Alert.alert(
                     'Provider Review',
                     'Review the provider info below and tap Approve or Reject.',
@@ -188,7 +186,7 @@ function MyJobsScreen(): React.JSX.Element {
     const handleApproveProvider = useCallback(async (jobId: string) => {
         try {
             await taskService.approveProvider(jobId);
-            Alert.alert('✅ Approved', 'Your job has been scheduled!');
+            Alert.alert('Approved', 'Your job has been scheduled!');
             fetchJobs(true);
         } catch {
             Alert.alert('Error', 'Failed to approve provider.');
@@ -228,79 +226,81 @@ function MyJobsScreen(): React.JSX.Element {
 
             return (
                 <TouchableOpacity
-                    style={styles.jobCard}
                     onPress={() => handleJobPress(item)}
                     activeOpacity={0.7}
+                    style={styles.jobCardTouchable}
                 >
-                    <View style={styles.jobHeader}>
-                        <Text style={styles.jobName} numberOfLines={1}>
-                            {item.taskName || 'Job'}
-                        </Text>
-                        <View style={[styles.statusBadge, { backgroundColor: `${color}20` }]}>
-                            {isPending && (
-                                <ActivityIndicator
-                                    size={10}
-                                    color={color}
-                                    style={{ marginRight: 4 }}
-                                />
-                            )}
-                            <Text style={[styles.statusText, { color }]}>
-                                {statusLabel(item.status)}
+                    <GlassCard variant="dark">
+                        <View style={styles.jobHeader}>
+                            <Text style={styles.jobName} numberOfLines={1}>
+                                {item.taskName || 'Job'}
                             </Text>
-                        </View>
-                    </View>
-
-                    {item.address?.street ? (
-                        <Text style={styles.jobAddress} numberOfLines={1}>
-                            📍 {item.address.street}
-                            {item.address.city ? `, ${item.address.city}` : ''}
-                        </Text>
-                    ) : null}
-
-                    {/* Provider info for pending_approval */}
-                    {isPendingApproval && providerInfo && (
-                        <View style={styles.providerReviewCard}>
-                            <Text style={styles.providerReviewTitle}>Provider wants to accept your job</Text>
-                            <View style={styles.providerInfoRow}>
-                                <View style={[styles.providerLevel, { backgroundColor: color }]}>
-                                    <Text style={styles.providerLevelText}>L{providerInfo.level}</Text>
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.providerName}>{providerInfo.displayName}</Text>
-                                    {providerInfo.yearsExperience && (
-                                        <Text style={styles.providerDetail}>
-                                            {providerInfo.yearsExperience} yrs experience
-                                        </Text>
-                                    )}
-                                </View>
-                            </View>
-                            <View style={styles.approvalButtons}>
-                                <TouchableOpacity
-                                    style={styles.rejectButton}
-                                    onPress={() => handleRejectProvider(item.id)}
-                                >
-                                    <Text style={styles.rejectButtonText}>Reject</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.approveButton}
-                                    onPress={() => handleApproveProvider(item.id)}
-                                >
-                                    <Text style={styles.approveButtonText}>Approve ✓</Text>
-                                </TouchableOpacity>
+                            <View style={[styles.statusBadge, { backgroundColor: `${color}20`, borderColor: `${color}40` }]}>
+                                {isPending && (
+                                    <AnimatedSpinner
+                                        size={10}
+                                        color={color}
+                                        style={{ marginRight: 4 }}
+                                    />
+                                )}
+                                <Text style={[styles.statusText, { color }]}>
+                                    {statusLabel(item.status)}
+                                </Text>
                             </View>
                         </View>
-                    )}
 
-                    <View style={styles.jobFooter}>
-                        <Text style={styles.jobDate}>
-                            {formatDate(item.createdAt)}
-                        </Text>
-                        {item.estimatedPrice > 0 && (
-                            <Text style={styles.jobPrice}>
-                                ${item.estimatedPrice.toFixed(2)}
+                        {item.address?.street ? (
+                            <Text style={styles.jobAddress} numberOfLines={1}>
+                                {item.address.street}
+                                {item.address.city ? `, ${item.address.city}` : ''}
                             </Text>
+                        ) : null}
+
+                        {/* Provider info for pending_approval */}
+                        {isPendingApproval && providerInfo && (
+                            <View style={styles.providerReviewCard}>
+                                <Text style={styles.providerReviewTitle}>Provider wants to accept your job</Text>
+                                <View style={styles.providerInfoRow}>
+                                    <View style={[styles.providerLevel, { backgroundColor: color }]}>
+                                        <Text style={styles.providerLevelText}>L{providerInfo.level}</Text>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.providerName}>{providerInfo.displayName}</Text>
+                                        {providerInfo.yearsExperience && (
+                                            <Text style={styles.providerDetail}>
+                                                {providerInfo.yearsExperience} yrs experience
+                                            </Text>
+                                        )}
+                                    </View>
+                                </View>
+                                <View style={styles.approvalButtons}>
+                                    <TouchableOpacity
+                                        style={styles.rejectButton}
+                                        onPress={() => handleRejectProvider(item.id)}
+                                    >
+                                        <Text style={styles.rejectButtonText}>Reject</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.approveButton}
+                                        onPress={() => handleApproveProvider(item.id)}
+                                    >
+                                        <Text style={styles.approveButtonText}>Approve</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
                         )}
-                    </View>
+
+                        <View style={styles.jobFooter}>
+                            <Text style={styles.jobDate}>
+                                {formatDate(item.createdAt)}
+                            </Text>
+                            {item.estimatedPrice > 0 && (
+                                <Text style={styles.jobPrice}>
+                                    ${item.estimatedPrice.toFixed(2)}
+                                </Text>
+                            )}
+                        </View>
+                    </GlassCard>
                 </TouchableOpacity>
             );
         },
@@ -310,9 +310,6 @@ function MyJobsScreen(): React.JSX.Element {
     // ── Empty state ──────────────────────────
     const renderEmptyState = () => (
         <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>
-                {activeTab === 'active' ? '📋' : '📁'}
-            </Text>
             <Text style={styles.emptyTitle}>
                 {activeTab === 'active' ? 'No Active Jobs' : 'No Past Jobs'}
             </Text>
@@ -327,20 +324,20 @@ function MyJobsScreen(): React.JSX.Element {
     // ── Loading ──────────────────────────────
     if (isLoading) {
         return (
-            <SafeAreaView style={styles.safeArea}>
+            <GlassBackground>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <AnimatedSpinner size={48} color={Colors.primary} />
                     <Text style={styles.loadingText}>Loading jobs...</Text>
                 </View>
-            </SafeAreaView>
+            </GlassBackground>
         );
     }
 
     // ── Render ────────────────────────────────
     return (
-        <SafeAreaView style={styles.safeArea}>
+        <GlassBackground>
             <View style={styles.container}>
-                {/* Tab bar */}
+                {/* Glass pill tab bar */}
                 <View style={styles.tabBar}>
                     <TouchableOpacity
                         style={[styles.tab, activeTab === 'active' && styles.tabActive]}
@@ -391,7 +388,7 @@ function MyJobsScreen(): React.JSX.Element {
                     showsVerticalScrollIndicator={false}
                 />
             </View>
-        </SafeAreaView>
+        </GlassBackground>
     );
 }
 
@@ -400,10 +397,6 @@ function MyJobsScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
     container: {
         flex: 1,
     },
@@ -416,34 +409,37 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         ...Typography.body,
-        color: Colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.6)',
         marginTop: Spacing.md,
     },
 
-    // Tab bar
+    // Glass pill tab bar
     tabBar: {
         flexDirection: 'row',
         paddingHorizontal: Spacing.lg,
-        paddingTop: Spacing.md,
+        paddingTop: Spacing.md + 48,
         paddingBottom: Spacing.sm,
         gap: Spacing.sm,
     },
     tab: {
         flex: 1,
         paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.md,
+        borderRadius: 999,
         alignItems: 'center',
-        backgroundColor: Colors.surface,
+        backgroundColor: 'rgba(255, 255, 255, 0.07)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.10)',
     },
     tabActive: {
-        backgroundColor: Colors.primary,
+        backgroundColor: 'rgba(120, 80, 255, 0.35)',
+        borderColor: 'rgba(120, 80, 255, 0.6)',
     },
     tabText: {
         ...Typography.headline,
-        color: Colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.5)',
     },
     tabTextActive: {
-        color: Colors.white,
+        color: '#FFFFFF',
     },
 
     // List
@@ -459,12 +455,8 @@ const styles = StyleSheet.create({
     },
 
     // Job card
-    jobCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
+    jobCardTouchable: {
         marginBottom: Spacing.md,
-        ...Shadows.sm,
     },
     jobHeader: {
         flexDirection: 'row',
@@ -474,7 +466,7 @@ const styles = StyleSheet.create({
     },
     jobName: {
         ...Typography.headline,
-        color: Colors.textPrimary,
+        color: '#FFFFFF',
         flex: 1,
         marginRight: Spacing.sm,
     },
@@ -483,7 +475,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: Spacing.sm,
         paddingVertical: Spacing.xxs,
-        borderRadius: BorderRadius.sm,
+        borderRadius: 999,
+        borderWidth: 1,
     },
     statusText: {
         ...Typography.caption1,
@@ -491,7 +484,7 @@ const styles = StyleSheet.create({
     },
     jobAddress: {
         ...Typography.footnote,
-        color: Colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.5)',
         marginBottom: Spacing.sm,
     },
     jobFooter: {
@@ -501,7 +494,7 @@ const styles = StyleSheet.create({
     },
     jobDate: {
         ...Typography.caption1,
-        color: Colors.textTertiary,
+        color: 'rgba(255, 255, 255, 0.35)',
     },
     jobPrice: {
         ...Typography.headline,
@@ -513,31 +506,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: Spacing.xl,
     },
-    emptyIcon: {
-        fontSize: 48,
-        marginBottom: Spacing.md,
-    },
     emptyTitle: {
         ...Typography.title3,
-        color: Colors.textPrimary,
+        color: '#FFFFFF',
         marginBottom: Spacing.sm,
         textAlign: 'center',
     },
     emptySubtext: {
         ...Typography.footnote,
-        color: Colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.5)',
         textAlign: 'center',
         lineHeight: 20,
     },
+
     // Provider review card
     providerReviewCard: {
-        backgroundColor: '#FFF8F0',
+        backgroundColor: 'rgba(255, 140, 0, 0.10)',
         borderRadius: BorderRadius.md,
         padding: Spacing.md,
         marginTop: Spacing.sm,
         marginBottom: Spacing.sm,
         borderWidth: 1,
-        borderColor: '#FF8C0030',
+        borderColor: 'rgba(255, 140, 0, 0.25)',
     },
     providerReviewTitle: {
         ...Typography.caption1,
@@ -565,11 +555,11 @@ const styles = StyleSheet.create({
     },
     providerName: {
         ...Typography.headline,
-        color: Colors.textPrimary,
+        color: '#FFFFFF',
     },
     providerDetail: {
         ...Typography.caption1,
-        color: Colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.5)',
     },
     approvalButtons: {
         flexDirection: 'row',
@@ -581,7 +571,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.lg,
         borderRadius: BorderRadius.md,
         borderWidth: 1,
-        borderColor: Colors.error,
+        borderColor: 'rgba(231, 76, 60, 0.6)',
+        backgroundColor: 'rgba(231, 76, 60, 0.12)',
     },
     rejectButtonText: {
         ...Typography.headline,
@@ -591,7 +582,9 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.xs,
         paddingHorizontal: Spacing.lg,
         borderRadius: BorderRadius.md,
-        backgroundColor: Colors.success,
+        backgroundColor: 'rgba(39, 174, 96, 0.7)',
+        borderWidth: 1,
+        borderColor: 'rgba(39, 174, 96, 0.4)',
     },
     approveButtonText: {
         ...Typography.headline,

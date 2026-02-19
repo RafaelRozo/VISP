@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Active Job Card Component
+ * VISP - Active Job Card Component
  *
  * Compact card displaying an active job with provider info,
  * task name, color-coded status badge, and SLA countdown timer.
@@ -15,6 +15,7 @@ import {
   Typography,
   BorderRadius,
   Shadows,
+  GlassStyles,
   getLevelColor,
   getStatusColor,
 } from '../theme';
@@ -37,13 +38,24 @@ interface ActiveJobCardProps {
 
 const STATUS_LABELS: Record<JobStatus, string> = {
   pending: 'Pending',
+  draft: 'Draft',
+  pending_match: 'Finding Provider',
   matched: 'Matched',
+  pending_approval: 'Pending Approval',
+  pending_price_agreement: 'Price Agreement',
+  scheduled: 'Scheduled',
   accepted: 'Accepted',
+  provider_accepted: 'Provider Accepted',
   en_route: 'En Route',
+  provider_en_route: 'En Route',
   in_progress: 'In Progress',
   completed: 'Completed',
   cancelled: 'Cancelled',
+  cancelled_by_customer: 'Cancelled',
+  cancelled_by_provider: 'Cancelled',
+  cancelled_by_system: 'Cancelled',
   disputed: 'Disputed',
+  refunded: 'Refunded',
 };
 
 function formatStatusLabel(status: JobStatus): string {
@@ -259,12 +271,8 @@ const CARD_WIDTH = 280;
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    ...GlassStyles.elevated,
     overflow: 'hidden',
-    ...Shadows.sm,
   },
 
   // ── Level Strip ───────────────────────
@@ -294,13 +302,16 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.primaryDark,
+    backgroundColor: 'rgba(74, 144, 226, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 144, 226, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm,
   },
   avatarPlaceholder: {
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   avatarText: {
     ...Typography.footnote,
@@ -328,6 +339,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xxs,
     borderRadius: BorderRadius.full,
     gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
   },
   statusDot: {
     width: 6,
@@ -361,13 +374,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    backgroundColor: 'rgba(74, 144, 226, 0.1)',
+    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 144, 226, 0.20)',
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xxs,
     borderRadius: BorderRadius.xs,
   },
   slaContainerUrgent: {
-    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    borderColor: 'rgba(231, 76, 60, 0.25)',
   },
   slaLabel: {
     ...Typography.caption,

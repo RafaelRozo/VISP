@@ -22,6 +22,7 @@ from sqlalchemy import (
     Text,
     Time,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -35,6 +36,7 @@ class JobStatus(str, enum.Enum):
     PENDING_MATCH = "pending_match"
     MATCHED = "matched"
     PENDING_APPROVAL = "pending_approval"      # provider interested, customer reviewing
+    PENDING_PRICE_AGREEMENT = "pending_price_agreement"  # L3/L4 price negotiation
     SCHEDULED = "scheduled"                    # customer approved, waiting for job day
     PROVIDER_ACCEPTED = "provider_accepted"    # legacy / direct accept
     PROVIDER_EN_ROUTE = "provider_en_route"
@@ -152,6 +154,25 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="CAD")
 
+    # Pricing model v2
+    pricing_model: Mapped[Optional[str]] = mapped_column(
+        Enum('TIME_BASED', 'NEGOTIATED', 'EMERGENCY_NEGOTIATED',
+             name='pricing_model', create_type=False),
+        nullable=True,
+    )
+    hourly_rate_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    actual_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    proposed_price_cents: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    price_agreed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    tip_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, server_default="0", nullable=True
+    )
+    tip_paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Payment
     stripe_payment_intent_id: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
@@ -162,15 +183,15 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Customer notes (selected from predefined options, NOT free text)
     customer_notes_json: Mapped[Any] = mapped_column(
-        JSONB, server_default="'[]'::jsonb", nullable=False
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
 
     # Photos
     photos_before_json: Mapped[Any] = mapped_column(
-        JSONB, server_default="'[]'::jsonb", nullable=False
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
     photos_after_json: Mapped[Any] = mapped_column(
-        JSONB, server_default="'[]'::jsonb", nullable=False
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
 
     # Completion
@@ -199,6 +220,10 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     pricing_events: Mapped[list["PricingEvent"]] = relationship(
         "PricingEvent", back_populates="job"
     )
+    price_proposals: Mapped[list["PriceProposal"]] = relationship(
+        "PriceProposal", back_populates="job", cascade="all, delete-orphan"
+    )
+    tips: Mapped[list["Tip"]] = relationship("Tip", back_populates="job")
     reviews: Mapped[list["Review"]] = relationship("Review", back_populates="job")
 
     def __repr__(self) -> str:

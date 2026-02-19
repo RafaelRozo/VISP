@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - App Navigator
+ * VISP - App Navigator
  *
  * Root navigation structure with:
  * - Auth flow (Login, Register, ForgotPassword)
@@ -10,11 +10,13 @@
  */
 
 import React, { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AnimatedSpinner } from '../components/animations';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Colors } from '../theme/colors';
+import { GlassStyles } from '../theme/glass';
 import { requestLocationPermission, saveUserLocation } from '../services/geolocationService';
 
 import type {
@@ -48,12 +50,14 @@ import ActiveJobScreen from '../screens/provider/ActiveJobScreen';
 import EarningsScreen from '../screens/provider/EarningsScreen';
 import ScheduleScreen from '../screens/provider/ScheduleScreen';
 import ProviderOnboardingScreen from '../screens/provider/ProviderOnboardingScreen';
+import ServiceCatalogScreen from '../screens/provider/ServiceCatalogScreen';
 
 // Screens - Profile
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import CredentialsScreen from '../screens/profile/CredentialsScreen';
 import VerificationScreen from '../screens/profile/VerificationScreen';
 import SettingsScreen from '../screens/profile/SettingsScreen';
+import PaymentMethodsScreen from '../screens/profile/PaymentMethodsScreen';
 
 // Screens - Shared
 import ChatScreen from '../screens/shared/ChatScreen';
@@ -85,11 +89,14 @@ const placeholderStyles = StyleSheet.create({
 
 const SCREEN_OPTIONS = {
   headerStyle: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.80)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
-  headerTintColor: Colors.textPrimary,
+  headerTintColor: '#FFFFFF',
   headerTitleStyle: {
     fontWeight: '600' as const,
+    color: '#FFFFFF',
   },
   headerShadowVisible: false,
   contentStyle: {
@@ -99,24 +106,27 @@ const SCREEN_OPTIONS = {
 
 const TAB_OPTIONS = {
   tabBarStyle: {
-    backgroundColor: Colors.surface,
-    borderTopColor: Colors.border,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    ...GlassStyles.tabBar,
+    position: 'absolute' as const,
+    elevation: 0,
     paddingBottom: 4,
     height: 56,
   },
   tabBarActiveTintColor: Colors.primary,
-  tabBarInactiveTintColor: Colors.textTertiary,
+  tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.4)',
   tabBarLabelStyle: {
     fontSize: 11,
     fontWeight: '600' as const,
   },
   headerStyle: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.80)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
-  headerTintColor: Colors.textPrimary,
+  headerTintColor: '#FFFFFF',
   headerTitleStyle: {
     fontWeight: '600' as const,
+    color: '#FFFFFF',
   },
   headerShadowVisible: false,
 };
@@ -137,7 +147,7 @@ function TabIcon({
       <Text
         style={[
           tabIconStyles.icon,
-          { color: focused ? Colors.primary : Colors.textTertiary },
+          { color: focused ? Colors.primary : 'rgba(255, 255, 255, 0.4)' },
         ]}
       >
         {label}
@@ -167,9 +177,10 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
-// Provider stack for JobOffers + ActiveJob + Chat (nested inside tab)
+// Provider stack for JobOffers + ServiceCatalog + ActiveJob + Chat (nested inside tab)
 type ProviderJobStackParamList = {
   JobOffers: undefined;
+  ServiceCatalog: undefined;
   ActiveJob: { jobId: string };
   Chat: { jobId: string; otherUserName: string };
 };
@@ -214,6 +225,11 @@ function ProfileStackNavigator(): React.JSX.Element {
         component={ProviderOnboardingScreen}
         options={{ title: 'My Services' }}
       />
+      <ProfileStack.Screen
+        name="PaymentMethods"
+        component={PaymentMethodsScreen}
+        options={{ title: 'Payment Methods' }}
+      />
     </ProfileStack.Navigator>
   );
 }
@@ -228,7 +244,24 @@ function ProviderJobStackNavigator(): React.JSX.Element {
       <ProviderJobStack.Screen
         name="JobOffers"
         component={JobOffersScreen}
-        options={{ title: 'Job Offers' }}
+        options={({ navigation }) => ({
+          title: 'Job Offers',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ServiceCatalog')}
+              style={{ paddingHorizontal: 8 }}
+            >
+              <Text style={{ color: Colors.primary, fontWeight: '600', fontSize: 14 }}>
+                My Services
+              </Text>
+            </TouchableOpacity>
+          ),
+        })}
+      />
+      <ProviderJobStack.Screen
+        name="ServiceCatalog"
+        component={ServiceCatalogScreen}
+        options={{ title: 'My Services' }}
       />
       <ProviderJobStack.Screen
         name="ActiveJob"
@@ -401,7 +434,7 @@ export default function AppNavigator(): React.JSX.Element {
   if (isRestoring) {
     return (
       <View style={loadingStyles.container}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <AnimatedSpinner size={48} color={Colors.primary} />
       </View>
     );
   }

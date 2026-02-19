@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Push Notification Service
+ * VISP - Push Notification Service
  *
  * Manages FCM token lifecycle, permission requests, foreground/background
  * notification handling, and deep-link navigation on notification tap.

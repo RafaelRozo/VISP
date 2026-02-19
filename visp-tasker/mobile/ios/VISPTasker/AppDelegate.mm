@@ -4,7 +4,12 @@
 #import <React/RCTRootView.h>
 
 // Firebase
-@import Firebase;
+#if __has_include(<FirebaseCore/FirebaseCore.h>)
+#import <FirebaseCore/FirebaseCore.h>
+#endif
+#if __has_include(<FirebaseMessaging/FirebaseMessaging.h>)
+#import <FirebaseMessaging/FirebaseMessaging.h>
+#endif
 
 @implementation AppDelegate
 
@@ -15,13 +20,18 @@
   // Set initial props for the root React component
   self.initialProps = @{};
 
-  // Initialize Firebase
-  [FIRApp configure];
+  // Initialize Firebase (only if GoogleService-Info.plist exists)
+  NSString *plistPath = [[NSBundle mainBundle] pathForResource:@"GoogleService-Info" ofType:@"plist"];
+  if (plistPath) {
+    [FIRApp configure];
 
-  // Register for remote notifications
-  UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-  center.delegate = self;
-  [application registerForRemoteNotifications];
+    // Register for remote notifications
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    center.delegate = self;
+    [application registerForRemoteNotifications];
+  } else {
+    NSLog(@"GoogleService-Info.plist not found — skipping Firebase initialization");
+  }
 
   return [super application:application didFinishLaunchingWithOptions:launchOptions];
 }
@@ -45,8 +55,10 @@
 - (void)application:(UIApplication *)application
     didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
 {
-  // Forward APNS token to Firebase Cloud Messaging
-  [FIRMessaging messaging].APNSToken = deviceToken;
+  // Forward APNS token to Firebase Cloud Messaging (if configured)
+  if ([FIRApp defaultApp]) {
+    [FIRMessaging messaging].APNSToken = deviceToken;
+  }
 }
 
 - (void)application:(UIApplication *)application

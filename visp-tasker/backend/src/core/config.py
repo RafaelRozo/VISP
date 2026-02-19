@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Central configuration for the VISP/Tasker backend."""
+    """Central configuration for the VISP backend."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # -- Application --
-    app_name: str = "VISP Tasker API"
+    app_name: str = "VISP API"
     app_version: str = "0.1.0"
     debug: bool = False
 

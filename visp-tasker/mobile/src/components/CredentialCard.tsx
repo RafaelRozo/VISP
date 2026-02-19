@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - CredentialCard Component
+ * VISP - CredentialCard Component
  *
  * Card showing credential status with document type icon, status badge,
  * expiry date, and tap action for view/upload.
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Colors } from '../theme/colors';
+import { GlassStyles } from '../theme/glass';
 import { Credential, CredentialStatus, CredentialType } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -189,24 +190,16 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    ...GlassStyles.card,
     padding: 14,
     marginHorizontal: 16,
     marginVertical: 6,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   containerAction: {
-    borderWidth: 1,
-    borderColor: Colors.emergencyRed,
+    borderColor: 'rgba(231, 76, 60, 0.4)',
   },
   containerUpload: {
-    borderWidth: 1,
-    borderColor: '#FF6B35',
+    borderColor: 'rgba(255, 107, 53, 0.4)',
     borderStyle: 'dashed',
   },
   iconContainer: {
@@ -216,7 +209,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 144, 226, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -259,6 +254,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
   },
   statusDot: {
     width: 6,

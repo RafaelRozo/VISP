@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - EmergencyConfirmScreen
+ * VISP - EmergencyConfirmScreen
  *
  * Summary of emergency type + location.
  * Features:
@@ -8,6 +8,8 @@
  *   - Accept emergency pricing checkbox
  *   - Legal consent for emergency terms
  *   - "Request Emergency Help NOW" button
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useEffect, useCallback, useState } from 'react';
@@ -17,17 +19,16 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  SafeAreaView,
   Alert,
+  Platform,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import { EMERGENCY_TYPES, EMERGENCY_CONSENT_VERSION } from '../../services/emergencyService';
 import LevelBadge from '../../components/LevelBadge';
@@ -119,199 +120,185 @@ function EmergencyConfirmScreen(): React.JSX.Element {
   const canSubmit = pricingAccepted && legalConsentAccepted && !isSubmittingRequest && !isLoading;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Emergency header */}
-          <View style={styles.header}>
-            <View style={styles.emergencyBadge}>
-              <Text style={styles.emergencyBadgeText}>EMERGENCY REQUEST</Text>
-            </View>
-            <Text style={styles.title}>Confirm Emergency</Text>
+    <GlassBackground>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Emergency header */}
+        <View style={styles.header}>
+          <View style={styles.emergencyBadge}>
+            <Text style={styles.emergencyBadgeText}>EMERGENCY REQUEST</Text>
           </View>
+          <Text style={styles.title}>Confirm Emergency</Text>
+        </View>
 
-          {/* Emergency summary */}
-          <View style={styles.section}>
-            <View style={styles.summaryCard}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Type</Text>
-                <View style={styles.summaryValueRow}>
-                  <Text style={styles.summaryValue}>
-                    {typeConfig?.label || emergencyType}
-                  </Text>
-                  <LevelBadge level={4} size="small" />
-                </View>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Location</Text>
-                <Text style={styles.summaryValue} numberOfLines={2}>
-                  {location.formattedAddress}
+        {/* Emergency summary */}
+        <View style={styles.section}>
+          <GlassCard variant="dark">
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Type</Text>
+              <View style={styles.summaryValueRow}>
+                <Text style={styles.summaryValue}>
+                  {typeConfig?.label || emergencyType}
                 </Text>
+                <LevelBadge level={4} size="small" />
               </View>
             </View>
-          </View>
 
-          {/* SLA guarantee */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>SLA Guarantee</Text>
-            {isLoadingSLA ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <View style={styles.slaCard}>
-                <View style={styles.slaRow}>
-                  <View style={styles.slaItem}>
-                    <Text style={styles.slaValue}>
-                      {sla.responseTimeMinutes}
-                    </Text>
-                    <Text style={styles.slaUnit}>min</Text>
-                    <Text style={styles.slaLabel}>Response Time</Text>
-                  </View>
-                  <View style={styles.slaDivider} />
-                  <View style={styles.slaItem}>
-                    <Text style={styles.slaValue}>
-                      {sla.arrivalTimeMinutes}
-                    </Text>
-                    <Text style={styles.slaUnit}>min</Text>
-                    <Text style={styles.slaLabel}>Arrival Time</Text>
-                  </View>
-                </View>
-                <Text style={styles.slaGuarantee}>{sla.guaranteeText}</Text>
-              </View>
-            )}
-          </View>
+            <View style={styles.divider} />
 
-          {/* Emergency pricing disclosure */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Emergency Pricing</Text>
-            {isLoadingPricing ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <View style={styles.pricingCard}>
-                <View style={styles.pricingRow}>
-                  <Text style={styles.pricingLabel}>Rate Multiplier</Text>
-                  <Text style={styles.pricingValue}>
-                    {pricing.baseMultiplier}x standard rate
-                  </Text>
-                </View>
-                <View style={styles.pricingRow}>
-                  <Text style={styles.pricingLabel}>Minimum Charge</Text>
-                  <Text style={styles.pricingValue}>
-                    ${pricing.minimumCharge}
-                  </Text>
-                </View>
-                <View style={styles.pricingRow}>
-                  <Text style={styles.pricingLabel}>Estimated Range</Text>
-                  <Text style={styles.pricingValueHighlight}>
-                    {pricing.estimatedRange}
-                  </Text>
-                </View>
-                <View style={styles.pricingDivider} />
-                <Text style={styles.pricingDisclosure}>
-                  {pricing.disclosureText}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Pricing acceptance checkbox */}
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={handleTogglePricing}
-              activeOpacity={0.7}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: pricingAccepted }}
-              accessibilityLabel="Accept emergency pricing terms"
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  pricingAccepted && styles.checkboxChecked,
-                ]}
-              >
-                {pricingAccepted && (
-                  <Text style={styles.checkboxCheck}>V</Text>
-                )}
-              </View>
-              <Text style={styles.checkboxLabel}>
-                I understand and accept the emergency pricing terms, including
-                the {pricing.baseMultiplier}x rate multiplier and ${pricing.minimumCharge} minimum charge.
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Location</Text>
+              <Text style={styles.summaryValue} numberOfLines={2}>
+                {location.formattedAddress}
               </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Legal consent checkbox */}
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={handleToggleConsent}
-              activeOpacity={0.7}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: legalConsentAccepted }}
-              accessibilityLabel="Accept emergency service legal terms"
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  legalConsentAccepted && styles.checkboxChecked,
-                ]}
-              >
-                {legalConsentAccepted && (
-                  <Text style={styles.checkboxCheck}>V</Text>
-                )}
-              </View>
-              <Text style={styles.checkboxLabel}>
-                I consent to the emergency service terms and conditions
-                (version {EMERGENCY_CONSENT_VERSION}). I understand that an SLA snapshot
-                will be created at the time of booking and terms are immutable
-                after job creation. The provider cannot add scope to this job.
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Error */}
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
             </View>
+          </GlassCard>
+        </View>
+
+        {/* SLA guarantee */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>SLA Guarantee</Text>
+          {isLoadingSLA ? (
+            <AnimatedSpinner size={24} color={Colors.emergencyRed} />
+          ) : (
+            <GlassCard variant="standard" style={styles.slaCardBorder}>
+              <View style={styles.slaRow}>
+                <View style={styles.slaItem}>
+                  <Text style={styles.slaValue}>
+                    {sla.responseTimeMinutes}
+                  </Text>
+                  <Text style={styles.slaUnit}>min</Text>
+                  <Text style={styles.slaLabel}>Response Time</Text>
+                </View>
+                <View style={styles.slaDivider} />
+                <View style={styles.slaItem}>
+                  <Text style={styles.slaValue}>
+                    {sla.arrivalTimeMinutes}
+                  </Text>
+                  <Text style={styles.slaUnit}>min</Text>
+                  <Text style={styles.slaLabel}>Arrival Time</Text>
+                </View>
+              </View>
+              <Text style={styles.slaGuarantee}>{sla.guaranteeText}</Text>
+            </GlassCard>
           )}
+        </View>
 
-          {/* Bottom padding */}
-          <View style={styles.bottomPadding} />
-        </ScrollView>
-
-        {/* Request button */}
-        <View style={styles.ctaContainer}>
-          <TouchableOpacity
-            style={[
-              styles.requestButton,
-              !canSubmit && styles.requestButtonDisabled,
-            ]}
-            onPress={handleRequestHelp}
-            disabled={!canSubmit}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Request emergency help now"
-            accessibilityState={{ disabled: !canSubmit }}
-          >
-            {isSubmittingRequest ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Text style={styles.requestButtonText}>
-                Request Emergency Help NOW
+        {/* Emergency pricing disclosure */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Emergency Pricing</Text>
+          {isLoadingPricing ? (
+            <AnimatedSpinner size={24} color={Colors.emergencyRed} />
+          ) : (
+            <GlassCard variant="standard" style={styles.pricingCardBorder}>
+              <View style={styles.pricingRow}>
+                <Text style={styles.pricingLabel}>Rate Multiplier</Text>
+                <Text style={styles.pricingValue}>
+                  {pricing.baseMultiplier}x standard rate
+                </Text>
+              </View>
+              <View style={styles.pricingRow}>
+                <Text style={styles.pricingLabel}>Minimum Charge</Text>
+                <Text style={styles.pricingValue}>
+                  ${pricing.minimumCharge}
+                </Text>
+              </View>
+              <View style={styles.pricingRow}>
+                <Text style={styles.pricingLabel}>Estimated Range</Text>
+                <Text style={styles.pricingValueHighlight}>
+                  {pricing.estimatedRange}
+                </Text>
+              </View>
+              <View style={styles.pricingDivider} />
+              <Text style={styles.pricingDisclosure}>
+                {pricing.disclosureText}
               </Text>
-            )}
+            </GlassCard>
+          )}
+        </View>
+
+        {/* Pricing acceptance checkbox - glass */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={handleTogglePricing}
+            activeOpacity={0.7}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: pricingAccepted }}
+            accessibilityLabel="Accept emergency pricing terms"
+          >
+            <View
+              style={[
+                styles.checkbox,
+                pricingAccepted && styles.checkboxChecked,
+              ]}
+            >
+              {pricingAccepted && (
+                <Text style={styles.checkboxCheck}>V</Text>
+              )}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              I understand and accept the emergency pricing terms, including
+              the {pricing.baseMultiplier}x rate multiplier and ${pricing.minimumCharge} minimum charge.
+            </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Legal consent checkbox - glass */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={handleToggleConsent}
+            activeOpacity={0.7}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: legalConsentAccepted }}
+            accessibilityLabel="Accept emergency service legal terms"
+          >
+            <View
+              style={[
+                styles.checkbox,
+                legalConsentAccepted && styles.checkboxChecked,
+              ]}
+            >
+              {legalConsentAccepted && (
+                <Text style={styles.checkboxCheck}>V</Text>
+              )}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              I consent to the emergency service terms and conditions
+              (version {EMERGENCY_CONSENT_VERSION}). I understand that an SLA snapshot
+              will be created at the time of booking and terms are immutable
+              after job creation. The provider cannot add scope to this job.
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Error */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
+        {/* Bottom padding */}
+        <View style={styles.bottomPadding} />
+      </ScrollView>
+
+      {/* Request button - glass CTA bar */}
+      <View style={styles.ctaContainer}>
+        <GlassButton
+          title={isSubmittingRequest ? '' : 'Request Emergency Help NOW'}
+          onPress={handleRequestHelp}
+          variant="glow"
+          disabled={!canSubmit}
+          loading={isSubmittingRequest}
+          style={styles.requestButton}
+        />
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -319,15 +306,11 @@ function EmergencyConfirmScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
+const EMERGENCY_RED = 'rgba(231, 76, 60, 1)';
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
+const EMERGENCY_RED_BORDER = 'rgba(231, 76, 60, 0.30)';
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   scrollView: {
     flex: 1,
   },
@@ -342,22 +325,31 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   emergencyBadge: {
-    backgroundColor: Colors.emergencyRed,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.xs,
+    borderRadius: 8,
     alignSelf: 'flex-start',
     marginBottom: Spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
   },
   emergencyBadgeText: {
     ...Typography.label,
-    color: Colors.white,
+    color: '#FFFFFF',
     fontWeight: FontWeight.heavy,
     letterSpacing: 1,
   },
   title: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
 
   // Sections
@@ -367,24 +359,17 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
   },
 
   // Summary card
-  summaryCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   summaryRow: {
     marginBottom: Spacing.md,
   },
   summaryLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: Spacing.xs,
@@ -396,21 +381,17 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   divider: {
     height: 1,
-    backgroundColor: Colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     marginVertical: Spacing.sm,
   },
 
   // SLA
-  slaCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.success}30`,
+  slaCardBorder: {
+    borderColor: 'rgba(39, 174, 96, 0.30)',
   },
   slaRow: {
     flexDirection: 'row',
@@ -433,7 +414,7 @@ const styles = StyleSheet.create({
   },
   slaLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginTop: Spacing.xs,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -441,22 +422,18 @@ const styles = StyleSheet.create({
   slaDivider: {
     width: 1,
     height: 60,
-    backgroundColor: Colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
   },
   slaGuarantee: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
     lineHeight: 20,
   },
 
   // Pricing
-  pricingCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.emergencyRed}30`,
+  pricingCardBorder: {
+    borderColor: EMERGENCY_RED_BORDER,
   },
   pricingRow: {
     flexDirection: 'row',
@@ -466,11 +443,11 @@ const styles = StyleSheet.create({
   },
   pricingLabel: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   pricingValue: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.semiBold,
   },
   pricingValueHighlight: {
@@ -480,48 +457,57 @@ const styles = StyleSheet.create({
   },
   pricingDivider: {
     height: 1,
-    backgroundColor: Colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     marginVertical: Spacing.md,
   },
   pricingDisclosure: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     lineHeight: 20,
   },
 
-  // Checkboxes
+  // Checkboxes - glass styled
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: BorderRadius.xs,
+    borderRadius: 6,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
     marginTop: 2,
   },
   checkboxChecked: {
-    backgroundColor: Colors.emergencyRed,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     borderColor: Colors.emergencyRed,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
   },
   checkboxCheck: {
     fontSize: 14,
-    color: Colors.white,
+    color: '#FFFFFF',
     fontWeight: FontWeight.bold,
   },
   checkboxLabel: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     flex: 1,
     lineHeight: 20,
   },
@@ -530,14 +516,14 @@ const styles = StyleSheet.create({
   errorContainer: {
     marginHorizontal: Spacing.lg,
     padding: Spacing.md,
-    backgroundColor: `${Colors.error}15`,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: `${Colors.error}30`,
+    borderColor: EMERGENCY_RED_BORDER,
   },
   errorText: {
     ...Typography.footnote,
-    color: Colors.error,
+    color: Colors.emergencyRed,
   },
 
   // Bottom padding
@@ -545,32 +531,26 @@ const styles = StyleSheet.create({
     height: 100,
   },
 
-  // CTA
+  // CTA - glass bar
   ctaContainer: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.80)',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.lg,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   requestButton: {
-    backgroundColor: Colors.emergencyRed,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.md,
-  },
-  requestButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-    ...Shadows.none,
-  },
-  requestButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
-    fontSize: FontSize.callout,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    paddingVertical: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
   },
 });
 

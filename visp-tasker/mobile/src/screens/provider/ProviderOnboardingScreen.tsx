@@ -1,16 +1,26 @@
+/**
+ * VISP - Provider Onboarding Screen
+ *
+ * Service selection during provider onboarding. Categories with expandable
+ * task lists, checkbox selection, restricted-task badges, and submit flow.
+ *
+ * Dark glassmorphism styling with GlassBackground, GlassCard, GlassButton.
+ */
+
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
     FlatList,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
     Alert,
-    SectionList,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../theme';
+import { Colors } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { taxonomyService, ProviderCategory, ProviderTask } from '../../services/taxonomyService';
 import { providerService } from '../../services/providerService';
 import { useAuthStore } from '../../stores/authStore';
@@ -53,7 +63,7 @@ export default function ProviderOnboardingScreen() {
                     setExpandedCategories(expandIds);
                 }
             } catch {
-                // No saved services yet — that's fine for first-time onboarding
+                // No saved services yet -- that is fine for first-time onboarding
             }
         } catch (error) {
             console.error('Failed to load taxonomy:', error);
@@ -103,9 +113,9 @@ export default function ProviderOnboardingScreen() {
             );
 
             if (restricted.length > 0) {
-                const names = restricted.map(t => `• ${t.name}`).join('\n');
+                const names = restricted.map(t => `- ${t.name}`).join('\n');
                 Alert.alert(
-                    'Services Saved ✓',
+                    'Services Saved',
                     `Your services have been saved.\n\nThe following require documents before activation:\n${names}\n\nPlease upload the required documents in Profile > Credentials.`,
                     [
                         {
@@ -116,7 +126,7 @@ export default function ProviderOnboardingScreen() {
                 );
             } else {
                 Alert.alert(
-                    'Services Saved ✓',
+                    'Services Saved',
                     'All your selected services are active!',
                     [{ text: 'OK', onPress: () => finishOnboarding() }]
                 );
@@ -137,7 +147,7 @@ export default function ProviderOnboardingScreen() {
         if (navigation.canGoBack()) {
             navigation.goBack();
         } else {
-            // First-time onboarding from registration — reset to ProviderHome
+            // First-time onboarding from registration -- reset to ProviderHome
             navigation.reset({
                 index: 0,
                 routes: [{ name: 'ProviderHome' }],
@@ -145,250 +155,359 @@ export default function ProviderOnboardingScreen() {
         }
     };
 
+    // ── Progress indicator ──────────────────────────────────────────────
+    const totalTasks = categories.reduce((sum, c) => sum + c.tasks.length, 0);
+    const progressPercent = totalTasks > 0
+        ? Math.round((selectedTaskIds.size / totalTasks) * 100)
+        : 0;
+
     if (isLoading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
+            <GlassBackground>
+                <View style={styles.loadingContainer}>
+                    <AnimatedSpinner size={48} color={Colors.primary} />
+                    <Text style={styles.loadingText}>Loading services...</Text>
+                </View>
+            </GlassBackground>
         );
     }
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Select Your Services</Text>
-                <Text style={styles.subtitle}>
-                    Choose the services you are qualified to perform.
-                </Text>
-            </View>
+        <GlassBackground>
+            <View style={styles.container}>
+                {/* Header with glass dark panel */}
+                <View style={styles.header}>
+                    <Text style={styles.title}>Select Your Services</Text>
+                    <Text style={styles.subtitle}>
+                        Choose the services you are qualified to perform.
+                    </Text>
 
-            <FlatList
-                data={categories}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-                renderItem={({ item: category }) => {
-                    const isExpanded = expandedCategories.has(category.id);
-                    // Check if any child is selected for summary
-                    const selectedCount = category.tasks.filter(t => selectedTaskIds.has(t.id)).length;
-
-                    return (
-                        <View style={styles.categoryCard}>
-                            <TouchableOpacity
-                                style={styles.categoryHeader}
-                                onPress={() => toggleCategory(category.id)}
-                            >
-                                <View style={styles.categoryInfo}>
-                                    <Text style={styles.categoryName}>{category.name}</Text>
-                                    {selectedCount > 0 && (
-                                        <Text style={styles.selectedBadge}>{selectedCount} selected</Text>
-                                    )}
-                                </View>
-                                <Text style={{ fontSize: 18, color: Colors.textSecondary }}>
-                                    {isExpanded ? '▲' : '▼'}
-                                </Text>
-                            </TouchableOpacity>
-
-                            {isExpanded && (
-                                <View style={styles.tasksList}>
-                                    {category.tasks.map((task) => {
-                                        const isSelected = selectedTaskIds.has(task.id);
-                                        const needsLicense = task.licenseRequired;
-                                        const needsCertification = task.certificationRequired;
-                                        const isRegulated = task.regulated && !needsLicense && !needsCertification;
-
-                                        return (
-                                            <TouchableOpacity
-                                                key={task.id}
-                                                style={[
-                                                    styles.taskItem,
-                                                    isSelected && styles.taskItemSelected,
-                                                ]}
-                                                onPress={() => toggleTask(task.id)}
-                                            >
-                                                <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                                                    {isSelected && (
-                                                        <Text style={{ fontSize: 14, color: Colors.white, fontWeight: 'bold' }}>✓</Text>
-                                                    )}
-                                                </View>
-                                                <View style={styles.taskInfo}>
-                                                    <Text style={[
-                                                        styles.taskName,
-                                                        isSelected && styles.taskNameSelected
-                                                    ]}>
-                                                        {task.name}
-                                                    </Text>
-                                                    {needsLicense && (
-                                                        <View style={styles.restrictedBadge}>
-                                                            <Text style={{ fontSize: 12 }}>🛡</Text>
-                                                            <Text style={styles.restrictedText}>Requires License</Text>
-                                                        </View>
-                                                    )}
-                                                    {needsCertification && (
-                                                        <View style={styles.restrictedBadge}>
-                                                            <Text style={{ fontSize: 12 }}>📄</Text>
-                                                            <Text style={[styles.restrictedText, { color: Colors.primary }]}>Requires Certificate</Text>
-                                                        </View>
-                                                    )}
-                                                    {isRegulated && (
-                                                        <View style={styles.restrictedBadge}>
-                                                            <Text style={{ fontSize: 12 }}>⚠️</Text>
-                                                            <Text style={styles.restrictedText}>Regulated</Text>
-                                                        </View>
-                                                    )}
-                                                </View>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </View>
-                            )}
+                    {/* Glass progress bar */}
+                    <View style={styles.progressContainer}>
+                        <View style={styles.progressBarTrack}>
+                            <View
+                                style={[
+                                    styles.progressBarFill,
+                                    { width: `${Math.min(progressPercent, 100)}%` },
+                                ]}
+                            />
                         </View>
-                    );
-                }}
-            />
+                        <Text style={styles.progressText}>
+                            {selectedTaskIds.size} selected
+                        </Text>
+                    </View>
+                </View>
 
-            <View style={styles.footer}>
-                <TouchableOpacity
-                    style={styles.continueButton}
-                    onPress={handleSubmit}
-                    disabled={isSaving}
-                >
-                    {isSaving ? (
-                        <ActivityIndicator color={Colors.white} />
-                    ) : (
-                        <Text style={styles.continueButtonText}>Save & Continue</Text>
-                    )}
-                </TouchableOpacity>
+                <FlatList
+                    data={categories}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    renderItem={({ item: category }) => {
+                        const isExpanded = expandedCategories.has(category.id);
+                        const selectedCount = category.tasks.filter(t => selectedTaskIds.has(t.id)).length;
+
+                        return (
+                            <GlassCard variant="dark" padding={0} style={styles.categoryCard}>
+                                <TouchableOpacity
+                                    style={styles.categoryHeader}
+                                    onPress={() => toggleCategory(category.id)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={styles.categoryInfo}>
+                                        <Text style={styles.categoryName}>{category.name}</Text>
+                                        {selectedCount > 0 && (
+                                            <View style={styles.selectedBadge}>
+                                                <Text style={styles.selectedBadgeText}>
+                                                    {selectedCount} selected
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <Text style={styles.chevron}>
+                                        {isExpanded ? '\u25B2' : '\u25BC'}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                {isExpanded && (
+                                    <View style={styles.tasksList}>
+                                        {category.tasks.map((task) => {
+                                            const isSelected = selectedTaskIds.has(task.id);
+                                            const needsLicense = task.licenseRequired;
+                                            const needsCertification = task.certificationRequired;
+                                            const isRegulated = task.regulated && !needsLicense && !needsCertification;
+
+                                            return (
+                                                <TouchableOpacity
+                                                    key={task.id}
+                                                    style={[
+                                                        styles.taskItem,
+                                                        isSelected && styles.taskItemSelected,
+                                                    ]}
+                                                    onPress={() => toggleTask(task.id)}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <View style={[
+                                                        styles.checkbox,
+                                                        isSelected && styles.checkboxSelected,
+                                                    ]}>
+                                                        {isSelected && (
+                                                            <Text style={styles.checkmarkText}>
+                                                                {'\u2713'}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                    <View style={styles.taskInfo}>
+                                                        <Text style={[
+                                                            styles.taskName,
+                                                            isSelected && styles.taskNameSelected,
+                                                        ]}>
+                                                            {task.name}
+                                                        </Text>
+                                                        {needsLicense && (
+                                                            <View style={styles.restrictedBadge}>
+                                                                <Text style={styles.restrictedIcon}>S</Text>
+                                                                <Text style={styles.restrictedTextWarn}>
+                                                                    Requires License
+                                                                </Text>
+                                                            </View>
+                                                        )}
+                                                        {needsCertification && (
+                                                            <View style={styles.restrictedBadge}>
+                                                                <Text style={styles.restrictedIcon}>D</Text>
+                                                                <Text style={styles.restrictedTextCert}>
+                                                                    Requires Certificate
+                                                                </Text>
+                                                            </View>
+                                                        )}
+                                                        {isRegulated && (
+                                                            <View style={styles.restrictedBadge}>
+                                                                <Text style={styles.restrictedIcon}>!</Text>
+                                                                <Text style={styles.restrictedTextWarn}>
+                                                                    Regulated
+                                                                </Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+                            </GlassCard>
+                        );
+                    }}
+                />
+
+                {/* Footer with glass panel and glow submit button */}
+                <View style={styles.footer}>
+                    <GlassButton
+                        title="Save & Continue"
+                        variant="glow"
+                        onPress={handleSubmit}
+                        loading={isSaving}
+                        disabled={isSaving}
+                        style={styles.submitButton}
+                    />
+                </View>
             </View>
-        </View>
+        </GlassBackground>
     );
 }
+
+// ---------------------------------------------------------------------------
+// Styles -- Dark Glassmorphism
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.background,
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
+    loadingText: {
+        fontSize: 14,
+        color: 'rgba(255, 255, 255, 0.5)',
+        marginTop: 12,
+    },
+
+    // ── Header ────────────────────────────────────────────────
     header: {
-        padding: Spacing.lg,
-        backgroundColor: Colors.surface,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 16,
+        backgroundColor: 'rgba(10, 10, 30, 0.60)',
         borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
+        borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     },
     title: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: Colors.textPrimary,
-        marginBottom: Spacing.xs,
+        color: '#FFFFFF',
+        marginBottom: 4,
     },
     subtitle: {
         fontSize: 14,
-        color: Colors.textSecondary,
+        color: 'rgba(255, 255, 255, 0.55)',
+        marginBottom: 16,
     },
+
+    // ── Progress bar ──────────────────────────────────────────
+    progressContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    progressBarTrack: {
+        flex: 1,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        overflow: 'hidden',
+    },
+    progressBarFill: {
+        height: '100%',
+        borderRadius: 3,
+        backgroundColor: 'rgba(120, 80, 255, 0.8)',
+    },
+    progressText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+
+    // ── List ──────────────────────────────────────────────────
     listContent: {
-        padding: Spacing.md,
+        padding: 16,
+        paddingBottom: 8,
     },
+
+    // ── Category cards ────────────────────────────────────────
     categoryCard: {
-        backgroundColor: Colors.surface,
-        borderRadius: BorderRadius.md,
-        marginBottom: Spacing.md,
-        ...Shadows.sm,
+        marginBottom: 12,
         overflow: 'hidden',
     },
     categoryHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: Spacing.md,
+        padding: 16,
     },
     categoryInfo: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
     },
     categoryName: {
         fontSize: 16,
         fontWeight: '600',
-        color: Colors.textPrimary,
-        marginRight: Spacing.sm,
+        color: '#FFFFFF',
+        marginRight: 10,
     },
     selectedBadge: {
-        fontSize: 12,
-        color: Colors.primary,
-        backgroundColor: Colors.primaryLight,
-        paddingHorizontal: 6,
+        backgroundColor: 'rgba(120, 80, 255, 0.20)',
+        borderWidth: 1,
+        borderColor: 'rgba(120, 80, 255, 0.40)',
+        paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 10,
-        overflow: 'hidden',
     },
+    selectedBadgeText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(180, 150, 255, 1)',
+    },
+    chevron: {
+        fontSize: 14,
+        color: 'rgba(255, 255, 255, 0.45)',
+    },
+
+    // ── Task list ─────────────────────────────────────────────
     tasksList: {
         borderTopWidth: 1,
-        borderTopColor: Colors.border,
-        backgroundColor: Colors.surface, // Slightly different user needed
+        borderTopColor: 'rgba(255, 255, 255, 0.08)',
     },
     taskItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: Spacing.md,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
         borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
+        borderBottomColor: 'rgba(255, 255, 255, 0.06)',
     },
     taskItemSelected: {
-        backgroundColor: Colors.primaryLight + '20', // transparent primary
+        backgroundColor: 'rgba(120, 80, 255, 0.08)',
     },
+
+    // ── Checkbox ──────────────────────────────────────────────
     checkbox: {
         width: 24,
         height: 24,
-        borderRadius: 4,
-        borderWidth: 2,
-        borderColor: Colors.primary,
-        marginRight: Spacing.md,
+        borderRadius: 6,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
+        marginRight: 14,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'transparent',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
     },
     checkboxSelected: {
-        backgroundColor: Colors.primary,
+        backgroundColor: 'rgba(120, 80, 255, 0.8)',
+        borderColor: 'rgba(120, 80, 255, 1)',
     },
+    checkmarkText: {
+        fontSize: 14,
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+    },
+
+    // ── Task info ─────────────────────────────────────────────
     taskInfo: {
         flex: 1,
     },
     taskName: {
         fontSize: 14,
-        color: Colors.textPrimary,
+        color: 'rgba(255, 255, 255, 0.85)',
     },
     taskNameSelected: {
-        color: Colors.primary,
+        color: '#FFFFFF',
         fontWeight: '600',
     },
+
+    // ── Restricted badges ─────────────────────────────────────
     restrictedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 2,
+        marginTop: 3,
     },
-    restrictedText: {
+    restrictedIcon: {
+        fontSize: 12,
+        color: 'rgba(255, 255, 255, 0.4)',
+        fontWeight: '700',
+    },
+    restrictedTextWarn: {
         fontSize: 10,
         color: Colors.warning,
         marginLeft: 4,
     },
+    restrictedTextCert: {
+        fontSize: 10,
+        color: Colors.primary,
+        marginLeft: 4,
+    },
+
+    // ── Footer ────────────────────────────────────────────────
     footer: {
-        padding: Spacing.lg,
-        backgroundColor: Colors.surface,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        backgroundColor: 'rgba(10, 10, 30, 0.70)',
         borderTopWidth: 1,
-        borderTopColor: Colors.border,
+        borderTopColor: 'rgba(255, 255, 255, 0.08)',
     },
-    continueButton: {
-        backgroundColor: Colors.primary,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        alignItems: 'center',
-    },
-    continueButtonText: {
-        color: Colors.white,
-        fontSize: 16,
-        fontWeight: 'bold',
+    submitButton: {
+        width: '100%',
     },
 });

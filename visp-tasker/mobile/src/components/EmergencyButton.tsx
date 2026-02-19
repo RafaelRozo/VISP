@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Emergency Button Component
+ * VISP - Emergency Button Component
  *
  * Large, prominent red button with a pulsing animation.
  * Displays a confirmation dialog before navigating to the emergency flow.
@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../theme';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, GlassStyles } from '../theme';
 
 // ──────────────────────────────────────────────
 // Props
@@ -141,22 +141,31 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   button: {
-    backgroundColor: Colors.emergencyRed,
+    backgroundColor: 'rgba(231, 76, 60, 0.75)',
     borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(231, 76, 60, 0.5)',
     paddingVertical: Spacing.xl,
     paddingHorizontal: Spacing.xxl,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
     overflow: 'hidden',
-    ...Shadows.lg,
+    shadowColor: Colors.emergencyRed,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 10,
   },
   buttonActive: {
-    backgroundColor: Colors.emergencyRedDark,
+    backgroundColor: 'rgba(192, 57, 43, 0.8)',
+    borderColor: 'rgba(192, 57, 43, 0.6)',
   },
   buttonDisabled: {
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: Colors.glass.white,
+    borderColor: Colors.glassBorder.subtle,
     opacity: 0.6,
+    shadowOpacity: 0,
   },
   glowRing: {
     position: 'absolute',

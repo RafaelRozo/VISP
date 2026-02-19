@@ -1,26 +1,29 @@
 /**
- * VISP/Tasker - Profile Screen
+ * VISP - Profile Screen
  *
  * User profile view/edit with avatar upload, name/email/phone display,
  * role badges, provider level display with progress, settings link,
  * and logout button.
+ *
+ * Dark glassmorphism redesign.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { AnimatedSpinner } from '../../components/animations';
 import LevelProgress from '../../components/LevelProgress';
 import {
   LevelProgressInfo,
@@ -107,12 +110,16 @@ const avatarStyles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.20)',
   },
   placeholder: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.4)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.20)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -125,12 +132,12 @@ const avatarStyles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: 'rgba(10, 10, 30, 0.70)',
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderWidth: 2,
-    borderColor: Colors.background,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.20)',
   },
   editBadgeText: {
     fontSize: 11,
@@ -145,8 +152,6 @@ const avatarStyles = StyleSheet.create({
 
 import { useAuthStore } from '../../stores/authStore';
 import { useProviderStore } from '../../stores/providerStore';
-
-// ... (existing imports)
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -171,10 +176,8 @@ export default function ProfileScreen(): React.JSX.Element {
     if (!providerProfile) return INITIAL_LEVEL_PROGRESS;
     const currentLevel = (providerProfile.level ?? 1) as ServiceLevel;
     const nextLevel = Math.min(currentLevel + 1, 4) as ServiceLevel;
-    // Use completedJobs and rating from real dashboard data
     const completedJobs = providerProfile.completedJobs ?? 0;
     const rating = providerProfile.rating ?? 0;
-    // Rough progress estimate based on level thresholds
     const jobThresholds: Record<number, number> = { 1: 25, 2: 50, 3: 100, 4: 999 };
     const threshold = jobThresholds[currentLevel] ?? 25;
     const progressPercent = Math.min(Math.round((completedJobs / threshold) * 100), 100);
@@ -221,10 +224,9 @@ export default function ProfileScreen(): React.JSX.Element {
     if (user) {
       setEditFirstName(user.firstName);
       setEditLastName(user.lastName);
-      // Parse country code from stored phone (e.g. "+526142545794" or "+52 6142545794")
       const rawPhone = user.phone || '';
       const knownCodes = ['+52', '+57', '+54', '+44', '+34', '+1'];
-      let foundCode = '+52'; // default
+      let foundCode = '+52';
       let phoneNumber = rawPhone;
       for (const code of knownCodes) {
         if (rawPhone.startsWith(code)) {
@@ -242,9 +244,11 @@ export default function ProfileScreen(): React.JSX.Element {
 
   if (!user) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
+      <GlassBackground>
+        <View style={styles.centerContent}>
+          <AnimatedSpinner size={48} color={Colors.primary} />
+        </View>
+      </GlassBackground>
     );
   }
 
@@ -266,7 +270,6 @@ export default function ProfileScreen(): React.JSX.Element {
         lastName: editLastName,
         phone: fullPhone,
       });
-      // Update store
       setUser({
         ...user,
         firstName: editFirstName,
@@ -281,7 +284,7 @@ export default function ProfileScreen(): React.JSX.Element {
     }
   }, [editFirstName, editLastName, editPhone, countryCode, user, setUser]);
 
-  // ── Address handlers ──
+  // -- Address handlers --
   const handleAddressSearch = useCallback(async (text: string) => {
     setAddressInput(text);
     if (text.length >= 4) {
@@ -336,7 +339,7 @@ export default function ProfileScreen(): React.JSX.Element {
     }
   }, [user, setUser]);
 
-  // ── Payment handlers ──
+  // -- Payment handlers --
   const fetchPaymentMethods = useCallback(async () => {
     setIsLoadingPayments(true);
     try {
@@ -360,8 +363,6 @@ export default function ProfileScreen(): React.JSX.Element {
         '/users/me/payment-setup-intent',
         {},
       );
-      // For now, show the client secret info — full Stripe SDK integration
-      // requires @stripe/stripe-react-native which needs native setup.
       Alert.alert(
         'Add Payment Method',
         'To add a card, Stripe SDK integration is required.\n\n'
@@ -369,9 +370,6 @@ export default function ProfileScreen(): React.JSX.Element {
         + `Customer ID: ${res.customerId}`,
         [{ text: 'OK' }],
       );
-      // After real Stripe SDK is installed, replace with:
-      // const { error } = await confirmSetupIntent(res.clientSecret, { ... });
-      // if (!error) fetchPaymentMethods();
     } catch {
       Alert.alert('Error', 'Failed to initialize card setup.');
     } finally {
@@ -393,343 +391,338 @@ export default function ProfileScreen(): React.JSX.Element {
   }, [logout]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* Avatar */}
-      <AvatarSection
-        avatarUrl={user.avatarUrl}
-        firstName={user.firstName}
-        lastName={user.lastName}
-        onChangeAvatar={handleChangeAvatar}
-      />
+    <GlassBackground>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Avatar */}
+        <AvatarSection
+          avatarUrl={user.avatarUrl}
+          firstName={user.firstName}
+          lastName={user.lastName}
+          onChangeAvatar={handleChangeAvatar}
+        />
 
-      {/* Name display / edit */}
-      <View style={styles.infoCard}>
-        {isEditing ? (
-          <View>
-            <Text style={styles.fieldLabel}>First Name</Text>
-            <TextInput
-              style={styles.input}
-              value={editFirstName}
-              onChangeText={setEditFirstName}
-              placeholder="First name"
-              placeholderTextColor={Colors.inputPlaceholder}
-              autoCapitalize="words"
-            />
-            <Text style={styles.fieldLabel}>Last Name</Text>
-            <TextInput
-              style={styles.input}
-              value={editLastName}
-              onChangeText={setEditLastName}
-              placeholder="Last name"
-              placeholderTextColor={Colors.inputPlaceholder}
-              autoCapitalize="words"
-            />
-            <Text style={styles.fieldLabel}>Phone</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: Colors.inputBackground,
-                  borderWidth: 1,
-                  borderColor: Colors.inputBorder,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  justifyContent: 'center',
-                  minWidth: 90,
-                }}
-                onPress={() => {
-                  const codes = [
-                    { label: '🇲🇽 +52', value: '+52' },
-                    { label: '🇺🇸 +1', value: '+1' },
-                    { label: '🇨🇦 +1', value: '+1' },
-                    { label: '🇬🇧 +44', value: '+44' },
-                    { label: '🇪🇸 +34', value: '+34' },
-                    { label: '🇨🇴 +57', value: '+57' },
-                    { label: '🇦🇷 +54', value: '+54' },
-                  ];
-                  Alert.alert('Select Country Code', '', codes.map(c => ({
-                    text: c.label,
-                    onPress: () => setCountryCode(c.value),
-                  })));
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Select country code"
-              >
-                <Text style={{ fontSize: 15, color: Colors.textPrimary, fontWeight: '500' }}>
-                  {countryCode}
-                </Text>
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.input, { flex: 1, marginTop: 0 }]}
-                value={editPhone}
-                onChangeText={setEditPhone}
-                placeholder="Phone number"
-                placeholderTextColor={Colors.inputPlaceholder}
-                keyboardType="phone-pad"
+        {/* Name display / edit */}
+        <GlassCard variant="standard" style={styles.glassCardMargin}>
+          {isEditing ? (
+            <View>
+              <GlassInput
+                label="First Name"
+                value={editFirstName}
+                onChangeText={setEditFirstName}
+                placeholder="First name"
+                autoCapitalize="words"
+                containerStyle={{ marginBottom: 12 }}
               />
-            </View>
-            <View style={styles.editActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setIsEditing(false);
-                  setEditFirstName(user.firstName);
-                  setEditLastName(user.lastName);
-                  setEditPhone(user.phone || '');
-                }}
-                accessibilityRole="button"
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.saveButton,
-                  isSaving && styles.buttonDisabled,
-                ]}
-                onPress={handleSaveProfile}
-                disabled={isSaving}
-                accessibilityRole="button"
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View>
-            <View style={styles.nameRow}>
-              <Text style={styles.userName}>
-                {user.firstName} {user.lastName}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setIsEditing(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Edit name"
-              >
-                <Text style={styles.editLink}>Edit</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Role badges */}
-            <View style={styles.roleBadgesRow}>
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>
-                  {ROLE_LABELS[user.role]}
-                </Text>
-              </View>
-              {user.isVerified && (
-                <View
-                  style={[
-                    styles.roleBadge,
-                    { backgroundColor: `${Colors.success}20` },
-                  ]}
+              <GlassInput
+                label="Last Name"
+                value={editLastName}
+                onChangeText={setEditLastName}
+                placeholder="Last name"
+                autoCapitalize="words"
+                containerStyle={{ marginBottom: 12 }}
+              />
+              <Text style={styles.fieldLabel}>Phone</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={styles.countryCodeButton}
+                  onPress={() => {
+                    const codes = [
+                      { label: '+52 MX', value: '+52' },
+                      { label: '+1 US', value: '+1' },
+                      { label: '+1 CA', value: '+1' },
+                      { label: '+44 UK', value: '+44' },
+                      { label: '+34 ES', value: '+34' },
+                      { label: '+57 CO', value: '+57' },
+                      { label: '+54 AR', value: '+54' },
+                    ];
+                    Alert.alert('Select Country Code', '', codes.map(c => ({
+                      text: c.label,
+                      onPress: () => setCountryCode(c.value),
+                    })));
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select country code"
                 >
-                  <Text
+                  <Text style={styles.countryCodeText}>
+                    {countryCode}
+                  </Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <GlassInput
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    placeholder="Phone number"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+              </View>
+              <View style={styles.editActions}>
+                <GlassButton
+                  title="Cancel"
+                  variant="outline"
+                  onPress={() => {
+                    setIsEditing(false);
+                    setEditFirstName(user.firstName);
+                    setEditLastName(user.lastName);
+                    setEditPhone(user.phone || '');
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <GlassButton
+                  title="Save"
+                  variant="glow"
+                  onPress={handleSaveProfile}
+                  disabled={isSaving}
+                  loading={isSaving}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </View>
+          ) : (
+            <View>
+              <View style={styles.nameRow}>
+                <Text style={styles.userName}>
+                  {user.firstName} {user.lastName}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setIsEditing(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit name"
+                >
+                  <Text style={styles.editLink}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Role badges */}
+              <View style={styles.roleBadgesRow}>
+                <View style={[GlassStyles.badge]}>
+                  <Text style={styles.roleBadgeText}>
+                    {ROLE_LABELS[user.role]}
+                  </Text>
+                </View>
+                {user.isVerified && (
+                  <View
                     style={[
-                      styles.roleBadgeText,
-                      { color: Colors.success },
+                      GlassStyles.badge,
+                      { backgroundColor: `${Colors.success}20`, borderColor: `${Colors.success}40` },
                     ]}
                   >
-                    Verified
-                  </Text>
+                    <Text
+                      style={[
+                        styles.roleBadgeText,
+                        { color: Colors.success },
+                      ]}
+                    >
+                      Verified
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+        </GlassCard>
+
+        {/* Contact info */}
+        <GlassCard variant="standard" style={styles.glassCardMargin}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Email</Text>
+            <Text style={styles.infoValue}>{user.email}</Text>
+          </View>
+          <View style={styles.glassDivider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Phone</Text>
+            <Text style={styles.infoValue}>
+              {user.phone ?? 'Not provided'}
+            </Text>
+          </View>
+          <View style={styles.glassDivider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Member Since</Text>
+            <Text style={styles.infoValue}>
+              {new Date(user.createdAt).toLocaleDateString([], {
+                year: 'numeric',
+                month: 'long',
+              })}
+            </Text>
+          </View>
+        </GlassCard>
+
+        {/* Saved Address */}
+        <GlassCard variant="standard" style={styles.glassCardMargin}>
+          <View style={styles.nameRow}>
+            <Text style={styles.sectionLabel}>Saved Address</Text>
+            <TouchableOpacity
+              onPress={() => setIsEditingAddress(!isEditingAddress)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.editLink}>
+                {user.defaultAddress ? 'Change' : 'Add'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {user.defaultAddress ? (
+            <View style={{ marginTop: 8 }}>
+              <Text style={[styles.infoValue, { marginBottom: 2 }]}>
+                {user.defaultAddress.formattedAddress || user.defaultAddress.street}
+              </Text>
+              <Text style={styles.infoLabel}>
+                {user.defaultAddress.city}{user.defaultAddress.province ? `, ${user.defaultAddress.province}` : ''}
+                {user.defaultAddress.postalCode ? ` ${user.defaultAddress.postalCode}` : ''}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.infoLabel, { marginTop: 8 }]}>No address saved</Text>
+          )}
+
+          {isEditingAddress && (
+            <View style={{ marginTop: 12 }}>
+              <GlassInput
+                value={addressInput}
+                onChangeText={handleAddressSearch}
+                placeholder="Search your address..."
+                autoCapitalize="words"
+                returnKeyType="search"
+              />
+              {isSavingAddress && (
+                <AnimatedSpinner size={24} color={Colors.primary} style={{ marginTop: 8, alignSelf: 'center' }} />
+              )}
+              {addressSuggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {addressSuggestions.map((s, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      style={[
+                        styles.suggestionItem,
+                        i < addressSuggestions.length - 1 && styles.suggestionBorder,
+                      ]}
+                      onPress={() => handleSelectAddress(s)}
+                    >
+                      <Text style={[styles.infoValue, { fontSize: 14 }]}>{s.formattedAddress}</Text>
+                      <Text style={[styles.infoLabel, { fontSize: 12, marginTop: 2 }]}>
+                        {s.city}, {s.province} {s.postalCode}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               )}
             </View>
+          )}
+        </GlassCard>
+
+        {/* Payment Methods */}
+        <GlassCard variant="standard" style={styles.glassCardMargin}>
+          <View style={styles.nameRow}>
+            <Text style={styles.sectionLabel}>Payment Method</Text>
+            <TouchableOpacity
+              onPress={handleAddCard}
+              disabled={isAddingCard}
+              accessibilityRole="button"
+            >
+              <Text style={styles.editLink}>
+                {isAddingCard ? 'Adding...' : 'Add Card'}
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
-      </View>
 
-      {/* Contact info */}
-      <View style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Email</Text>
-          <Text style={styles.infoValue}>{user.email}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Phone</Text>
-          <Text style={styles.infoValue}>
-            {user.phone ?? 'Not provided'}
-          </Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Member Since</Text>
-          <Text style={styles.infoValue}>
-            {new Date(user.createdAt).toLocaleDateString([], {
-              year: 'numeric',
-              month: 'long',
-            })}
-          </Text>
-        </View>
-      </View>
-
-      {/* Saved Address */}
-      <View style={styles.infoCard}>
-        <View style={styles.nameRow}>
-          <Text style={[styles.infoLabel, { fontWeight: '600', fontSize: 15 }]}>📍 Saved Address</Text>
-          <TouchableOpacity
-            onPress={() => setIsEditingAddress(!isEditingAddress)}
-            accessibilityRole="button"
-          >
-            <Text style={styles.editLink}>
-              {user.defaultAddress ? 'Change' : 'Add'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {user.defaultAddress ? (
-          <View style={{ marginTop: 8 }}>
-            <Text style={[styles.infoValue, { marginBottom: 2 }]}>
-              {user.defaultAddress.formattedAddress || user.defaultAddress.street}
-            </Text>
-            <Text style={styles.infoLabel}>
-              {user.defaultAddress.city}{user.defaultAddress.province ? `, ${user.defaultAddress.province}` : ''}
-              {user.defaultAddress.postalCode ? ` ${user.defaultAddress.postalCode}` : ''}
-            </Text>
-          </View>
-        ) : (
-          <Text style={[styles.infoLabel, { marginTop: 8 }]}>No address saved</Text>
-        )}
-
-        {isEditingAddress && (
-          <View style={{ marginTop: 12 }}>
-            <TextInput
-              style={styles.input}
-              value={addressInput}
-              onChangeText={handleAddressSearch}
-              placeholder="Search your address..."
-              placeholderTextColor={Colors.inputPlaceholder}
-              autoCapitalize="words"
-              returnKeyType="search"
-            />
-            {isSavingAddress && (
-              <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 8 }} />
-            )}
-            {addressSuggestions.length > 0 && (
-              <View style={{ marginTop: 8, backgroundColor: Colors.surface, borderRadius: 8, borderWidth: 1, borderColor: Colors.border }}>
-                {addressSuggestions.map((s, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={{ padding: 12, borderBottomWidth: i < addressSuggestions.length - 1 ? 1 : 0, borderBottomColor: Colors.border }}
-                    onPress={() => handleSelectAddress(s)}
-                  >
-                    <Text style={[styles.infoValue, { fontSize: 14 }]}>{s.formattedAddress}</Text>
-                    <Text style={[styles.infoLabel, { fontSize: 12, marginTop: 2 }]}>
-                      {s.city}, {s.province} {s.postalCode}
+          {isLoadingPayments ? (
+            <AnimatedSpinner size={24} color={Colors.primary} style={{ marginTop: 12, alignSelf: 'center' }} />
+          ) : paymentMethods.length > 0 ? (
+            <View style={{ marginTop: 8 }}>
+              {paymentMethods.map((pm) => (
+                <View key={pm.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                  <View style={styles.cardIconContainer}>
+                    <Text style={styles.cardIconText}>$</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoValue}>
+                      {pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1)} **** {pm.last4}
                     </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-
-      {/* Payment Methods */}
-      <View style={styles.infoCard}>
-        <View style={styles.nameRow}>
-          <Text style={[styles.infoLabel, { fontWeight: '600', fontSize: 15 }]}>💳 Payment Method</Text>
-          <TouchableOpacity
-            onPress={handleAddCard}
-            disabled={isAddingCard}
-            accessibilityRole="button"
-          >
-            <Text style={styles.editLink}>
-              {isAddingCard ? 'Adding...' : 'Add Card'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {isLoadingPayments ? (
-          <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 12 }} />
-        ) : paymentMethods.length > 0 ? (
-          <View style={{ marginTop: 8 }}>
-            {paymentMethods.map((pm) => (
-              <View key={pm.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-                <Text style={{ fontSize: 20, marginRight: 10 }}>
-                  {pm.brand === 'visa' ? '💳' : pm.brand === 'mastercard' ? '💳' : '💳'}
-                </Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.infoValue}>
-                    {pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1)} •••• {pm.last4}
-                  </Text>
-                  <Text style={[styles.infoLabel, { fontSize: 12 }]}>
-                    Expires {pm.expMonth}/{pm.expYear}
-                  </Text>
+                    <Text style={[styles.infoLabel, { fontSize: 12 }]}>
+                      Expires {pm.expMonth}/{pm.expYear}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={[styles.infoLabel, { marginTop: 8 }]}>No payment method saved</Text>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.infoLabel, { marginTop: 8 }]}>No payment method saved</Text>
+          )}
+        </GlassCard>
+
+        {/* Provider level progress */}
+        {isProvider && providerProfile && (
+          <LevelProgress progressInfo={levelProgress} />
         )}
-      </View>
 
-      {/* Provider level progress */}
-      {isProvider && providerProfile && (
-        <LevelProgress progressInfo={levelProgress} />
-      )}
+        {/* Navigation links - provider */}
+        {isProvider && (
+          <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => navigation.navigate('ProviderOnboarding')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.linkText}>My Services</Text>
+              <Text style={styles.linkArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+            <View style={styles.glassDivider} />
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => navigation.navigate('Credentials')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.linkText}>Credentials & Documents</Text>
+              <Text style={styles.linkArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+            <View style={styles.glassDivider} />
+            <TouchableOpacity
+              style={styles.linkRow}
+              onPress={() => navigation.navigate('Verification')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.linkText}>Verification Status</Text>
+              <Text style={styles.linkArrow}>{'\u203A'}</Text>
+            </TouchableOpacity>
+          </GlassCard>
+        )}
 
-      {/* Navigation links */}
-      {isProvider && (
-        <View style={styles.linksCard}>
+        {/* Navigation links - common */}
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <TouchableOpacity
             style={styles.linkRow}
-            onPress={() => navigation.navigate('ProviderOnboarding')}
+            onPress={() => navigation.navigate('PaymentMethods')}
             accessibilityRole="button"
           >
-            <Text style={styles.linkText}>My Services</Text>
+            <Text style={styles.linkText}>Payment Methods</Text>
             <Text style={styles.linkArrow}>{'\u203A'}</Text>
           </TouchableOpacity>
-          <View style={styles.divider} />
+          <View style={styles.glassDivider} />
           <TouchableOpacity
             style={styles.linkRow}
-            onPress={() => navigation.navigate('Credentials')}
+            onPress={() => navigation.navigate('Settings')}
             accessibilityRole="button"
           >
-            <Text style={styles.linkText}>Credentials & Documents</Text>
+            <Text style={styles.linkText}>Settings</Text>
             <Text style={styles.linkArrow}>{'\u203A'}</Text>
           </TouchableOpacity>
-          <View style={styles.divider} />
-          <TouchableOpacity
-            style={styles.linkRow}
-            onPress={() => navigation.navigate('Verification')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.linkText}>Verification Status</Text>
-            <Text style={styles.linkArrow}>{'\u203A'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        </GlassCard>
 
-      <View style={styles.linksCard}>
-        <TouchableOpacity
-          style={styles.linkRow}
-          onPress={() => navigation.navigate('Settings')}
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkText}>Settings</Text>
-          <Text style={styles.linkArrow}>{'\u203A'}</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Logout */}
+        <GlassButton
+          title="Logout"
+          variant="outline"
+          onPress={handleLogout}
+          style={styles.logoutButton}
+        />
 
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={handleLogout}
-        accessibilityRole="button"
-      >
-        <Text style={styles.logoutButtonText}>Logout</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.versionText}>v1.0.0 (Build 42)</Text>
-    </ScrollView>
+        <Text style={styles.versionText}>v1.0.0 (Build 42)</Text>
+      </ScrollView>
+    </GlassBackground>
   );
 }
 
@@ -738,21 +731,19 @@ export default function ProfileScreen(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   contentContainer: {
     paddingTop: 24,
+    paddingBottom: 32,
   },
   centerContent: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  infoCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
+  glassCardMargin: {
     marginHorizontal: 16,
     marginBottom: 12,
   },
@@ -776,16 +767,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  roleBadge: {
-    backgroundColor: `${Colors.primary}20`,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
   roleBadgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.primary,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   infoRow: {
     flexDirection: 'row',
@@ -795,73 +780,80 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   infoValue: {
     fontSize: 14,
     fontWeight: '500',
     color: Colors.textPrimary,
   },
-  divider: {
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  glassDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     marginVertical: 8,
   },
   fieldLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: 6,
-    marginTop: 8,
+    marginTop: 4,
   },
-  input: {
-    backgroundColor: Colors.inputBackground,
+  countryCodeButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    borderRadius: 8,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 14,
+    justifyContent: 'center',
+    minWidth: 90,
+  },
+  countryCodeText: {
     fontSize: 15,
-    color: Colors.inputText,
+    color: Colors.textPrimary,
+    fontWeight: '500',
   },
   editActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     gap: 10,
     marginTop: 16,
   },
-  cancelButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  saveButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  linksCard: {
-    backgroundColor: Colors.surface,
+  suggestionsContainer: {
+    marginTop: 8,
+    backgroundColor: 'rgba(10, 10, 30, 0.55)',
     borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
+  },
+  suggestionItem: {
+    padding: 12,
+  },
+  suggestionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  cardIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(120, 80, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cardIconText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   linkRow: {
     flexDirection: 'row',
@@ -876,27 +868,17 @@ const styles = StyleSheet.create({
   },
   linkArrow: {
     fontSize: 22,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.35)',
   },
   logoutButton: {
     marginHorizontal: 16,
     marginBottom: 24,
-    paddingVertical: 16,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.error,
-    alignItems: 'center',
-  },
-  logoutButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.error,
+    borderColor: 'rgba(231, 76, 60, 0.5)',
   },
   versionText: {
     textAlign: 'center',
     fontSize: 12,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.25)',
     marginBottom: 32,
   },
 });

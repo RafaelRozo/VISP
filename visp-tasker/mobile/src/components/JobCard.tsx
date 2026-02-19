@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - JobCard Component
+ * VISP - JobCard Component
  *
  * Reusable card for provider views showing task name, customer area,
  * distance, price, time, and status indicator.
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Colors, getLevelColor, getStatusColor } from '../theme/colors';
+import { GlassStyles } from '../theme/glass';
 import { JobStatus, ServiceLevel } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -171,16 +172,10 @@ function JobCard({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    ...GlassStyles.card,
     marginHorizontal: 16,
     marginVertical: 6,
     overflow: 'hidden',
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   levelStrip: {
     width: 4,
@@ -213,6 +208,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   statusText: {
     fontSize: 11,

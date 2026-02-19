@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Auth Zustand Store
+ * VISP - Auth Zustand Store
  *
  * Global authentication state: user session, tokens, loading flags.
  * Hydrates from secure keychain on app launch via loadStoredAuth().

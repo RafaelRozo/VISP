@@ -1,5 +1,5 @@
 """
-Authentication service for the VISP/Tasker platform.
+Authentication service for the VISP platform.
 
 Handles user registration, login, JWT token management, and password
 reset flows. Uses bcrypt for password hashing and PyJWT for token
