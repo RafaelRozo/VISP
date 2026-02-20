@@ -275,7 +275,27 @@ function TaskSelectionScreen(): React.JSX.Element {
 
   // Navigate to Booking confirmation screen with task summary + booking details
   const handleConfirmBooking = useCallback(() => {
-    if (!address) {
+    if (!taskDetail) return;
+
+    // Build address from text input if user typed but didn't tap a suggestion
+    let resolvedAddress = address;
+    if (!resolvedAddress && addressInput.trim().length > 0) {
+      resolvedAddress = {
+        placeId: 'manual-entry',
+        formattedAddress: addressInput.trim(),
+        latitude: 0,
+        longitude: 0,
+        streetNumber: '',
+        street: addressInput.trim(),
+        city: '',
+        province: '',
+        postalCode: '',
+        country: 'CA',
+      };
+      setAddress(resolvedAddress);
+    }
+
+    if (!resolvedAddress) {
       Alert.alert('Address Required', 'Please enter your service address.');
       return;
     }
@@ -284,11 +304,9 @@ function TaskSelectionScreen(): React.JSX.Element {
       return;
     }
     if (!scheduledTimeSlot && !isFlexibleSchedule) {
-      Alert.alert('Time Required', 'Please select a time slot or enable flexible scheduling.');
+      Alert.alert('Time Slot Required', 'Please select a time slot or toggle "Flexible Schedule" on.');
       return;
     }
-
-    if (!taskDetail) return;
 
     navigation.navigate('Booking', {
       task: {
@@ -302,7 +320,7 @@ function TaskSelectionScreen(): React.JSX.Element {
         estimatedPrice: estimatedPrice,
         description: taskDetail.description,
         // Pass booking details for confirmation screen
-        address: address,
+        address: resolvedAddress,
         scheduledDate: scheduledDate,
         scheduledTimeSlot: scheduledTimeSlot,
         isFlexibleSchedule: isFlexibleSchedule,
@@ -312,6 +330,7 @@ function TaskSelectionScreen(): React.JSX.Element {
     });
   }, [
     address,
+    addressInput,
     scheduledDate,
     scheduledTimeSlot,
     isFlexibleSchedule,
@@ -320,14 +339,8 @@ function TaskSelectionScreen(): React.JSX.Element {
     navigation,
     priority,
     selectedNotes,
+    setAddress,
   ]);
-
-  // Check if form is complete
-  const isFormValid = useMemo(() => {
-    const hasAddress = address !== null;
-    const hasSchedule = isFlexibleSchedule || (scheduledDate !== '' && scheduledTimeSlot !== '');
-    return hasAddress && hasSchedule;
-  }, [address, isFlexibleSchedule, scheduledDate, scheduledTimeSlot]);
 
   // Loading
   if (isLoadingDetail || !taskDetail) {
@@ -709,7 +722,6 @@ function TaskSelectionScreen(): React.JSX.Element {
             title="Continue"
             variant="glow"
             onPress={handleConfirmBooking}
-            disabled={!isFormValid}
             style={styles.confirmButtonStyle}
           />
         </View>

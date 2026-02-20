@@ -292,18 +292,13 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
         role: selectedRole,
         acceptedTermsVersion: Config.termsVersion,
       });
-      if (selectedRole === 'provider' || selectedRole === 'both') {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Auth', params: { screen: 'ProviderOnboarding' } }],
-        });
-      }
       // On success, the auth store sets isAuthenticated = true,
       // and the navigator will redirect to the appropriate home screen.
+      // Providers land on the Dashboard which shows a setup prompt.
     } catch {
       // Error is displayed by the store
     }
-  }, [email, password, phone, selectedCountry, firstName, lastName, selectedRole, acceptedTerms, register, navigation]);
+  }, [email, password, phone, selectedCountry, firstName, lastName, selectedRole, acceptedTerms, register]);
 
   // ── Legal Links ──────────────────────────
 

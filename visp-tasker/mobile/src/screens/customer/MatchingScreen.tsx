@@ -1,18 +1,16 @@
 /**
  * VISP - MatchingScreen (Glass Redesign)
  *
- * Animated "Finding your provider..." screen.
+ * Immediate "Job Posted" success flow.
  * Features:
- *   - Pulsing search animation in glass panel
- *   - Status text updates during search
- *   - Cancel button
- *   - For MVP: simulates matching with a 3-second timer
- *   - On match: transitions to JobTrackingScreen
+ *   - Brief "Posting your job..." animation (1-2 seconds) with PulseRing
+ *   - Transitions to "Job Posted!" success state with AnimatedCheckmark
+ *   - "View My Jobs" and "Back to Home" navigation buttons
+ *   - Glass design with existing visual style
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Easing,
   StyleSheet,
@@ -26,7 +24,6 @@ import { PulseRing, AnimatedCheckmark } from '../../components/animations';
 import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { taskService } from '../../services/taskService';
 import type { CustomerFlowParamList } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -36,27 +33,13 @@ import type { CustomerFlowParamList } from '../../types';
 type MatchingRouteProp = RouteProp<CustomerFlowParamList, 'Matching'>;
 type MatchingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'Matching'>;
 
-type SearchPhase = 'searching' | 'found' | 'assigning' | 'confirmed' | 'timeout';
+type PostPhase = 'posting' | 'posted';
 
 // ──────────────────────────────────────────────
 // Constants
 // ──────────────────────────────────────────────
 
-const STATUS_MESSAGES: Record<SearchPhase, string> = {
-  searching: 'Finding available providers near you...',
-  found: 'Provider found! Confirming availability...',
-  assigning: 'Assigning your provider...',
-  confirmed: 'Your provider has been assigned!',
-  timeout: 'No providers available right now.',
-};
-
-const POLLING_INTERVAL_MS = 5000;
-const SEARCH_TIMEOUT_MS = 120_000; // 2 minutes
-
-// Status values that mean a provider has been matched
-const MATCHED_STATUSES = [
-  'matched', 'provider_accepted', 'provider_en_route', 'arrived', 'in_progress', 'completed',
-];
+const POSTING_DURATION_MS = 1800;
 
 // ──────────────────────────────────────────────
 // Component
@@ -67,23 +50,23 @@ function MatchingScreen(): React.JSX.Element {
   const navigation = useNavigation<MatchingNavProp>();
   const { jobId, taskName } = route.params;
 
-  const [phase, setPhase] = useState<SearchPhase>('searching');
-  const [isCancelled, setIsCancelled] = useState(false);
+  const [phase, setPhase] = useState<PostPhase>('posting');
 
   // Animation values
   const dotScale = useRef(new Animated.Value(1)).current;
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const contentOpacity = useRef(new Animated.Value(0)).current;
 
-  // Hide the header back button during matching
+  // Hide the header back button
   useEffect(() => {
     navigation.setOptions({
       headerShown: false,
     });
   }, [navigation]);
 
-  // Center dot pulse animation
+  // Center dot pulse animation (only during posting phase)
   useEffect(() => {
+    if (phase !== 'posting') return;
+
     const dotAnim = Animated.loop(
       Animated.sequence([
         Animated.timing(dotScale, {
@@ -106,105 +89,52 @@ function MatchingScreen(): React.JSX.Element {
     return () => {
       dotAnim.stop();
     };
-  }, [dotScale]);
+  }, [dotScale, phase]);
 
-  // Real backend polling for provider match
+  // Transition from posting to posted after a brief delay
   useEffect(() => {
-    if (isCancelled || phase === 'confirmed' || phase === 'timeout') return;
+    const timer = setTimeout(() => {
+      setPhase('posted');
 
-    async function pollTracking() {
-      try {
-        const data = await taskService.getJobTracking(jobId);
-        const st = data.status;
+      // Fade in the success content
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }, POSTING_DURATION_MS);
 
-        if (MATCHED_STATUSES.includes(st)) {
-          // Provider found!
-          setPhase('found');
+    return () => clearTimeout(timer);
+  }, [contentOpacity]);
 
-          // Brief delay then navigate to tracking
-          setTimeout(() => {
-            setPhase('confirmed');
-            setTimeout(() => {
-              if (!isCancelled) {
-                navigation.navigate('JobTracking', { jobId });
-              }
-            }, 1500);
-          }, 1500);
+  // Navigation handlers
+  const handleViewMyJobs = () => {
+    navigation.navigate('MyJobs' as any);
+  };
 
-          // Stop polling & timeout
-          if (pollingRef.current) clearInterval(pollingRef.current);
-          if (timeoutRef.current) clearTimeout(timeoutRef.current);
-          return;
-        }
-      } catch (err) {
-        console.warn('[Matching] Polling error:', err);
-      }
+  const handleBackToHome = () => {
+    const rootNav = navigation.getParent();
+    if (rootNav) {
+      rootNav.reset({
+        index: 0,
+        routes: [{ name: 'CustomerHome' as any }],
+      });
+    } else {
+      navigation.goBack();
     }
+  };
 
-    pollTracking();
-    pollingRef.current = setInterval(pollTracking, POLLING_INTERVAL_MS);
-
-    // 2-minute timeout
-    timeoutRef.current = setTimeout(() => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      setPhase('timeout');
-
-      Alert.alert(
-        'No Providers Available',
-        'We couldn\'t find a provider in your area right now. Your job request has been saved — you\'ll be notified when a provider becomes available.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Navigate to CustomerHome in root stack
-              const rootNav = navigation.getParent();
-              if (rootNav) {
-                rootNav.reset({
-                  index: 0,
-                  routes: [{ name: 'CustomerHome' as any }],
-                });
-              } else {
-                navigation.goBack();
-              }
-            },
-          },
-        ],
-      );
-    }, SEARCH_TIMEOUT_MS);
-
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [isCancelled, jobId, navigation, phase]);
-
-  // Cancel handler
-  const handleCancel = useCallback(() => {
-    Alert.alert(
-      'Cancel Booking',
-      'Are you sure you want to cancel this booking request?',
-      [
-        { text: 'Keep Searching', style: 'cancel' },
-        {
-          text: 'Cancel Booking',
-          style: 'destructive',
-          onPress: () => {
-            setIsCancelled(true);
-            navigation.goBack();
-          },
-        },
-      ],
-    );
-  }, [navigation]);
-
-  const isCompleted = phase === 'confirmed';
+  const isPosted = phase === 'posted';
 
   return (
     <GlassBackground>
       <View style={styles.container}>
         {/* Top section: task name */}
         <View style={styles.topSection}>
-          <Text style={styles.taskLabel}>Booking</Text>
+          <Text style={styles.taskLabel}>
+            {isPosted ? 'Job Posted' : 'Booking'}
+          </Text>
           <Text style={styles.taskName}>{taskName}</Text>
         </View>
 
@@ -212,8 +142,8 @@ function MatchingScreen(): React.JSX.Element {
         <View style={styles.animationContainer}>
           <GlassCard variant="dark" padding={Spacing.xxl} style={styles.glassAnimPanel}>
             <View style={styles.pulseContainer}>
-              {/* SVG PulseRing animation replaces manual Animated.View rings */}
-              {!isCompleted && (
+              {/* PulseRing animation during posting phase */}
+              {!isPosted && (
                 <PulseRing
                   size={220}
                   color="#7850FF"
@@ -224,16 +154,16 @@ function MatchingScreen(): React.JSX.Element {
                 />
               )}
 
-              {/* AnimatedCheckmark for confirmed state */}
-              {isCompleted && (
+              {/* AnimatedCheckmark for posted state */}
+              {isPosted && (
                 <AnimatedCheckmark
                   size={100}
                   color={Colors.success}
                 />
               )}
 
-              {/* Overlay center dot with text label when searching */}
-              {!isCompleted && (
+              {/* Overlay center dot with text label when posting */}
+              {!isPosted && (
                 <Animated.View
                   style={[
                     styles.centerDot,
@@ -248,39 +178,58 @@ function MatchingScreen(): React.JSX.Element {
           </GlassCard>
 
           {/* Status text */}
-          <Text style={styles.statusText}>{STATUS_MESSAGES[phase]}</Text>
+          <Text style={styles.statusText}>
+            {isPosted
+              ? 'Job Posted!'
+              : 'Posting your job...'}
+          </Text>
+
+          {/* Success message and buttons */}
+          {isPosted && (
+            <Animated.View style={[styles.successContent, { opacity: contentOpacity }]}>
+              <Text style={styles.successMessage}>
+                Your job request has been posted! You'll be notified when Vispers apply
+                to your job. Check your jobs list for updates.
+              </Text>
+
+              <View style={styles.buttonGroup}>
+                <GlassButton
+                  title="View My Jobs"
+                  variant="glow"
+                  onPress={handleViewMyJobs}
+                  style={styles.primaryButton}
+                />
+
+                <GlassButton
+                  title="Back to Home"
+                  variant="outline"
+                  onPress={handleBackToHome}
+                  style={styles.secondaryButton}
+                />
+              </View>
+            </Animated.View>
+          )}
 
           {/* Phase indicator dots */}
           <View style={styles.phaseDotsContainer}>
-            {(['searching', 'found', 'confirmed'] as SearchPhase[]).map((p, index) => {
-              const phaseOrder: SearchPhase[] = ['searching', 'found', 'confirmed'];
-              const currentIdx = phaseOrder.indexOf(phase);
-              const isActive = currentIdx >= index;
-              return (
-                <View
-                  key={p}
-                  style={[
-                    styles.phaseDot,
-                    isActive && styles.phaseDotActive,
-                    p === 'confirmed' && isActive && styles.phaseDotConfirmed,
-                  ]}
-                />
-              );
-            })}
+            <View
+              style={[
+                styles.phaseDot,
+                styles.phaseDotActive,
+              ]}
+            />
+            <View
+              style={[
+                styles.phaseDot,
+                isPosted && styles.phaseDotActive,
+                isPosted && styles.phaseDotConfirmed,
+              ]}
+            />
           </View>
         </View>
 
-        {/* Bottom section: cancel */}
+        {/* Bottom section */}
         <View style={styles.bottomSection}>
-          {!isCompleted && (
-            <GlassButton
-              title="Cancel"
-              variant="outline"
-              onPress={handleCancel}
-              style={styles.cancelButtonStyle}
-            />
-          )}
-
           <Text style={styles.footerText}>
             VISP acts as a platform intermediary only.
             {'\n'}Providers are independent service professionals.
@@ -375,15 +324,35 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success,
   },
 
+  // Success content
+  successContent: {
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xxl,
+    marginBottom: Spacing.xl,
+  },
+  successMessage: {
+    ...Typography.body,
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: Spacing.xxl,
+  },
+  buttonGroup: {
+    width: '100%',
+    gap: Spacing.md,
+  },
+  primaryButton: {
+    width: '100%',
+  },
+  secondaryButton: {
+    width: '100%',
+  },
+
   // Bottom
   bottomSection: {
     alignItems: 'center',
     paddingBottom: Spacing.huge,
     paddingHorizontal: Spacing.xxl,
-  },
-  cancelButtonStyle: {
-    paddingHorizontal: Spacing.xxxl,
-    marginBottom: Spacing.xl,
   },
   footerText: {
     ...Typography.caption,

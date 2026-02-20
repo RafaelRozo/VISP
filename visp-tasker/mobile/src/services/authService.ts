@@ -92,6 +92,21 @@ async function clearSecureStorage(): Promise<void> {
 }
 
 // ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+
+/**
+ * Ensure tokens.expiresAt is a numeric timestamp (ms).
+ * The backend returns an ISO datetime string; convert it if needed.
+ */
+function normalizeTokens(tokens: AuthTokens): AuthTokens {
+  if (typeof tokens.expiresAt === 'string') {
+    return { ...tokens, expiresAt: new Date(tokens.expiresAt as unknown as string).getTime() };
+  }
+  return tokens;
+}
+
+// ──────────────────────────────────────────────
 // Auth API Methods
 // ──────────────────────────────────────────────
 
@@ -100,6 +115,7 @@ async function clearSecureStorage(): Promise<void> {
  */
 async function login(credentials: LoginCredentials): Promise<AuthResponse> {
   const response = await post<AuthResponse>('/auth/login', credentials);
+  response.tokens = normalizeTokens(response.tokens);
   await storeTokensSecurely(response.tokens);
   await storeUserSecurely(response.user);
   return response;
@@ -114,6 +130,7 @@ async function register(data: RegisterData): Promise<AuthResponse> {
     termsVersion: Config.termsVersion,
     privacyVersion: Config.privacyVersion,
   });
+  response.tokens = normalizeTokens(response.tokens);
   await storeTokensSecurely(response.tokens);
   await storeUserSecurely(response.user);
   return response;
@@ -127,6 +144,7 @@ async function loginWithApple(identityToken: string): Promise<AuthResponse> {
   const response = await post<AuthResponse>('/auth/apple', {
     identityToken,
   });
+  response.tokens = normalizeTokens(response.tokens);
   await storeTokensSecurely(response.tokens);
   await storeUserSecurely(response.user);
   return response;
@@ -140,6 +158,7 @@ async function loginWithGoogle(serverAuthCode: string): Promise<AuthResponse> {
   const response = await post<AuthResponse>('/auth/google', {
     serverAuthCode,
   });
+  response.tokens = normalizeTokens(response.tokens);
   await storeTokensSecurely(response.tokens);
   await storeUserSecurely(response.user);
   return response;
@@ -162,6 +181,7 @@ async function loginWithPhone(
     phone,
     otpCode,
   });
+  response.tokens = normalizeTokens(response.tokens);
   await storeTokensSecurely(response.tokens);
   await storeUserSecurely(response.user);
   return response;
@@ -188,7 +208,7 @@ async function refreshToken(): Promise<AuthTokens> {
     { refreshToken: tokens.refreshToken },
   );
 
-  const newTokens = response.data.data.tokens;
+  const newTokens = normalizeTokens(response.data.data.tokens);
   await storeTokensSecurely(newTokens);
   return newTokens;
 }

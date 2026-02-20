@@ -369,7 +369,7 @@ export default function DashboardScreen(): React.JSX.Element {
         <GlassButton
           title="Select My Services"
           variant="glow"
-          onPress={() => navigation.navigate('ProviderOnboarding' as any)}
+          onPress={() => navigation.navigate('ProviderProfile' as any, { screen: 'ProviderOnboarding' })}
         />
       </GlassCard>
     );
