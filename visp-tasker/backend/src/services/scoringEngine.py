@@ -1,5 +1,5 @@
 """
-Provider Scoring & Penalties Engine for VISP/Tasker -- VISP-BE-SCORING-005.
+Provider Scoring & Penalties Engine for VISP -- VISP-BE-SCORING-005.
 
 Manages the internal reputation score for every provider.  The score directly
 influences matching priority, visibility, and continued platform access.

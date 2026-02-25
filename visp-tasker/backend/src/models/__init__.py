@@ -1,5 +1,5 @@
 """
-VISP/Tasker SQLAlchemy Models
+VISP SQLAlchemy Models
 =============================
 
 Central import point for all ORM models. Import ``Base`` from here for
@@ -62,6 +62,12 @@ from .pricing import (
     PricingRule,
     PricingRuleType,
 )
+
+# -- 011: Price Proposals --
+from .price_proposal import PriceProposal
+
+# -- 011: Tips --
+from .tip import Tip
 
 # -- 008: Reviews --
 from .review import (
@@ -131,6 +137,10 @@ __all__ = [
     "PricingEvent",
     "PricingEventType",
     "CommissionSchedule",
+    # Price Proposals
+    "PriceProposal",
+    # Tips
+    "Tip",
     # Reviews
     "Review",
     "ReviewStatus",

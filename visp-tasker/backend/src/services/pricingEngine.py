@@ -1,5 +1,5 @@
 """
-Dynamic Pricing Engine for VISP/Tasker -- VISP-BE-PRICING-006.
+Dynamic Pricing Engine for VISP -- VISP-BE-PRICING-006.
 
 Calculates job prices based on:
 - Task base rates from the service catalog
@@ -9,6 +9,12 @@ Calculates job prices based on:
   - Extreme weather: 2.0x
   - Peak / holidays: up to 2.5x
 - Multipliers stack multiplicatively but are capped at the dynamic_multiplier_max
+
+Pricing models per level:
+- Level 1 (TIME_BASED): $45-70/hr, provider paid by actual duration
+- Level 2 (TIME_BASED): $80-120/hr, provider paid by actual duration
+- Level 3 (NEGOTIATED): Per-job negotiated price
+- Level 4 (EMERGENCY_NEGOTIATED): Per-job negotiated + emergency multipliers
 
 Commission ranges per level (from commission_schedules.json):
 - Level 1: 15-20% (default 20%)
@@ -80,6 +86,20 @@ HOLIDAYS: list[tuple[int, int]] = [
     (12, 31),  # New Year's Eve
 ]
 
+# Hourly rate ranges per level (in cents)
+HOURLY_RATES: dict[ProviderLevel, dict[str, int]] = {
+    ProviderLevel.LEVEL_1: {"min": 4500, "max": 7000, "default": 4500},
+    ProviderLevel.LEVEL_2: {"min": 8000, "max": 12000, "default": 8000},
+}
+
+# Pricing model per level
+LEVEL_PRICING_MODEL: dict[ProviderLevel, str] = {
+    ProviderLevel.LEVEL_1: "TIME_BASED",
+    ProviderLevel.LEVEL_2: "TIME_BASED",
+    ProviderLevel.LEVEL_3: "NEGOTIATED",
+    ProviderLevel.LEVEL_4: "EMERGENCY_NEGOTIATED",
+}
+
 # Default commission rates when no CommissionSchedule is found
 DEFAULT_COMMISSION: dict[ProviderLevel, dict[str, Decimal]] = {
     ProviderLevel.LEVEL_1: {
@@ -144,7 +164,24 @@ class PriceEstimate:
     provider_payout_min_cents: int
     provider_payout_max_cents: int
 
+    pricing_model: str = "TIME_BASED"
+    hourly_rate_min_cents: Optional[int] = None
+    hourly_rate_max_cents: Optional[int] = None
+
     currency: str = "CAD"
+
+
+@dataclass
+class TimeBasedPriceResult:
+    """Running cost calculation for an active L1/L2 time-based job."""
+    job_id: uuid.UUID
+    running_cost_cents: int
+    elapsed_minutes: float
+    hourly_rate_cents: int
+    estimated_total_cents: int
+    estimated_duration_min: int
+    commission_rate: Decimal
+    provider_running_payout_cents: int
 
 
 @dataclass
@@ -312,6 +349,16 @@ async def calculate_price(
         .quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     )
 
+    # Determine pricing model based on level
+    pricing_model = LEVEL_PRICING_MODEL.get(level, "TIME_BASED")
+    hourly_rates = HOURLY_RATES.get(level)
+    hourly_rate_min_cents: Optional[int] = None
+    hourly_rate_max_cents: Optional[int] = None
+
+    if hourly_rates is not None:
+        hourly_rate_min_cents = hourly_rates["min"]
+        hourly_rate_max_cents = hourly_rates["max"]
+
     return PriceEstimate(
         task_id=task_id,
         task_name=task.name,
@@ -330,6 +377,9 @@ async def calculate_price(
         commission_rate_default=commission["default"],
         provider_payout_min_cents=payout_min,
         provider_payout_max_cents=payout_max,
+        pricing_model=pricing_model,
+        hourly_rate_min_cents=hourly_rate_min_cents,
+        hourly_rate_max_cents=hourly_rate_max_cents,
         currency="CAD" if country == "CA" else "USD",
     )
 
@@ -425,6 +475,196 @@ async def get_price_breakdown(
         rules_applied=rules_applied,
         currency=job.currency,
         calculated_at=calculated_at,
+    )
+
+
+async def calculate_time_based_price(
+    db: AsyncSession,
+    job_id: uuid.UUID,
+    current_time: Optional[datetime] = None,
+) -> TimeBasedPriceResult:
+    """Calculate running cost for L1/L2 time-based jobs.
+
+    Uses job.started_at and current_time to compute:
+        price = hourly_rate_cents / 60 * actual_minutes
+
+    Args:
+        db: Async database session.
+        job_id: UUID of the in-progress job.
+        current_time: Optional override for "now" (defaults to utcnow).
+
+    Returns:
+        TimeBasedPriceResult with running cost and projections.
+
+    Raises:
+        ValueError: If the job is not found, not TIME_BASED, or not started.
+    """
+    job = await _get_job(db, job_id)
+    task = await _get_service_task(db, job.task_id)
+
+    if job.pricing_model != "TIME_BASED":
+        raise ValueError(
+            f"Job {job_id} has pricing_model='{job.pricing_model}', "
+            f"expected 'TIME_BASED'."
+        )
+
+    if job.started_at is None:
+        raise ValueError(f"Job {job_id} has not started yet (started_at is NULL).")
+
+    if job.hourly_rate_cents is None:
+        raise ValueError(f"Job {job_id} has no hourly_rate_cents set.")
+
+    now = current_time or datetime.now(timezone.utc)
+    elapsed_seconds = (now - job.started_at).total_seconds()
+    elapsed_minutes = max(elapsed_seconds / 60.0, 0.0)
+
+    # Running cost = hourly_rate / 60 * elapsed_minutes
+    running_cost = Decimal(str(job.hourly_rate_cents)) / Decimal("60") * Decimal(str(elapsed_minutes))
+    running_cost_cents = int(running_cost.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    # Commission
+    commission = await _get_commission_rates(db, task.level, job.service_country)
+    commission_rate = commission["default"]
+    provider_running_payout = Decimal(str(running_cost_cents)) * (Decimal("1") - commission_rate)
+    provider_running_payout_cents = int(
+        provider_running_payout.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    )
+
+    # Estimated total based on task's estimated duration
+    estimated_duration = task.estimated_duration_min or 60
+    estimated_total = Decimal(str(job.hourly_rate_cents)) / Decimal("60") * Decimal(str(estimated_duration))
+    estimated_total_cents = int(estimated_total.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    return TimeBasedPriceResult(
+        job_id=job_id,
+        running_cost_cents=running_cost_cents,
+        elapsed_minutes=round(elapsed_minutes, 2),
+        hourly_rate_cents=job.hourly_rate_cents,
+        estimated_total_cents=estimated_total_cents,
+        estimated_duration_min=estimated_duration,
+        commission_rate=commission_rate,
+        provider_running_payout_cents=provider_running_payout_cents,
+    )
+
+
+async def finalize_time_based_price(
+    db: AsyncSession,
+    job_id: uuid.UUID,
+) -> PriceEstimate:
+    """Called when L1/L2 job completes. Calculates final price based on actual duration.
+
+    Updates the job record with final_price_cents, actual_duration_minutes,
+    commission_amount_cents, and provider_payout_cents. Logs a
+    TIME_BASED_CALCULATED PricingEvent.
+
+    Args:
+        db: Async database session.
+        job_id: UUID of the completed job.
+
+    Returns:
+        PriceEstimate reflecting the finalized pricing.
+
+    Raises:
+        ValueError: If job not found, not TIME_BASED, or missing timestamps.
+    """
+    job = await _get_job(db, job_id)
+    task = await _get_service_task(db, job.task_id)
+
+    if job.pricing_model != "TIME_BASED":
+        raise ValueError(
+            f"Job {job_id} has pricing_model='{job.pricing_model}', "
+            f"expected 'TIME_BASED'."
+        )
+
+    if job.started_at is None:
+        raise ValueError(f"Job {job_id} has no started_at timestamp.")
+
+    if job.completed_at is None:
+        raise ValueError(f"Job {job_id} has no completed_at timestamp.")
+
+    if job.hourly_rate_cents is None:
+        raise ValueError(f"Job {job_id} has no hourly_rate_cents set.")
+
+    # Calculate actual duration
+    actual_seconds = (job.completed_at - job.started_at).total_seconds()
+    actual_minutes = max(actual_seconds / 60.0, 0.0)
+    actual_minutes_int = max(int(Decimal(str(actual_minutes)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)), 1)
+
+    # Final price = hourly_rate / 60 * actual_minutes
+    final_price = Decimal(str(job.hourly_rate_cents)) / Decimal("60") * Decimal(str(actual_minutes))
+    final_price_cents = int(final_price.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    # Commission
+    commission = await _get_commission_rates(db, task.level, job.service_country)
+    commission_rate = commission["default"]
+    commission_amount = Decimal(str(final_price_cents)) * commission_rate
+    commission_amount_cents = int(commission_amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    provider_payout_cents = final_price_cents - commission_amount_cents
+
+    # Update job record
+    job.final_price_cents = final_price_cents
+    job.actual_duration_minutes = actual_minutes_int
+    job.commission_rate = commission_rate
+    job.commission_amount_cents = commission_amount_cents
+    job.provider_payout_cents = provider_payout_cents
+
+    # Log TIME_BASED_CALCULATED pricing event
+    pricing_event = PricingEvent(
+        job_id=job_id,
+        event_type=PricingEventType.TIME_BASED_CALCULATED,
+        base_price_cents=job.hourly_rate_cents,
+        multiplier_applied=Decimal("1.0"),
+        adjustments_cents=0,
+        final_price_cents=final_price_cents,
+        rules_applied_json=[{
+            "rule_name": "Time-Based Calculation",
+            "rule_type": "time_based",
+            "hourly_rate_cents": job.hourly_rate_cents,
+            "actual_minutes": actual_minutes_int,
+            "reason": f"Final price for {actual_minutes_int} minutes at ${job.hourly_rate_cents / 100:.2f}/hr",
+        }],
+        commission_rate=commission_rate,
+        commission_cents=commission_amount_cents,
+        provider_payout_cents=provider_payout_cents,
+        currency=job.currency,
+        calculated_by="system",
+    )
+    db.add(pricing_event)
+    await db.flush()
+
+    logger.info(
+        "Finalized time-based price for job %s: %d cents (%d min @ %d cents/hr, commission=%.2f%%)",
+        job_id,
+        final_price_cents,
+        actual_minutes_int,
+        job.hourly_rate_cents,
+        float(commission_rate) * 100,
+    )
+
+    hourly_rates = HOURLY_RATES.get(task.level)
+
+    return PriceEstimate(
+        task_id=task.id,
+        task_name=task.name,
+        level=task.level.value,
+        is_emergency=job.is_emergency,
+        base_price_min_cents=task.base_price_min_cents or 0,
+        base_price_max_cents=task.base_price_max_cents or 0,
+        estimated_duration_min=task.estimated_duration_min,
+        dynamic_multiplier=Decimal("1.0"),
+        multiplier_details=[],
+        dynamic_multiplier_cap=DYNAMIC_MULTIPLIER_MAX,
+        final_price_min_cents=final_price_cents,
+        final_price_max_cents=final_price_cents,
+        commission_rate_min=commission["min"],
+        commission_rate_max=commission["max"],
+        commission_rate_default=commission_rate,
+        provider_payout_min_cents=provider_payout_cents,
+        provider_payout_max_cents=provider_payout_cents,
+        pricing_model="TIME_BASED",
+        hourly_rate_min_cents=hourly_rates["min"] if hourly_rates else None,
+        hourly_rate_max_cents=hourly_rates["max"] if hourly_rates else None,
+        currency=job.currency,
     )
 
 

@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - OnCallToggle Component
+ * VISP - OnCallToggle Component
  *
  * Toggle switch for Level 4 on-call status with shift info display,
  * confirmation dialog, and visual indicator.
@@ -7,14 +7,15 @@
 
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   StyleSheet,
   Switch,
   Text,
   View,
 } from 'react-native';
+import { AnimatedSpinner } from './animations';
 import { Colors } from '../theme/colors';
+import { GlassStyles } from '../theme/glass';
 import { OnCallShift } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -114,17 +115,17 @@ function OnCallToggle({
 
       <View style={styles.switchContainer}>
         {showSpinner ? (
-          <ActivityIndicator size="small" color={Colors.primary} />
+          <AnimatedSpinner size={24} color={Colors.primary} />
         ) : (
           <Switch
             value={isOnCall}
             onValueChange={handleToggle}
             trackColor={{
-              false: Colors.border,
+              false: 'rgba(255, 255, 255, 0.15)',
               true: Colors.success,
             }}
             thumbColor={Colors.white}
-            ios_backgroundColor={Colors.border}
+            ios_backgroundColor={'rgba(255, 255, 255, 0.15)'}
             accessibilityLabel="Toggle on-call status"
             accessibilityRole="switch"
           />
@@ -142,16 +143,10 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    ...GlassStyles.card,
     padding: 16,
     marginHorizontal: 16,
     marginVertical: 6,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   indicatorDot: {
     width: 10,
@@ -177,7 +172,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
   },
   shiftLabel: {
     fontSize: 11,

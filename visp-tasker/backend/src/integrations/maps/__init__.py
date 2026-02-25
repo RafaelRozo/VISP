@@ -3,7 +3,7 @@ Maps & Location integration package -- VISP-INT-MAPS-001
 ==========================================================
 
 Public API for geocoding, distance calculation, and the Mapbox
-service wrapper used throughout the VISP/Tasker platform.
+service wrapper used throughout the VISP platform.
 
 Typical usage::
 

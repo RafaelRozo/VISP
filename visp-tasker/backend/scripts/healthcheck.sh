@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# VISP Tasker API - Health Check & Auto-Recovery Script
+# VISP API - Health Check & Auto-Recovery Script
 # =============================================================================
 # Run via cron every 5 minutes: */5 * * * * /path/to/healthcheck.sh
 # =============================================================================

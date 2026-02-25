@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Chat Screen
+ * VISP - Chat Screen
  *
  * Full chat interface shared between customer and provider flows.
  * Displays message history with sent/received bubbles, text input,
@@ -21,6 +21,7 @@ import { RouteProp, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { get, post } from '../../services/apiClient';
+import { GlassBackground } from '../../components/glass';
 import ChatBubble from '../../components/ChatBubble';
 import ChatInput from '../../components/ChatInput';
 import type { ChatMessage, RootStackParamList } from '../../types';
@@ -152,24 +153,26 @@ export default function ChatScreen(): React.JSX.Element {
   // ---- Main render ----
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderTypingIndicator}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={scrollToBottom}
-      />
-      <ChatInput onSend={handleSend} isSending={isSending} />
-    </KeyboardAvoidingView>
+    <GlassBackground>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderTypingIndicator}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={scrollToBottom}
+        />
+        <ChatInput onSend={handleSend} isSending={isSending} />
+      </KeyboardAvoidingView>
+    </GlassBackground>
   );
 }
 
@@ -180,7 +183,7 @@ export default function ChatScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
   },
   listContent: {
     paddingVertical: 16,
@@ -196,12 +199,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -212,14 +215,16 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   typingBubble: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   typingText: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     fontStyle: 'italic',
   },
 });

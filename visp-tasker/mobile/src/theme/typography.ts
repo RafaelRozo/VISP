@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker Design System - Typography
+ * VISP Design System - Typography
  *
  * Font families, sizes, weights, and pre-composed text styles.
  * Uses iOS system fonts (San Francisco) as the primary typeface.

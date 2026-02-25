@@ -28,7 +28,7 @@ from src.services.legalConsentService import (
 # ---------------------------------------------------------------------------
 
 SAMPLE_CONSENT_TEXT = (
-    "By using the VISP/Tasker platform, you agree to the following terms "
+    "By using the VISP platform, you agree to the following terms "
     "and conditions. This is a test consent document for unit testing."
 )
 

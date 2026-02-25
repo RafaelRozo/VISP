@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker Design System - Theme barrel export
+ * VISP Design System - Theme barrel export
  *
  * Import all design tokens from this single entry point:
  *   import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../theme';
@@ -19,3 +19,5 @@ export type { BorderRadiusKey } from './borders';
 
 export { Shadows } from './shadows';
 export type { ShadowKey } from './shadows';
+
+export { GlassStyles, GlassOrbs } from './glass';

@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Task Service
+ * VISP - Task Service
  *
  * Handles all API calls related to the task catalog, categories,
  * task details, booking, and predefined notes.
@@ -395,6 +395,10 @@ async function getActiveJobs(): Promise<Job[]> {
       longitude: Number(j.serviceLongitude ?? 0),
     },
     slaDeadline: null,
+    pricingModel: j.pricingModel ?? j.pricing_model ?? null,
+    hourlyRateCents: j.hourlyRateCents ?? j.hourly_rate_cents ?? null,
+    actualDurationMinutes: j.actualDurationMinutes ?? j.actual_duration_minutes ?? null,
+    estimatedDurationMinutes: j.estimatedDurationMinutes ?? j.estimated_duration_minutes ?? null,
     createdAt: j.createdAt,
     updatedAt: j.createdAt,
   }));
@@ -442,6 +446,10 @@ async function getJobDetail(jobId: string): Promise<Job> {
       longitude: Number(j.service_longitude ?? j.serviceLongitude ?? 0),
     },
     slaDeadline: null,
+    pricingModel: j.pricing_model ?? j.pricingModel ?? null,
+    hourlyRateCents: j.hourly_rate_cents ?? j.hourlyRateCents ?? null,
+    actualDurationMinutes: j.actual_duration_minutes ?? j.actualDurationMinutes ?? null,
+    estimatedDurationMinutes: j.estimated_duration_minutes ?? j.estimatedDurationMinutes ?? null,
     createdAt: j.created_at ?? j.createdAt ?? new Date().toISOString(),
     updatedAt: j.updated_at ?? j.updatedAt ?? j.created_at ?? j.createdAt ?? new Date().toISOString(),
   };

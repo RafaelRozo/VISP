@@ -1,286 +1,260 @@
 /**
- * VISP/Tasker - Push Notification Service
+ * VISP - Push Notification Service (Native APNs)
  *
- * Manages FCM token lifecycle, permission requests, foreground/background
- * notification handling, and deep-link navigation on notification tap.
+ * Uses @react-native-community/push-notification-ios for native APNs
+ * integration — no Firebase dependency required.
  *
- * Uses @react-native-firebase/messaging for FCM integration and the
- * backend /notifications/* API for device registration.
+ * Gracefully degrades if the native module is unavailable (e.g., simulator
+ * or app running without a native rebuild).
  */
 
-import { Platform, Alert } from 'react-native';
-import messaging, {
-    FirebaseMessagingTypes,
-} from '@react-native-firebase/messaging';
+import { Platform, NativeModules } from 'react-native';
 import { post } from './apiClient';
+
+// ──────────────────────────────────────────────
+// Safe PushNotificationIOS import
+// ──────────────────────────────────────────────
+
+// Lazy-load to avoid crash if native module isn't linked yet
+let PushNotificationIOS: any = null;
+
+function getPushModule(): any {
+  if (PushNotificationIOS) return PushNotificationIOS;
+
+  try {
+    // Check if the native module exists before importing
+    if (!NativeModules.RNCPushNotificationIOS) {
+      console.warn('[Notifications] Native push module not available — rebuild required');
+      return null;
+    }
+    PushNotificationIOS = require('@react-native-community/push-notification-ios').default;
+    return PushNotificationIOS;
+  } catch (e) {
+    console.warn('[Notifications] Failed to load push module:', e);
+    return null;
+  }
+}
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
 
 export type NotificationData = {
-    type?: string;
-    job_id?: string;
-    sender_name?: string;
-    [key: string]: string | undefined;
+  type?: string;
+  job_id?: string;
+  sender_name?: string;
+  [key: string]: string | undefined;
 };
-
-type UnsubscribeFn = () => void;
 
 // ──────────────────────────────────────────────
 // State
 // ──────────────────────────────────────────────
 
-let _listeners: UnsubscribeFn[] = [];
 let _currentToken: string | null = null;
-
-// Navigation callback - set by the app to handle notification taps
+let _isInitialized = false;
 let _onNotificationNavigation: ((data: NotificationData) => void) | null = null;
 
 // ──────────────────────────────────────────────
 // Permission
 // ──────────────────────────────────────────────
 
-/**
- * Request push notification permission from the user (iOS).
- * On Android, this is automatically granted.
- *
- * @returns true if permission was granted
- */
 async function requestPermission(): Promise<boolean> {
-    if (Platform.OS === 'ios') {
-        const authStatus = await messaging().requestPermission();
-        const enabled =
-            authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-            authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+  const PushModule = getPushModule();
+  if (!PushModule) return false;
 
-        if (!enabled) {
-            console.warn('[Notifications] Permission not granted');
-        }
-        return enabled;
+  try {
+    const permissions = await PushModule.requestPermissions({
+      alert: true,
+      badge: true,
+      sound: true,
+    });
+    const granted = permissions.alert || permissions.badge || permissions.sound;
+    if (!granted) {
+      console.warn('[Notifications] Permission not granted');
     }
-    // Android: permission auto-granted for FCM
-    return true;
+    return granted;
+  } catch (err) {
+    console.warn('[Notifications] Permission request failed:', err);
+    return false;
+  }
 }
 
 // ──────────────────────────────────────────────
 // Device Token Registration
 // ──────────────────────────────────────────────
 
-/**
- * Get FCM token and register it with the backend.
- * Call this after the user has successfully logged in.
- */
 async function registerDevice(): Promise<void> {
-    try {
-        const token = await messaging().getToken();
-        if (!token) {
-            console.warn('[Notifications] Could not get FCM token');
-            return;
-        }
+  const PushModule = getPushModule();
+  if (!PushModule) return;
 
-        _currentToken = token;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      console.warn('[Notifications] Token registration timed out');
+      resolve();
+    }, 10000);
 
+    PushModule.addEventListener('register', async (deviceToken: string) => {
+      clearTimeout(timeout);
+      _currentToken = deviceToken;
+      console.log('[Notifications] APNs token:', deviceToken.substring(0, 20) + '...');
+
+      try {
         await post('/notifications/register-device', {
-            device_token: token,
-            platform: Platform.OS === 'ios' ? 'ios' : 'android',
-            app_version: '1.0.0',
+          device_token: deviceToken,
+          platform: 'ios',
+          token_type: 'apns',
+          app_version: '1.0.0',
         });
-
-        console.log('[Notifications] Device registered with token:', token.substring(0, 20) + '...');
-    } catch (error) {
-        // Non-blocking: notification registration failure should not
-        // prevent the user from using the app
+        console.log('[Notifications] Device registered with backend');
+      } catch (error) {
         console.warn('[Notifications] Failed to register device:', error);
-    }
+      }
+      resolve();
+    });
+
+    PushModule.addEventListener('registrationError', (error: any) => {
+      clearTimeout(timeout);
+      console.warn('[Notifications] APNs registration failed:', error);
+      resolve();
+    });
+
+    // Trigger APNs registration
+    PushModule.requestPermissions({
+      alert: true,
+      badge: true,
+      sound: true,
+    }).catch(() => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
 }
 
-/**
- * Unregister the current device token from the backend.
- * Call this when the user logs out.
- */
 async function unregisterDevice(): Promise<void> {
-    if (!_currentToken) {
-        return;
-    }
+  if (!_currentToken) return;
 
-    try {
-        await post('/notifications/unregister-device', {
-            device_token: _currentToken,
-        });
-        console.log('[Notifications] Device unregistered');
-    } catch (error) {
-        console.warn('[Notifications] Failed to unregister device:', error);
-    } finally {
-        _currentToken = null;
-    }
+  try {
+    await post('/notifications/unregister-device', {
+      device_token: _currentToken,
+    });
+    console.log('[Notifications] Device unregistered');
+  } catch (error) {
+    console.warn('[Notifications] Failed to unregister device:', error);
+  } finally {
+    _currentToken = null;
+  }
 }
 
 // ──────────────────────────────────────────────
 // Notification Handlers
 // ──────────────────────────────────────────────
 
-/**
- * Handle a notification received while the app is in the foreground.
- * Shows an in-app alert since the system banner may not appear on all devices.
- */
-function _handleForegroundMessage(
-    remoteMessage: FirebaseMessagingTypes.RemoteMessage,
-): void {
-    const { notification, data } = remoteMessage;
+function _handleNotification(notification: any): void {
+  const data = notification?.getData?.() ?? {};
+  const isUserInteraction = data.userInteraction === true;
 
-    console.log(
-        '[Notifications] Foreground message:',
-        notification?.title,
-        data?.type,
-    );
+  console.log(
+    '[Notifications] Received:',
+    notification?.getTitle?.(),
+    'interaction:', isUserInteraction,
+  );
 
-    // The iOS native layer (AppDelegate.mm) already shows the banner.
-    // Optionally show an in-app alert for important notifications:
-    if (notification?.title && data?.type !== 'chat_message') {
-        // Chat messages are handled by the chat screen's WebSocket listener,
-        // so we skip the alert for those when in-app.
-        // Other notification types get a subtle foreground alert.
-    }
-}
+  if (isUserInteraction && _onNotificationNavigation && data.type) {
+    _onNotificationNavigation(data as NotificationData);
+  }
 
-/**
- * Handle notification tap — user tapped a notification from the system tray.
- * Routes the user to the appropriate screen based on notification data.
- */
-function _handleNotificationTap(
-    remoteMessage: FirebaseMessagingTypes.RemoteMessage | null,
-): void {
-    if (!remoteMessage?.data) {
-        return;
-    }
-
-    const data = remoteMessage.data as NotificationData;
-    console.log('[Notifications] Notification tapped:', data.type, data.job_id);
-
-    if (_onNotificationNavigation) {
-        _onNotificationNavigation(data);
-    }
+  // Signal iOS that we finished processing
+  const PushModule = getPushModule();
+  if (PushModule) {
+    notification?.finish?.(PushModule.FetchResult?.NewData);
+  }
 }
 
 // ──────────────────────────────────────────────
 // Listener Setup
 // ──────────────────────────────────────────────
 
-/**
- * Set up all notification listeners.
- * Call this once after login and permission is granted.
- */
 function setupListeners(): void {
-    // Clean up any existing listeners
-    teardownListeners();
+  const PushModule = getPushModule();
+  if (!PushModule) return;
 
-    // 1. Foreground messages
-    const unsubForeground = messaging().onMessage(_handleForegroundMessage);
-    _listeners.push(unsubForeground);
+  PushModule.addEventListener('notification', _handleNotification);
+  PushModule.addEventListener('localNotification', _handleNotification);
 
-    // 2. Notification tap when app is in background (not killed)
-    const unsubBackground = messaging().onNotificationOpenedApp(
-        _handleNotificationTap,
-    );
-    _listeners.push(unsubBackground);
+  PushModule.getInitialNotification().then((notification: any) => {
+    if (notification) {
+      _handleNotification(notification);
+    }
+  });
 
-    // 3. Notification tap that launched the app (app was killed)
-    messaging()
-        .getInitialNotification()
-        .then(_handleNotificationTap)
-        .catch(console.warn);
-
-    // 4. Token refresh — re-register with backend when FCM rotates the token
-    const unsubTokenRefresh = messaging().onTokenRefresh(async (newToken) => {
-        console.log('[Notifications] Token refreshed, re-registering...');
-        _currentToken = newToken;
-        try {
-            await post('/notifications/register-device', {
-                device_token: newToken,
-                platform: Platform.OS === 'ios' ? 'ios' : 'android',
-                app_version: '1.0.0',
-            });
-        } catch (error) {
-            console.warn('[Notifications] Failed to re-register on token refresh:', error);
-        }
-    });
-    _listeners.push(unsubTokenRefresh);
-
-    console.log('[Notifications] Listeners set up');
+  console.log('[Notifications] Listeners set up');
 }
 
-/**
- * Remove all notification listeners.
- * Call this on logout.
- */
 function teardownListeners(): void {
-    _listeners.forEach((unsub) => unsub());
-    _listeners = [];
+  const PushModule = getPushModule();
+  if (!PushModule) return;
+
+  try {
+    PushModule.removeEventListener('notification');
+    PushModule.removeEventListener('localNotification');
+    PushModule.removeEventListener('register');
+    PushModule.removeEventListener('registrationError');
+  } catch {
+    // Ignore if listeners weren't set up
+  }
 }
 
 // ──────────────────────────────────────────────
 // Navigation Hook
 // ──────────────────────────────────────────────
 
-/**
- * Set the callback that handles navigation when a notification is tapped.
- * This should be called from the root navigator once navigation is ready.
- *
- * @param handler - receives notification data with `type` and `job_id`
- */
 function setNavigationHandler(
-    handler: (data: NotificationData) => void,
+  handler: (data: NotificationData) => void,
 ): void {
-    _onNotificationNavigation = handler;
+  _onNotificationNavigation = handler;
 }
 
 // ──────────────────────────────────────────────
-// Lifecycle — called by authStore
+// Lifecycle
 // ──────────────────────────────────────────────
 
-/**
- * Initialize notifications after successful login.
- * Requests permission, registers device, and sets up listeners.
- */
 async function initialize(): Promise<void> {
-    const hasPermission = await requestPermission();
-    if (!hasPermission) {
-        console.warn('[Notifications] No permission, skipping initialization');
-        return;
-    }
+  if (_isInitialized) return;
+  if (Platform.OS !== 'ios') return;
 
-    await registerDevice();
-    setupListeners();
+  const PushModule = getPushModule();
+  if (!PushModule) {
+    console.log('[Notifications] Native module not available, skipping');
+    return;
+  }
+
+  const hasPermission = await requestPermission();
+  if (!hasPermission) {
+    console.warn('[Notifications] No permission, skipping initialization');
+    return;
+  }
+
+  await registerDevice();
+  setupListeners();
+  _isInitialized = true;
 }
 
-/**
- * Clean up notifications on logout.
- * Unregisters device and removes all listeners.
- */
 async function cleanup(): Promise<void> {
-    teardownListeners();
-    await unregisterDevice();
+  teardownListeners();
+  await unregisterDevice();
+  _isInitialized = false;
 }
 
-// ──────────────────────────────────────────────
-// Background handler (must be called at module level, outside components)
-// ──────────────────────────────────────────────
-
-/**
- * Register the background message handler.
- * This MUST be called at the top level (e.g., index.js) before AppRegistry.
- */
 function registerBackgroundHandler(): void {
-    messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-        console.log(
-            '[Notifications] Background message:',
-            remoteMessage.notification?.title,
-            remoteMessage.data?.type,
-        );
-        // Background messages are handled by the system notification tray.
-        // No custom processing needed — the notification is automatically shown.
-    });
+  // Native APNs background notifications are handled by AppDelegate.
+}
+
+function setBadgeCount(count: number): void {
+  getPushModule()?.setApplicationIconBadgeNumber(count);
+}
+
+function clearBadge(): void {
+  getPushModule()?.setApplicationIconBadgeNumber(0);
 }
 
 // ──────────────────────────────────────────────
@@ -288,15 +262,17 @@ function registerBackgroundHandler(): void {
 // ──────────────────────────────────────────────
 
 export const notificationService = {
-    requestPermission,
-    registerDevice,
-    unregisterDevice,
-    initialize,
-    cleanup,
-    setupListeners,
-    teardownListeners,
-    setNavigationHandler,
-    registerBackgroundHandler,
+  requestPermission,
+  registerDevice,
+  unregisterDevice,
+  initialize,
+  cleanup,
+  setupListeners,
+  teardownListeners,
+  setNavigationHandler,
+  registerBackgroundHandler,
+  setBadgeCount,
+  clearBadge,
 };
 
 export default notificationService;

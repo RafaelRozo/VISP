@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - EmergencyInProgressScreen
+ * VISP - EmergencyInProgressScreen
  *
  * Job in progress indicator.
  * Features:
@@ -7,6 +7,8 @@
  *   - Provider info
  *   - Emergency contact button
  *   - "Provider cannot add scope" notice
+ *
+ * Dark glassmorphism styling with red emergency accent.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -15,17 +17,16 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Linking,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../theme/colors';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassStyles, Colors } from '../../theme';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
-import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
 import { useEmergencyStore } from '../../stores/emergencyStore';
 import LevelBadge from '../../components/LevelBadge';
 import type { EmergencyFlowParamList } from '../../types';
@@ -144,72 +145,74 @@ function EmergencyInProgressScreen(): React.JSX.Element {
   const provider = activeJob?.provider;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Status header */}
-        <View style={styles.header}>
-          <View style={styles.statusIndicator}>
-            <View style={styles.statusDotPulse} />
-            <Text style={styles.statusText}>Service in Progress</Text>
-          </View>
+    <GlassBackground>
+      {/* Status header */}
+      <View style={styles.header}>
+        <View style={styles.statusIndicator}>
+          <View style={styles.statusDotPulse} />
+          <Text style={styles.statusText}>Service in Progress</Text>
         </View>
+      </View>
 
-        {/* Elapsed time */}
-        <View style={styles.timerSection}>
+      {/* Elapsed time - glass card */}
+      <View style={styles.timerSection}>
+        <GlassCard variant="dark" style={styles.timerCard}>
           <Text style={styles.timerLabel}>ELAPSED TIME</Text>
           <Text style={styles.timerValue}>{elapsedTime}</Text>
           <View style={styles.timerDivider} />
-        </View>
+        </GlassCard>
+      </View>
 
-        {/* Provider info */}
-        {provider && (
-          <View style={styles.providerSection}>
-            <View style={styles.providerCard}>
-              <View style={styles.providerRow}>
-                <View style={styles.providerAvatar}>
-                  <Text style={styles.providerInitial}>
-                    {provider.firstName.charAt(0)}
-                  </Text>
-                </View>
-                <View style={styles.providerInfo}>
-                  <Text style={styles.providerName}>
-                    {provider.firstName} {provider.lastName.charAt(0)}.
-                  </Text>
-                  <View style={styles.providerMeta}>
-                    <Text style={styles.providerRating}>
-                      {provider.rating.toFixed(1)} rating
-                    </Text>
-                    <LevelBadge level={provider.level} size="small" />
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.callButton}
-                  onPress={handleCallProvider}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Call provider"
-                >
-                  <Text style={styles.callButtonIcon}>C</Text>
-                </TouchableOpacity>
+      {/* Provider info - glass card */}
+      {provider && (
+        <View style={styles.providerSection}>
+          <GlassCard variant="standard">
+            <View style={styles.providerRow}>
+              <View style={styles.providerAvatar}>
+                <Text style={styles.providerInitial}>
+                  {provider.firstName.charAt(0)}
+                </Text>
               </View>
+              <View style={styles.providerInfo}>
+                <Text style={styles.providerName}>
+                  {provider.firstName} {provider.lastName.charAt(0)}.
+                </Text>
+                <View style={styles.providerMeta}>
+                  <Text style={styles.providerRating}>
+                    {provider.rating.toFixed(1)} rating
+                  </Text>
+                  <LevelBadge level={provider.level} size="small" />
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.callButton}
+                onPress={handleCallProvider}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Call provider"
+              >
+                <Text style={styles.callButtonIcon}>C</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        )}
-
-        {/* Scope notice */}
-        <View style={styles.noticeSection}>
-          <View style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>Important</Text>
-            <Text style={styles.noticeText}>
-              The provider cannot add additional services or scope to this
-              job. If additional work is needed, a new job must be created.
-              This policy protects you from unauthorized charges.
-            </Text>
-          </View>
+          </GlassCard>
         </View>
+      )}
 
-        {/* Job details */}
-        <View style={styles.detailsSection}>
+      {/* Scope notice - glass card with warning */}
+      <View style={styles.noticeSection}>
+        <GlassCard variant="dark" style={styles.noticeCard}>
+          <Text style={styles.noticeTitle}>Important</Text>
+          <Text style={styles.noticeText}>
+            The provider cannot add additional services or scope to this
+            job. If additional work is needed, a new job must be created.
+            This policy protects you from unauthorized charges.
+          </Text>
+        </GlassCard>
+      </View>
+
+      {/* Job details - glass list */}
+      <View style={styles.detailsSection}>
+        <GlassCard variant="dark">
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Emergency Type</Text>
             <Text style={styles.detailValue}>
@@ -224,7 +227,7 @@ function EmergencyInProgressScreen(): React.JSX.Element {
               {activeJob?.location?.formattedAddress || 'N/A'}
             </Text>
           </View>
-          <View style={styles.detailRow}>
+          <View style={[styles.detailRow, styles.detailRowLast]}>
             <Text style={styles.detailLabel}>Started At</Text>
             <Text style={styles.detailValue}>
               {activeJob?.startedAt
@@ -232,24 +235,19 @@ function EmergencyInProgressScreen(): React.JSX.Element {
                 : 'N/A'}
             </Text>
           </View>
-        </View>
-
-        {/* Emergency contact button */}
-        <View style={styles.emergencyContactContainer}>
-          <TouchableOpacity
-            style={styles.emergencyContactButton}
-            onPress={handleEmergencyContact}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Contact emergency support"
-          >
-            <Text style={styles.emergencyContactText}>
-              Emergency Support Contact
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </GlassCard>
       </View>
-    </SafeAreaView>
+
+      {/* Emergency contact button - red glow */}
+      <View style={styles.emergencyContactContainer}>
+        <GlassButton
+          title="Emergency Support Contact"
+          onPress={handleEmergencyContact}
+          variant="glow"
+          style={styles.emergencyContactButton}
+        />
+      </View>
+    </GlassBackground>
   );
 }
 
@@ -257,16 +255,9 @@ function EmergencyInProgressScreen(): React.JSX.Element {
 // Styles
 // ──────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+const EMERGENCY_RED_GLOW = 'rgba(231, 76, 60, 0.6)';
 
+const styles = StyleSheet.create({
   // Header
   header: {
     paddingHorizontal: Spacing.lg,
@@ -283,48 +274,62 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: Colors.success,
     marginRight: Spacing.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(39, 174, 96, 0.6)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
   },
   statusText: {
     ...Typography.title2,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
 
   // Timer
   timerSection: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  timerCard: {
     alignItems: 'center',
-    paddingVertical: Spacing.xxl,
   },
   timerLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     letterSpacing: 1.5,
     marginBottom: Spacing.sm,
   },
   timerValue: {
     fontSize: 56,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
     fontVariant: ['tabular-nums'],
   },
   timerDivider: {
     width: 60,
     height: 2,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.emergencyRed,
     marginTop: Spacing.lg,
     borderRadius: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+      },
+      android: {},
+    }),
   },
 
   // Provider
   providerSection: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.lg,
-  },
-  providerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   providerRow: {
     flexDirection: 'row',
@@ -334,24 +339,24 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: Colors.emergencyRed,
   },
   providerInitial: {
     fontSize: FontSize.title3,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: Colors.emergencyRed,
   },
   providerInfo: {
     flex: 1,
   },
   providerName: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: 2,
   },
   providerMeta: {
@@ -361,21 +366,29 @@ const styles = StyleSheet.create({
   },
   providerRating: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   callButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primary,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...Shadows.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
   },
   callButtonIcon: {
     fontSize: 18,
     fontWeight: FontWeight.bold,
-    color: Colors.white,
+    color: '#FFFFFF',
   },
 
   // Scope notice
@@ -384,11 +397,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   noticeCard: {
-    backgroundColor: `${Colors.warning}10`,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.warning}30`,
+    borderColor: 'rgba(243, 156, 18, 0.30)',
   },
   noticeTitle: {
     ...Typography.headline,
@@ -397,7 +406,7 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 20,
   },
 
@@ -412,15 +421,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  detailRowLast: {
+    borderBottomWidth: 0,
   },
   detailLabel: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   detailValue: {
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.medium,
     flex: 1,
     textAlign: 'right',
@@ -435,17 +447,17 @@ const styles = StyleSheet.create({
     right: Spacing.lg,
   },
   emergencyContactButton: {
-    backgroundColor: Colors.emergencyRed,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.md,
-  },
-  emergencyContactText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    paddingVertical: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: EMERGENCY_RED_GLOW,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
   },
 });
 

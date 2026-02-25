@@ -8,7 +8,6 @@
 interface AppConfig {
   apiBaseUrl: string;
   wsBaseUrl: string;
-  googleMapsApiKey: string;
   mapboxAccessToken: string;
   stripePublishableKey: string;
   termsVersion: string;
@@ -22,7 +21,6 @@ interface AppConfig {
 const DEV_CONFIG: AppConfig = {
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
-  googleMapsApiKey: '',
   mapboxAccessToken: '',
   stripePublishableKey: '',
   termsVersion: '2026-01-01',

@@ -1,5 +1,5 @@
 # =============================================================================
-# VISP Tasker Backend - Docker Compose
+# VISP Backend - Docker Compose
 # =============================================================================
 # Services: FastAPI Backend, PostgreSQL, Redis
 # Run with: docker-compose up -d

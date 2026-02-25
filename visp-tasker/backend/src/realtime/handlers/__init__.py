@@ -1,5 +1,5 @@
 """
-VISP/Tasker Real-time Handlers
+VISP Real-time Handlers
 ===============================
 
 WebSocket event handlers for the three namespaces:

@@ -1,15 +1,17 @@
 /**
- * VISP/Tasker - Verification Screen
+ * VISP - Verification Screen
  *
  * Step-by-step verification process with background check status,
  * license upload, insurance certificate upload, progress tracker
  * showing what's verified, and next steps for level advancement.
+ *
+ * Dark glassmorphism redesign.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -18,6 +20,9 @@ import {
   View,
 } from 'react-native';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { AnimatedSpinner, AnimatedCheckmark } from '../../components/animations';
 import {
   Credential,
   CredentialType,
@@ -53,6 +58,8 @@ function getStepStatusConfig(status: string): {
   label: string;
   color: string;
   bgColor: string;
+  borderColor: string;
+  glowShadow?: object;
 } {
   switch (status) {
     case 'completed':
@@ -60,24 +67,37 @@ function getStepStatusConfig(status: string): {
         label: 'Verified',
         color: Colors.success,
         bgColor: `${Colors.success}20`,
+        borderColor: `${Colors.success}40`,
       };
     case 'in_progress':
       return {
         label: 'In Review',
         color: Colors.warning,
         bgColor: `${Colors.warning}20`,
+        borderColor: `${Colors.warning}40`,
       };
     case 'failed':
       return {
         label: 'Action Required',
         color: Colors.emergencyRed,
         bgColor: `${Colors.emergencyRed}20`,
+        borderColor: `${Colors.emergencyRed}40`,
+        glowShadow: Platform.select({
+          ios: {
+            shadowColor: Colors.emergencyRed,
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.4,
+            shadowRadius: 8,
+          },
+          android: { elevation: 4 },
+        }),
       };
     default:
       return {
         label: 'Not Started',
-        color: Colors.textTertiary,
-        bgColor: `${Colors.textTertiary}20`,
+        color: 'rgba(255, 255, 255, 0.35)',
+        bgColor: Colors.glass.white,
+        borderColor: Colors.glassBorder.subtle,
       };
   }
 }
@@ -106,48 +126,81 @@ function StepCard({
     <View style={stepStyles.container}>
       {/* Left timeline */}
       <View style={stepStyles.timeline}>
-        <View
-          style={[
-            stepStyles.circle,
-            step.status === 'completed' && {
-              backgroundColor: Colors.success,
-              borderColor: Colors.success,
-            },
-            step.status === 'in_progress' && {
-              backgroundColor: Colors.warning,
-              borderColor: Colors.warning,
-            },
-            step.status === 'failed' && {
-              backgroundColor: Colors.emergencyRed,
-              borderColor: Colors.emergencyRed,
-            },
-          ]}
-        >
-          <Text style={stepStyles.circleText}>
-            {step.status === 'completed' ? '\u2713' : String(stepNumber)}
-          </Text>
-        </View>
+        {step.status === 'completed' ? (
+          <AnimatedCheckmark size={32} color={Colors.success} delay={stepNumber * 150} />
+        ) : (
+          <View
+            style={[
+              stepStyles.circle,
+              step.status === 'in_progress' && {
+                backgroundColor: Colors.warning,
+                borderColor: Colors.warning,
+                ...Platform.select({
+                  ios: {
+                    shadowColor: Colors.warning,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.5,
+                    shadowRadius: 8,
+                  },
+                  android: { elevation: 4 },
+                }),
+              },
+              step.status === 'failed' && {
+                backgroundColor: Colors.emergencyRed,
+                borderColor: Colors.emergencyRed,
+                ...Platform.select({
+                  ios: {
+                    shadowColor: Colors.emergencyRed,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.5,
+                    shadowRadius: 8,
+                  },
+                  android: { elevation: 4 },
+                }),
+              },
+            ]}
+          >
+            <Text style={stepStyles.circleText}>
+              {String(stepNumber)}
+            </Text>
+          </View>
+        )}
         {!isLast && (
           <View
             style={[
               stepStyles.line,
               step.status === 'completed' && {
-                backgroundColor: Colors.success,
+                backgroundColor: `${Colors.success}80`,
               },
             ]}
           />
         )}
       </View>
 
-      {/* Content */}
-      <View style={stepStyles.content}>
+      {/* Content - glass card */}
+      <GlassCard
+        variant="standard"
+        padding={14}
+        style={{
+          ...stepStyles.content,
+          ...(step.status === 'failed' && {
+            borderColor: `${Colors.emergencyRed}40`,
+          }),
+          ...(step.status === 'completed' && {
+            borderColor: `${Colors.success}30`,
+          }),
+          ...(step.status === 'in_progress' && {
+            borderColor: `${Colors.warning}30`,
+          }),
+        }}
+      >
         <View style={stepStyles.header}>
           <View style={stepStyles.headerLeft}>
             <Text style={stepStyles.title}>{step.title}</Text>
             <View
               style={[
                 stepStyles.levelTag,
-                { borderColor: levelColor },
+                { borderColor: levelColor, backgroundColor: `${levelColor}15` },
               ]}
             >
               <Text style={[stepStyles.levelTagText, { color: levelColor }]}>
@@ -157,8 +210,12 @@ function StepCard({
           </View>
           <View
             style={[
-              stepStyles.statusBadge,
-              { backgroundColor: statusConfig.bgColor },
+              GlassStyles.badge,
+              {
+                backgroundColor: statusConfig.bgColor,
+                borderColor: statusConfig.borderColor,
+              },
+              statusConfig.glowShadow,
             ]}
           >
             <Text
@@ -174,29 +231,22 @@ function StepCard({
 
         <Text style={stepStyles.description}>{step.description}</Text>
 
-        {(step.status === 'not_started' || step.status === 'failed') && (
-          <TouchableOpacity
-            style={[
-              stepStyles.actionButton,
-              step.status === 'failed' && {
-                backgroundColor: Colors.emergencyRed,
-              },
-            ]}
+        {step.status === 'not_started' && (
+          <GlassButton
+            title="Upload Document"
+            variant="glass"
             onPress={() => onAction(step)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={
-              step.status === 'failed'
-                ? `Re-upload ${step.title}`
-                : `Start ${step.title}`
-            }
-          >
-            <Text style={stepStyles.actionButtonText}>
-              {step.status === 'failed' ? 'Re-upload' : 'Start'}
-            </Text>
-          </TouchableOpacity>
+          />
         )}
-      </View>
+        {step.status === 'failed' && (
+          <GlassButton
+            title="Re-upload"
+            variant="outline"
+            onPress={() => onAction(step)}
+            style={{ borderColor: `${Colors.emergencyRed}50` }}
+          />
+        )}
+      </GlassCard>
     </View>
   );
 }
@@ -215,8 +265,8 @@ const stepStyles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: Colors.glassBorder.light,
+    backgroundColor: Colors.glass.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -228,16 +278,14 @@ const stepStyles = StyleSheet.create({
   line: {
     width: 2,
     flex: 1,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.glassBorder.subtle,
     marginVertical: 4,
   },
   content: {
     flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: 10,
-    padding: 14,
     marginLeft: 8,
     marginBottom: 12,
+    borderRadius: 16,
   },
   header: {
     flexDirection: 'row',
@@ -259,18 +307,13 @@ const stepStyles = StyleSheet.create({
   },
   levelTag: {
     borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
   },
   levelTagText: {
     fontSize: 10,
     fontWeight: '700',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
   },
   statusText: {
     fontSize: 10,
@@ -279,21 +322,9 @@ const stepStyles = StyleSheet.create({
   },
   description: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.50)',
     lineHeight: 18,
-    marginBottom: 8,
-  },
-  actionButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 6,
-    paddingVertical: 8,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  actionButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.white,
+    marginBottom: 10,
   },
 });
 
@@ -318,7 +349,6 @@ export default function VerificationScreen(): React.JSX.Element {
       setCredentials(data.credentials);
       setCurrentLevel(data.currentLevel);
 
-      // Build verification steps from credentials
       const verificationSteps: VerificationStep[] = [
         {
           id: 'crc',
@@ -369,7 +399,6 @@ export default function VerificationScreen(): React.JSX.Element {
 
       setSteps(verificationSteps);
     } catch {
-      // Show empty state on error
       setSteps([]);
     } finally {
       setIsLoading(false);
@@ -396,89 +425,117 @@ export default function VerificationScreen(): React.JSX.Element {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading verification status...</Text>
-      </View>
+      <GlassBackground>
+        <View style={styles.loadingContainer}>
+          <AnimatedSpinner size={48} color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading verification status...</Text>
+        </View>
+      </GlassBackground>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl
-          refreshing={isLoading}
-          onRefresh={fetchVerificationData}
-          tintColor={Colors.primary}
-          colors={[Colors.primary]}
-        />
-      }
-    >
-      {/* Progress overview */}
-      <View style={styles.progressCard}>
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressTitle}>Verification Progress</Text>
-          <Text style={styles.progressPercent}>{progressPercent}%</Text>
-        </View>
-
-        <View style={styles.progressBarBackground}>
-          <View
-            style={[
-              styles.progressBarFill,
-              { width: `${Math.max(progressPercent, 2)}%` },
-            ]}
+    <GlassBackground>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={fetchVerificationData}
+            tintColor={Colors.primary}
+            colors={[Colors.primary]}
           />
-        </View>
-
-        <Text style={styles.progressSubtext}>
-          {completedCount} of {totalCount} steps completed
-        </Text>
-
-        <View style={styles.currentLevelRow}>
-          <Text style={styles.currentLevelLabel}>Current Level:</Text>
-          <View
-            style={[
-              styles.currentLevelBadge,
-              { backgroundColor: getLevelColor(currentLevel) },
-            ]}
-          >
-            <Text style={styles.currentLevelBadgeText}>
-              L{currentLevel} {LEVEL_NAMES[currentLevel]}
-            </Text>
+        }
+      >
+        {/* Progress overview */}
+        <GlassCard variant="elevated" style={styles.glassCardMargin}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressTitle}>Verification Progress</Text>
+            <Text style={styles.progressPercent}>{progressPercent}%</Text>
           </View>
-        </View>
-      </View>
 
-      {/* Next steps info */}
-      {currentLevel < 4 && (
-        <View style={styles.nextStepsCard}>
-          <Text style={styles.nextStepsTitle}>
-            Next: Level {currentLevel + 1} -{' '}
-            {LEVEL_NAMES[(currentLevel + 1) as ServiceLevel]}
+          <View style={styles.progressBarBackground}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${Math.max(progressPercent, 2)}%` },
+              ]}
+            />
+          </View>
+
+          <Text style={styles.progressSubtext}>
+            {completedCount} of {totalCount} steps completed
           </Text>
-          <Text style={styles.nextStepsText}>
-            Complete the remaining verification steps below to unlock the next
-            service level and access higher-paying jobs.
-          </Text>
-        </View>
-      )}
 
-      {/* Verification steps */}
-      <Text style={styles.sectionTitle}>Verification Steps</Text>
-      {steps.map((step, index) => (
-        <StepCard
-          key={step.id}
-          step={step}
-          stepNumber={index + 1}
-          isLast={index === steps.length - 1}
-          onAction={handleStepAction}
-        />
-      ))}
+          <View style={styles.currentLevelRow}>
+            <Text style={styles.currentLevelLabel}>Current Level:</Text>
+            <View
+              style={[
+                GlassStyles.badge,
+                {
+                  backgroundColor: `${getLevelColor(currentLevel)}25`,
+                  borderColor: `${getLevelColor(currentLevel)}50`,
+                },
+              ]}
+            >
+              <Text style={[styles.currentLevelBadgeText, { color: getLevelColor(currentLevel) }]}>
+                L{currentLevel} {LEVEL_NAMES[currentLevel]}
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
 
-      <View style={styles.bottomSpacer} />
-    </ScrollView>
+        {/* Next steps info */}
+        {currentLevel < 4 && (
+          <GlassCard
+            variant="dark"
+            style={styles.nextStepsCard}
+          >
+            <Text style={styles.nextStepsTitle}>
+              Next: Level {currentLevel + 1} -{' '}
+              {LEVEL_NAMES[(currentLevel + 1) as ServiceLevel]}
+            </Text>
+            <Text style={styles.nextStepsText}>
+              Complete the remaining verification steps below to unlock the next
+              service level and access higher-paying jobs.
+            </Text>
+          </GlassCard>
+        )}
+
+        {/* Verification steps */}
+        <Text style={styles.sectionTitle}>Verification Steps</Text>
+        {steps.map((step, index) => (
+          <StepCard
+            key={step.id}
+            step={step}
+            stepNumber={index + 1}
+            isLast={index === steps.length - 1}
+            onAction={handleStepAction}
+          />
+        ))}
+
+        {/* Submit all button when there are actionable steps */}
+        {steps.some((s) => s.status === 'not_started' || s.status === 'failed') && (
+          <View style={styles.submitContainer}>
+            <GlassButton
+              title="Submit All Documents"
+              variant="glow"
+              onPress={() => {
+                Alert.alert(
+                  'Submit All',
+                  'In production, this will submit all uploaded documents for review.',
+                  [{ text: 'OK' }],
+                );
+              }}
+            />
+          </View>
+        )}
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+    </GlassBackground>
   );
 }
 
@@ -510,30 +567,30 @@ function getCredentialStepStatus(
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   contentContainer: {
     paddingTop: 16,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.50)',
   },
-  progressCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
+  glassCardMargin: {
     marginHorizontal: 16,
     marginBottom: 12,
+  },
+  nextStepsCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderColor: 'rgba(120, 80, 255, 0.35)',
   },
   progressHeader: {
     flexDirection: 'row',
@@ -553,19 +610,30 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     height: 8,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.glass.white,
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.subtle,
   },
   progressBarFill: {
-    height: 8,
-    backgroundColor: Colors.primary,
+    height: '100%',
+    backgroundColor: 'rgba(120, 80, 255, 0.8)',
     borderRadius: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(120, 80, 255, 0.6)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+      },
+      android: {},
+    }),
   },
   progressSubtext: {
     fontSize: 13,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.40)',
     marginBottom: 12,
   },
   currentLevelRow: {
@@ -573,31 +641,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: Colors.glassBorder.subtle,
   },
   currentLevelLabel: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.50)',
     marginRight: 8,
-  },
-  currentLevelBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
   },
   currentLevelBadgeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.white,
-  },
-  nextStepsCard: {
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.primary,
   },
   nextStepsTitle: {
     fontSize: 15,
@@ -607,7 +660,7 @@ const styles = StyleSheet.create({
   },
   nextStepsText: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.50)',
     lineHeight: 18,
   },
   sectionTitle: {
@@ -616,6 +669,10 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     paddingHorizontal: 16,
     marginBottom: 12,
+  },
+  submitContainer: {
+    marginHorizontal: 16,
+    marginTop: 8,
   },
   bottomSpacer: {
     height: 32,

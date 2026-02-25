@@ -1,36 +1,33 @@
 /**
- * VISP/Tasker - RatingScreen
+ * VISP - RatingScreen (Glass Redesign)
  *
  * Post-job rating screen with:
- *   - Star rating (1-5)
+ *   - Star rating (1-5) in glass card
  *   - Predefined feedback tags (no free text -- closed catalog philosophy)
- *   - Optional text feedback area
- *   - Cost breakdown (labor, platform fee, total)
- *   - "Submit & Pay" button
- *   - Legal footer: "Tasker acts as platform intermediary only"
- *
- * For MVP: submits mock rating and navigates back to home.
+ *   - Optional text feedback area with GlassInput
+ *   - Cost breakdown in glass card
+ *   - "Submit & Pay" glow button
+ *   - Legal footer
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { AnimatedSpinner } from '../../components/animations';
 import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
+import { GlassStyles } from '../../theme/glass';
 import { post } from '../../services/apiClient';
 import type { CustomerFlowParamList } from '../../types';
 
@@ -94,9 +91,8 @@ function RatingScreen(): React.JSX.Element {
     navigation.setOptions({ title: 'Rate & Pay' });
   }, [navigation]);
 
-  // Cost breakdown — uses real rates when available, defaults otherwise
+  // Cost breakdown
   const costBreakdown = useMemo(() => {
-    // Platform fee rate comes from job data; default to 15% if not provided
     const feeRate = (route.params as any)?.platformFeeRate ?? 0.15;
     const taxRate = (route.params as any)?.taxRate ?? 0.13;
 
@@ -143,12 +139,23 @@ function RatingScreen(): React.JSX.Element {
       await post('/jobs/' + jobId + '/rating', payload);
       Alert.alert(
         'Thank You',
-        'Your rating has been submitted. Payment will be processed.',
+        'Your rating has been submitted. Would you like to add a tip for your provider?',
         [
           {
-            text: 'OK',
+            text: 'No Thanks',
+            style: 'cancel',
             onPress: () => {
               navigation.popToTop();
+            },
+          },
+          {
+            text: 'Add Tip',
+            onPress: () => {
+              navigation.navigate('Tip', {
+                jobId,
+                taskName,
+                finalPrice,
+              });
             },
           },
         ],
@@ -166,7 +173,7 @@ function RatingScreen(): React.JSX.Element {
   const isFormValid = rating > 0;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -176,46 +183,50 @@ function RatingScreen(): React.JSX.Element {
         >
           {/* Job Summary */}
           <View style={styles.section}>
-            <View style={styles.jobSummaryCard}>
-              <Text style={styles.jobSummaryLabel}>Completed Service</Text>
-              <Text style={styles.jobSummaryName}>{taskName}</Text>
-            </View>
+            <GlassCard variant="standard" style={styles.jobSummaryBorder}>
+              <View style={styles.jobSummaryContent}>
+                <Text style={styles.jobSummaryLabel}>Completed Service</Text>
+                <Text style={styles.jobSummaryName}>{taskName}</Text>
+              </View>
+            </GlassCard>
           </View>
 
           {/* Star Rating */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>How was your experience?</Text>
-            <View style={styles.starsContainer}>
-              {STAR_VALUES.map((star) => {
-                const isSelected = rating >= star;
-                return (
-                  <TouchableOpacity
-                    key={star}
-                    style={[
-                      styles.starButton,
-                      isSelected && styles.starButtonSelected,
-                    ]}
-                    onPress={() => setRating(star)}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={`${star} star${star > 1 ? 's' : ''}: ${STAR_LABELS[star]}`}
-                  >
-                    <Text
+            <GlassCard variant="dark">
+              <View style={styles.starsContainer}>
+                {STAR_VALUES.map((star) => {
+                  const isSelected = rating >= star;
+                  return (
+                    <TouchableOpacity
+                      key={star}
                       style={[
-                        styles.starText,
-                        isSelected && styles.starTextSelected,
+                        styles.starButton,
+                        isSelected && styles.starButtonSelected,
                       ]}
+                      onPress={() => setRating(star)}
+                      activeOpacity={0.7}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={`${star} star${star > 1 ? 's' : ''}: ${STAR_LABELS[star]}`}
                     >
-                      *
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            {rating > 0 && (
-              <Text style={styles.ratingLabel}>{STAR_LABELS[rating]}</Text>
-            )}
+                      <Text
+                        style={[
+                          styles.starText,
+                          isSelected && styles.starTextSelected,
+                        ]}
+                      >
+                        *
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {rating > 0 && (
+                <Text style={styles.ratingLabel}>{STAR_LABELS[rating]}</Text>
+              )}
+            </GlassCard>
           </View>
 
           {/* Feedback Tags */}
@@ -263,20 +274,18 @@ function RatingScreen(): React.JSX.Element {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Additional Comments</Text>
               <Text style={styles.feedbackSubtitle}>Optional</Text>
-              <View style={styles.feedbackInputContainer}>
-                <TextInput
-                  style={styles.feedbackInput}
-                  placeholder="Share more about your experience..."
-                  placeholderTextColor={Colors.inputPlaceholder}
-                  value={feedbackText}
-                  onChangeText={setFeedbackText}
-                  multiline
-                  numberOfLines={4}
-                  maxLength={500}
-                  textAlignVertical="top"
-                  accessibilityLabel="Additional feedback"
-                />
-              </View>
+              <GlassInput
+                placeholder="Share more about your experience..."
+                value={feedbackText}
+                onChangeText={setFeedbackText}
+                multiline
+                numberOfLines={4}
+                maxLength={500}
+                textAlignVertical="top"
+                accessibilityLabel="Additional feedback"
+                containerStyle={styles.feedbackContainer}
+                style={styles.feedbackInput}
+              />
               <Text style={styles.charCount}>
                 {feedbackText.length}/500
               </Text>
@@ -286,7 +295,7 @@ function RatingScreen(): React.JSX.Element {
           {/* Cost Breakdown */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Cost Breakdown</Text>
-            <View style={styles.costCard}>
+            <GlassCard variant="dark">
               <View style={styles.costRow}>
                 <Text style={styles.costLabel}>Labor</Text>
                 <Text style={styles.costValue}>
@@ -317,16 +326,16 @@ function RatingScreen(): React.JSX.Element {
                   ${costBreakdown.total.toFixed(2)}
                 </Text>
               </View>
-            </View>
+            </GlassCard>
           </View>
 
           {/* Legal Footer */}
           <View style={styles.section}>
             <View style={styles.legalCard}>
               <Text style={styles.legalText}>
-                Tasker acts as a platform intermediary only. Payment is
+                VISP acts as a platform intermediary only. Payment is
                 processed securely through Stripe. The service provider is an
-                independent professional and not an employee of Tasker.
+                independent professional and not an employee of VISP.
               </Text>
             </View>
           </View>
@@ -343,27 +352,17 @@ function RatingScreen(): React.JSX.Element {
               ${costBreakdown.total.toFixed(2)}
             </Text>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.submitButton,
-              (!isFormValid || isSubmitting) && styles.submitButtonDisabled,
-            ]}
+          <GlassButton
+            title="Submit & Pay"
+            variant="glow"
             onPress={handleSubmit}
             disabled={!isFormValid || isSubmitting}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Submit rating and pay"
-            accessibilityState={{ disabled: !isFormValid || isSubmitting }}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Text style={styles.submitButtonText}>Submit & Pay</Text>
-            )}
-          </TouchableOpacity>
+            loading={isSubmitting}
+            style={styles.submitButtonStyle}
+          />
         </View>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -372,13 +371,8 @@ function RatingScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -394,17 +388,15 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.sm,
   },
 
   // Job Summary
-  jobSummaryCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.success,
+  jobSummaryBorder: {
+    borderColor: 'rgba(39, 174, 96, 0.4)',
+  },
+  jobSummaryContent: {
     alignItems: 'center',
   },
   jobSummaryLabel: {
@@ -414,7 +406,7 @@ const styles = StyleSheet.create({
   },
   jobSummaryName: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     textAlign: 'center',
   },
 
@@ -429,19 +421,19 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   starButtonSelected: {
-    backgroundColor: `${Colors.warning}20`,
-    borderColor: Colors.warning,
+    backgroundColor: 'rgba(243, 156, 18, 0.20)',
+    borderColor: 'rgba(243, 156, 18, 0.6)',
   },
   starText: {
     fontSize: 24,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
   },
   starTextSelected: {
     color: Colors.warning,
@@ -456,7 +448,7 @@ const styles = StyleSheet.create({
   // Tags
   tagSubtitle: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginBottom: Spacing.md,
   },
   tagsContainer: {
@@ -467,25 +459,25 @@ const styles = StyleSheet.create({
   tagChip: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xxl,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   tagChipSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.20)',
+    borderColor: 'rgba(120, 80, 255, 0.5)',
   },
   tagChipSelectedNegative: {
-    backgroundColor: `${Colors.error}15`,
-    borderColor: Colors.error,
+    backgroundColor: 'rgba(231, 76, 60, 0.15)',
+    borderColor: 'rgba(231, 76, 60, 0.5)',
   },
   tagChipText: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   tagChipTextSelected: {
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 0.9)',
   },
   tagChipTextSelectedNegative: {
     color: Colors.error,
@@ -494,37 +486,23 @@ const styles = StyleSheet.create({
   // Feedback
   feedbackSubtitle: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
     marginBottom: Spacing.md,
   },
-  feedbackInputContainer: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    padding: Spacing.md,
-    minHeight: 100,
+  feedbackContainer: {
+    // container for GlassInput
   },
   feedbackInput: {
-    ...Typography.body,
-    color: Colors.inputText,
-    padding: 0,
+    minHeight: 100,
   },
   charCount: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
     textAlign: 'right',
     marginTop: Spacing.xs,
   },
 
   // Cost Breakdown
-  costCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   costRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -533,21 +511,21 @@ const styles = StyleSheet.create({
   },
   costLabel: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   costValue: {
     ...Typography.footnote,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.medium as '500',
   },
   costDivider: {
     height: 1,
-    backgroundColor: Colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     marginVertical: Spacing.xs,
   },
   costTotalLabel: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   costTotalValue: {
     ...Typography.headline,
@@ -556,13 +534,13 @@ const styles = StyleSheet.create({
 
   // Legal
   legalCard: {
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: BorderRadius.sm,
     padding: Spacing.md,
   },
   legalText: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
     lineHeight: 16,
     textAlign: 'center',
   },
@@ -579,40 +557,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.85)',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.lg,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   ctaPriceInfo: {
     flexDirection: 'column',
   },
   ctaPriceLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
   ctaPriceValue: {
     fontSize: FontSize.title2,
     fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
-  submitButton: {
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.md,
+  submitButtonStyle: {
     minWidth: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.sm,
-  },
-  submitButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-    ...Shadows.none,
-  },
-  submitButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
   },
 });
 

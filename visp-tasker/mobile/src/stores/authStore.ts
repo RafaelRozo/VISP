@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Auth Zustand Store
+ * VISP - Auth Zustand Store
  *
  * Global authentication state: user session, tokens, loading flags.
  * Hydrates from secure keychain on app launch via loadStoredAuth().
@@ -126,6 +126,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.register(data);
         applyAuthResponse(set, response);
+        // Initialize push notifications after successful registration
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
         set({
           isLoading: false,
@@ -141,6 +143,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.loginWithApple(identityToken);
         applyAuthResponse(set, response);
+        // Initialize push notifications after Apple sign-in
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
         set({
           isLoading: false,
@@ -156,6 +160,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.loginWithGoogle(serverAuthCode);
         applyAuthResponse(set, response);
+        // Initialize push notifications after Google sign-in
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
         set({
           isLoading: false,
@@ -211,6 +217,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
             isRestoring: false,
             error: null,
           });
+          // Re-initialize push notifications on session restore
+          notificationService.initialize().catch(console.warn);
         } else {
           set({
             user: null,

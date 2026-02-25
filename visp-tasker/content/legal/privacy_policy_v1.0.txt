@@ -1,0 +1,281 @@
+VISP PRIVACY POLICY
+Version 1.0
+Effective Date: January 1, 2026
+
+1. INTRODUCTION
+
+VISP ("we," "us," or "our") operates a home services marketplace platform that connects customers with independent service providers. This Privacy Policy explains how we collect, use, disclose, and protect your personal information when you use our mobile application, website, and related services (collectively, the "Platform").
+
+By accessing or using the Platform, you acknowledge that you have read, understood, and agree to the practices described in this Privacy Policy. If you do not agree with this Privacy Policy, please do not use the Platform.
+
+2. INFORMATION WE COLLECT
+
+2.1 Personal Information You Provide
+
+When you create an account or use our Platform, we may collect:
+
+- Full name, email address, phone number, and mailing address
+- Date of birth and government-issued identification (for provider verification)
+- Profile photographs and biographical information
+- Payment information (credit/debit card numbers, bank account details) processed through our third-party payment processor
+- Professional qualifications, certifications, licenses, and insurance documentation (for service providers)
+- Background check consent and results (for service providers)
+- Communications you send to us or through the Platform, including chat messages, reviews, and ratings
+
+2.2 Location Data
+
+- Precise geolocation data (GPS) when you use location-based features such as finding nearby providers or tracking service delivery
+- Approximate location derived from your IP address
+- Service addresses you provide when booking services
+
+2.3 Device and Usage Data
+
+- Device type, operating system, unique device identifiers, and mobile network information
+- App version, browser type, and language preferences
+- Log data including access times, pages viewed, app interactions, and referring URLs
+- Crash reports and performance diagnostics
+
+2.4 Information from Third Parties
+
+- Identity verification results from background check providers
+- Payment transaction data from our payment processor (Stripe)
+- Information from social media platforms if you choose to link your account
+- Public records related to professional licensing and certifications
+
+3. HOW WE USE YOUR INFORMATION
+
+We use the information we collect for the following purposes:
+
+3.1 Service Delivery
+- To create and manage your account
+- To facilitate the matching of customers with qualified service providers
+- To process bookings, scheduling, and service fulfillment
+- To enable real-time communication between customers and providers
+- To process payments and issue payouts to service providers
+
+3.2 Provider Matching and Quality Assurance
+- To operate our matching algorithms based on location, availability, qualifications, and ratings
+- To calculate provider scores and maintain quality standards
+- To verify provider qualifications, certifications, and insurance
+- To enforce our four-level provider classification system
+
+3.3 Safety and Security
+- To verify user identities and prevent fraud
+- To conduct and process background checks for service providers
+- To monitor for unauthorized or suspicious activity
+- To enforce our Terms of Service and community guidelines
+- To handle emergency service escalation
+
+3.4 Communications
+- To send booking confirmations, service updates, and receipts
+- To deliver push notifications related to your bookings and account
+- To send promotional communications (with your consent, where required)
+- To facilitate in-app messaging between customers and providers
+
+3.5 Platform Improvement
+- To analyze usage patterns and improve our services
+- To develop new features and functionality
+- To conduct research and analytics
+- To troubleshoot technical issues
+
+3.6 Legal Compliance
+- To comply with applicable laws, regulations, and legal processes
+- To respond to lawful requests from law enforcement and government authorities
+- To protect our rights, privacy, safety, or property
+
+4. HOW WE SHARE YOUR INFORMATION
+
+4.1 With Service Providers and Customers
+- When you book a service, we share relevant information (name, service address, contact details) with the matched service provider
+- When you accept a job as a provider, we share your name, profile information, qualifications, and ratings with the customer
+- Reviews and ratings are visible to other users of the Platform
+
+4.2 With Third-Party Service Providers
+- Payment processors (Stripe) to process transactions and payouts
+- Cloud hosting providers (Amazon Web Services) for data storage and processing
+- Background check providers for provider verification
+- Map and geolocation service providers for location-based features
+- Push notification services (Firebase Cloud Messaging) for delivering notifications
+- Analytics providers for usage analysis and performance monitoring
+- Communication service providers for email and SMS delivery
+
+4.3 For Legal Reasons
+- To comply with applicable laws, regulations, subpoenas, or court orders
+- To respond to lawful requests by public authorities, including law enforcement
+- To protect and defend the rights, property, or safety of VISP, our users, or the public
+- In connection with the investigation of fraud, intellectual property infringement, or other illegal activity
+
+4.4 Business Transfers
+- In connection with a merger, acquisition, reorganization, sale of assets, or bankruptcy, your information may be transferred to a successor entity
+
+4.5 With Your Consent
+- We may share your information with third parties when you have given us explicit consent to do so
+
+We do not sell your personal information to third parties.
+
+5. DATA RETENTION
+
+We retain your personal information for as long as your account is active or as needed to provide you with our services. Specific retention periods include:
+
+- Account information: Retained for the duration of your account and for 3 years after account closure for legal and audit purposes
+- Transaction records: Retained for 7 years to comply with financial record-keeping requirements
+- Background check results: Retained for the duration of the provider's active status plus 1 year
+- Communications and chat logs: Retained for 2 years after the related service is completed
+- Legal consent records: Retained indefinitely for audit and compliance purposes
+- Analytics data: Aggregated and anonymized data may be retained indefinitely
+
+You may request deletion of your account and associated data as described in Section 7 below.
+
+6. DATA SECURITY
+
+We implement appropriate technical and organizational measures to protect your personal information, including:
+
+- Encryption of data in transit (TLS/SSL) and at rest (AES-256)
+- Secure token-based authentication with automatic session expiration
+- Role-based access controls limiting employee access to personal data
+- Regular security assessments and vulnerability testing
+- Secure cloud infrastructure with redundancy and disaster recovery
+- Monitoring and logging of access to sensitive data
+- Secure storage of payment information through PCI DSS-compliant processors
+
+While we take reasonable steps to protect your information, no method of transmission over the Internet or electronic storage is completely secure. We cannot guarantee absolute security.
+
+7. YOUR RIGHTS AND CHOICES
+
+Depending on your jurisdiction, you may have the following rights regarding your personal information:
+
+7.1 Access
+You may request a copy of the personal information we hold about you.
+
+7.2 Correction
+You may request that we correct or update inaccurate or incomplete personal information.
+
+7.3 Deletion
+You may request that we delete your personal information, subject to certain exceptions required by law or legitimate business purposes (such as retaining transaction records for tax compliance).
+
+7.4 Data Portability
+You may request a copy of your personal information in a structured, commonly used, machine-readable format.
+
+7.5 Withdrawal of Consent
+Where we rely on your consent to process your personal information, you may withdraw that consent at any time. This will not affect the lawfulness of processing carried out before the withdrawal.
+
+7.6 Opt-Out of Marketing
+You may opt out of receiving promotional communications by following the unsubscribe instructions in our emails or adjusting your notification preferences in the app settings.
+
+7.7 Push Notifications
+You may disable push notifications through your device settings at any time.
+
+To exercise any of these rights, please contact us at legal@visp.ca. We will respond to your request within 30 days, or as required by applicable law.
+
+8. CANADIAN PRIVACY LAW COMPLIANCE (PIPEDA)
+
+VISP is committed to compliance with the Personal Information Protection and Electronic Documents Act (PIPEDA) and applicable provincial privacy legislation in Canada.
+
+In accordance with PIPEDA's ten fair information principles:
+
+8.1 Accountability
+VISP has designated a Privacy Officer responsible for our compliance with privacy legislation. Contact our Privacy Officer at legal@visp.ca.
+
+8.2 Identifying Purposes
+We identify the purposes for collecting personal information at or before the time of collection, as described in Section 3 of this Policy.
+
+8.3 Consent
+We obtain meaningful consent for the collection, use, and disclosure of personal information. You may withdraw consent at any time, subject to legal or contractual restrictions, by contacting us at legal@visp.ca.
+
+8.4 Limiting Collection
+We limit the collection of personal information to what is necessary for the identified purposes.
+
+8.5 Limiting Use, Disclosure, and Retention
+Personal information is used and disclosed only for the purposes for which it was collected, unless we obtain further consent or as required by law. We retain information only as long as necessary to fulfill those purposes.
+
+8.6 Accuracy
+We take reasonable steps to ensure that personal information is accurate, complete, and up-to-date. You may update your information through your account settings or by contacting us.
+
+8.7 Safeguards
+We protect personal information with security safeguards appropriate to the sensitivity of the information, as described in Section 6.
+
+8.8 Openness
+This Privacy Policy describes our policies and practices regarding the management of personal information.
+
+8.9 Individual Access
+Upon request, we will inform you of the existence, use, and disclosure of your personal information and provide you with access to that information, subject to limited exceptions under PIPEDA.
+
+8.10 Challenging Compliance
+You may challenge our compliance with these principles by contacting our Privacy Officer at legal@visp.ca. If your concern is not resolved to your satisfaction, you may file a complaint with the Office of the Privacy Commissioner of Canada.
+
+9. UNITED STATES STATE PRIVACY LAW COMPLIANCE
+
+For residents of US states with comprehensive privacy laws (including California, Virginia, Colorado, Connecticut, Utah, and other applicable states):
+
+9.1 Categories of Personal Information
+We collect the categories of personal information described in Section 2 of this Policy, including identifiers, commercial information, geolocation data, professional information, and internet activity information.
+
+9.2 Your Rights
+Depending on your state of residence, you may have the right to:
+- Know what personal information we collect and how it is used
+- Access your personal information
+- Delete your personal information
+- Correct inaccurate personal information
+- Opt out of the sale or sharing of personal information (VISP does not sell personal information)
+- Non-discrimination for exercising your privacy rights
+
+9.3 How to Exercise Your Rights
+Submit requests to legal@visp.ca. We will verify your identity before processing your request. You may designate an authorized agent to submit requests on your behalf.
+
+9.4 Appeals
+If we deny your privacy request, you may appeal by contacting us at legal@visp.ca with the subject line "Privacy Appeal." We will respond within the timeframes required by applicable state law.
+
+10. CHILDREN'S PRIVACY
+
+The Platform is not intended for use by individuals under the age of 13. We do not knowingly collect personal information from children under 13. If we become aware that we have collected personal information from a child under 13, we will take steps to delete such information promptly.
+
+Users must be at least 18 years of age to create a service provider account. Users must be at least 13 years of age to create a customer account with parental or guardian consent.
+
+11. COOKIES AND TRACKING TECHNOLOGIES
+
+11.1 Mobile Application
+Our mobile application may use the following technologies:
+- Device identifiers for analytics and push notification delivery
+- Local storage for caching user preferences and session data
+- Firebase Analytics for understanding app usage patterns and performance
+- Crash reporting tools to identify and resolve technical issues
+
+11.2 Website
+Our website may use:
+- Essential cookies required for the website to function
+- Analytics cookies to understand how visitors interact with our website
+- Preference cookies to remember your settings and choices
+
+11.3 Your Choices
+You can manage cookie preferences through your browser settings. You can reset your mobile advertising identifier or limit ad tracking through your device settings. Disabling certain tracking technologies may affect the functionality of the Platform.
+
+12. INTERNATIONAL DATA TRANSFERS
+
+Your personal information may be stored and processed in Canada and the United States, where our servers and service providers are located. By using the Platform, you consent to the transfer of your information to these jurisdictions, which may have different data protection laws than your country of residence.
+
+We take appropriate steps to ensure that your personal information receives an adequate level of protection in the jurisdictions in which we process it.
+
+13. CHANGES TO THIS PRIVACY POLICY
+
+We may update this Privacy Policy from time to time. We will notify you of material changes by:
+- Posting the updated Privacy Policy on the Platform with a revised effective date
+- Sending you a notification through the app or by email
+- Requiring your acknowledgment of the updated Policy before continued use of the Platform
+
+Your continued use of the Platform after the effective date of the updated Privacy Policy constitutes your acceptance of the changes.
+
+14. THIRD-PARTY LINKS AND SERVICES
+
+The Platform may contain links to third-party websites or services that are not operated by VISP. We are not responsible for the privacy practices of these third parties. We encourage you to review the privacy policies of any third-party websites or services you visit.
+
+15. CONTACT US
+
+If you have questions, concerns, or requests regarding this Privacy Policy or our privacy practices, please contact us at:
+
+VISP
+Email: legal@visp.ca
+Subject Line: Privacy Inquiry
+
+For complaints regarding our privacy practices:
+- Canada: Office of the Privacy Commissioner of Canada (www.priv.gc.ca)
+- United States: Your state attorney general or applicable regulatory authority

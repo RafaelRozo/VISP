@@ -2,26 +2,19 @@
 
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTRootView.h>
-
-// Firebase
-@import Firebase;
+#import <RNCPushNotificationIOS.h>
+#import <UserNotifications/UserNotifications.h>
 
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
   self.moduleName = @"VISPTasker";
-
-  // Set initial props for the root React component
   self.initialProps = @{};
 
-  // Initialize Firebase
-  [FIRApp configure];
-
-  // Register for remote notifications
+  // Register for remote notifications (APNs native)
   UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
   center.delegate = self;
-  [application registerForRemoteNotifications];
 
   return [super application:application didFinishLaunchingWithOptions:launchOptions];
 }
@@ -40,19 +33,28 @@
 #endif
 }
 
-// --- Push notification delegates ---
+// --- APNs delegates ---
 
+// Called when APNs successfully registers and returns the device token
 - (void)application:(UIApplication *)application
     didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
 {
-  // Forward APNS token to Firebase Cloud Messaging
-  [FIRMessaging messaging].APNSToken = deviceToken;
+  [RNCPushNotificationIOS didRegisterForRemoteNotificationsWithDeviceToken:deviceToken];
 }
 
+// Called when APNs registration fails
 - (void)application:(UIApplication *)application
     didFailToRegisterForRemoteNotificationsWithError:(NSError *)error
 {
-  NSLog(@"Failed to register for remote notifications: %@", error.localizedDescription);
+  [RNCPushNotificationIOS didFailToRegisterForRemoteNotificationsWithError:error];
+}
+
+// Called when a remote notification is received (background/content-available)
+- (void)application:(UIApplication *)application
+    didReceiveRemoteNotification:(NSDictionary *)userInfo
+    fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
+{
+  [RNCPushNotificationIOS didReceiveRemoteNotification:userInfo fetchCompletionHandler:completionHandler];
 }
 
 // Handle notification when app is in foreground
@@ -61,7 +63,7 @@
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
 {
   // Show banner + sound even when app is in foreground
-  completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionSound);
+  completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionSound | UNNotificationPresentationOptionBadge);
 }
 
 // Handle notification tap
@@ -69,7 +71,7 @@
     didReceiveNotificationResponse:(UNNotificationResponse *)response
              withCompletionHandler:(void (^)(void))completionHandler
 {
-  // Handle notification tap (deep link routing handled in JS)
+  [RNCPushNotificationIOS didReceiveNotificationResponse:response];
   completionHandler();
 }
 

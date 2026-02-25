@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Provider Zustand Store
+ * VISP - Provider Zustand Store
  *
  * Manages all provider-side state: online status, on-call status,
  * active job, pending offers, earnings, and performance score.
@@ -16,6 +16,7 @@ import {
   OnCallShift,
   WeeklyEarnings,
   EarningsPayout,
+  ServiceCatalogItem,
 } from '../types';
 import { get, post, patch } from '../services/apiClient';
 
@@ -45,6 +46,15 @@ interface ProviderState {
   scheduledJobs: ScheduledJob[];
   onCallShifts: OnCallShift[];
 
+  // Offer filters
+  offerFilterCategory: string | null;
+  offerFilterMaxDistance: number | null;
+  offerSortBy: 'distance' | 'price' | 'expiry';
+
+  // Service catalog
+  serviceCatalog: ServiceCatalogItem[];
+  catalogLoading: boolean;
+
   // Loading flags
   isLoadingDashboard: boolean;
   isLoadingOffers: boolean;
@@ -70,6 +80,11 @@ interface ProviderState {
   arriveAtJob: (jobId: string) => Promise<void>;
   completeJob: (jobId: string) => Promise<void>;
   fetchActiveJob: (jobId: string) => Promise<void>;
+  setOfferFilter: (category: string | null, maxDistance: number | null) => void;
+  setOfferSort: (sortBy: 'distance' | 'price' | 'expiry') => void;
+  getFilteredOffers: () => JobOffer[];
+  fetchServiceCatalog: () => Promise<void>;
+  submitPriceProposal: (jobId: string, priceCents: number, description?: string) => Promise<void>;
   clearError: () => void;
   reset: () => void;
 }
@@ -98,6 +113,11 @@ const initialState = {
   performanceScore: 0,
   scheduledJobs: [],
   onCallShifts: [],
+  offerFilterCategory: null,
+  offerFilterMaxDistance: null,
+  offerSortBy: 'expiry' as const,
+  serviceCatalog: [],
+  catalogLoading: false,
   isLoadingDashboard: false,
   isLoadingOffers: false,
   isLoadingEarnings: false,
@@ -382,6 +402,90 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
       set({ activeJob: job });
     } catch (err: unknown) {
       set({ error: extractErrorMessage(err) });
+    }
+  },
+
+  setOfferFilter: (category: string | null, maxDistance: number | null) => {
+    set({ offerFilterCategory: category, offerFilterMaxDistance: maxDistance });
+  },
+
+  setOfferSort: (sortBy: 'distance' | 'price' | 'expiry') => {
+    set({ offerSortBy: sortBy });
+  },
+
+  getFilteredOffers: (): JobOffer[] => {
+    const state = getState();
+    let offers = [...state.pendingOffers];
+
+    if (state.offerFilterCategory) {
+      offers = offers.filter(
+        (o) => o.task.categoryName === state.offerFilterCategory,
+      );
+    }
+
+    if (state.offerFilterMaxDistance !== null) {
+      offers = offers.filter(
+        (o) =>
+          o.distanceKm !== undefined &&
+          o.distanceKm <= (state.offerFilterMaxDistance ?? Infinity),
+      );
+    }
+
+    switch (state.offerSortBy) {
+      case 'distance':
+        offers.sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
+        break;
+      case 'price':
+        offers.sort(
+          (a, b) =>
+            (b.pricing.estimatedPayoutCents ?? 0) -
+            (a.pricing.estimatedPayoutCents ?? 0),
+        );
+        break;
+      case 'expiry':
+      default:
+        offers.sort((a, b) => {
+          const aExp = a.offerExpiresAt
+            ? new Date(a.offerExpiresAt).getTime()
+            : Infinity;
+          const bExp = b.offerExpiresAt
+            ? new Date(b.offerExpiresAt).getTime()
+            : Infinity;
+          return aExp - bExp;
+        });
+        break;
+    }
+
+    return offers;
+  },
+
+  fetchServiceCatalog: async () => {
+    set({ catalogLoading: true, error: null });
+    try {
+      const data = await get<ServiceCatalogItem[]>('/provider/service-catalog');
+      set({ serviceCatalog: data, catalogLoading: false });
+    } catch (err: unknown) {
+      console.error('[fetchServiceCatalog] ERROR:', err);
+      set({ catalogLoading: false, error: extractErrorMessage(err) });
+    }
+  },
+
+  submitPriceProposal: async (
+    jobId: string,
+    priceCents: number,
+    description?: string,
+  ) => {
+    set({ error: null });
+    try {
+      await post('/proposals', {
+        jobId,
+        proposedPriceCents: priceCents,
+        description: description ?? '',
+      });
+    } catch (err: unknown) {
+      console.error('[submitPriceProposal] ERROR:', err);
+      set({ error: extractErrorMessage(err) });
+      throw err;
     }
   },
 

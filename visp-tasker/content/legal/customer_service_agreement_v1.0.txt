@@ -1,13 +1,13 @@
-VISP/TASKER CUSTOMER SERVICE AGREEMENT
+VISP CUSTOMER SERVICE AGREEMENT
 Version 1.0 — Effective Date: January 1, 2026
 
 THIS CUSTOMER SERVICE AGREEMENT ("AGREEMENT") IS ENTERED INTO BETWEEN
 VISP TECHNOLOGIES INC. ("VISP", "WE", "US") AND THE CUSTOMER ACCEPTING
-THESE TERMS ("CUSTOMER", "YOU") UPON YOUR FIRST USE OF THE TASKER
+THESE TERMS ("CUSTOMER", "YOU") UPON YOUR FIRST USE OF THE VISP
 PLATFORM TO REQUEST SERVICES.
 
 1. SERVICE REQUEST PROCESS
-1.1. All service requests must be made through the Tasker platform
+1.1. All service requests must be made through the VISP platform
      using the predefined task catalog. Free-text task descriptions
      are not available.
 1.2. You will select the appropriate service category and task type
@@ -135,6 +135,6 @@ PLATFORM TO REQUEST SERVICES.
 12.2. Your contact information is shared with the assigned Provider
       solely for the purpose of completing the requested service.
 
-BY USING THE TASKER PLATFORM TO REQUEST SERVICES, YOU ACKNOWLEDGE THAT
+BY USING THE VISP PLATFORM TO REQUEST SERVICES, YOU ACKNOWLEDGE THAT
 YOU HAVE READ, UNDERSTOOD, AND AGREE TO THIS CUSTOMER SERVICE AGREEMENT
 IN ADDITION TO THE PLATFORM TERMS OF SERVICE.

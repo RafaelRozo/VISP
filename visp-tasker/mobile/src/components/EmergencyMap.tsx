@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - EmergencyMap Component
+ * VISP - EmergencyMap Component
  *
  * Map component used throughout the emergency flow.
  * Features:
@@ -7,7 +7,7 @@
  *   - Provider location (animated marker)
  *   - Route line between customer and provider
  *   - ETA overlay
- *   - Uses react-native-maps (MapView)
+ *   - Uses Mapbox GL (dark style)
  */
 
 import React, { useEffect, useRef, useMemo } from 'react';
@@ -16,20 +16,18 @@ import {
   Text,
   StyleSheet,
   Animated,
-  Platform,
   ViewStyle,
 } from 'react-native';
-import MapView, {
-  Marker,
-  Polyline,
-  PROVIDER_GOOGLE,
-  Region,
-} from 'react-native-maps';
+import MapboxGL from '@rnmapbox/maps';
+import { Config } from '../services/config';
 import { Colors } from '../theme/colors';
 import { Spacing } from '../theme/spacing';
 import { FontSize, FontWeight } from '../theme/typography';
 import { BorderRadius } from '../theme/borders';
 import { Shadows } from '../theme/shadows';
+import { GlassStyles } from '../theme/glass';
+
+MapboxGL.setAccessToken(Config.mapboxAccessToken);
 
 // ──────────────────────────────────────────────
 // Types
@@ -48,15 +46,13 @@ interface EmergencyMapProps {
   showEtaOverlay?: boolean;
   style?: ViewStyle;
   interactive?: boolean;
-  onRegionChange?: (region: Region) => void;
 }
 
 // ──────────────────────────────────────────────
 // Constants
 // ──────────────────────────────────────────────
 
-const DEFAULT_DELTA = 0.015;
-const MAP_PADDING = { top: 60, right: 60, bottom: 60, left: 60 };
+const FIT_PADDING = [60, 60, 60, 60]; // [top, right, bottom, left]
 
 // ──────────────────────────────────────────────
 // Component
@@ -70,9 +66,8 @@ function EmergencyMap({
   showEtaOverlay = true,
   style,
   interactive = true,
-  onRegionChange,
 }: EmergencyMapProps): React.JSX.Element {
-  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<MapboxGL.Camera>(null);
   const providerPulse = useRef(new Animated.Value(0.4)).current;
 
   // Animate provider marker pulse
@@ -95,75 +90,80 @@ function EmergencyMap({
       animation.start();
       return () => animation.stop();
     }
-  }, [providerLocation, providerPulse]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerLocation]);
 
   // Fit map to show both markers when provider appears
   useEffect(() => {
-    if (mapRef.current && providerLocation) {
-      const coordinates: Coordinate[] = [customerLocation];
-      if (providerLocation) {
-        coordinates.push(providerLocation);
-      }
-      mapRef.current.fitToCoordinates(coordinates, {
-        edgePadding: MAP_PADDING,
-        animated: true,
-      });
+    if (cameraRef.current && providerLocation) {
+      const lats = [customerLocation.latitude, providerLocation.latitude];
+      const lngs = [customerLocation.longitude, providerLocation.longitude];
+      const ne: [number, number] = [Math.max(...lngs), Math.max(...lats)];
+      const sw: [number, number] = [Math.min(...lngs), Math.min(...lats)];
+      cameraRef.current.fitBounds(ne, sw, FIT_PADDING, 1000);
     }
   }, [customerLocation, providerLocation]);
 
-  // Initial region centered on customer
-  const initialRegion = useMemo(
-    () => ({
-      latitude: customerLocation.latitude,
-      longitude: customerLocation.longitude,
-      latitudeDelta: DEFAULT_DELTA,
-      longitudeDelta: DEFAULT_DELTA,
-    }),
-    [customerLocation],
-  );
+  // Route GeoJSON
+  const routeGeoJSON = useMemo(() => {
+    if (!routeCoordinates || routeCoordinates.length < 2) return null;
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: routeCoordinates.map(c => [c.longitude, c.latitude]),
+      },
+      properties: {},
+    };
+  }, [routeCoordinates]);
 
   return (
     <View style={[styles.container, style]}>
-      <MapView
-        ref={mapRef}
+      <MapboxGL.MapView
         style={styles.map}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        initialRegion={initialRegion}
+        styleURL={MapboxGL.StyleURL.Dark}
         scrollEnabled={interactive}
         zoomEnabled={interactive}
         rotateEnabled={false}
         pitchEnabled={false}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        onRegionChangeComplete={onRegionChange}
-        customMapStyle={darkMapStyle}
+        attributionEnabled={false}
+        logoEnabled={false}
         accessibilityLabel="Emergency service map"
       >
+        <MapboxGL.Camera
+          ref={cameraRef}
+          zoomLevel={14}
+          centerCoordinate={[
+            customerLocation.longitude,
+            customerLocation.latitude,
+          ]}
+          animationMode="flyTo"
+          animationDuration={1000}
+        />
+
         {/* Customer location marker */}
-        <Marker
-          coordinate={customerLocation}
-          title="Your Location"
-          description="Emergency location"
-          anchor={{ x: 0.5, y: 0.5 }}
+        <MapboxGL.MarkerView
+          id="customer-location"
+          coordinate={[
+            customerLocation.longitude,
+            customerLocation.latitude,
+          ]}
         >
           <View style={styles.customerMarkerContainer}>
             <View style={styles.customerMarkerOuter}>
               <View style={styles.customerMarkerInner} />
             </View>
           </View>
-        </Marker>
+        </MapboxGL.MarkerView>
 
         {/* Provider location marker */}
         {providerLocation && (
-          <Marker
-            coordinate={providerLocation}
-            title="Provider"
-            description={
-              etaMinutes
-                ? `Arriving in ${etaMinutes} minutes`
-                : 'En route to you'
-            }
-            anchor={{ x: 0.5, y: 0.5 }}
+          <MapboxGL.MarkerView
+            id="provider-location"
+            coordinate={[
+              providerLocation.longitude,
+              providerLocation.latitude,
+            ]}
           >
             <View style={styles.providerMarkerContainer}>
               <Animated.View
@@ -178,19 +178,25 @@ function EmergencyMap({
                 </View>
               </View>
             </View>
-          </Marker>
+          </MapboxGL.MarkerView>
         )}
 
-        {/* Route polyline */}
-        {routeCoordinates && routeCoordinates.length > 1 && (
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeColor={Colors.primary}
-            strokeWidth={4}
-            lineDashPattern={[0]}
-          />
+        {/* Route line */}
+        {routeGeoJSON && (
+          <MapboxGL.ShapeSource id="emergency-route-source" shape={routeGeoJSON}>
+            <MapboxGL.LineLayer
+              id="emergency-route-line"
+              style={{
+                lineColor: Colors.primary,
+                lineWidth: 4,
+                lineOpacity: 0.8,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          </MapboxGL.ShapeSource>
         )}
-      </MapView>
+      </MapboxGL.MapView>
 
       {/* ETA overlay */}
       {showEtaOverlay && etaMinutes !== undefined && etaMinutes > 0 && (
@@ -203,49 +209,6 @@ function EmergencyMap({
     </View>
   );
 }
-
-// ──────────────────────────────────────────────
-// Dark map style for the VISP dark theme
-// ──────────────────────────────────────────────
-
-const darkMapStyle = [
-  {
-    elementType: 'geometry',
-    stylers: [{ color: '#1A1A2E' }],
-  },
-  {
-    elementType: 'labels.text.stroke',
-    stylers: [{ color: '#1A1A2E' }],
-  },
-  {
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#6B6B80' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#2A2A40' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#16213E' }],
-  },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#16213E' }],
-  },
-  {
-    featureType: 'poi',
-    elementType: 'geometry',
-    stylers: [{ color: '#16213E' }],
-  },
-  {
-    featureType: 'transit',
-    stylers: [{ visibility: 'off' }],
-  },
-];
 
 // ──────────────────────────────────────────────
 // Styles
@@ -325,14 +288,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: Spacing.lg,
     right: Spacing.lg,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    ...GlassStyles.darkPanel,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.md,
   },
   etaLabel: {
     fontSize: FontSize.caption,

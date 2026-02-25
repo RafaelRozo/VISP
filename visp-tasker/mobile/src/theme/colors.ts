@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker Design System - Color Palette
+ * VISP Design System - Color Palette
  *
  * All color values used across the application are defined here.
  * Never use inline hex values in components; always reference these constants.
@@ -29,8 +29,35 @@ export const Colors = {
   error: '#E74C3C',
   errorDark: '#C0392B',
 
+  // ── Glass Surfaces ────────────────────────
+  glass: {
+    white: 'rgba(255, 255, 255, 0.10)',
+    whiteMd: 'rgba(255, 255, 255, 0.18)',
+    dark: 'rgba(10, 10, 30, 0.55)',
+    darkHeavy: 'rgba(15, 15, 40, 0.65)',
+  },
+  // ── Glass Borders ────────────────────────
+  glassBorder: {
+    light: 'rgba(255, 255, 255, 0.20)',
+    subtle: 'rgba(255, 255, 255, 0.12)',
+    input: 'rgba(255, 255, 255, 0.15)',
+    button: 'rgba(255, 255, 255, 0.25)',
+  },
+  // ── Glow Accents ─────────────────────────
+  glow: {
+    purple: 'rgba(120, 40, 200, 0.4)',
+    blue: 'rgba(20, 120, 255, 0.4)',
+    pink: 'rgba(255, 60, 180, 0.4)',
+    teal: 'rgba(20, 200, 180, 0.4)',
+  },
+  // ── Background Orbs ──────────────────────
+  orb: {
+    purple: 'rgba(120, 40, 200, 0.5)',
+    blue: 'rgba(20, 120, 255, 0.4)',
+  },
+
   // ── Backgrounds ────────────────────────────
-  background: '#1A1A2E',
+  background: '#0a0a1a',
   surface: '#16213E',
   surfaceLight: '#1E2D4D',
   surfaceElevated: '#243351',

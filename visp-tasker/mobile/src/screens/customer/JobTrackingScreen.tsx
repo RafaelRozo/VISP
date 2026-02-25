@@ -1,35 +1,31 @@
 /**
- * VISP/Tasker - JobTrackingScreen (Real Data + Mapbox)
+ * VISP - JobTrackingScreen (Glass Redesign)
  *
  * Live job tracking screen with:
  *   - Real job data from backend API
  *   - Mapbox MapView with provider/customer markers
  *   - Route line between provider and customer
- *   - Polling for provider position + ETA every 5 seconds
- *   - Status timeline: Pending → Matched → En Route → Arrived → In Progress → Completed
- *   - Contact buttons (Call, Message)
- *   - In Progress: timer and running cost estimate
- *   - Completed: summary with rating prompt
+ *   - Glass overlays on map and status timeline
+ *   - Contact buttons, timer, and completion summary
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Linking,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MapboxGL from '@rnmapbox/maps';
 
-import { Colors, getLevelColor } from '../../theme/colors';
-import { Spacing } from '../../theme/spacing';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { Colors, getLevelColor, Spacing, GlassStyles } from '../../theme';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { Shadows } from '../../theme/shadows';
@@ -192,13 +188,11 @@ function JobTrackingScreen(): React.JSX.Element {
 
   // ── 2-minute search timeout ──────────────
   useEffect(() => {
-    // Only start the timeout if we're in pending/searching state
     if (currentStatus !== 'pending' || searchTimedOut) {
       return;
     }
 
     searchTimeoutRef.current = setTimeout(() => {
-      // Only time out if still pending (no provider found)
       setSearchTimedOut(true);
     }, SEARCH_TIMEOUT_MS);
 
@@ -232,14 +226,12 @@ function JobTrackingScreen(): React.JSX.Element {
 
   // ── Derived values ───────────────────────
   const currentStepIndex = useMemo(() => {
-    // Map to step index, skipping pending_match
     const idx = STATUS_STEPS.findIndex((s) => s.status === currentStatus);
     return idx >= 0 ? idx : 0;
   }, [currentStatus]);
 
   const isCompleted = currentStatus === 'completed';
   const isInProgress = currentStatus === 'in_progress';
-  // Use tracking providerName, or fall back to provider info from job detail
   const jobProviderName = job?.provider
     ? `${job.provider.firstName} ${job.provider.lastName}`.trim()
     : null;
@@ -255,7 +247,6 @@ function JobTrackingScreen(): React.JSX.Element {
   }, [elapsedSeconds]);
 
   const runningCost = useMemo(() => {
-    // Use actual estimated/final price from the job data instead of hardcoded rate
     const price = job?.finalPrice ?? job?.estimatedPrice ?? 0;
     return price.toFixed(2);
   }, [job?.finalPrice, job?.estimatedPrice]);
@@ -335,8 +326,6 @@ function JobTrackingScreen(): React.JSX.Element {
   }, [navigation, jobId, job?.taskName, finalPrice]);
 
   const handleKeepWaiting = useCallback(() => {
-    // Job stays as pending_match in the backend — partners will see it.
-    // Navigate back to home. The job will appear in active jobs list.
     Alert.alert(
       'Job Queued',
       'We are broadcasting your request to all nearby providers. You will be notified when someone accepts.',
@@ -368,8 +357,7 @@ function JobTrackingScreen(): React.JSX.Element {
           style: 'destructive',
           onPress: async () => {
             try {
-              await taskService.getJobDetail(jobId); // just to confirm it still exists
-              // In production, call PATCH /jobs/{id}/update-status with "cancelled"
+              await taskService.getJobDetail(jobId);
               navigation.goBack();
             } catch {
               navigation.goBack();
@@ -383,28 +371,28 @@ function JobTrackingScreen(): React.JSX.Element {
   // ── Loading state ────────────────────────
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+          <AnimatedSpinner size={48} color={Colors.primary} />
           <Text style={styles.loadingText}>Loading job details...</Text>
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   if (error || !job) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>{error ?? 'Job not found'}</Text>
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   // ── Render ────────────────────────────────
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -413,10 +401,10 @@ function JobTrackingScreen(): React.JSX.Element {
         >
           {/* Provider Card */}
           <View style={styles.section}>
-            <View style={styles.providerCard}>
+            <GlassCard variant="dark">
               <View style={styles.providerHeader}>
                 {/* Avatar */}
-                <View style={[styles.avatar, { borderColor: Colors.primary }]}>
+                <View style={styles.avatar}>
                   <Text style={styles.avatarText}>{providerInitials}</Text>
                 </View>
                 <View style={styles.providerInfo}>
@@ -439,7 +427,6 @@ function JobTrackingScreen(): React.JSX.Element {
                     accessibilityRole="button"
                     accessibilityLabel="Call provider"
                   >
-                    <Text style={styles.contactButtonIcon}>📞</Text>
                     <Text style={styles.contactButtonText}>Call</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -449,27 +436,26 @@ function JobTrackingScreen(): React.JSX.Element {
                     accessibilityRole="button"
                     accessibilityLabel="Message provider"
                   >
-                    <Text style={styles.contactButtonIcon}>💬</Text>
                     <Text style={styles.contactButtonText}>Message</Text>
                   </TouchableOpacity>
                 </View>
               )}
-            </View>
+            </GlassCard>
           </View>
 
           {/* Searching for provider — NO map */}
           {currentStatus === 'pending' && !searchTimedOut && (
             <View style={styles.section}>
-              <View style={[styles.mapCard, { alignItems: 'center', justifyContent: 'center', minHeight: 200 }]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-                <Text style={[styles.searchingText, { color: Colors.textPrimary, marginTop: 16, fontSize: 16 }]}>
+              <GlassCard variant="standard" style={styles.searchingCard}>
+                <AnimatedSpinner size={48} color={Colors.primary} />
+                <Text style={styles.searchingTitle}>
                   Searching for providers...
                 </Text>
-                <Text style={{ color: Colors.textSecondary, marginTop: 8, textAlign: 'center', paddingHorizontal: 24 }}>
+                <Text style={styles.searchingSubtext}>
                   We're finding the best available provider near you.
                   This usually takes a moment.
                 </Text>
-              </View>
+              </GlassCard>
             </View>
           )}
 
@@ -541,13 +527,13 @@ function JobTrackingScreen(): React.JSX.Element {
                       coordinate={[Number(providerLng), Number(providerLat)]}
                     >
                       <View style={styles.providerMarker}>
-                        <Text style={styles.providerMarkerText}>🚗</Text>
+                        <Text style={styles.providerMarkerText}>V</Text>
                       </View>
                     </MapboxGL.MarkerView>
                   )}
                 </MapboxGL.MapView>
 
-                {/* ETA overlay */}
+                {/* ETA glass overlay */}
                 {tracking?.etaMinutes != null && tracking.etaMinutes > 0 && (
                   <View style={styles.etaOverlay}>
                     <Text style={styles.etaOverlayLabel}>ETA</Text>
@@ -556,15 +542,19 @@ function JobTrackingScreen(): React.JSX.Element {
                 )}
               </View>
 
-              {/* Provider arrived banner */}
+              {/* Provider arrived / in progress banner */}
               {(currentStatus === 'arrived' || currentStatus === 'in_progress') && (
-                <View style={styles.arrivedBanner}>
+                <GlassCard
+                  variant="standard"
+                  padding={Spacing.md}
+                  style={styles.arrivedBanner}
+                >
                   <Text style={styles.arrivedBannerText}>
                     {currentStatus === 'arrived'
-                      ? '🏠 Provider has arrived at your location!'
-                      : '🔧 Work is in progress'}
+                      ? 'Provider has arrived at your location'
+                      : 'Work is in progress'}
                   </Text>
-                </View>
+                </GlassCard>
               )}
             </View>
           )}
@@ -572,155 +562,155 @@ function JobTrackingScreen(): React.JSX.Element {
           {/* No Provider Found — Search Timed Out */}
           {searchTimedOut && (
             <View style={styles.section}>
-              <View style={styles.noProviderCard}>
-                <Text style={styles.noProviderIcon}>🔍</Text>
-                <Text style={styles.noProviderTitle}>No Providers Available</Text>
-                <Text style={styles.noProviderText}>
-                  We couldn't find a provider in your area right now. Your job
-                  request has been saved — when a provider becomes available,
-                  they'll receive your request and you'll be notified.
-                </Text>
-                <View style={styles.noProviderButtons}>
-                  <TouchableOpacity
-                    style={styles.keepWaitingButton}
-                    onPress={handleKeepWaiting}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.keepWaitingText}>OK, Notify Me</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelJobButton}
-                    onPress={handleCancelJob}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.cancelJobText}>Cancel Job</Text>
-                  </TouchableOpacity>
+              <GlassCard variant="dark">
+                <View style={styles.noProviderContent}>
+                  <Text style={styles.noProviderTitle}>No Providers Available</Text>
+                  <Text style={styles.noProviderText}>
+                    We couldn't find a provider in your area right now. Your job
+                    request has been saved -- when a provider becomes available,
+                    they'll receive your request and you'll be notified.
+                  </Text>
+                  <View style={styles.noProviderButtons}>
+                    <GlassButton
+                      title="OK, Notify Me"
+                      variant="glow"
+                      onPress={handleKeepWaiting}
+                    />
+                    <GlassButton
+                      title="Cancel Job"
+                      variant="outline"
+                      onPress={handleCancelJob}
+                      style={styles.cancelJobBtnStyle}
+                    />
+                  </View>
                 </View>
-              </View>
+              </GlassCard>
             </View>
           )}
 
           {/* In Progress Timer */}
           {isInProgress && (
             <View style={styles.section}>
-              <View style={styles.timerCard}>
-                <Text style={styles.timerLabel}>Work In Progress</Text>
-                <Text style={styles.timerValue}>{formattedTimer}</Text>
-                <View style={styles.timerMeta}>
-                  <Text style={styles.timerMetaLabel}>Running estimate</Text>
-                  <Text style={styles.timerMetaValue}>${runningCost}</Text>
+              <GlassCard variant="standard" style={styles.timerCardBorder}>
+                <View style={styles.timerContent}>
+                  <Text style={styles.timerLabel}>Work In Progress</Text>
+                  <Text style={styles.timerValue}>{formattedTimer}</Text>
+                  <View style={styles.timerMeta}>
+                    <Text style={styles.timerMetaLabel}>Running estimate</Text>
+                    <Text style={styles.timerMetaValue}>${runningCost}</Text>
+                  </View>
+                  <Text style={styles.timerNote}>
+                    Estimated price. Final price may vary.
+                  </Text>
                 </View>
-                <Text style={styles.timerNote}>
-                  Estimated price. Final price may vary.
-                </Text>
-              </View>
+              </GlassCard>
             </View>
           )}
 
           {/* Completed Summary */}
           {isCompleted && (
             <View style={styles.section}>
-              <View style={styles.completedCard}>
-                <Text style={styles.completedTitle}>Job Completed ✓</Text>
-                <Text style={styles.completedPrice}>${finalPrice.toFixed(2)}</Text>
-                <Text style={styles.completedSubtext}>
-                  Thank you for using Tasker. Please rate your experience.
-                </Text>
-                <TouchableOpacity
-                  style={styles.rateButton}
-                  onPress={handleRateProvider}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Rate your provider"
-                >
-                  <Text style={styles.rateButtonText}>Rate & Pay</Text>
-                </TouchableOpacity>
-              </View>
+              <GlassCard variant="elevated" style={styles.completedCardBorder}>
+                <View style={styles.completedContent}>
+                  <Text style={styles.completedTitle}>Job Completed</Text>
+                  <Text style={styles.completedPrice}>${finalPrice.toFixed(2)}</Text>
+                  <Text style={styles.completedSubtext}>
+                    Thank you for using VISP. Please rate your experience.
+                  </Text>
+                  <GlassButton
+                    title="Rate & Pay"
+                    variant="glow"
+                    onPress={handleRateProvider}
+                  />
+                </View>
+              </GlassCard>
             </View>
           )}
 
           {/* Status Timeline */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Job Timeline</Text>
-            <View style={styles.timeline}>
-              {STATUS_STEPS.map((step, index) => {
-                const isPast = index < currentStepIndex;
-                const isCurrent = index === currentStepIndex;
-                const isFuture = index > currentStepIndex;
-                const isLast = index === STATUS_STEPS.length - 1;
+            <GlassCard variant="dark">
+              <View style={styles.timeline}>
+                {STATUS_STEPS.map((step, index) => {
+                  const isPast = index < currentStepIndex;
+                  const isCurrent = index === currentStepIndex;
+                  const isFuture = index > currentStepIndex;
+                  const isLast = index === STATUS_STEPS.length - 1;
 
-                const stepColor = isPast
-                  ? Colors.success
-                  : isCurrent
-                    ? Colors.primary
-                    : Colors.border;
+                  const stepColor = isPast
+                    ? Colors.success
+                    : isCurrent
+                      ? 'rgba(120, 80, 255, 0.9)'
+                      : 'rgba(255, 255, 255, 0.15)';
 
-                return (
-                  <View key={step.status} style={styles.timelineStep}>
-                    <View style={styles.timelineLeftCol}>
-                      <View
-                        style={[
-                          styles.timelineDot,
-                          { backgroundColor: stepColor },
-                          isCurrent && styles.timelineDotCurrent,
-                        ]}
-                      >
-                        {isPast && <Text style={styles.timelineDotCheck}>✓</Text>}
-                      </View>
-                      {!isLast && (
+                  return (
+                    <View key={step.status} style={styles.timelineStep}>
+                      <View style={styles.timelineLeftCol}>
                         <View
                           style={[
-                            styles.timelineLine,
-                            {
-                              backgroundColor: isPast
-                                ? Colors.success
-                                : Colors.border,
-                            },
+                            styles.timelineDot,
+                            { backgroundColor: stepColor },
+                            isCurrent && styles.timelineDotCurrent,
                           ]}
-                        />
-                      )}
+                        >
+                          {isPast && <Text style={styles.timelineDotCheck}>+</Text>}
+                        </View>
+                        {!isLast && (
+                          <View
+                            style={[
+                              styles.timelineLine,
+                              {
+                                backgroundColor: isPast
+                                  ? Colors.success
+                                  : 'rgba(255, 255, 255, 0.10)',
+                              },
+                            ]}
+                          />
+                        )}
+                      </View>
+                      <View style={styles.timelineContent}>
+                        <Text
+                          style={[
+                            styles.timelineLabel,
+                            isFuture && styles.timelineLabelFuture,
+                            isCurrent && styles.timelineLabelCurrent,
+                          ]}
+                        >
+                          {step.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.timelineDescription,
+                            isFuture && styles.timelineDescriptionFuture,
+                          ]}
+                        >
+                          {step.description}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.timelineContent}>
-                      <Text
-                        style={[
-                          styles.timelineLabel,
-                          isFuture && styles.timelineLabelFuture,
-                          isCurrent && styles.timelineLabelCurrent,
-                        ]}
-                      >
-                        {step.label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.timelineDescription,
-                          isFuture && styles.timelineDescriptionFuture,
-                        ]}
-                      >
-                        {step.description}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
+                  );
+                })}
+              </View>
+            </GlassCard>
           </View>
 
           {/* Service Scope Notice */}
           <View style={styles.section}>
-            <View style={styles.noticeCard}>
+            <GlassCard variant="dark" padding={Spacing.lg} style={styles.noticeCardBorder}>
               <Text style={styles.noticeTitle}>Service Scope</Text>
               <Text style={styles.noticeText}>
                 The provider will perform exactly the work described in your
                 booking. Additional services require a separate booking. The
                 provider cannot add scope to this job.
               </Text>
-            </View>
+            </GlassCard>
           </View>
 
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -729,13 +719,8 @@ function JobTrackingScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -753,7 +738,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   errorText: {
     ...Typography.body,
@@ -767,18 +752,11 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.lg,
   },
 
   // Provider Card
-  providerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   providerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -788,28 +766,29 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(120, 80, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.lg,
     borderWidth: 2,
+    borderColor: 'rgba(120, 80, 255, 0.5)',
   },
   avatarText: {
     fontSize: FontSize.title3,
     fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   providerInfo: {
     flex: 1,
   },
   providerName: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.xxs,
   },
   providerMeta: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 
   // Contact Buttons
@@ -823,14 +802,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     gap: Spacing.sm,
-  },
-  contactButtonIcon: {
-    fontSize: 16,
   },
   contactButtonText: {
     ...Typography.footnote,
@@ -840,11 +816,10 @@ const styles = StyleSheet.create({
 
   // Map
   mapCard: {
-    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     position: 'relative',
   },
   mapView: {
@@ -873,32 +848,34 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(120, 80, 255, 0.9)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...Shadows.md,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   providerMarkerText: {
-    fontSize: 18,
+    fontSize: 16,
+    fontWeight: FontWeight.bold as '700',
+    color: '#FFFFFF',
   },
 
-  // ETA Overlay
+  // ETA Overlay (glass)
   etaOverlay: {
     position: 'absolute',
     top: Spacing.md,
     right: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.7)',
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    ...Shadows.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
   },
   etaOverlayLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   etaOverlayValue: {
     ...Typography.headline,
@@ -906,43 +883,52 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold as '700',
   },
 
-  // Searching Overlay
-  searchingOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    flexDirection: 'row',
+  // Searching card
+  searchingCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
+    minHeight: 200,
   },
-  searchingText: {
+  searchingTitle: {
+    ...Typography.headline,
+    color: '#FFFFFF',
+    marginTop: Spacing.lg,
+  },
+  searchingSubtext: {
     ...Typography.footnote,
-    color: Colors.white,
-    fontWeight: FontWeight.semiBold as '600',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+
+  // Arrived banner
+  arrivedBanner: {
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+    borderColor: 'rgba(39, 174, 96, 0.4)',
+  },
+  arrivedBannerText: {
+    ...Typography.headline,
+    color: Colors.success,
+    textAlign: 'center',
   },
 
   // Timer Card
-  timerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+  timerCardBorder: {
+    borderColor: 'rgba(120, 80, 255, 0.4)',
+  },
+  timerContent: {
     alignItems: 'center',
   },
   timerLabel: {
     ...Typography.label,
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 0.9)',
     marginBottom: Spacing.md,
   },
   timerValue: {
     fontSize: 48,
     fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontVariant: ['tabular-nums'],
     marginBottom: Spacing.md,
   },
@@ -954,7 +940,7 @@ const styles = StyleSheet.create({
   },
   timerMetaLabel: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   timerMetaValue: {
     ...Typography.headline,
@@ -962,17 +948,15 @@ const styles = StyleSheet.create({
   },
   timerNote: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
     textAlign: 'center',
   },
 
   // Completed Card
-  completedCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    borderColor: Colors.success,
+  completedCardBorder: {
+    borderColor: 'rgba(39, 174, 96, 0.4)',
+  },
+  completedContent: {
     alignItems: 'center',
   },
   completedTitle: {
@@ -983,25 +967,39 @@ const styles = StyleSheet.create({
   completedPrice: {
     fontSize: FontSize.title1,
     fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.sm,
   },
   completedSubtext: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
     marginBottom: Spacing.xl,
   },
-  rateButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.xxxl,
-    paddingVertical: Spacing.md,
-    ...Shadows.sm,
+
+  // No provider
+  noProviderContent: {
+    alignItems: 'center',
   },
-  rateButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
+  noProviderTitle: {
+    ...Typography.title3,
+    color: '#FFFFFF',
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  noProviderText: {
+    ...Typography.footnote,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+  },
+  noProviderButtons: {
+    width: '100%',
+    gap: Spacing.sm,
+  },
+  cancelJobBtnStyle: {
+    borderColor: 'rgba(231, 76, 60, 0.5)',
   },
 
   // Timeline
@@ -1029,12 +1027,12 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 3,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.background,
+    borderColor: 'rgba(120, 80, 255, 0.6)',
+    backgroundColor: 'rgba(10, 10, 30, 0.8)',
   },
   timelineDotCheck: {
     fontSize: 10,
-    color: Colors.white,
+    color: '#FFFFFF',
     fontWeight: FontWeight.bold as '700',
   },
   timelineLine: {
@@ -1048,30 +1046,26 @@ const styles = StyleSheet.create({
   },
   timelineLabel: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.xxs,
   },
   timelineLabelCurrent: {
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 0.9)',
   },
   timelineLabelFuture: {
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.3)',
   },
   timelineDescription: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   timelineDescriptionFuture: {
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.25)',
   },
 
   // Notice Card
-  noticeCard: {
-    backgroundColor: `${Colors.warning}10`,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.warning}30`,
+  noticeCardBorder: {
+    borderColor: 'rgba(243, 156, 18, 0.25)',
   },
   noticeTitle: {
     ...Typography.headline,
@@ -1080,75 +1074,8 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     lineHeight: 20,
-  },
-
-  // No Provider Found
-  noProviderCard: {
-    backgroundColor: Colors.card,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    ...Shadows.md,
-  },
-  noProviderIcon: {
-    fontSize: 48,
-    marginBottom: Spacing.md,
-  },
-  noProviderTitle: {
-    ...Typography.title3,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  noProviderText: {
-    ...Typography.footnote,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: Spacing.lg,
-  },
-  noProviderButtons: {
-    width: '100%',
-    gap: Spacing.sm,
-  },
-  keepWaitingButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  keepWaitingText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
-  },
-  cancelJobButton: {
-    backgroundColor: 'transparent',
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-  cancelJobText: {
-    ...Typography.buttonLarge,
-    color: Colors.error,
-  },
-
-  // Arrived banner
-  arrivedBanner: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.sm,
-    alignItems: 'center',
-  },
-  arrivedBannerText: {
-    fontSize: FontSize.body,
-    fontWeight: FontWeight.bold as any,
-    color: '#FFFFFF',
   },
 
   // Bottom padding

@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Emergency Flow Navigator
+ * VISP - Emergency Flow Navigator
  *
  * Stack navigator for the Level 4 emergency flow:
  * EmergencyType -> Location -> Confirm -> Searching -> Matched ->

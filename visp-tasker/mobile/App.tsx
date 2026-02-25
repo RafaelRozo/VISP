@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Root Application Component
+ * VISP - Root Application Component
  *
  * Wraps the app in required providers (GestureHandler, SafeArea).
  * Navigation container is handled inside AppNavigator, so we do NOT

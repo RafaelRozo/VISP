@@ -43,9 +43,15 @@ from src.events.jobEvents import (
     emit_sla_snapshot_captured,
 )
 from src.models.job import Job, JobPriority, JobStatus
+from src.models.provider import ProviderLevel
 from src.models.sla import SLAProfile
 from src.models.taxonomy import ServiceTask
 from src.services.jobStateManager import ActorType, validate_transition
+from src.services.pricingEngine import (
+    HOURLY_RATES,
+    LEVEL_PRICING_MODEL,
+    finalize_time_based_price,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -392,11 +398,34 @@ async def update_job_status(
     job.status = target_status
     now = datetime.now(timezone.utc)
 
+    # Fetch the task to determine level for pricing logic
+    task_stmt = select(ServiceTask).where(ServiceTask.id == job.task_id)
+    task_result = await db.execute(task_stmt)
+    task = task_result.scalar_one_or_none()
+    task_level = task.level if task else None
+
     # Set lifecycle timestamps based on the new status
     if target_status == JobStatus.IN_PROGRESS:
         job.started_at = now
+
+        # For L1/L2 time-based jobs: set pricing_model and hourly_rate
+        if task_level in (ProviderLevel.LEVEL_1, ProviderLevel.LEVEL_2):
+            job.pricing_model = LEVEL_PRICING_MODEL[task_level]
+            hourly_rates = HOURLY_RATES.get(task_level)
+            if hourly_rates and job.hourly_rate_cents is None:
+                job.hourly_rate_cents = hourly_rates["default"]
+
+        # For L3/L4: set pricing model if not already set
+        elif task_level in (ProviderLevel.LEVEL_3, ProviderLevel.LEVEL_4):
+            if job.pricing_model is None:
+                job.pricing_model = LEVEL_PRICING_MODEL[task_level]
+
     elif target_status == JobStatus.COMPLETED:
         job.completed_at = now
+
+        # For L1/L2 time-based jobs: finalize the price
+        if job.pricing_model == "TIME_BASED":
+            await finalize_time_based_price(db, job.id)
 
     await db.flush()
 

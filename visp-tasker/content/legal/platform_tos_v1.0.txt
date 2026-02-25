@@ -1,20 +1,20 @@
-VISP/TASKER PLATFORM TERMS OF SERVICE
+VISP PLATFORM TERMS OF SERVICE
 Version 1.0 — Effective Date: January 1, 2026
 
 PLEASE READ THESE TERMS OF SERVICE ("TERMS") CAREFULLY BEFORE USING THE
-TASKER PLATFORM OPERATED BY VISP TECHNOLOGIES INC. ("VISP", "WE", "US",
+VISP PLATFORM OPERATED BY VISP TECHNOLOGIES INC. ("VISP", "WE", "US",
 OR "OUR"). BY ACCESSING OR USING THE PLATFORM, YOU AGREE TO BE BOUND
 BY THESE TERMS.
 
 1. ACCEPTANCE OF TERMS
-By creating an account, accessing, or using the Tasker platform (the
+By creating an account, accessing, or using the VISP platform (the
 "Platform"), including the mobile application, website, and all related
 services, you acknowledge that you have read, understood, and agree to
 be bound by these Terms and our Privacy Policy. If you do not agree,
 you must not use the Platform.
 
 2. PLATFORM DESCRIPTION
-Tasker is a technology-enabled marketplace that connects customers seeking
+VISP is a technology-enabled marketplace that connects customers seeking
 home services with independent service providers ("Providers"). VISP does
 not itself perform any home services. VISP provides the technology
 platform that facilitates connections between customers and Providers.
@@ -123,7 +123,7 @@ and VISP regarding the use of the Platform.
 17. CONTACT INFORMATION
 For questions about these Terms, contact us at:
 VISP Technologies Inc.
-Email: legal@tasker.visp.ca
+Email: legal@visp.ca
 Address: Toronto, Ontario, Canada
 
 BY USING THE PLATFORM, YOU ACKNOWLEDGE THAT YOU HAVE READ THESE TERMS

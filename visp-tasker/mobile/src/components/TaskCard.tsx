@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - TaskCard Component
+ * VISP - TaskCard Component
  *
  * Reusable card for displaying a service task in category lists.
  * Shows: task name, level badge, price range, duration estimate.
@@ -19,6 +19,7 @@ import { Spacing } from '../theme/spacing';
 import { Typography, FontWeight } from '../theme/typography';
 import { BorderRadius } from '../theme/borders';
 import { Shadows } from '../theme/shadows';
+import { GlassStyles } from '../theme/glass';
 import LevelBadge from './LevelBadge';
 import type { ServiceLevel } from '../types';
 
@@ -135,13 +136,9 @@ function TaskCard({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    ...GlassStyles.card,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.sm,
     position: 'relative',
   },
   header: {

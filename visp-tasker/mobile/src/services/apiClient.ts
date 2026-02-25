@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - API Client
+ * VISP - API Client
  *
  * Axios instance configured with base URL, auth token interceptor,
  * error handling interceptor, and typed response wrappers.

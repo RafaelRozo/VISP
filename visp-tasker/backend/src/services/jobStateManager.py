@@ -69,16 +69,24 @@ VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.CANCELLED_BY_SYSTEM,
     },
     JobStatus.MATCHED: {
-        JobStatus.PENDING_APPROVAL,    # provider interested → customer reviews
-        JobStatus.PROVIDER_ACCEPTED,   # legacy / direct accept fallback
-        JobStatus.PENDING_MATCH,       # provider declined, re-enter matching
+        JobStatus.PENDING_APPROVAL,            # provider interested -> customer reviews
+        JobStatus.PENDING_PRICE_AGREEMENT,     # L3/L4 price negotiation required
+        JobStatus.PROVIDER_ACCEPTED,           # legacy / direct accept fallback
+        JobStatus.PENDING_MATCH,               # provider declined, re-enter matching
         JobStatus.CANCELLED_BY_CUSTOMER,
         JobStatus.CANCELLED_BY_PROVIDER,
         JobStatus.CANCELLED_BY_SYSTEM,
     },
     JobStatus.PENDING_APPROVAL: {
         JobStatus.SCHEDULED,           # customer approved the provider
-        JobStatus.MATCHED,             # customer rejected → re-match
+        JobStatus.MATCHED,             # customer rejected -> re-match
+        JobStatus.CANCELLED_BY_CUSTOMER,
+        JobStatus.CANCELLED_BY_PROVIDER,
+        JobStatus.CANCELLED_BY_SYSTEM,
+    },
+    JobStatus.PENDING_PRICE_AGREEMENT: {
+        JobStatus.SCHEDULED,           # price agreed -> schedule the job
+        JobStatus.MATCHED,             # price rejected -> re-match
         JobStatus.CANCELLED_BY_CUSTOMER,
         JobStatus.CANCELLED_BY_PROVIDER,
         JobStatus.CANCELLED_BY_SYSTEM,
@@ -131,12 +139,14 @@ _CUSTOMER_CANCELLABLE: frozenset[JobStatus] = frozenset({
     JobStatus.PENDING_MATCH,
     JobStatus.MATCHED,
     JobStatus.PENDING_APPROVAL,
+    JobStatus.PENDING_PRICE_AGREEMENT,
     JobStatus.SCHEDULED,
 })
 
 # Statuses in which the provider can cancel (after they have been involved)
 _PROVIDER_CANCELLABLE: frozenset[JobStatus] = frozenset({
     JobStatus.MATCHED,
+    JobStatus.PENDING_PRICE_AGREEMENT,
     JobStatus.PROVIDER_ACCEPTED,
     JobStatus.PROVIDER_EN_ROUTE,
     JobStatus.IN_PROGRESS,

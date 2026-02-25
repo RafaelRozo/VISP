@@ -1,5 +1,5 @@
 """
-Provider Credential Verification Service for VISP/Tasker.
+Provider Credential Verification Service for VISP.
 
 Handles the full lifecycle of provider verification:
 

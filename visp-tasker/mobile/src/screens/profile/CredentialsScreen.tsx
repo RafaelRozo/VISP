@@ -1,19 +1,19 @@
 /**
- * VISP/Tasker - Credentials Screen
+ * VISP - Credentials Screen
  *
  * List of provider credentials with status for each (pending, approved,
  * expired, rejected), upload new credential, document type selection,
  * expiry date display, and re-upload for expired credentials.
  *
  * Pending service requirements are merged into the main list as "pending"
- * credential items — they appear under the "All" and "Pending" tabs with
- * an upload prompt when tapped.
+ * credential items.
+ *
+ * Dark glassmorphism redesign.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActionSheetIOS,
-  ActivityIndicator,
   Alert,
   FlatList,
   Platform,
@@ -24,6 +24,8 @@ import {
   View,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassButton } from '../../components/glass';
 import CredentialCard from '../../components/CredentialCard';
 import {
   Credential,
@@ -50,14 +52,13 @@ const CREDENTIAL_TYPES: Array<{ value: CredentialType; label: string }> = [
 ];
 
 // ---------------------------------------------------------------------------
-// Helpers — convert pending requirements into Credential-like objects
+// Helpers -- convert pending requirements into Credential-like objects
 // ---------------------------------------------------------------------------
 
 function pendingToCredential(item: PendingCredential): Credential {
   const credType: CredentialType =
     item.requiredType === 'license' ? 'trade_license' : 'certification';
 
-  // Map upload status to credential status
   let status: CredentialStatus = 'pending';
   if (item.uploadStatus === 'not_uploaded') {
     status = 'awaiting_upload';
@@ -127,7 +128,6 @@ export default function CredentialsScreen(): React.JSX.Element {
   // Handle credential or pending-requirement tap
   const handleCredentialPress = useCallback(
     (credential: Credential) => {
-      // Check if this is a pending requirement (synthetic credential)
       if (credential.id.startsWith('pending-')) {
         const taskId = credential.id.replace('pending-', '');
         const pendingItem = pendingReqs.find((p) => p.taskId === taskId);
@@ -153,7 +153,6 @@ export default function CredentialsScreen(): React.JSX.Element {
         return;
       }
 
-      // Regular credential tap
       if (
         credential.status === 'expired' ||
         credential.status === 'rejected'
@@ -332,22 +331,23 @@ export default function CredentialsScreen(): React.JSX.Element {
             tab.key === 'all'
               ? allCredentials.length
               : statusCounts[tab.key] || 0;
+          const isActive = filter === tab.key;
 
           return (
             <TouchableOpacity
               key={tab.key}
               style={[
                 styles.filterTab,
-                filter === tab.key && styles.filterTabActive,
+                isActive && styles.filterTabActive,
               ]}
               onPress={() => setFilter(tab.key)}
               accessibilityRole="tab"
-              accessibilityState={{ selected: filter === tab.key }}
+              accessibilityState={{ selected: isActive }}
             >
               <Text
                 style={[
                   styles.filterTabText,
-                  filter === tab.key && styles.filterTabTextActive,
+                  isActive && styles.filterTabTextActive,
                 ]}
               >
                 {tab.label}
@@ -359,20 +359,15 @@ export default function CredentialsScreen(): React.JSX.Element {
       </View>
 
       {/* Upload button */}
-      <TouchableOpacity
-        style={styles.uploadButton}
-        onPress={() => handleUploadDocument()}
-        disabled={isUploading}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel="Upload new credential"
-      >
-        {isUploading ? (
-          <ActivityIndicator size="small" color={Colors.white} />
-        ) : (
-          <Text style={styles.uploadButtonText}>Upload New Credential</Text>
-        )}
-      </TouchableOpacity>
+      <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+        <GlassButton
+          title={isUploading ? 'Uploading...' : 'Upload New Credential'}
+          variant="glow"
+          onPress={() => handleUploadDocument()}
+          disabled={isUploading}
+          loading={isUploading}
+        />
+      </View>
     </View>
   );
 
@@ -390,7 +385,7 @@ export default function CredentialsScreen(): React.JSX.Element {
   }, [isLoading]);
 
   return (
-    <View style={styles.container}>
+    <GlassBackground>
       <FlatList
         data={filteredCredentials}
         renderItem={renderCredential}
@@ -408,7 +403,7 @@ export default function CredentialsScreen(): React.JSX.Element {
         }
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </GlassBackground>
   );
 }
 
@@ -417,10 +412,6 @@ export default function CredentialsScreen(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   listContent: {
     paddingTop: 16,
     paddingBottom: 32,
@@ -436,31 +427,21 @@ const styles = StyleSheet.create({
   filterTab: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
   },
   filterTabActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.4)',
+    borderColor: 'rgba(120, 80, 255, 0.6)',
   },
   filterTabText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   filterTabTextActive: {
-    color: Colors.white,
-  },
-  uploadButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  uploadButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
     color: Colors.white,
   },
   emptyContainer: {
@@ -478,7 +459,7 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
     lineHeight: 20,
   },

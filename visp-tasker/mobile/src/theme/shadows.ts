@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker Design System - Shadow definitions
+ * VISP Design System - Shadow definitions
  *
  * Platform-aware shadows for iOS (shadowX) and Android (elevation).
  */

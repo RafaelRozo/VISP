@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - SubcategoryScreen
+ * VISP - SubcategoryScreen
  *
  * Drill into task details before booking.
  * Features:
@@ -9,6 +9,8 @@
  *   - "Book Now" CTA button
  *
  * CRITICAL: No free-text task input. Only predefined task selection.
+ *
+ * Styled with dark glassmorphism design system.
  */
 
 import React, { useEffect, useCallback, useRef } from 'react';
@@ -19,18 +21,19 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  ActivityIndicator,
-  SafeAreaView,
   Dimensions,
   FlatList,
+  Platform,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { useTaskStore } from '../../stores/taskStore';
 import LevelBadge from '../../components/LevelBadge';
 import type { CustomerFlowParamList } from '../../types';
@@ -101,45 +104,52 @@ function SubcategoryScreen(): React.JSX.Element {
   // Loading
   if (isLoadingDetail) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+          <AnimatedSpinner size={48} color="rgba(120, 80, 255, 0.9)" />
           <Text style={styles.loadingText}>Loading task details...</Text>
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   // Error
   if (error) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorTitle}>Unable to load task</Text>
-          <Text style={styles.errorMessage}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
+          <GlassCard variant="dark" padding={32} style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Unable to load task</Text>
+            <Text style={styles.errorMessage}>{error}</Text>
+            <GlassButton
+              title="Try Again"
+              variant="glow"
+              onPress={handleRetry}
+              style={styles.retryButtonCta}
+            />
+          </GlassCard>
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   // No data
   if (!taskDetail) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <GlassBackground>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorTitle}>Task not found</Text>
+          <GlassCard variant="dark" padding={32} style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Task not found</Text>
+          </GlassCard>
         </View>
-      </SafeAreaView>
+      </GlassBackground>
     );
   }
 
   const levelColor = getLevelColor(taskDetail.level);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -185,7 +195,7 @@ function SubcategoryScreen(): React.JSX.Element {
 
           {/* Price range */}
           <View style={styles.priceSection}>
-            <View style={styles.priceCard}>
+            <GlassCard variant="elevated" padding={Spacing.lg}>
               <Text style={styles.priceLabel}>Estimated Price Range</Text>
               <Text style={styles.priceValue}>
                 ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
@@ -193,23 +203,23 @@ function SubcategoryScreen(): React.JSX.Element {
               <Text style={styles.priceNote}>
                 Final price depends on scope of work and provider availability
               </Text>
-            </View>
+            </GlassCard>
           </View>
 
-          {/* Duration */}
+          {/* Duration and Level info */}
           <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
+            <GlassCard variant="standard" padding={Spacing.lg} style={styles.infoItem}>
               <Text style={styles.infoLabel}>Estimated Duration</Text>
               <Text style={styles.infoValue}>
                 {formatDuration(taskDetail.estimatedDurationMinutes)}
               </Text>
-            </View>
-            <View style={styles.infoItem}>
+            </GlassCard>
+            <GlassCard variant="standard" padding={Spacing.lg} style={styles.infoItem}>
               <Text style={styles.infoLabel}>Service Level</Text>
               <Text style={[styles.infoValue, { color: levelColor }]}>
                 Level {taskDetail.level}
               </Text>
-            </View>
+            </GlassCard>
           </View>
 
           {/* Full description */}
@@ -235,14 +245,14 @@ function SubcategoryScreen(): React.JSX.Element {
 
           {/* Important notice: closed catalog */}
           <View style={styles.noticeSection}>
-            <View style={styles.noticeCard}>
+            <GlassCard variant="dark" padding={Spacing.lg} style={styles.noticeCard}>
               <Text style={styles.noticeTitle}>Service Scope</Text>
               <Text style={styles.noticeText}>
                 This is a predefined service task. The provider will perform
                 exactly the work described above. Additional services require
                 a separate booking. The provider cannot add scope to this job.
               </Text>
-            </View>
+            </GlassCard>
           </View>
 
           {/* Bottom spacing for CTA button */}
@@ -257,18 +267,15 @@ function SubcategoryScreen(): React.JSX.Element {
               ${taskDetail.priceRangeMin}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.bookButton}
+          <GlassButton
+            title="Book Now"
+            variant="glow"
             onPress={handleBookNow}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Book this service now"
-          >
-            <Text style={styles.bookButtonText}>Book Now</Text>
-          </TouchableOpacity>
+            style={styles.bookButton}
+          />
         </View>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -277,13 +284,8 @@ function SubcategoryScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -302,9 +304,11 @@ const styles = StyleSheet.create({
   photoContainer: {
     width: PHOTO_WIDTH,
     height: PHOTO_HEIGHT,
-    borderRadius: BorderRadius.md,
+    borderRadius: 16,
     overflow: 'hidden',
     marginRight: Spacing.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   photo: {
     width: '100%',
@@ -314,14 +318,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: Spacing.sm,
     right: Spacing.xxl,
-    backgroundColor: Colors.overlay,
+    backgroundColor: 'rgba(10, 10, 30, 0.70)',
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xxs,
-    borderRadius: BorderRadius.xs,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   photoIndicatorText: {
     ...Typography.caption,
-    color: Colors.white,
+    color: '#FFFFFF',
   },
 
   // Header
@@ -331,7 +337,7 @@ const styles = StyleSheet.create({
   },
   taskName: {
     ...Typography.title1,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginTop: Spacing.md,
   },
 
@@ -340,27 +346,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.lg,
   },
-  priceCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   priceLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.xs,
   },
   priceValue: {
     fontSize: FontSize.title1,
     fontWeight: FontWeight.bold,
-    color: Colors.primary,
+    color: 'rgba(120, 80, 255, 0.9)',
     marginBottom: Spacing.xs,
   },
   priceNote: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
 
   // Info row
@@ -372,22 +371,17 @@ const styles = StyleSheet.create({
   },
   infoItem: {
     flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   infoLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: Spacing.xs,
   },
   infoValue: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
 
   // Sections
@@ -397,12 +391,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.headline,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.md,
   },
   descriptionText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     lineHeight: 24,
   },
 
@@ -416,13 +410,13 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.8)',
     marginTop: 8,
     marginRight: Spacing.md,
   },
   requirementText: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     flex: 1,
   },
 
@@ -432,11 +426,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   noticeCard: {
-    backgroundColor: `${Colors.warning}10`,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: `${Colors.warning}30`,
+    borderColor: 'rgba(243, 156, 18, 0.25)',
   },
   noticeTitle: {
     ...Typography.headline,
@@ -445,7 +435,7 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 20,
   },
 
@@ -461,33 +451,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.80)',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.lg,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 20,
+      },
+      android: { elevation: 12 },
+    }),
   },
   ctaPriceInfo: {
     flexDirection: 'column',
   },
   ctaPriceLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   ctaPriceValue: {
     fontSize: FontSize.title2,
     fontWeight: FontWeight.bold,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   bookButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.xxxl,
-    paddingVertical: Spacing.md,
-    ...Shadows.sm,
-  },
-  bookButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
   },
 
   // Loading
@@ -498,7 +488,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginTop: Spacing.md,
   },
 
@@ -509,26 +499,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
   },
+  errorCard: {
+    alignItems: 'center',
+    width: '100%',
+  },
   errorTitle: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.sm,
   },
   errorMessage: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
     marginBottom: Spacing.xl,
   },
-  retryButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.md,
-  },
-  retryButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
+  retryButtonCta: {
+    width: '100%',
   },
 });
 

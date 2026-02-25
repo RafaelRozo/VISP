@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker Design System - Spacing Scale
+ * VISP Design System - Spacing Scale
  *
  * Consistent spacing values based on a 4px grid system.
  */
