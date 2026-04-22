@@ -389,31 +389,7 @@ export default function SettingsScreen(): React.JSX.Element {
           />
         </GlassCard>
 
-        {/* Payment Methods Section */}
-        <Text style={styles.sectionHeader}>Payment Methods</Text>
-        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
-          {paymentMethods.map((method, index) => (
-            <React.Fragment key={method.id}>
-              <PaymentMethodCard
-                method={method}
-                onRemove={handleRemovePaymentMethod}
-              />
-              {index < paymentMethods.length - 1 && (
-                <View style={styles.glassDivider} />
-              )}
-            </React.Fragment>
-          ))}
-          <View style={styles.glassDivider} />
-          <TouchableOpacity
-            style={styles.addPaymentButton}
-            onPress={handleAddPaymentMethod}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Add payment method"
-          >
-            <Text style={styles.addPaymentText}>+ Add Payment Method</Text>
-          </TouchableOpacity>
-        </GlassCard>
+
 
         {/* App Settings Section */}
         <Text style={styles.sectionHeader}>App Settings</Text>

@@ -132,13 +132,13 @@ function JobCard({
           <View style={styles.detailItem}>
             <Text style={styles.detailLabel}>Distance</Text>
             <Text style={styles.detailValue}>
-              {distanceKm.toFixed(1)} km
+              {distanceKm != null ? distanceKm.toFixed(1) : '0.0'} km
             </Text>
           </View>
           <View style={styles.detailItem}>
             <Text style={styles.detailLabel}>Price</Text>
             <Text style={styles.priceValue}>
-              ${estimatedPrice.toFixed(2)}
+              {estimatedPrice != null ? `$${Number(estimatedPrice).toFixed(2)}` : '--'}
             </Text>
           </View>
         </View>

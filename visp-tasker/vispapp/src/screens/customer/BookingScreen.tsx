@@ -184,9 +184,13 @@ function BookingScreen(): React.JSX.Element {
         estimatedPrice: task.estimatedPrice,
       });
 
-      // Level-aware payment intent creation:
-      // L1/L2 (TIME_BASED): create intent now with estimated amount
-      // L3/L4 (NEGOTIATED): defer -- intent created after proposal acceptance
+      // Payment intent creation is deferred:
+      // - L1/L2 (TIME_BASED): PaymentIntent created on backend, charged when
+      //   the provider completes the job (backend handles via webhook).
+      // - L3/L4 (NEGOTIATED): PaymentIntent created after proposal acceptance.
+      //
+      // We only pre-authorize here so the customer's card is validated.
+      // The actual charge happens when the job is completed.
       const isTimeBased = task.level <= 2;
 
       if (isTimeBased) {
@@ -198,12 +202,11 @@ function BookingScreen(): React.JSX.Element {
           try {
             setPaymentStatus('processing');
 
-            // Auto-create Stripe customer if the user doesn't have one yet
+            // Auto-create Stripe customer if needed
             let customerIdForPayment = stripeCustomerId ?? null;
             if (!customerIdForPayment) {
               try {
                 customerIdForPayment = await paymentService.ensureStripeCustomer();
-                // Persist the new stripeCustomerId back to auth store
                 const currentUser = useAuthStore.getState().user;
                 if (currentUser && customerIdForPayment) {
                   useAuthStore.getState().setUser({
@@ -213,29 +216,27 @@ function BookingScreen(): React.JSX.Element {
                 }
               } catch (custErr) {
                 console.warn('[BookingScreen] Auto-create Stripe customer failed:', custErr);
-                // Non-blocking -- proceed without customer association
               }
             }
 
+            // Create PaymentIntent on backend (stays in requires_payment_method).
+            // Actual charge is processed when the job completes.
             const paymentIntent = await paymentService.createPaymentIntent(
               result.bookingId,
               quotedAmountCents,
               'cad',
               customerIdForPayment,
             );
-            console.log('[BookingScreen] PaymentIntent created:', paymentIntent.id, paymentIntent.status);
+            console.log('[BookingScreen] PaymentIntent created:', paymentIntent.id, '- will be charged on job completion');
             setPaymentStatus('succeeded');
           } catch (paymentError: any) {
-            console.warn('[BookingScreen] Payment intent creation failed:', paymentError?.message);
+            console.warn('[BookingScreen] PaymentIntent creation failed:', paymentError?.message);
             setPaymentStatus('failed');
-            // Payment failure is non-blocking -- the job is created and
-            // payment can be retried later. Continue to matching.
+            // Non-blocking: job is created, payment intent can be created later
           }
         }
       } else {
-        // L3/L4 NEGOTIATED: payment intent is created after provider
-        // proposal is accepted (handled by a separate flow).
-        console.log('[BookingScreen] L3/L4 negotiated pricing -- deferring payment intent to proposal acceptance');
+        console.log('[BookingScreen] L3/L4 negotiated pricing -- deferring payment to proposal acceptance');
       }
 
       // Auto-save address as default if user doesn't have one yet

@@ -29,11 +29,13 @@ logger = logging.getLogger(__name__)
 # Stripe SDK configuration
 # ---------------------------------------------------------------------------
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+from src.core.config import settings
+
+stripe.api_key = settings.stripe_secret_key
 stripe.api_version = "2024-06-20"
 
-STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PUBLISHABLE_KEY = settings.stripe_publishable_key
+STRIPE_WEBHOOK_SECRET = settings.stripe_webhook_secret
 
 
 # ---------------------------------------------------------------------------

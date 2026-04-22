@@ -51,6 +51,13 @@ _USA_BOUNDS = {
     "lng_max": -66.9,
 }
 
+_MEXICO_BOUNDS = {
+    "lat_min": 14.5,
+    "lat_max": 32.7,
+    "lng_min": -118.5,
+    "lng_max": -86.7,
+}
+
 
 # ---------------------------------------------------------------------------
 # Result dataclass
@@ -123,7 +130,7 @@ def clear_geocoding_cache() -> None:
 
 
 def _is_within_service_area(lat: float, lng: float) -> bool:
-    """Return True if the coordinates fall within Canada or the USA."""
+    """Return True if the coordinates fall within Canada, the USA, or Mexico."""
     in_canada = (
         _CANADA_BOUNDS["lat_min"] <= lat <= _CANADA_BOUNDS["lat_max"]
         and _CANADA_BOUNDS["lng_min"] <= lng <= _CANADA_BOUNDS["lng_max"]
@@ -132,7 +139,11 @@ def _is_within_service_area(lat: float, lng: float) -> bool:
         _USA_BOUNDS["lat_min"] <= lat <= _USA_BOUNDS["lat_max"]
         and _USA_BOUNDS["lng_min"] <= lng <= _USA_BOUNDS["lng_max"]
     )
-    return in_canada or in_usa
+    in_mexico = (
+        _MEXICO_BOUNDS["lat_min"] <= lat <= _MEXICO_BOUNDS["lat_max"]
+        and _MEXICO_BOUNDS["lng_min"] <= lng <= _MEXICO_BOUNDS["lng_max"]
+    )
+    return in_canada or in_usa or in_mexico
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +204,7 @@ async def geocode_service_address(
     city: str,
     province: str,
     postal: str,
-    country: str = "CA",
+    country: str = "MX,CA,US",
 ) -> GeocodingResult:
     """Geocode a structured service address with fallback and caching.
 
@@ -232,7 +243,7 @@ async def geocode_service_address(
         return cached
 
     # -- Try full address --
-    result = await _try_geocode(full_address)
+    result = await _try_geocode(full_address, country=country)
 
     # -- Fallback to partial address --
     if result is None:
@@ -243,7 +254,7 @@ async def geocode_service_address(
             full_address,
             partial,
         )
-        result = await _try_geocode(partial)
+        result = await _try_geocode(partial, country=country)
 
     if result is None:
         raise MapboxError(
@@ -251,11 +262,12 @@ async def geocode_service_address(
             f"No results from Mapbox API."
         )
 
-    # -- Validate service area --
+    # -- Validate service area (warn but don't block) --
     if not _is_within_service_area(result.lat, result.lng):
-        raise ValueError(
-            f"Geocoded coordinates ({result.lat}, {result.lng}) for "
-            f"'{full_address}' are outside the Canada/USA service area"
+        logger.warning(
+            "Geocoded coordinates (%.6f, %.6f) for '%s' are outside the "
+            "expected service area — allowing anyway",
+            result.lat, result.lng, full_address,
         )
 
     # -- Cache and return --
@@ -270,10 +282,10 @@ async def geocode_service_address(
     return result
 
 
-async def _try_geocode(address_string: str) -> GeocodingResult | None:
+async def _try_geocode(address_string: str, *, country: str = "") -> GeocodingResult | None:
     """Attempt to geocode an address string, returning None on ZERO_RESULTS."""
     try:
-        data = await geocode_address(address_string)
+        data = await geocode_address(address_string, country=country)
     except MapboxError:
         # Re-raise API/network errors -- these are not "no results"
         raise

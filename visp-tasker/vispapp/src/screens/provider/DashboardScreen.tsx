@@ -273,7 +273,10 @@ export default function DashboardScreen(): React.JSX.Element {
             scheduledAt={activeJob.scheduledAt}
             slaDeadline={activeJob.slaDeadline}
             onPress={() =>
-              navigation.navigate('ActiveJob', { jobId: activeJob.id })
+              navigation.navigate('JobsTab' as any, {
+                screen: 'ActiveJob',
+                params: { jobId: activeJob.id },
+              })
             }
           />
         </GlassCard>

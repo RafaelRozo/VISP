@@ -46,6 +46,13 @@ from sqlalchemy import String
 def compile_inet_sqlite(type_, compiler, **kw):
     return "VARCHAR(45)"
 
+# SQLite does not support ENUM — compile as VARCHAR
+from sqlalchemy import Enum as SAEnum
+
+@compiles(SAEnum, "sqlite")
+def compile_enum_sqlite(type_, compiler, **kw):
+    return "VARCHAR(50)"
+
 # ---------------------------------------------------------------------------
 # Test IDs (stable across tests so cross-references work)
 # ---------------------------------------------------------------------------

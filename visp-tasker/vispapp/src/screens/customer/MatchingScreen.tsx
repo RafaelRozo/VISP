@@ -123,7 +123,15 @@ function MatchingScreen(): React.JSX.Element {
 
   // Navigation handlers
   const handleViewMyJobs = () => {
-    navigation.navigate('MyJobs' as any);
+    const rootNav = navigation.getParent();
+    if (rootNav) {
+      rootNav.reset({
+        index: 0,
+        routes: [{ name: 'CustomerHome', params: { screen: 'MyJobs' } } as any],
+      });
+    } else {
+      navigation.navigate('MyJobs' as any);
+    }
   };
 
   const handleBackToHome = () => {

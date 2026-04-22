@@ -194,8 +194,10 @@ async function refreshToken(): Promise<AuthTokens> {
  * Fetch the current authenticated user profile from the server.
  */
 async function fetchCurrentUser(): Promise<User> {
-  const response = await apiClient.get<{ data: User }>('/auth/me');
-  const user = response.data.data;
+  const response = await apiClient.get<any>('/auth/me');
+  // Backend returns: { data: { user: { ... } } }
+  // Axios wraps it in response.data
+  const user = response.data?.data?.user;
   await storeUserSecurely(user);
   return user;
 }
@@ -235,7 +237,15 @@ async function loadStoredAuth(): Promise<{
   if (tokens.expiresAt <= now + Config.tokenRefreshThresholdMs) {
     try {
       const newTokens = await refreshToken();
-      return { user, tokens: newTokens };
+      // Set tokens in memory for the API client before fetching user
+      setTokens(newTokens.accessToken, newTokens.refreshToken);
+      try {
+        const freshUser = await fetchCurrentUser();
+        return { user: freshUser, tokens: newTokens };
+      } catch (err) {
+        // Fallback to stored user if fetch fails (e.g. offline)
+        return { user, tokens: newTokens };
+      }
     } catch {
       await clearSecureStorage();
       return null;
@@ -244,7 +254,15 @@ async function loadStoredAuth(): Promise<{
 
   // Set tokens in memory for the API client
   setTokens(tokens.accessToken, tokens.refreshToken);
-  return { user, tokens };
+  
+  // Fetch fresh user data from server so UI isn't stale (e.g. missing address)
+  try {
+    const freshUser = await fetchCurrentUser();
+    return { user: freshUser, tokens };
+  } catch (err) {
+    // Fallback to stored user if fetch fails
+    return { user, tokens };
+  }
 }
 
 // ──────────────────────────────────────────────

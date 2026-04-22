@@ -46,20 +46,22 @@ type ActiveJobNav = NativeStackNavigationProp<ProviderTabParamList, 'ActiveJob'>
 // ---------------------------------------------------------------------------
 
 const STATUS_FLOW: JobStatus[] = [
-  'accepted',
+  'scheduled',
   'en_route',
   'in_progress',
   'completed',
 ];
 
 const STATUS_FLOW_LABELS: Record<string, string> = {
-  accepted: 'Accepted',
+  scheduled: 'Scheduled',
+  accepted: 'Accepted', // fallback
   en_route: 'En Route',
   in_progress: 'In Progress',
   completed: 'Completed',
 };
 
 const NEXT_STATUS_ACTIONS: Record<string, { label: string; next: JobStatus }> = {
+  scheduled: { label: 'Start Route', next: 'en_route' },
   accepted: { label: 'Start Route', next: 'en_route' },
   en_route: { label: 'Arrived', next: 'in_progress' },
   in_progress: { label: 'Complete Job', next: 'completed' },
@@ -74,7 +76,10 @@ interface StatusProgressProps {
 }
 
 function StatusProgress({ currentStatus }: StatusProgressProps): React.JSX.Element {
-  const currentIndex = STATUS_FLOW.indexOf(currentStatus);
+  let currentIndex = STATUS_FLOW.indexOf(currentStatus);
+  if (currentStatus === 'accepted') {
+    currentIndex = 0; // treat accepted same as scheduled for UI
+  }
 
   return (
     <View style={progressStyles.container}>
@@ -397,16 +402,18 @@ export default function ActiveJobScreen(): React.JSX.Element {
       })();
 
       // Broadcast location to backend every 5 seconds
+      // Use a ref-based approach to avoid stale closure over lat/lng state
       broadcastTimerRef.current = setInterval(async () => {
-        const lat = providerLat;
-        const lng = providerLng;
-        if (lat == null || lng == null) return;
-
-        // Skip if position hasn't changed significantly
-        const last = lastBroadcastRef.current;
-        if (last && haversineMetres(last.lat, last.lng, lat, lng) < 5) return;
-
         try {
+          const pos = await Location.getLastKnownPositionAsync();
+          if (!pos) return;
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+
+          // Skip if position hasn't changed significantly
+          const last = lastBroadcastRef.current;
+          if (last && haversineMetres(last.lat, last.lng, lat, lng) < 5) return;
+
           await post('/jobs/provider-location', {
             latitude: lat,
             longitude: lng,
@@ -639,7 +646,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
             <View style={styles.agreedPriceRow}>
               <Text style={styles.agreedPriceLabel}>Agreed Price</Text>
               <Text style={styles.agreedPriceValue}>
-                ${activeJob.estimatedPrice.toFixed(2)}
+                ${activeJob.estimatedPrice != null ? Number(activeJob.estimatedPrice).toFixed(2) : '0.00'}
               </Text>
             </View>
           </GlassCard>
@@ -674,7 +681,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
           <View style={styles.priceRow}>
             <Text style={styles.priceLabel}>Estimated Pay</Text>
             <Text style={styles.priceValue}>
-              ${activeJob.estimatedPrice.toFixed(2)}
+              ${activeJob.estimatedPrice != null ? Number(activeJob.estimatedPrice).toFixed(2) : '0.00'}
             </Text>
           </View>
 

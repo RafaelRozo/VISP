@@ -138,7 +138,7 @@ function JobCard({
           <View style={styles.detailItem}>
             <Text style={styles.detailLabel}>Price</Text>
             <Text style={styles.priceValue}>
-              ${estimatedPrice.toFixed(2)}
+              {estimatedPrice != null ? `$${Number(estimatedPrice).toFixed(2)}` : '--'}
             </Text>
           </View>
         </View>

@@ -23,6 +23,7 @@
       "bundleIdentifier": "com.anonymous.vispapp"
     },
     "android": {
+      "package": "com.visp.tasker",
       "adaptiveIcon": {
         "backgroundColor": "#1A1A2E",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -30,12 +31,13 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.CAMERA",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -63,10 +65,12 @@
           "color": "#4A90E2"
         }
       ],
+      "@rnmapbox/maps",
       [
-        "@rnmapbox/maps",
+        "@stripe/stripe-react-native",
         {
-          "RNMapboxMapsDownloadToken": "sk_placeholder_replace_with_your_mapbox_secret_token"
+          "merchantIdentifier": "merchant.com.visp.tasker",
+          "enableGooglePay": false
         }
       ]
     ]

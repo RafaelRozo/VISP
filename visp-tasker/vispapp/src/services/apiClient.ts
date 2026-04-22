@@ -174,28 +174,28 @@ export interface ApiResponse<T> {
 }
 
 export async function get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
-  const response = await apiClient.get<ApiResponse<T>>(url, { params });
-  return response.data.data;
+  const response = await apiClient.get<any>(url, { params });
+  return response.data?.data !== undefined ? response.data.data : response.data;
 }
 
 export async function post<T>(url: string, body?: unknown, config?: InternalAxiosRequestConfig): Promise<T> {
-  const response = await apiClient.post<ApiResponse<T>>(url, body, config);
-  return response.data.data;
+  const response = await apiClient.post<any>(url, body, config);
+  return response.data?.data !== undefined ? response.data.data : response.data;
 }
 
 export async function put<T>(url: string, body?: unknown, config?: InternalAxiosRequestConfig): Promise<T> {
-  const response = await apiClient.put<ApiResponse<T>>(url, body, config);
-  return response.data.data;
+  const response = await apiClient.put<any>(url, body, config);
+  return response.data?.data !== undefined ? response.data.data : response.data;
 }
 
 export async function patch<T>(url: string, body?: unknown, config?: InternalAxiosRequestConfig): Promise<T> {
-  const response = await apiClient.patch<ApiResponse<T>>(url, body, config);
-  return response.data.data;
+  const response = await apiClient.patch<any>(url, body, config);
+  return response.data?.data !== undefined ? response.data.data : response.data;
 }
 
 export async function del<T = void>(url: string): Promise<T> {
-  const response = await apiClient.delete<ApiResponse<T>>(url);
-  return response.data.data;
+  const response = await apiClient.delete<any>(url);
+  return response.data?.data !== undefined ? response.data.data : response.data;
 }
 
 export async function upload<T>(

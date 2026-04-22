@@ -156,8 +156,8 @@ export const geolocationService = {
     /**
      * Forward geocode an address to coordinates
      */
-    async geocodeAddress(address: string, city?: string): Promise<GeocodeResult> {
-        const response = await apiClient.post('/geo/geocode', { address, city });
+    async geocodeAddress(address: string, city?: string, country: string = 'MX,CA,US'): Promise<GeocodeResult> {
+        const response = await apiClient.post('/geo/geocode', { address, city, country });
         return response.data;
     },
 

@@ -2,7 +2,13 @@
  * VISP - Payment Methods Screen
  *
  * Lists saved payment methods from Stripe, shows card brand/last4/expiry,
- * default method indicator, and an "Add Payment Method" placeholder.
+ * default method indicator, and an "Add Payment Method" flow.
+ *
+ * Add card flow:
+ *   1. Backend creates a SetupIntent + Stripe customer (POST /users/me/payment-setup-intent)
+ *   2. Stripe CardForm collects: card number, expiry, CVC, postal code
+ *   3. confirmSetupIntent() sends card data securely to Stripe via the SDK
+ *   4. Card is saved to the customer automatically
  *
  * Dark glassmorphism redesign.
  */
@@ -17,11 +23,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import { CardForm, useConfirmSetupIntent } from '@stripe/stripe-react-native';
 import { Colors } from '../../theme/colors';
-import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { AnimatedSpinner } from '../../components/animations';
 import { useAuthStore } from '../../stores/authStore';
+import { post } from '../../services/apiClient';
 import {
   paymentService,
   PaymentMethodInfo,
@@ -202,6 +209,14 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
   const [methods, setMethods] = useState<PaymentMethodInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [cardFormComplete, setCardFormComplete] = useState(false);
+  const [isSavingCard, setIsSavingCard] = useState(false);
+  const { confirmSetupIntent } = useConfirmSetupIntent();
+
+  // -----------------------------------------------------------------------
+  // Fetch saved payment methods
+  // -----------------------------------------------------------------------
 
   const fetchMethods = useCallback(async () => {
     if (!stripeCustomerId) {
@@ -229,14 +244,76 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
     fetchMethods();
   }, [fetchMethods]);
 
-  const handleAddPaymentMethod = useCallback(() => {
-    Alert.alert(
-      'Add Payment Method',
-      'Full card entry requires the Stripe SDK (@stripe/stripe-react-native). '
-      + 'This feature will be available once the native Stripe module is integrated.',
-      [{ text: 'OK' }],
-    );
-  }, []);
+  // -----------------------------------------------------------------------
+  // Save card via Stripe SetupIntent flow
+  //
+  // 1. POST /users/me/payment-setup-intent → { clientSecret, customerId }
+  // 2. confirmSetupIntent(clientSecret) → Stripe SDK sends card from CardForm
+  // 3. Card is attached to customer automatically by Stripe
+  // -----------------------------------------------------------------------
+
+  const handleSaveCard = useCallback(async () => {
+    if (!cardFormComplete) {
+      Alert.alert('Incomplete', 'Please fill in all card fields.');
+      return;
+    }
+    setIsSavingCard(true);
+
+    try {
+      // Step 1: Get SetupIntent + ensure Stripe customer exists
+      const response = await post<{
+        data: {
+          clientSecret: string;
+          customerId: string;
+          setupIntentId: string;
+        };
+      }>('/users/me/payment-setup-intent', {});
+
+      const setupData = response?.data ?? response;
+      const clientSecret = (setupData as any)?.clientSecret;
+      const customerId = (setupData as any)?.customerId;
+
+      if (!clientSecret) {
+        Alert.alert('Error', 'Could not initialize card setup. Please try again.');
+        return;
+      }
+
+      // Update local user with Stripe customer ID
+      if (customerId) {
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser && currentUser.stripeCustomerId !== customerId) {
+          useAuthStore.getState().setUser({
+            ...currentUser,
+            stripeCustomerId: customerId,
+          });
+        }
+      }
+
+      // Step 2: Confirm SetupIntent — Stripe SDK reads card data from CardForm
+      const { setupIntent, error } = await confirmSetupIntent(clientSecret, {
+        paymentMethodType: 'Card',
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // Step 3: Done — card is now attached to customer in Stripe
+      Alert.alert('Success', 'Card added successfully.');
+      setShowAddCard(false);
+      setCardFormComplete(false);
+      fetchMethods();
+    } catch (err: any) {
+      console.error('[PaymentMethods] Save card error:', err);
+      Alert.alert('Error', err?.message ?? 'Failed to save card. Please try again.');
+    } finally {
+      setIsSavingCard(false);
+    }
+  }, [cardFormComplete, fetchMethods, confirmSetupIntent]);
+
+  // -----------------------------------------------------------------------
+  // Remove card
+  // -----------------------------------------------------------------------
 
   const handleRemovePaymentMethod = useCallback((method: PaymentMethodInfo) => {
     Alert.alert(
@@ -248,13 +325,16 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            // In production, call paymentService.removePaymentMethod(method.id)
             Alert.alert('Removed', 'Payment method removal will be available with full Stripe integration.');
           },
         },
       ],
     );
   }, []);
+
+  // -----------------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------------
 
   if (isLoading) {
     return (
@@ -282,47 +362,98 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
         }
       >
         {/* Header */}
-        <Text style={styles.title}>Payment Methods</Text>
+        <Text style={styles.title}>
+          {showAddCard ? 'Add New Card' : 'Payment Methods'}
+        </Text>
         <Text style={styles.subtitle}>
-          Manage your saved cards for booking services.
+          {showAddCard
+            ? 'Enter your card number, expiry, CVC, and postal code'
+            : 'Manage your saved cards for booking services.'}
         </Text>
 
-        {methods.length === 0 ? (
-          /* Empty state */
-          <GlassCard variant="dark" style={styles.emptyCard}>
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconCircle}>
-                <Text style={styles.emptyIcon}>$</Text>
+        {!showAddCard && (
+          <>
+            {methods.length === 0 ? (
+              <GlassCard variant="dark" style={styles.emptyCard}>
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconCircle}>
+                    <Text style={styles.emptyIcon}>$</Text>
+                  </View>
+                  <Text style={styles.emptyTitle}>No Payment Methods</Text>
+                  <Text style={styles.emptySubtitle}>
+                    {stripeCustomerId
+                      ? 'You have no saved cards yet. Add one to speed up bookings.'
+                      : 'Add a card to get started with VISP services.'}
+                  </Text>
+                </View>
+              </GlassCard>
+            ) : (
+              <View style={styles.cardsList}>
+                {methods.map((method, index) => (
+                  <CardItem
+                    key={method.id}
+                    method={method}
+                    isDefault={index === 0}
+                    onRemove={handleRemovePaymentMethod}
+                  />
+                ))}
               </View>
-              <Text style={styles.emptyTitle}>No Payment Methods</Text>
-              <Text style={styles.emptySubtitle}>
-                {stripeCustomerId
-                  ? 'You have no saved cards yet. Add one to speed up bookings.'
-                  : 'Your account does not have a Stripe customer ID yet. Complete a booking to get started.'}
-              </Text>
-            </View>
-          </GlassCard>
-        ) : (
-          /* Card list */
-          <View style={styles.cardsList}>
-            {methods.map((method, index) => (
-              <CardItem
-                key={method.id}
-                method={method}
-                isDefault={index === 0}
-                onRemove={handleRemovePaymentMethod}
+            )}
+
+            <GlassButton
+              title="+ Add Payment Method"
+              variant="glow"
+              onPress={() => setShowAddCard(true)}
+              style={styles.addButton}
+            />
+          </>
+        )}
+
+        {showAddCard && (
+          <View>
+            {/* Stripe CardForm — renders: card number, expiry, CVC, postal code, country */}
+            <CardForm
+              autofocus
+              cardStyle={{
+                backgroundColor: '#1A1A2E',
+                textColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: 'rgba(120, 80, 255, 0.3)',
+                borderRadius: 10,
+                fontSize: 16,
+                placeholderColor: 'rgba(255, 255, 255, 0.35)',
+                cursorColor: '#7850FF',
+                textErrorColor: '#E74C3C',
+              }}
+              style={styles.stripeCardForm}
+              onFormComplete={(details) => {
+                setCardFormComplete(details.complete);
+              }}
+            />
+
+            <View style={styles.addCardActions}>
+              <GlassButton
+                title="Cancel"
+                variant="outline"
+                onPress={() => {
+                  setShowAddCard(false);
+                  setCardFormComplete(false);
+                }}
+                style={styles.actionButton}
               />
-            ))}
+              <GlassButton
+                title="Save Card"
+                variant="glow"
+                onPress={handleSaveCard}
+                disabled={!cardFormComplete || isSavingCard}
+                loading={isSavingCard}
+                style={styles.actionButton}
+              />
+            </View>
           </View>
         )}
 
-        {/* Add payment method CTA */}
-        <GlassButton
-          title="+ Add Payment Method"
-          variant="glow"
-          onPress={handleAddPaymentMethod}
-          style={styles.addButton}
-        />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </GlassBackground>
   );
@@ -406,5 +537,35 @@ const styles = StyleSheet.create({
   },
   addButton: {
     marginTop: 4,
+  },
+  // Add card form
+  addCardContainer: {
+    marginTop: 8,
+  },
+  addCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  addCardSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.45)',
+    marginBottom: 16,
+  },
+  stripeCardForm: {
+    width: '100%',
+    height: 240,
+    marginBottom: 16,
+  },
+  addCardActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+  },
+  bottomSpacer: {
+    height: 40,
   },
 });

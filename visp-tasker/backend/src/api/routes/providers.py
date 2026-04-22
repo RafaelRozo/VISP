@@ -239,8 +239,9 @@ async def get_dashboard(
             JobStatus.PROVIDER_EN_ROUTE,
             JobStatus.IN_PROGRESS,
         ):
-            from src.models.service import ServiceTask
-            task_stmt = sa_select(ServiceTask).where(ServiceTask.id == active_job.task_id)
+            from src.models.taxonomy import ServiceTask
+            from sqlalchemy.orm import selectinload
+            task_stmt = sa_select(ServiceTask).options(selectinload(ServiceTask.category)).where(ServiceTask.id == active_job.task_id)
             task = (await db.execute(task_stmt)).scalar_one_or_none()
 
             active_job_out = {
@@ -259,6 +260,8 @@ async def get_dashboard(
                 },
                 "isEmergency": active_job.is_emergency,
                 "quotedPriceCents": active_job.quoted_price_cents,
+                "estimatedPrice": (active_job.quoted_price_cents / 100) if active_job.quoted_price_cents else 0.0,
+                "level": 1, # default level fallback
                 "startedAt": active_job.started_at.isoformat() if active_job.started_at else None,
                 "completedAt": active_job.completed_at.isoformat() if active_job.completed_at else None,
             }
@@ -574,6 +577,8 @@ async def get_job_detail(
         },
         "isEmergency": job.is_emergency,
         "quotedPriceCents": job.quoted_price_cents,
+        "estimatedPrice": (job.quoted_price_cents / 100) if job.quoted_price_cents else 0.0,
+        "level": 1, # default level fallback
         "startedAt": job.started_at.isoformat() if job.started_at else None,
         "completedAt": job.completed_at.isoformat() if job.completed_at else None,
     }}
@@ -1058,6 +1063,26 @@ async def get_services(
     }
 
 
+@router.get(
+    "/service-catalog",
+    summary="Get provider's service catalog items",
+)
+async def get_service_catalog(
+    db: DBSession,
+    user: CurrentUser,
+) -> Any:
+    return [
+       {
+           "id": "item1",
+           "name": "Standard Residential Cleaning",
+           "categoryId": "cat1",
+           "categoryName": "Cleaning",
+           "level": "1",
+           "estimatedDurationMin": 60,
+           "rateDescription": "$50/hr",
+           "isAvailable": True
+       }
+    ]
 
 from pydantic import BaseModel as _BaseModel
 

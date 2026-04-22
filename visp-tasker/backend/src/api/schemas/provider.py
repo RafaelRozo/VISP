@@ -232,6 +232,8 @@ class EarningsJobSummary(BaseModel):
 
 class EarningsSummaryOut(BaseModel):
     """Provider earnings summary for a time period."""
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    
     period: str
     total_cents: int = Field(alias="totalCents")
     commission_cents: int = Field(alias="commissionCents")

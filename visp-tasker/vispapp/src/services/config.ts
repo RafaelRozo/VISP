@@ -20,8 +20,8 @@ interface AppConfig {
 const DEV_CONFIG: AppConfig = {
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
-  mapboxAccessToken: '',
-  stripePublishableKey: '',
+  mapboxAccessToken: 'MAPBOX_ACCESS_TOKEN_HERE',
+  stripePublishableKey: 'pk_test_51TMUEvI9nmjXITB8M1kWgFas5MW8AQJfqVwHQcpaThfS6tesyfbTVgIp74FdE61DzSFBpbABlZi1S1kd6kT6YEsa00O8FAMvlW',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
   appStoreUrl: 'https://apps.apple.com/app/tasker/id000000000',

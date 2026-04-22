@@ -77,7 +77,9 @@ function AvatarSection({
   lastName,
   onChangeAvatar,
 }: AvatarSectionProps): React.JSX.Element {
-  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  const safeFirst = firstName || '?';
+  const safeLast = lastName || '?';
+  const initials = `${safeFirst.charAt(0)}${safeLast.charAt(0)}`.toUpperCase();
 
   return (
     <TouchableOpacity
@@ -300,12 +302,13 @@ export default function ProfileScreen(): React.JSX.Element {
             city: parsed.city,
             province: parsed.province,
             postalCode: parsed.postalCode,
-            country: parsed.country || 'CA',
+            country: parsed.country || '',
           }]);
         } else {
           setAddressSuggestions([]);
         }
-      } catch {
+      } catch (err) {
+        console.error('[ADDRESS_SEARCH] Geocoding error:', JSON.stringify(err, null, 2));
         setAddressSuggestions([]);
       }
     } else {
@@ -322,7 +325,7 @@ export default function ProfileScreen(): React.JSX.Element {
         city: addr.city || '',
         province: addr.province || '',
         postalCode: addr.postalCode || '',
-        country: addr.country || 'CA',
+        country: addr.country || 'MX',
         latitude: addr.latitude,
         longitude: addr.longitude,
         formattedAddress: addr.formattedAddress,
@@ -332,8 +335,9 @@ export default function ProfileScreen(): React.JSX.Element {
       setIsEditingAddress(false);
       setAddressInput('');
       setAddressSuggestions([]);
-    } catch {
-      Alert.alert('Error', 'Failed to save address.');
+    } catch (err: any) {
+      console.error('[ADDRESS_SAVE] Error:', JSON.stringify(err?.response?.data || err?.message || err, null, 2));
+      Alert.alert('Error', `Failed to save address: ${err?.response?.data?.detail || err?.message || 'Unknown error'}`);
     } finally {
       setIsSavingAddress(false);
     }
@@ -614,45 +618,7 @@ export default function ProfileScreen(): React.JSX.Element {
           )}
         </GlassCard>
 
-        {/* Payment Methods */}
-        <GlassCard variant="standard" style={styles.glassCardMargin}>
-          <View style={styles.nameRow}>
-            <Text style={styles.sectionLabel}>Payment Method</Text>
-            <TouchableOpacity
-              onPress={handleAddCard}
-              disabled={isAddingCard}
-              accessibilityRole="button"
-            >
-              <Text style={styles.editLink}>
-                {isAddingCard ? 'Adding...' : 'Add Card'}
-              </Text>
-            </TouchableOpacity>
-          </View>
 
-          {isLoadingPayments ? (
-            <AnimatedSpinner size={24} color={Colors.primary} style={{ marginTop: 12, alignSelf: 'center' }} />
-          ) : paymentMethods.length > 0 ? (
-            <View style={{ marginTop: 8 }}>
-              {paymentMethods.map((pm) => (
-                <View key={pm.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-                  <View style={styles.cardIconContainer}>
-                    <Text style={styles.cardIconText}>$</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.infoValue}>
-                      {pm.brand.charAt(0).toUpperCase() + pm.brand.slice(1)} **** {pm.last4}
-                    </Text>
-                    <Text style={[styles.infoLabel, { fontSize: 12 }]}>
-                      Expires {pm.expMonth}/{pm.expYear}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={[styles.infoLabel, { marginTop: 8 }]}>No payment method saved</Text>
-          )}
-        </GlassCard>
 
         {/* Provider level progress */}
         {isProvider && providerProfile && (

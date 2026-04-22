@@ -443,13 +443,15 @@ const stripeStyles = StyleSheet.create({
 export default function EarningsScreen(): React.JSX.Element {
   const { width: screenWidth } = useWindowDimensions();
   const {
-    earnings,
+    earnings: rawEarnings,
     weeklyEarnings,
     payouts,
     providerProfile,
     isLoadingEarnings,
     fetchEarnings,
   } = useProviderStore();
+
+  const earnings = rawEarnings ?? { today: 0, thisWeek: 0, thisMonth: 0, pendingPayout: 0, totalEarned: 0 };
 
   const user = useAuthStore((s) => s.user);
 
@@ -517,7 +519,7 @@ export default function EarningsScreen(): React.JSX.Element {
 
   const filteredPayouts = useMemo(() => {
     const now = new Date();
-    return payouts.filter((payout) => {
+    return (payouts || []).filter((payout) => {
       if (selectedPeriod === 'all') return true;
       const payoutDate = new Date(payout.createdAt);
       if (selectedPeriod === 'week') {
@@ -532,7 +534,7 @@ export default function EarningsScreen(): React.JSX.Element {
 
   const pendingAmount = useMemo(
     () =>
-      payouts
+      (payouts || [])
         .filter((p) => p.status === 'pending')
         .reduce((sum, p) => sum + p.netAmount, 0),
     [payouts],
@@ -540,7 +542,7 @@ export default function EarningsScreen(): React.JSX.Element {
 
   const paidAmount = useMemo(
     () =>
-      payouts
+      (payouts || [])
         .filter((p) => p.status === 'paid')
         .reduce((sum, p) => sum + p.netAmount, 0),
     [payouts],

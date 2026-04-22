@@ -50,7 +50,7 @@ class GeocodeRequest(BaseModel):
     city: str = Field(default="", description="City name")
     province: str = Field(default="", description="Province/state code")
     postal: str = Field(default="", description="Postal/ZIP code")
-    country: str = Field(default="CA", description="Country code (ISO 3166)")
+    country: str = Field(default="MX,CA,US", description="Country codes (ISO 3166), comma-separated")
 
 
 class ReverseGeocodeRequest(BaseModel):

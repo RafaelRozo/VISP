@@ -267,8 +267,8 @@ export default function DashboardScreen(): React.JSX.Element {
             categoryName={activeJob.categoryName}
             customerArea={activeJob.address.city}
             distanceKm={0}
-            estimatedPrice={activeJob.estimatedPrice}
-            level={activeJob.level}
+            estimatedPrice={activeJob.estimatedPrice ?? 0}
+            level={activeJob.level ?? 1}
             status={activeJob.status}
             scheduledAt={activeJob.scheduledAt}
             slaDeadline={activeJob.slaDeadline}

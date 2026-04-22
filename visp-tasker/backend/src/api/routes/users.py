@@ -71,15 +71,15 @@ def _build_user_response(db_user: Any) -> dict[str, Any]:
     role_str = "both" if len(roles) > 1 else (roles[0] if roles else "customer")
 
     default_address = None
-    if db_user.default_address_city or db_user.default_address_street:
+    if db_user.default_address_formatted or db_user.default_address_latitude is not None or db_user.default_address_street:
         default_address = {
             "street": db_user.default_address_street or "",
             "city": db_user.default_address_city or "",
             "province": db_user.default_address_province or "",
             "postalCode": db_user.default_address_postal_code or "",
             "country": db_user.default_address_country or "CA",
-            "latitude": float(db_user.default_address_latitude) if db_user.default_address_latitude else None,
-            "longitude": float(db_user.default_address_longitude) if db_user.default_address_longitude else None,
+            "latitude": float(db_user.default_address_latitude) if db_user.default_address_latitude is not None else None,
+            "longitude": float(db_user.default_address_longitude) if db_user.default_address_longitude is not None else None,
             "formattedAddress": db_user.default_address_formatted or "",
         }
 
@@ -116,37 +116,95 @@ async def update_me(
     from src.models.user import User
     from sqlalchemy import select
 
-    stmt = select(User).where(User.id == user.id)
-    db_user = (await db.execute(stmt)).scalar_one_or_none()
-    if not db_user:
+    try:
+        stmt = select(User).where(User.id == user.id)
+        db_user = (await db.execute(stmt)).scalar_one_or_none()
+        if not db_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found.",
+            )
+
+        if body.firstName is not None:
+            stripped_first = body.firstName.strip()
+            if stripped_first:
+                db_user.first_name = stripped_first
+                
+        if body.lastName is not None:
+            stripped_last = body.lastName.strip()
+            if stripped_last:
+                db_user.last_name = stripped_last
+                
+        if body.phone is not None:
+            stripped_phone = body.phone.strip()
+            if stripped_phone:
+                db_user.phone = stripped_phone
+
+        # Save default address
+        if body.defaultAddress is not None:
+            addr = body.defaultAddress
+            # Map full country names to ISO codes (DB column is VARCHAR(5))
+            _COUNTRY_MAP = {
+                "mexico": "MX", "méxico": "MX", "mx": "MX",
+                "canada": "CA", "ca": "CA",
+                "united states": "US", "usa": "US", "us": "US",
+                "united states of america": "US",
+                "estados unidos": "US",
+            }
+            raw_country = (addr.country or "MX").strip()
+            country_code = _COUNTRY_MAP.get(raw_country.lower(), raw_country[:5])
+
+            # Safely truncate text fields to fit database schema limits to avoid 500 DB errors
+            db_user.default_address_street = addr.street[:255] if addr.street else None
+            db_user.default_address_city = addr.city[:100] if addr.city else None
+            db_user.default_address_province = addr.province[:50] if addr.province else None
+            db_user.default_address_postal_code = addr.postalCode[:20] if addr.postalCode else None
+            db_user.default_address_country = country_code[:5]
+            db_user.default_address_latitude = addr.latitude
+            db_user.default_address_longitude = addr.longitude
+            db_user.default_address_formatted = addr.formattedAddress[:500] if addr.formattedAddress else None
+
+            # Also update ProviderProfile home location for matching engine
+            if addr.latitude is not None and addr.longitude is not None:
+                try:
+                    from src.models.provider import ProviderProfile
+                    provider_stmt = select(ProviderProfile).where(
+                        ProviderProfile.user_id == user.id
+                    )
+                    provider = (await db.execute(provider_stmt)).scalar_one_or_none()
+                    if provider:
+                        provider.home_latitude = addr.latitude
+                        provider.home_longitude = addr.longitude
+                        logger.info(
+                            "Updated provider %s home location: lat=%s, lng=%s",
+                            provider.id, addr.latitude, addr.longitude,
+                        )
+                except Exception as prov_exc:
+                    logger.warning("Could not update provider location: %s", prov_exc)
+
+        try:
+            await db.commit()
+            await db.refresh(db_user)
+        except Exception as db_exc:
+            await db.rollback()
+            logger.error("DB commit failed updating user (Did you run make db-migrate?): %s", db_exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Update error. Confirme que su base de datos local aplicó las migraciones (make db-migrate).",
+            )
+
+        return {"data": _build_user_response(db_user)}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        error_tb = traceback.format_exc()
+        logger.error("update_me FAILED: %s\n%s", exc, error_tb)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"update_me error: {type(exc).__name__}: {exc}",
         )
-
-    if body.firstName is not None:
-        db_user.first_name = body.firstName
-    if body.lastName is not None:
-        db_user.last_name = body.lastName
-    if body.phone is not None:
-        db_user.phone = body.phone
-
-    # Save default address
-    if body.defaultAddress is not None:
-        addr = body.defaultAddress
-        db_user.default_address_street = addr.street
-        db_user.default_address_city = addr.city
-        db_user.default_address_province = addr.province
-        db_user.default_address_postal_code = addr.postalCode
-        db_user.default_address_country = addr.country or "CA"
-        db_user.default_address_latitude = addr.latitude
-        db_user.default_address_longitude = addr.longitude
-        db_user.default_address_formatted = addr.formattedAddress
-
-    await db.commit()
-    await db.refresh(db_user)
-
-    return {"data": _build_user_response(db_user)}
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +311,11 @@ async def create_setup_intent(
     import stripe
     from src.models.user import User
     from sqlalchemy import select
+    from src.core.config import settings
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(status_code=500, detail="Stripe integration is missing API keys")
+    stripe.api_key = settings.stripe_secret_key
 
     stmt = select(User).where(User.id == user.id)
     db_user = (await db.execute(stmt)).scalar_one_or_none()
@@ -274,22 +337,46 @@ async def create_setup_intent(
             logger.error("Failed to create Stripe customer: %s", e)
             raise HTTPException(status_code=500, detail="Failed to create payment customer")
 
-    # Create SetupIntent
+    # Create SetupIntent and auto-heal invalid customer IDs (like after sandbox resets)
     try:
         setup_intent = stripe.SetupIntent.create(
             customer=db_user.stripe_customer_id,
             automatic_payment_methods={"enabled": True},
         )
-        return {
-            "data": {
-                "clientSecret": setup_intent.client_secret,
-                "customerId": db_user.stripe_customer_id,
-                "setupIntentId": setup_intent.id,
-            }
-        }
+    except stripe.error.InvalidRequestError as e:
+        if "No such customer" in str(e):
+            logger.warning("Stripe customer %s not found. Healing by creating a new one...", db_user.stripe_customer_id)
+            try:
+                # Create a fresh customer
+                customer = stripe.Customer.create(
+                    email=db_user.email,
+                    name=f"{db_user.first_name} {db_user.last_name}",
+                    metadata={"visp_user_id": str(db_user.id)},
+                )
+                db_user.stripe_customer_id = customer.id
+                await db.commit()
+                # Retry SetupIntent creation
+                setup_intent = stripe.SetupIntent.create(
+                    customer=db_user.stripe_customer_id,
+                    automatic_payment_methods={"enabled": True},
+                )
+            except Exception as e_inner:
+                logger.error("Failed to auto-heal Stripe customer: %s", e_inner)
+                raise HTTPException(status_code=500, detail="Failed to initialize card setup")
+        else:
+            logger.error("Failed to create SetupIntent: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to initialize card setup")
     except Exception as e:
         logger.error("Failed to create SetupIntent: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to create setup intent")
+        raise HTTPException(status_code=500, detail="Failed to initialize card setup")
+
+    return {
+        "data": {
+            "clientSecret": setup_intent.client_secret,
+            "customerId": db_user.stripe_customer_id,
+            "setupIntentId": setup_intent.id,
+        }
+    }
 
 
 # ---------------------------------------------------------------------------

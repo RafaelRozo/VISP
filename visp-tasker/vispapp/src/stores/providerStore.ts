@@ -205,16 +205,72 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
   fetchEarnings: async () => {
     set({ isLoadingEarnings: true, error: null });
     try {
-      const data = await get<{
-        summary: EarningsSummary;
-        weekly: WeeklyEarnings[];
-        payouts: EarningsPayout[];
+      // Backend returns: { data: { period, totalCents, commissionCents, netCents, jobCount, currency, jobs[] } }
+      const response = await get<{
+        data: {
+          period: string;
+          totalCents: number;
+          commissionCents: number;
+          netCents: number;
+          jobCount: number;
+          currency: string;
+          jobs: Array<{
+            jobId: string;
+            referenceNumber: string;
+            serviceCity?: string;
+            finalPriceCents?: number;
+            commissionCents?: number;
+            payoutCents?: number;
+            completedAt?: string;
+          }>;
+        };
       }>('/provider/earnings');
 
+      const raw = response?.data ?? response;
+      const netDollars = (raw?.netCents ?? 0) / 100;
+      const totalDollars = (raw?.totalCents ?? 0) / 100;
+
+      // Map backend response to frontend EarningsSummary shape
+      const summary: EarningsSummary = {
+        today: 0,
+        thisWeek: raw?.period === 'week' ? netDollars : 0,
+        thisMonth: 0,
+        pendingPayout: 0,
+        totalEarned: totalDollars,
+      };
+
+      // Fetch month separately to fill thisMonth
+      try {
+        const monthResp = await get<{ data: { netCents: number } }>('/provider/earnings?period=month');
+        const monthRaw = monthResp?.data ?? monthResp;
+        summary.thisMonth = (monthRaw?.netCents ?? 0) / 100;
+      } catch { /* ignore */ }
+
+      // Fetch today separately
+      try {
+        const todayResp = await get<{ data: { netCents: number } }>('/provider/earnings?period=today');
+        const todayRaw = todayResp?.data ?? todayResp;
+        summary.today = (todayRaw?.netCents ?? 0) / 100;
+      } catch { /* ignore */ }
+
+      // Map jobs to EarningsPayout shape
+      const payouts: EarningsPayout[] = (raw?.jobs ?? []).map((j) => ({
+        id: j.jobId,
+        jobId: j.jobId,
+        taskName: j.referenceNumber || 'Job',
+        grossAmount: (j.finalPriceCents ?? 0) / 100,
+        commissionAmount: (j.commissionCents ?? 0) / 100,
+        commissionRate: j.finalPriceCents ? (j.commissionCents ?? 0) / j.finalPriceCents : 0,
+        netAmount: (j.payoutCents ?? 0) / 100,
+        status: 'paid' as const,
+        paidAt: j.completedAt ?? null,
+        createdAt: j.completedAt ?? new Date().toISOString(),
+      }));
+
       set({
-        earnings: data.summary,
-        weeklyEarnings: data.weekly,
-        payouts: data.payouts,
+        earnings: summary,
+        weeklyEarnings: [],
+        payouts,
         isLoadingEarnings: false,
       });
     } catch (err: unknown) {

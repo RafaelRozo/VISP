@@ -232,7 +232,20 @@ export const useEmergencyStore = create<EmergencyState>((set, getState) => ({
       clearInterval(state.pollingInterval);
     }
 
+    let pollCount = 0;
+    const MAX_POLLS = 600; // 30 min at 3s intervals
+
     const interval = setInterval(async () => {
+      pollCount++;
+      if (pollCount > MAX_POLLS) {
+        const currentState = getState();
+        if (currentState.pollingInterval) {
+          clearInterval(currentState.pollingInterval);
+          set({ pollingInterval: null });
+        }
+        return;
+      }
+
       try {
         const job = await emergencyService.fetchEmergencyJob(jobId);
         set({ activeJob: job, jobStatus: job.status });
@@ -250,7 +263,7 @@ export const useEmergencyStore = create<EmergencyState>((set, getState) => ({
       }
     }, 3000);
 
-    set({ pollingInterval: interval });
+    set({ pollingInterval: interval as unknown as ReturnType<typeof setInterval> });
   },
 
   stopPolling: () => {
