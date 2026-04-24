@@ -221,6 +221,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   const lastNameRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
 
+  // Track previous password length to detect autofill (jumps from 0/short to long)
+  const prevPasswordLenRef = useRef(0);
+
   const { register, isLoading, error, clearError } = useAuthStore();
 
   // ── Entry Animation ────────────────────────
@@ -243,6 +246,50 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     entryAnim.start();
     return () => entryAnim.stop();
   }, []);
+
+  // ── Autofill-safe password handler ─────
+  // iOS password autofill (Apple generated passwords, authenticators) may not
+  // trigger onChangeText reliably. We use onChange (native event) as fallback
+  // and auto-sync confirmPassword when an autofill is detected.
+  const handlePasswordChange = useCallback((text: string) => {
+    const wasAutoFilled = prevPasswordLenRef.current <= 1 && text.length >= 8;
+    prevPasswordLenRef.current = text.length;
+
+    setPassword(text);
+    if (step1Errors.password) {
+      setStep1Errors((prev) => ({ ...prev, password: undefined }));
+    }
+
+    // If password was autofilled, auto-sync confirmPassword since iOS
+    // may not reliably fill the confirmation field
+    if (wasAutoFilled) {
+      setConfirmPassword(text);
+      if (step1Errors.confirmPassword) {
+        setStep1Errors((prev) => ({ ...prev, confirmPassword: undefined }));
+      }
+    }
+  }, [step1Errors.password, step1Errors.confirmPassword]);
+
+  const handlePasswordNativeChange = useCallback((e: { nativeEvent: { text: string } }) => {
+    const text = e.nativeEvent.text;
+    if (text !== password) {
+      handlePasswordChange(text);
+    }
+  }, [password, handlePasswordChange]);
+
+  const handleConfirmPasswordChange = useCallback((text: string) => {
+    setConfirmPassword(text);
+    if (step1Errors.confirmPassword) {
+      setStep1Errors((prev) => ({ ...prev, confirmPassword: undefined }));
+    }
+  }, [step1Errors.confirmPassword]);
+
+  const handleConfirmPasswordNativeChange = useCallback((e: { nativeEvent: { text: string } }) => {
+    const text = e.nativeEvent.text;
+    if (text !== confirmPassword) {
+      handleConfirmPasswordChange(text);
+    }
+  }, [confirmPassword, handleConfirmPasswordChange]);
 
   // ── Password Strength ────────────────────
   const passwordStrengthInfo = useMemo(
@@ -393,18 +440,16 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               ref={passwordInputRef}
               style={styles.passwordTextInput}
               value={password}
-              onChangeText={(text) => {
-                setPassword(text);
-                if (step1Errors.password) {
-                  setStep1Errors((prev) => ({ ...prev, password: undefined }));
-                }
-              }}
+              onChangeText={handlePasswordChange}
+              onChange={handlePasswordNativeChange}
               placeholder="Minimum 8 characters"
               placeholderTextColor="rgba(255, 255, 255, 0.35)"
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
+              autoComplete="new-password"
               textContentType="newPassword"
+              passwordRules="minlength: 8; required: lower; required: upper; required: digit; required: special;"
               returnKeyType="next"
               onSubmitEditing={() => confirmPasswordRef.current?.focus()}
               editable={!isLoading}
@@ -461,19 +506,13 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           ref={confirmPasswordRef}
           label="CONFIRM PASSWORD"
           value={confirmPassword}
-          onChangeText={(text) => {
-            setConfirmPassword(text);
-            if (step1Errors.confirmPassword) {
-              setStep1Errors((prev) => ({
-                ...prev,
-                confirmPassword: undefined,
-              }));
-            }
-          }}
+          onChangeText={handleConfirmPasswordChange}
+          onChange={handleConfirmPasswordNativeChange}
           placeholder="Re-enter your password"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           autoCorrect={false}
+          autoComplete="new-password"
           textContentType="newPassword"
           returnKeyType="done"
           onSubmitEditing={handleNext}

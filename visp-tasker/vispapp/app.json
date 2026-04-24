@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Tasker",
+    "name": "VISP",
     "slug": "vispapp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,12 +15,12 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Tasker needs your location to find nearby service providers.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Tasker uses your location to track provider arrival and dispatch emergency services.",
-        "NSCameraUsageDescription": "Tasker needs camera access to capture job photos and credential documents.",
-        "NSPhotoLibraryUsageDescription": "Tasker needs photo library access to upload credential documents."
+        "NSLocationWhenInUseUsageDescription": "VISP needs your location to find nearby service providers.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "VISP uses your location to track provider arrival and dispatch emergency services.",
+        "NSCameraUsageDescription": "VISP needs camera access to capture job photos and credential documents.",
+        "NSPhotoLibraryUsageDescription": "VISP needs photo library access to upload credential documents."
       },
-      "bundleIdentifier": "com.anonymous.vispapp"
+      "bundleIdentifier": "com.droz.vispapp"
     },
     "android": {
       "package": "com.visp.tasker",
@@ -48,14 +48,14 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Tasker needs your location to find nearby service providers."
+          "locationWhenInUsePermission": "VISP needs your location to find nearby service providers."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Tasker needs photo library access to upload credential documents.",
-          "cameraPermission": "Tasker needs camera access to capture job photos."
+          "photosPermission": "VISP needs photo library access to upload credential documents.",
+          "cameraPermission": "VISP needs camera access to capture job photos."
         }
       ],
       [
