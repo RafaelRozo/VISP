@@ -7,6 +7,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
+import { useTranslation } from '../i18n';
 import {
   LayoutAnimation,
   Platform,
@@ -41,10 +42,10 @@ interface LevelProgressProps {
 // ---------------------------------------------------------------------------
 
 const LEVEL_NAMES: Record<number, string> = {
-  1: 'Helper',
-  2: 'Experienced',
-  3: 'Certified Pro',
-  4: 'Emergency',
+  1: 'profileScreen.helper',
+  2: 'profileScreen.experienced',
+  3: 'profileScreen.certifiedPro',
+  4: 'profileScreen.emergency',
 };
 
 function getLevelDescription(level: ServiceLevel): string {
@@ -64,6 +65,7 @@ function getLevelDescription(level: ServiceLevel): string {
 function LevelProgress({
   progressInfo,
 }: LevelProgressProps): React.JSX.Element {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const currentColor = getLevelColor(progressInfo.currentLevel);
   const nextColor = progressInfo.nextLevel
@@ -89,7 +91,7 @@ function LevelProgress({
         </View>
         <View style={styles.levelInfo}>
           <Text style={styles.levelName}>
-            {LEVEL_NAMES[progressInfo.currentLevel]}
+            {t(LEVEL_NAMES[progressInfo.currentLevel])}
           </Text>
           <Text style={styles.levelDescription}>
             {getLevelDescription(progressInfo.currentLevel)}
@@ -102,7 +104,7 @@ function LevelProgress({
         <View style={styles.progressSection}>
           <View style={styles.progressHeader}>
             <Text style={styles.progressTitle}>
-              Progress to Level {progressInfo.nextLevel}
+              {t('profileScreen.progressToLevel', { level: progressInfo.nextLevel })}
             </Text>
             <Text style={[styles.progressPercent, { color: nextColor }]}>
               {progressInfo.progressPercent}%
@@ -124,7 +126,7 @@ function LevelProgress({
           </View>
 
           <Text style={styles.progressSubtext}>
-            {metCount} of {totalCount} requirements met
+            {t('profileScreen.requirementsMet', { met: metCount, total: totalCount })}
           </Text>
         </View>
       )}
@@ -153,7 +155,7 @@ function LevelProgress({
             }
           >
             <Text style={styles.expandButtonText}>
-              {isExpanded ? 'Hide Requirements' : 'What You Need'}
+              {isExpanded ? t('common.done') : t('profileScreen.whatYouNeed')}
             </Text>
             <Text style={styles.expandArrow}>
               {isExpanded ? '\u25B2' : '\u25BC'}

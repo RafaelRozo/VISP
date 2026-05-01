@@ -8,7 +8,7 @@
  * Dark glassmorphism redesign.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
@@ -28,7 +28,11 @@ import {
   NotificationPreferences,
   PaymentMethod,
 } from '../../types';
-import { patch } from '../../services/apiClient';
+import { get, patch, post } from '../../services/apiClient';
+import { useAuthStore } from '../../stores/authStore';
+import { useNavigation } from '@react-navigation/native';
+import { useAppStore } from '../../stores/appStore';
+import { useTranslation } from '../../i18n';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -235,6 +239,10 @@ const paymentStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function SettingsScreen(): React.JSX.Element {
+  const user = useAuthStore((s) => s.user);
+  const userId = user?.id;
+  const navigation = useNavigation<any>();
+
   // Notification preferences
   const [notifications, setNotifications] = useState<NotificationPreferences>({
     pushEnabled: true,
@@ -244,35 +252,53 @@ export default function SettingsScreen(): React.JSX.Element {
     emergencyAlerts: true,
   });
 
-  // App settings
-  const [language, setLanguage] = useState('en');
-  const [darkMode, setDarkMode] = useState(true);
+  // App settings from global store
+  const { language, darkMode, setLanguage, setDarkMode } = useAppStore();
 
   // Payment methods
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
-    {
-      id: 'pm_1',
-      type: 'card',
-      last4: '4242',
-      brand: 'Visa',
-      isDefault: true,
-      expiresAt: '2027-03-01T00:00:00Z',
-    },
-  ]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+
+  // Fetch current notification preferences from backend on mount
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const data = await get<any>(`/notifications/preferences/${userId}`);
+        if (data) {
+          setNotifications({
+            pushEnabled: data.pushEnabled ?? data.job_updates ?? true,
+            jobOffers: data.jobOffers ?? data.job_updates ?? true,
+            jobUpdates: data.jobUpdates ?? data.job_updates ?? true,
+            promotions: data.promotions ?? data.marketing ?? false,
+            emergencyAlerts: data.emergencyAlerts ?? data.emergency_alerts ?? true,
+          });
+        }
+      } catch {
+        // Use defaults if fetch fails
+      }
+    })();
+  }, [userId]);
 
   // Notification toggle handler
   const handleNotificationToggle = useCallback(
     async (key: keyof NotificationPreferences, value: boolean) => {
+      if (!userId) return;
       const updated = { ...notifications, [key]: value };
       setNotifications(updated);
       try {
-        await patch('/users/me/notifications', updated);
+        await post(`/notifications/preferences/${userId}`, {
+          job_updates: updated.jobUpdates,
+          marketing: updated.promotions,
+          emergency_alerts: updated.emergencyAlerts,
+        });
       } catch {
         setNotifications(notifications);
       }
     },
-    [notifications],
+    [notifications, userId],
   );
+
+  const { t } = useTranslation();
 
   // Language picker
   const handleLanguagePicker = useCallback(() => {
@@ -284,7 +310,7 @@ export default function SettingsScreen(): React.JSX.Element {
         },
         (buttonIndex) => {
           if (buttonIndex > 0) {
-            setLanguage(LANGUAGES[buttonIndex - 1].code);
+            setLanguage(LANGUAGES[buttonIndex - 1].code as 'en' | 'fr');
           }
         },
       );
@@ -296,17 +322,17 @@ export default function SettingsScreen(): React.JSX.Element {
           { text: 'Cancel', style: 'cancel' },
           ...LANGUAGES.map((lang) => ({
             text: lang.label,
-            onPress: () => setLanguage(lang.code),
+            onPress: () => setLanguage(lang.code as 'en' | 'fr'),
           })),
         ],
       );
     }
-  }, []);
+  }, [setLanguage]);
 
   // Theme toggle
   const handleThemeToggle = useCallback((value: boolean) => {
     setDarkMode(value);
-  }, []);
+  }, [setDarkMode]);
 
   // Payment method removal
   const handleRemovePaymentMethod = useCallback(
@@ -356,101 +382,96 @@ export default function SettingsScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
       >
         {/* Notifications Section */}
-        <Text style={styles.sectionHeader}>Notifications</Text>
+        <Text style={styles.sectionHeader}>{t('settings.notifications')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsToggle
-            label="Push Notifications"
+            label={t('settings.pushNotifications')}
             value={notifications.pushEnabled}
             onToggle={(v) => handleNotificationToggle('pushEnabled', v)}
           />
           <View style={styles.glassDivider} />
           <SettingsToggle
-            label="Job Offers"
+            label={t('settings.jobOffers')}
             value={notifications.jobOffers}
             onToggle={(v) => handleNotificationToggle('jobOffers', v)}
           />
           <View style={styles.glassDivider} />
           <SettingsToggle
-            label="Job Updates"
+            label={t('settings.jobUpdates')}
             value={notifications.jobUpdates}
             onToggle={(v) => handleNotificationToggle('jobUpdates', v)}
           />
           <View style={styles.glassDivider} />
           <SettingsToggle
-            label="Promotions"
-            value={notifications.promotions}
-            onToggle={(v) => handleNotificationToggle('promotions', v)}
-          />
-          <View style={styles.glassDivider} />
-          <SettingsToggle
-            label="Emergency Alerts"
+            label={t('settings.emergencyAlerts')}
             value={notifications.emergencyAlerts}
             onToggle={(v) => handleNotificationToggle('emergencyAlerts', v)}
           />
         </GlassCard>
 
-
-
         {/* App Settings Section */}
-        <Text style={styles.sectionHeader}>App Settings</Text>
+        <Text style={styles.sectionHeader}>{t('settings.appSettings')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsLink
-            label="Language"
+            label={t('settings.language')}
             value={currentLanguageLabel}
             onPress={handleLanguagePicker}
           />
           <View style={styles.glassDivider} />
           <SettingsToggle
-            label="Dark Mode"
+            label={t('settings.darkMode')}
             value={darkMode}
             onToggle={handleThemeToggle}
           />
         </GlassCard>
 
         {/* Privacy & Legal Section */}
-        <Text style={styles.sectionHeader}>Privacy & Legal</Text>
+        <Text style={styles.sectionHeader}>{t('settings.privacyLegal')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsLink
-            label="Privacy Settings"
+            label={t('settings.privacySettings')}
             onPress={() => {
               Alert.alert(
-                'Privacy Settings',
-                'Manage your data sharing and privacy preferences.',
-                [{ text: 'OK' }],
+                t('settings.privacySettings'),
+                t('settings.managePrivacy'),
+                [{ text: t('common.ok') }],
               );
             }}
           />
           <View style={styles.glassDivider} />
           <SettingsLink
-            label="Terms of Service"
-            onPress={() => openURL(TERMS_URL)}
+            label={t('settings.termsOfService')}
+            onPress={() => navigation.navigate('TermsOfService')}
           />
           <View style={styles.glassDivider} />
           <SettingsLink
-            label="Privacy Policy"
-            onPress={() => openURL(PRIVACY_URL)}
+            label={t('settings.privacyPolicy')}
+            onPress={() => navigation.navigate('PrivacyPolicy')}
           />
         </GlassCard>
 
         {/* About Section */}
-        <Text style={styles.sectionHeader}>About</Text>
+        <Text style={styles.sectionHeader}>{t('settings.about')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>App Version</Text>
+            <Text style={styles.aboutLabel}>{t('settings.appVersion')}</Text>
             <Text style={styles.aboutValue}>
               {APP_VERSION} ({BUILD_NUMBER})
             </Text>
           </View>
           <View style={styles.glassDivider} />
           <SettingsLink
-            label="Rate the App"
+            label={t('settings.rateApp')}
             onPress={() => {
-              Alert.alert('Thank you!', 'We appreciate your feedback.');
+              Alert.alert(
+                t('settings.thankYou'),
+                t('settings.appreciateFeedback'),
+              );
             }}
           />
           <View style={styles.glassDivider} />
           <SettingsLink
-            label="Contact Support"
+            label={t('settings.contactSupport')}
             onPress={() => {
               Linking.openURL('mailto:support@vispapp.com');
             }}

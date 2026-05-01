@@ -28,6 +28,8 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Typography, BorderRadius } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard } from '../../components/glass';
 import { MorphingBlob } from '../../components/animations';
@@ -66,11 +68,11 @@ interface RecentActivity {
 // Helpers
 // ──────────────────────────────────────────────
 
-function getGreeting(): string {
+function getGreetingKey(): string {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return 'homeScreen.goodMorning';
+  if (hour < 17) return 'homeScreen.goodAfternoon';
+  return 'homeScreen.goodEvening';
 }
 
 function formatRelativeTime(isoDate: string): string {
@@ -81,18 +83,20 @@ function formatRelativeTime(isoDate: string): string {
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 1) {
+    try { return require('../../i18n').t('homeScreen.justNow'); } catch { return 'Just now'; }
+  }
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return new Date(isoDate).toLocaleDateString();
 }
 
-const ACTIVITY_TYPE_LABELS: Record<RecentActivity['type'], string> = {
-  job_completed: 'Completed',
-  job_cancelled: 'Cancelled',
-  review_left: 'Review',
-  payment_processed: 'Payment',
+const ACTIVITY_TYPE_LABEL_KEYS: Record<RecentActivity['type'], string> = {
+  job_completed: 'common.completed',
+  job_cancelled: 'common.cancelled',
+  review_left: 'homeScreen.review',
+  payment_processed: 'homeScreen.payment',
 };
 
 const ACTIVITY_TYPE_COLORS: Record<RecentActivity['type'], string> = {
@@ -107,6 +111,8 @@ const ACTIVITY_TYPE_COLORS: Record<RecentActivity['type'], string> = {
 // ──────────────────────────────────────────────
 
 function HomeScreen({ navigation }: Props): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const user = useAuthStore((state) => state.user);
 
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -117,7 +123,8 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const [isLoadingActivity, setIsLoadingActivity] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const greeting = useMemo(() => getGreeting(), []);
+  const greetingKey = useMemo(() => getGreetingKey(), []);
+  const greeting = t(greetingKey);
   const firstName = user?.firstName ?? 'there';
 
   // ── Data Fetching ────────────────────────
@@ -220,15 +227,15 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
       const pendingStatuses = ['pending_match', 'draft', 'pending'];
       if (pendingStatuses.includes(job.status)) {
         Alert.alert(
-          'Searching for a Provider',
-          'We\'re still looking for the best available provider in your area. You\'ll be notified as soon as one is assigned. Hang tight!',
+          t('homeScreen.searchingForProvider'),
+          t('homeScreen.searchingMessage'),
         );
         return;
       }
       if (job.status === 'matched') {
         Alert.alert(
-          'Waiting for Provider',
-          'Your job has been sent to a provider. Waiting for them to review and accept.',
+          t('homeScreen.waitingForProvider'),
+          t('homeScreen.waitingMessage'),
         );
         return;
       }
@@ -268,11 +275,11 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
         />
         <View style={styles.greetingRow}>
           <View>
-            <Text style={styles.greeting}>
+            <Text style={[styles.greeting, { color: theme.textPrimary }]}>
               {greeting}, {firstName}
             </Text>
-            <Text style={styles.greetingSub}>
-              What do you need help with today?
+            <Text style={[styles.greetingSub, { color: theme.textSecondary }]}>
+              {t('homeScreen.whatDoYouNeedHelp')}
             </Text>
           </View>
           {/* Profile Avatar */}
@@ -281,7 +288,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
             onPress={() => navigation.navigate('CustomerProfile')}
             accessibilityLabel="Open profile"
           >
-            <Text style={styles.profileInitials}>
+            <Text style={[styles.profileInitials, { color: theme.textPrimary }]}>
               {(user?.firstName?.charAt(0) ?? '') +
                 (user?.lastName?.charAt(0) ?? '')}
             </Text>
@@ -295,7 +302,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
     if (isLoadingJobs) {
       return (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Active Jobs</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.activeJobs')}</Text>
           <View style={styles.jobsLoadingContainer}>
             {[1, 2].map((i) => (
               <View key={i} style={styles.jobSkeletonCard}>
@@ -319,7 +326,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Active Jobs</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.activeJobs')}</Text>
           <View style={styles.sectionCountBadge}>
             <Text style={styles.sectionCount}>{activeJobs.length}</Text>
           </View>
@@ -343,7 +350,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
     if (isLoadingActivity) {
       return (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.recentActivity')}</Text>
           {[1, 2, 3].map((i) => (
             <View key={i} style={styles.activitySkeletonRow}>
               <View style={styles.activitySkeletonDot} />
@@ -363,11 +370,11 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.recentActivity')}</Text>
         <GlassCard variant="dark" padding={0}>
           {recentActivity.map((activity, index) => {
             const typeColor = ACTIVITY_TYPE_COLORS[activity.type];
-            const typeLabel = ACTIVITY_TYPE_LABELS[activity.type];
+            const typeLabel = t(ACTIVITY_TYPE_LABEL_KEYS[activity.type]);
             const isLast = index === recentActivity.length - 1;
 
             return (
@@ -383,14 +390,14 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
                 />
                 <View style={styles.activityContent}>
                   <View style={styles.activityTop}>
-                    <Text style={styles.activityTitle} numberOfLines={1}>
+                    <Text style={[styles.activityTitle, { color: theme.textPrimary }]} numberOfLines={1}>
                       {activity.title}
                     </Text>
-                    <Text style={styles.activityTime}>
+                    <Text style={[styles.activityTime, { color: theme.textSecondary }]}>
                       {formatRelativeTime(activity.timestamp)}
                     </Text>
                   </View>
-                  <Text style={styles.activityDescription} numberOfLines={1}>
+                  <Text style={[styles.activityDescription, { color: theme.textSecondary }]} numberOfLines={1}>
                     {activity.description}
                   </Text>
                   <View
@@ -446,7 +453,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 
         {/* Service Categories */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Services</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.services')}</Text>
           <CategoryGrid
             categories={categories}
             onCategoryPress={handleCategoryPress}

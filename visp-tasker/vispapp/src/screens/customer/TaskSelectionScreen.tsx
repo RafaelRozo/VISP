@@ -32,6 +32,8 @@ import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
@@ -98,6 +100,8 @@ function generateCalendarDates(count: number): CalendarDate[] {
 // ──────────────────────────────────────────────
 
 function TaskSelectionScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const route = useRoute<TaskSelectionRouteProp>();
   const navigation = useNavigation<TaskSelectionNavProp>();
   const { taskId } = route.params;
@@ -134,6 +138,7 @@ function TaskSelectionScreen(): React.JSX.Element {
   const [addressInput, setAddressInput] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<AddressInfo[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const calendarDates = useMemo(() => generateCalendarDates(14), []);
 
@@ -184,38 +189,46 @@ function TaskSelectionScreen(): React.JSX.Element {
   }, [selectedTask, address, priority, calculateEstimate]);
 
   // Handle address text change (using real Geocoding API via Mapbox)
-  const handleAddressChange = useCallback(async (text: string) => {
+  // Debounced to 300ms to avoid excessive API calls while typing
+  const handleAddressChange = useCallback((text: string) => {
     setAddressInput(text);
-    if (text.length >= 4) {
-      try {
-        const result = await geolocationService.geocodeAddress(text);
-        if (result && result.formatted_address) {
-          // Parse the formatted address into structured components
-          const parsed = geolocationService.parseAddress(result.formatted_address);
-          setAddressSuggestions([
-            {
-              placeId: result.place_id || 'mapbox-result',
-              formattedAddress: result.formatted_address,
-              latitude: result.lat,
-              longitude: result.lng,
-              streetNumber: '',
-              street: parsed.street,
-              city: parsed.city,
-              province: parsed.province,
-              postalCode: parsed.postalCode,
-              country: parsed.country || 'CA',
-            },
-          ]);
-          setShowSuggestions(true);
-        } else {
+
+    // Clear previous debounce timer
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    if (text.length >= 3) {
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const result = await geolocationService.geocodeAddress(text);
+          if (result && result.formatted_address) {
+            const parsed = geolocationService.parseAddress(result.formatted_address);
+            setAddressSuggestions([
+              {
+                placeId: result.place_id || 'mapbox-result',
+                formattedAddress: result.formatted_address,
+                latitude: result.lat,
+                longitude: result.lng,
+                streetNumber: '',
+                street: parsed.street,
+                city: parsed.city,
+                province: parsed.province,
+                postalCode: parsed.postalCode,
+                country: parsed.country || 'CA',
+              },
+            ]);
+            setShowSuggestions(true);
+          } else {
+            setShowSuggestions(false);
+            setAddressSuggestions([]);
+          }
+        } catch (err) {
+          console.warn('Geocoding failed:', err);
           setShowSuggestions(false);
           setAddressSuggestions([]);
         }
-      } catch (err) {
-        console.warn('Geocoding failed:', err);
-        setShowSuggestions(false);
-        setAddressSuggestions([]);
-      }
+      }, 300);
     } else {
       setShowSuggestions(false);
       setAddressSuggestions([]);
@@ -348,7 +361,7 @@ function TaskSelectionScreen(): React.JSX.Element {
       <GlassBackground>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading...</Text>
         </View>
       </GlassBackground>
     );
@@ -369,14 +382,14 @@ function TaskSelectionScreen(): React.JSX.Element {
           <View style={styles.section}>
             <GlassCard variant="elevated">
               <View style={styles.taskSummaryHeader}>
-                <Text style={styles.taskSummaryName}>{taskDetail.name}</Text>
+                <Text style={[styles.taskSummaryName, { color: theme.textPrimary }]}>{taskDetail.name}</Text>
                 <LevelBadge level={taskDetail.level} size="small" />
               </View>
-              <Text style={styles.taskSummaryDescription}>
+              <Text style={[styles.taskSummaryDescription, { color: theme.textSecondary }]}>
                 {taskDetail.description}
               </Text>
               <View style={styles.taskSummaryMeta}>
-                <Text style={styles.taskSummaryDuration}>
+                <Text style={[styles.taskSummaryDuration, { color: theme.textSecondary }]}>
                   Est. {taskDetail.estimatedDurationMinutes} min
                 </Text>
                 <Text style={[styles.taskSummaryPrice, { color: levelColor }]}>
@@ -388,7 +401,7 @@ function TaskSelectionScreen(): React.JSX.Element {
 
           {/* Address input */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Address</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Service Address</Text>
             <GlassInput
               label=""
               placeholder="Enter your address..."
@@ -398,7 +411,7 @@ function TaskSelectionScreen(): React.JSX.Element {
               returnKeyType="done"
               accessibilityLabel="Service address"
               accessibilityHint="Enter the address where you need the service"
-              icon={<Text style={styles.addressIcon}>P</Text>}
+              icon={<Text style={[styles.addressIcon, { color: theme.textSecondary }]}>P</Text>}
             />
 
             {/* Address suggestions */}
@@ -411,10 +424,10 @@ function TaskSelectionScreen(): React.JSX.Element {
                     onPress={() => handleSelectAddress(suggestion)}
                     accessibilityLabel={`Select address: ${suggestion.formattedAddress}`}
                   >
-                    <Text style={styles.suggestionText}>
+                    <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>
                       {suggestion.formattedAddress}
                     </Text>
-                    <Text style={styles.suggestionSubtext}>
+                    <Text style={[styles.suggestionSubtext, { color: theme.textSecondary }]}>
                       {suggestion.city}, {suggestion.province} {suggestion.postalCode}
                     </Text>
                   </TouchableOpacity>
@@ -424,10 +437,10 @@ function TaskSelectionScreen(): React.JSX.Element {
 
             {address && (
               <View style={styles.selectedAddressCard}>
-                <Text style={styles.selectedAddressText}>
+                <Text style={[styles.selectedAddressText, { color: theme.textPrimary }]}>
                   {address.formattedAddress}
                 </Text>
-                <Text style={styles.selectedAddressSubtext}>
+                <Text style={[styles.selectedAddressSubtext, { color: theme.textSecondary }]}>
                   {address.city}, {address.province} {address.postalCode}
                 </Text>
               </View>
@@ -436,7 +449,7 @@ function TaskSelectionScreen(): React.JSX.Element {
 
           {/* Date picker */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Date</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Select Date</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -490,7 +503,7 @@ function TaskSelectionScreen(): React.JSX.Element {
           {/* Time slots */}
           {scheduledDate !== '' && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Select Time</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Select Time</Text>
               {isLoadingTimeSlots ? (
                 <AnimatedSpinner
                   size={24}
@@ -534,7 +547,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                   })}
                 </View>
               ) : (
-                <Text style={styles.noSlotsText}>
+                <Text style={[styles.noSlotsText, { color: theme.textSecondary }]}>
                   No time slots available for this date. Try another date.
                 </Text>
               )}
@@ -546,8 +559,8 @@ function TaskSelectionScreen(): React.JSX.Element {
             <GlassCard variant="standard">
               <View style={styles.toggleRow}>
                 <View style={styles.toggleInfo}>
-                  <Text style={styles.toggleLabel}>Flexible Schedule</Text>
-                  <Text style={styles.toggleDescription}>
+                  <Text style={[styles.toggleLabel, { color: theme.textPrimary }]}>Flexible Schedule</Text>
+                  <Text style={[styles.toggleDescription, { color: theme.textSecondary }]}>
                     Let us find the best available time for you
                   </Text>
                 </View>
@@ -568,7 +581,7 @@ function TaskSelectionScreen(): React.JSX.Element {
 
           {/* Priority selection */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Priority</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Priority</Text>
             <View style={styles.priorityContainer}>
               {PRIORITY_OPTIONS.map((option: PriorityOption) => {
                 const isSelected = priority === option.value;
@@ -620,7 +633,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                         </Text>
                       )}
                     </View>
-                    <Text style={styles.priorityDescription}>
+                    <Text style={[styles.priorityDescription, { color: theme.textSecondary }]}>
                       {option.description}
                     </Text>
                   </TouchableOpacity>
@@ -631,8 +644,8 @@ function TaskSelectionScreen(): React.JSX.Element {
 
           {/* Predefined notes (NO free text) */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Additional Information</Text>
-            <Text style={styles.notesSubtitle}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Additional Information</Text>
+            <Text style={[styles.notesSubtitle, { color: theme.textSecondary }]}>
               Select any that apply to your service location
             </Text>
             <View style={styles.notesContainer}>
@@ -670,7 +683,7 @@ function TaskSelectionScreen(): React.JSX.Element {
             <View style={styles.section}>
               <GlassCard variant="elevated" style={styles.estimateCardBorder}>
                 <View style={styles.estimateCardContent}>
-                  <Text style={styles.estimateLabel}>Estimated Total</Text>
+                  <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>Estimated Total</Text>
                   <Text style={styles.estimatePrice}>
                     ${estimatedPrice.toFixed(2)}
                   </Text>
@@ -681,7 +694,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                       style={styles.estimateLoader}
                     />
                   )}
-                  <Text style={styles.estimateNote}>
+                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
                     Final price may vary based on actual scope of work.
                     You will be notified of any changes before they are applied.
                   </Text>
@@ -705,15 +718,15 @@ function TaskSelectionScreen(): React.JSX.Element {
         <View style={styles.ctaContainer}>
           {estimatedPrice > 0 ? (
             <View style={styles.ctaPriceInfo}>
-              <Text style={styles.ctaPriceLabel}>Estimated</Text>
-              <Text style={styles.ctaPriceValue}>
+              <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Estimated</Text>
+              <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
                 ${estimatedPrice.toFixed(2)}
               </Text>
             </View>
           ) : taskDetail ? (
             <View style={styles.ctaPriceInfo}>
-              <Text style={styles.ctaPriceLabel}>Range</Text>
-              <Text style={styles.ctaPriceValue}>
+              <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Range</Text>
+              <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
                 ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
               </Text>
             </View>

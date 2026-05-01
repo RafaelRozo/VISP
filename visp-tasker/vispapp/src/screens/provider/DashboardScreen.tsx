@@ -24,6 +24,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { GlassStyles } from '../../theme/glass';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { AnimatedSpinner, MorphingBlob } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
@@ -54,6 +56,8 @@ function formatCurrency(amount: number): string {
 export default function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<DashboardNav>();
   const user = useAuthStore((state) => state.user);
+  const theme = useTheme();
+  const { t } = useTranslation();
 
   // Track whether the provider has selected any services
   const [hasServices, setHasServices] = useState<boolean | null>(null);
@@ -120,24 +124,24 @@ export default function DashboardScreen(): React.JSX.Element {
         style={styles.earningsBlob}
       />
       <GlassCard variant="standard" style={styles.earningsCard}>
-        <Text style={styles.sectionTitle}>Earnings</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('dashboard.earnings')}</Text>
         <View style={styles.earningsRow}>
           <View style={styles.earningsItem}>
-            <Text style={styles.earningsLabel}>Today</Text>
+            <Text style={[styles.earningsLabel, { color: theme.textSecondary }]}>{t('dashboard.today')}</Text>
             <Text style={styles.earningsValue}>
               {formatCurrency(earnings.today)}
             </Text>
           </View>
           <View style={styles.earningsDivider} />
           <View style={styles.earningsItem}>
-            <Text style={styles.earningsLabel}>This Week</Text>
+            <Text style={[styles.earningsLabel, { color: theme.textSecondary }]}>{t('dashboard.thisWeek')}</Text>
             <Text style={styles.earningsValue}>
               {formatCurrency(earnings.thisWeek)}
             </Text>
           </View>
           <View style={styles.earningsDivider} />
           <View style={styles.earningsItem}>
-            <Text style={styles.earningsLabel}>This Month</Text>
+            <Text style={[styles.earningsLabel, { color: theme.textSecondary }]}>{t('dashboard.thisMonth')}</Text>
             <Text style={styles.earningsValue}>
               {formatCurrency(earnings.thisMonth)}
             </Text>
@@ -149,7 +153,7 @@ export default function DashboardScreen(): React.JSX.Element {
           accessibilityRole="button"
           accessibilityLabel="View all earnings"
         >
-          <Text style={styles.viewAllText}>View All Earnings</Text>
+          <Text style={styles.viewAllText}>{t('dashboard.viewAllEarnings')}</Text>
         </TouchableOpacity>
       </GlassCard>
     </View>
@@ -169,24 +173,24 @@ export default function DashboardScreen(): React.JSX.Element {
 
     return (
       <GlassCard variant="standard" style={styles.performanceCard}>
-        <Text style={styles.sectionTitle}>Performance Score</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('dashboard.performanceScore')}</Text>
         <View style={styles.performanceRow}>
           <View style={[styles.scoreCircle, { borderColor: scoreColor }]}>
             <Text style={[styles.scoreValue, { color: scoreColor }]}>
               {performanceScore}
             </Text>
-            <Text style={styles.scoreMax}>/100</Text>
+            <Text style={[styles.scoreMax, { color: theme.textSecondary }]}>/100</Text>
           </View>
           <View style={styles.performanceInfo}>
-            <Text style={styles.performanceLabel}>
+            <Text style={[styles.performanceLabel, { color: theme.textPrimary }]}>
               {performanceScore >= 80
-                ? 'Excellent'
+                ? t('dashboard.excellent')
                 : performanceScore >= 60
-                  ? 'Good'
-                  : 'Needs Improvement'}
+                  ? t('dashboard.good')
+                  : t('dashboard.needsImprovement')}
             </Text>
-            <Text style={styles.performanceSubtext}>
-              Based on ratings, completion rate, and response time
+            <Text style={[styles.performanceSubtext, { color: theme.textSecondary }]}>
+              {t('dashboard.basedOnRatings')}
             </Text>
           </View>
         </View>
@@ -221,14 +225,14 @@ export default function DashboardScreen(): React.JSX.Element {
                 },
               ]}
             />
-            <Text style={styles.availabilityTitle}>
-              {isOnline ? 'Online' : 'Offline'}
+            <Text style={[styles.availabilityTitle, { color: theme.textPrimary }]}>
+              {isOnline ? t('dashboard.online') : t('dashboard.offline')}
             </Text>
           </View>
-          <Text style={styles.availabilitySubtext}>
+          <Text style={[styles.availabilitySubtext, { color: theme.textSecondary }]}>
             {isOnline
-              ? 'You are receiving job offers'
-              : 'Toggle on to start receiving jobs'}
+              ? t('dashboard.receivingOffers')
+              : t('dashboard.notReceivingOffers')}
           </Text>
         </View>
         {isTogglingStatus ? (
@@ -260,7 +264,7 @@ export default function DashboardScreen(): React.JSX.Element {
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitleOuter}>Active Job</Text>
+        <Text style={[styles.sectionTitleOuter, { color: theme.textPrimary }]}>{t('dashboard.activeJob')}</Text>
         <GlassCard variant="elevated" style={styles.activeJobCard}>
           <JobCard
             taskName={activeJob.taskName}
@@ -295,14 +299,14 @@ export default function DashboardScreen(): React.JSX.Element {
     return (
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitleOuter}>Incoming Offers</Text>
+          <Text style={[styles.sectionTitleOuter, { color: theme.textPrimary }]}>{t('dashboard.pendingOffers')}</Text>
           <TouchableOpacity
             onPress={() => navigation.navigate('JobsTab')}
             accessibilityRole="button"
             accessibilityLabel="View all offers"
           >
             <Text style={styles.viewAllText}>
-              View All ({offers.length})
+              {t('dashboard.viewAllEarnings')} ({offers.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -325,17 +329,17 @@ export default function DashboardScreen(): React.JSX.Element {
             {/* Accept / Decline buttons */}
             <View style={styles.offerActions}>
               <GlassButton
-                title="Decline"
+                title={t('jobOffers.reject')}
                 variant="outline"
                 style={styles.declineButton}
                 onPress={() => {
                   Alert.alert(
-                    'Decline Offer',
-                    `Decline ${offer.task.name}?`,
+                    t('jobOffers.reject'),
+                    `${t('jobOffers.reject')} ${offer.task.name}?`,
                     [
-                      { text: 'Cancel', style: 'cancel' },
+                      { text: t('common.cancel'), style: 'cancel' },
                       {
-                        text: 'Decline',
+                        text: t('jobOffers.reject'),
                         style: 'destructive',
                         onPress: () => declineOffer(offer.jobId),
                       },
@@ -344,7 +348,7 @@ export default function DashboardScreen(): React.JSX.Element {
                 }}
               />
               <GlassButton
-                title="Accept"
+                title={t('jobOffers.accept')}
                 variant="glow"
                 style={styles.acceptButton}
                 onPress={() => acceptOffer(offer.jobId)}
@@ -365,12 +369,12 @@ export default function DashboardScreen(): React.JSX.Element {
     return (
       <GlassCard variant="elevated" style={styles.setupCard}>
         <Text style={styles.setupIcon}>&#x2699;&#xFE0F;</Text>
-        <Text style={styles.setupTitle}>Set Up Your Services</Text>
-        <Text style={styles.setupText}>
-          Select the services you offer so you can start receiving job offers from clients near you.
+        <Text style={[styles.setupTitle, { color: theme.textPrimary }]}>{t('dashboard.setupServices')}</Text>
+        <Text style={[styles.setupText, { color: theme.textSecondary }]}>
+          {t('dashboard.setupText')}
         </Text>
         <GlassButton
-          title="Select My Services"
+          title={t('dashboard.selectMyServices')}
           variant="glow"
           onPress={() => navigation.navigate('ProviderProfile' as any, { screen: 'ProviderOnboarding' })}
         />
@@ -387,7 +391,7 @@ export default function DashboardScreen(): React.JSX.Element {
       <GlassBackground>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading dashboard...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>{t('common.loading')}</Text>
         </View>
       </GlassBackground>
     );
@@ -432,12 +436,11 @@ export default function DashboardScreen(): React.JSX.Element {
               </Text>
             </View>
             <View style={styles.headerInfo}>
-              <Text style={styles.headerGreeting}>
-                Welcome back, {user?.firstName}
+              <Text style={[styles.headerGreeting, { color: theme.textPrimary }]}>
+                {t('dashboard.welcomeBack', { name: user?.firstName || '' })}
               </Text>
-              <Text style={styles.headerSubtext}>
-                {providerProfile.completedJobs} jobs completed | Rating:{' '}
-                {providerProfile.rating.toFixed(1)}
+              <Text style={[styles.headerSubtext, { color: theme.textSecondary }]}>
+                {t('dashboard.jobsCompleted', { count: providerProfile.completedJobs })} | {t('dashboard.rating', { rating: providerProfile.rating.toFixed(1) })}
               </Text>
             </View>
           </GlassCard>

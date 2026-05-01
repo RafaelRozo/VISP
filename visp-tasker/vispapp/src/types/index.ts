@@ -6,7 +6,7 @@
 // User & Auth
 // ──────────────────────────────────────────────
 
-export type UserRole = 'customer' | 'provider' | 'both';
+export type UserRole = 'customer' | 'provider';
 
 export interface UserDefaultAddress {
   street: string;
@@ -490,6 +490,8 @@ export type ProfileStackParamList = {
   Settings: undefined;
   ProviderOnboarding: undefined;
   PaymentMethods: undefined;
+  PrivacyPolicy: undefined;
+  TermsOfService: undefined;
 };
 
 export type AuthStackParamList = {

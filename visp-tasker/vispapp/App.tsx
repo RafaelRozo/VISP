@@ -15,6 +15,8 @@ import AppNavigator from './src/navigation/AppNavigator';
 import {Colors} from './src/theme/colors';
 import {Config} from './src/services/config';
 import {useAuthStore} from './src/stores/authStore';
+import {useAppStore} from './src/stores/appStore';
+import {ThemeProvider} from './src/theme/ThemeContext';
 
 // Suppress non-critical serialization warnings in development
 LogBox.ignoreLogs([
@@ -25,27 +27,31 @@ LogBox.ignoreLogs([
 
 export default function App(): React.JSX.Element {
   const loadStoredAuth = useAuthStore(state => state.loadStoredAuth);
+  const loadSettings = useAppStore(state => state.loadSettings);
+  const darkMode = useAppStore(state => state.darkMode);
 
   useEffect(() => {
-    // Attempt to restore user session from secure storage on launch
     loadStoredAuth();
-  }, [loadStoredAuth]);
+    loadSettings();
+  }, [loadStoredAuth, loadSettings]);
 
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <StripeProvider
-        publishableKey={Config.stripePublishableKey}
-        merchantIdentifier="merchant.com.visp.tasker"
-      >
-        <SafeAreaProvider>
-          <StatusBar
-            barStyle="light-content"
-            backgroundColor={Colors.background}
-            translucent={false}
-          />
-          <AppNavigator />
-        </SafeAreaProvider>
-      </StripeProvider>
+    <GestureHandlerRootView style={[styles.root, { backgroundColor: darkMode ? Colors.background : '#F2F4F8' }]}>
+      <ThemeProvider>
+        <StripeProvider
+          publishableKey={Config.stripePublishableKey}
+          merchantIdentifier="merchant.com.visp.tasker"
+        >
+          <SafeAreaProvider>
+            <StatusBar
+              barStyle={darkMode ? 'light-content' : 'dark-content'}
+              backgroundColor={darkMode ? Colors.background : '#F2F4F8'}
+              translucent={false}
+            />
+            <AppNavigator />
+          </SafeAreaProvider>
+        </StripeProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }

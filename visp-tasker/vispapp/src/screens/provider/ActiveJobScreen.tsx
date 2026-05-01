@@ -22,6 +22,8 @@ import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { AnimatedSpinner } from '../../components/animations';
@@ -320,6 +322,8 @@ function useJobTimer(startedAt: string | null): string {
 // ---------------------------------------------------------------------------
 
 export default function ActiveJobScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const route = useRoute<ActiveJobRoute>();
   const navigation = useNavigation<ActiveJobNav>();
   const { activeJob, startNavigation, arriveAtJob, completeJob, fetchActiveJob, error } =
@@ -606,7 +610,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
       <GlassBackground>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading job details...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading job details...</Text>
         </View>
       </GlassBackground>
     );
@@ -641,10 +645,10 @@ export default function ActiveJobScreen(): React.JSX.Element {
         )}
         {isInProgress && activeJob.pricingModel !== 'TIME_BASED' && (
           <GlassCard variant="standard" style={styles.timerCard}>
-            <Text style={styles.timerLabel}>Job Timer</Text>
+            <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Job Timer</Text>
             <Text style={styles.timerValue}>{timerDisplay}</Text>
             <View style={styles.agreedPriceRow}>
-              <Text style={styles.agreedPriceLabel}>Agreed Price</Text>
+              <Text style={[styles.agreedPriceLabel, { color: theme.textSecondary }]}>Agreed Price</Text>
               <Text style={styles.agreedPriceValue}>
                 ${activeJob.estimatedPrice != null ? Number(activeJob.estimatedPrice).toFixed(2) : '0.00'}
               </Text>
@@ -653,7 +657,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
         )}
         {isInProgress && !activeJob.pricingModel && (
           <GlassCard variant="standard" style={styles.timerCard}>
-            <Text style={styles.timerLabel}>Job Timer</Text>
+            <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>Job Timer</Text>
             <Text style={styles.timerValue}>{timerDisplay}</Text>
           </GlassCard>
         )}
@@ -666,7 +670,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
             </View>
             <View style={styles.detailsHeaderText}>
               <Text style={styles.taskName}>{activeJob.taskName}</Text>
-              <Text style={styles.categoryName}>{activeJob.categoryName}</Text>
+              <Text style={[styles.categoryName, { color: theme.textSecondary }]}>{activeJob.categoryName}</Text>
             </View>
             <View
               style={[styles.statusBadge, { backgroundColor: statusColor }]}
@@ -679,7 +683,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
 
           {/* Price info */}
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Estimated Pay</Text>
+            <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Estimated Pay</Text>
             <Text style={styles.priceValue}>
               ${activeJob.estimatedPrice != null ? Number(activeJob.estimatedPrice).toFixed(2) : '0.00'}
             </Text>
@@ -708,7 +712,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
             </View>
             <View style={styles.customerInfo}>
               <Text style={styles.customerName}>Customer</Text>
-              <Text style={styles.customerSubtext}>
+              <Text style={[styles.customerSubtext, { color: theme.textSecondary }]}>
                 {activeJob.address.city}, {activeJob.address.province}
               </Text>
             </View>
@@ -721,7 +725,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
           <Text style={styles.addressText}>
             {activeJob.address.street}
           </Text>
-          <Text style={styles.addressSubtext}>
+          <Text style={[styles.addressSubtext, { color: theme.textSecondary }]}>
             {activeJob.address.city}, {activeJob.address.province}{' '}
             {activeJob.address.postalCode}
           </Text>
@@ -734,7 +738,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
                   ? `${Math.round(distanceKm * 1000)} m`
                   : `${distanceKm.toFixed(1)} km`}
               </Text>
-              <Text style={styles.etaSeparator}>-</Text>
+              <Text style={[styles.etaSeparator, { color: theme.textSecondary }]}>-</Text>
               <Text style={styles.etaText}>
                 {etaMinutes != null ? `${etaMinutes} min` : '...'}
               </Text>
@@ -837,16 +841,16 @@ export default function ActiveJobScreen(): React.JSX.Element {
         {activeJob.status === 'en_route' && !legalAcknowledged && (
           <GlassCard variant="dark" style={{...styles.cardSpacing, ...styles.legalBorder}}>
             <Text style={styles.legalTitle}>Before You Start</Text>
-            <Text style={styles.legalText}>
+            <Text style={[styles.legalText, { color: theme.textSecondary }]}>
               By starting this job, you acknowledge:
             </Text>
-            <Text style={styles.legalItem}>
+            <Text style={[styles.legalItem, { color: theme.textSecondary }]}>
               - This task is limited to "{activeJob.taskName}" only
             </Text>
-            <Text style={styles.legalItem}>
+            <Text style={[styles.legalItem, { color: theme.textSecondary }]}>
               - You are acting as an independent contractor
             </Text>
-            <Text style={styles.legalItem}>
+            <Text style={[styles.legalItem, { color: theme.textSecondary }]}>
               - Additional services require a new job request
             </Text>
           </GlassCard>
@@ -855,7 +859,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
         {/* Business rule notice */}
         <GlassCard variant="dark" style={{...styles.cardSpacing, ...styles.noticeBorder}}>
           <Text style={styles.noticeTitle}>Scope Policy</Text>
-          <Text style={styles.noticeText}>
+          <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
             Additional services cannot be added to this job. If the customer
             requires extra work, a new job must be created through the app.
           </Text>

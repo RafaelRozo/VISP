@@ -22,6 +22,9 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
+import { useAppStore } from '../../stores/appStore';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
@@ -41,9 +44,19 @@ type CalendarTab = 'jobs' | 'shifts' | 'timeoff';
 // Helpers
 // ---------------------------------------------------------------------------
 
+function getLocale(): string {
+  // Read language directly from store (works outside components)
+  try {
+    const lang = require('../../stores/appStore').useAppStore.getState().language;
+    return lang === 'fr' ? 'fr-CA' : 'en-CA';
+  } catch {
+    return 'en-CA';
+  }
+}
+
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString([], {
+  return date.toLocaleDateString(getLocale(), {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -52,7 +65,7 @@ function formatDate(dateString: string): string {
 
 function formatTime(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDuration(minutes: number): string {
@@ -62,12 +75,13 @@ function formatDuration(minutes: number): string {
   return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
 }
 
-function getCalendarDays(): Array<{
+function getCalendarDays(locale: string = 'en'): Array<{
   date: Date;
   label: string;
   dayLabel: string;
   isToday: boolean;
 }> {
+  const loc = locale === 'fr' ? 'fr-CA' : 'en-CA';
   const days: Array<{
     date: Date;
     label: string;
@@ -82,8 +96,8 @@ function getCalendarDays(): Array<{
     date.setDate(today.getDate() + i);
     days.push({
       date,
-      label: date.toLocaleDateString([], { day: 'numeric' }),
-      dayLabel: date.toLocaleDateString([], { weekday: 'short' }),
+      label: date.toLocaleDateString(loc, { day: 'numeric' }),
+      dayLabel: date.toLocaleDateString(loc, { weekday: 'short' }),
       isToday: i === 0,
     });
   }
@@ -114,7 +128,8 @@ function CalendarStrip({
   onSelectDate,
   jobDates,
 }: CalendarStripProps): React.JSX.Element {
-  const days = useMemo(() => getCalendarDays(), []);
+  const lang = useAppStore((s) => s.language);
+  const days = useMemo(() => getCalendarDays(lang), [lang]);
 
   return (
     <ScrollView
@@ -481,6 +496,8 @@ const shiftStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function ScheduleScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t, language } = useTranslation();
   const {
     scheduledJobs,
     onCallShifts,
@@ -496,6 +513,11 @@ export default function ScheduleScreen(): React.JSX.Element {
   });
   const [activeTab, setActiveTab] = useState<CalendarTab>('jobs');
   const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [showTimeOffForm, setShowTimeOffForm] = useState(false);
+  const [timeOffStartDate, setTimeOffStartDate] = useState<Date | null>(null);
+  const [timeOffEndDate, setTimeOffEndDate] = useState<Date | null>(null);
+  const [timeOffReason, setTimeOffReason] = useState('');
+  const [isSubmittingTimeOff, setIsSubmittingTimeOff] = useState(false);
 
   const isLevel4 = providerProfile?.level === 4;
 
@@ -526,12 +548,54 @@ export default function ScheduleScreen(): React.JSX.Element {
   }, [fetchSchedule]);
 
   const handleRequestTimeOff = useCallback(() => {
-    Alert.alert(
-      'Request Time Off',
-      'Time-off requests will be submitted for approval. This feature will open a date picker to select your requested dates.',
-      [{ text: 'OK' }],
-    );
+    setShowTimeOffForm(true);
+    // Default start = tomorrow, end = day after
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const dayAfter = new Date(tomorrow);
+    dayAfter.setDate(dayAfter.getDate() + 1);
+    setTimeOffStartDate(tomorrow);
+    setTimeOffEndDate(dayAfter);
+    setTimeOffReason('');
   }, []);
+
+  const handleSubmitTimeOff = useCallback(async () => {
+    if (!timeOffStartDate || !timeOffEndDate) {
+      Alert.alert(t('scheduleScreen.selectDates'), t('scheduleScreen.selectBothDates'));
+      return;
+    }
+    if (timeOffEndDate < timeOffStartDate) {
+      Alert.alert(t('scheduleScreen.selectDates'), t('scheduleScreen.invalidDates'));
+      return;
+    }
+    setIsSubmittingTimeOff(true);
+    try {
+      await post('/provider/time-off', {
+        start_date: timeOffStartDate.toISOString().split('T')[0],
+        end_date: timeOffEndDate.toISOString().split('T')[0],
+        reason: timeOffReason || 'Personal',
+      });
+      // Add to local list optimistically
+      setTimeOffRequests((prev) => [
+        ...prev,
+        {
+          id: `local-${Date.now()}`,
+          startDate: timeOffStartDate.toISOString(),
+          endDate: timeOffEndDate.toISOString(),
+          reason: timeOffReason || 'Personal',
+          status: 'pending' as const,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      setShowTimeOffForm(false);
+      Alert.alert(t('scheduleScreen.submitted'), t('scheduleScreen.timeOffSubmitted'));
+    } catch {
+      Alert.alert(t('common.error'), t('scheduleScreen.submitFailed'));
+    } finally {
+      setIsSubmittingTimeOff(false);
+    }
+  }, [timeOffStartDate, timeOffEndDate, timeOffReason]);
 
   // ------------------------------------------
   // Tab content renderers
@@ -547,9 +611,9 @@ export default function ScheduleScreen(): React.JSX.Element {
     if (minutesUntilStart > EARLY_START_MINUTES) {
       const mins = Math.ceil(minutesUntilStart - EARLY_START_MINUTES);
       Alert.alert(
-        'Too Early',
-        `You can start this job ${mins} minute${mins !== 1 ? 's' : ''} from now (${EARLY_START_MINUTES} minutes before the scheduled time).`,
-        [{ text: 'OK' }],
+        t('scheduleScreen.tooEarly'),
+        t('scheduleScreen.canStartIn', { mins }),
+        [{ text: t('common.ok') }],
       );
       return;
     }
@@ -569,8 +633,8 @@ export default function ScheduleScreen(): React.JSX.Element {
         jobDates={jobDates}
       />
 
-      <Text style={styles.dateHeaderText}>
-        {selectedDate.toLocaleDateString([], {
+      <Text style={[styles.dateHeaderText, { color: theme.textPrimary }]}>
+        {selectedDate.toLocaleDateString(language === 'fr' ? 'fr-CA' : 'en-CA', {
           weekday: 'long',
           month: 'long',
           day: 'numeric',
@@ -579,8 +643,8 @@ export default function ScheduleScreen(): React.JSX.Element {
 
       {jobsForDate.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No Jobs Scheduled</Text>
-          <Text style={styles.emptySubtext}>
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>{t('scheduleScreen.noJobsScheduled')}</Text>
+          <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
             No jobs scheduled for this date.
           </Text>
         </View>
@@ -596,16 +660,16 @@ export default function ScheduleScreen(): React.JSX.Element {
     <View>
       {!isLevel4 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>On-Call Shifts</Text>
-          <Text style={styles.emptySubtext}>
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>{t('scheduleScreen.onCall')}</Text>
+          <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
             On-call shifts are only available for Level 4 providers.
           </Text>
         </View>
       ) : !onCallShifts || onCallShifts.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No Scheduled Shifts</Text>
-          <Text style={styles.emptySubtext}>
-            Your on-call shift schedule will appear here once assigned.
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>{t('scheduleScreen.noScheduledShifts')}</Text>
+          <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+            {t('scheduleScreen.shiftsAppearHere')}
           </Text>
         </View>
       ) : (
@@ -616,31 +680,157 @@ export default function ScheduleScreen(): React.JSX.Element {
     </View>
   );
 
+  const timeOffCalendarDays = useMemo(() => {
+    const loc = language === 'fr' ? 'fr-CA' : 'en-CA';
+    const days: Array<{ date: Date; label: string; dayLabel: string }> = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 1; i <= 30; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      days.push({
+        date: d,
+        label: d.toLocaleDateString(loc, { day: 'numeric' }),
+        dayLabel: d.toLocaleDateString(loc, { weekday: 'short' }),
+      });
+    }
+    return days;
+  }, [language]);
+
   const renderTimeOffTab = () => (
     <View>
-      <View style={styles.requestButtonWrapper}>
-        <GlassButton
-          title="Request Time Off"
-          variant="glow"
-          onPress={handleRequestTimeOff}
-          style={styles.requestButton}
-        />
-      </View>
+      {!showTimeOffForm ? (
+        <View style={styles.requestButtonWrapper}>
+          <GlassButton
+            title={t('scheduleScreen.requestTimeOff')}
+            variant="glow"
+            onPress={handleRequestTimeOff}
+            style={styles.requestButton}
+          />
+        </View>
+      ) : (
+        <GlassCard variant="dark" padding={16} style={styles.timeOffFormCard}>
+          <Text style={[styles.timeOffFormTitle, { color: theme.textPrimary }]}>{t('scheduleScreen.selectDates')}</Text>
 
-      {timeOffRequests.length === 0 ? (
+          {/* Start Date */}
+          <Text style={[styles.timeOffFormLabel, { color: theme.textSecondary }]}>{t('scheduleScreen.startDate')}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.timeOffDateScroll}
+          >
+            {timeOffCalendarDays.map((day, idx) => {
+              const isSelected = timeOffStartDate && isSameDay(day.date, timeOffStartDate);
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    styles.timeOffDayCell,
+                    isSelected && styles.timeOffDayCellSelected,
+                  ]}
+                  onPress={() => {
+                    setTimeOffStartDate(day.date);
+                    if (timeOffEndDate && day.date > timeOffEndDate) {
+                      const nextDay = new Date(day.date);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      setTimeOffEndDate(nextDay);
+                    }
+                  }}
+                >
+                  <Text style={[styles.timeOffDayLabel, isSelected && styles.timeOffDayLabelSelected]}>
+                    {day.dayLabel}
+                  </Text>
+                  <Text style={[styles.timeOffDateLabel, isSelected && styles.timeOffDateLabelSelected]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* End Date */}
+          <Text style={[styles.timeOffFormLabel, { color: theme.textSecondary }]}>{t('scheduleScreen.endDate')}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.timeOffDateScroll}
+          >
+            {timeOffCalendarDays
+              .filter((day) => !timeOffStartDate || day.date >= timeOffStartDate)
+              .map((day, idx) => {
+                const isSelected = timeOffEndDate && isSameDay(day.date, timeOffEndDate);
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.timeOffDayCell,
+                      isSelected && styles.timeOffDayCellSelected,
+                    ]}
+                    onPress={() => setTimeOffEndDate(day.date)}
+                  >
+                    <Text style={[styles.timeOffDayLabel, isSelected && styles.timeOffDayLabelSelected]}>
+                      {day.dayLabel}
+                    </Text>
+                    <Text style={[styles.timeOffDateLabel, isSelected && styles.timeOffDateLabelSelected]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+          </ScrollView>
+
+          {/* Reason */}
+          <Text style={[styles.timeOffFormLabel, { color: theme.textSecondary }]}>{t('scheduleScreen.reason')}</Text>
+          <TextInput
+            style={[styles.timeOffReasonInput, { color: theme.textPrimary }]}
+            value={timeOffReason}
+            onChangeText={setTimeOffReason}
+            placeholder={language === 'fr' ? 'Personnel, vacances, etc.' : 'Personal, vacation, etc.'}
+            placeholderTextColor="rgba(255, 255, 255, 0.3)"
+            maxLength={100}
+          />
+
+          {/* Summary */}
+          {timeOffStartDate && timeOffEndDate && (
+            <Text style={styles.timeOffSummary}>
+              {formatDate(timeOffStartDate.toISOString())} - {formatDate(timeOffEndDate.toISOString())}
+            </Text>
+          )}
+
+          {/* Actions */}
+          <View style={styles.timeOffActions}>
+            <GlassButton
+              title={t('common.cancel')}
+              variant="outline"
+              onPress={() => setShowTimeOffForm(false)}
+              style={styles.timeOffCancelBtn}
+            />
+            <GlassButton
+              title={t('scheduleScreen.submitRequest')}
+              variant="glow"
+              onPress={handleSubmitTimeOff}
+              loading={isSubmittingTimeOff}
+              disabled={!timeOffStartDate || !timeOffEndDate || isSubmittingTimeOff}
+              style={styles.timeOffSubmitBtn}
+            />
+          </View>
+        </GlassCard>
+      )}
+
+      {timeOffRequests.length === 0 && !showTimeOffForm ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No Time-Off Requests</Text>
-          <Text style={styles.emptySubtext}>
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>{t('scheduleScreen.noTimeOffRequests')}</Text>
+          <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
             Submit a time-off request to block dates on your schedule.
           </Text>
         </View>
       ) : (
         timeOffRequests.map((request) => (
           <GlassCard key={request.id} variant="dark" padding={14} style={styles.timeOffCard}>
-            <Text style={styles.timeOffDates}>
+            <Text style={[styles.timeOffDates, { color: theme.textPrimary }]}>
               {formatDate(request.startDate)} - {formatDate(request.endDate)}
             </Text>
-            <Text style={styles.timeOffReason}>{request.reason}</Text>
+            <Text style={[styles.timeOffReason, { color: theme.textSecondary }]}>{request.reason}</Text>
             <View
               style={[
                 styles.timeOffStatus,
@@ -695,9 +885,9 @@ export default function ScheduleScreen(): React.JSX.Element {
         <View style={styles.tabBar}>
           {(
             [
-              { key: 'jobs' as CalendarTab, label: 'Jobs' },
-              { key: 'shifts' as CalendarTab, label: 'On-Call' },
-              { key: 'timeoff' as CalendarTab, label: 'Time Off' },
+              { key: 'jobs' as CalendarTab, label: t('scheduleScreen.jobs') },
+              { key: 'shifts' as CalendarTab, label: t('scheduleScreen.onCall') },
+              { key: 'timeoff' as CalendarTab, label: t('scheduleScreen.timeOff') },
             ] as const
           ).map((tab) => (
             <TouchableOpacity
@@ -836,6 +1026,90 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
+  // ── Time Off Form ─────────────────────
+  timeOffFormCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  timeOffFormTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 16,
+  },
+  timeOffFormLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  timeOffDateScroll: {
+    marginBottom: 4,
+  },
+  timeOffDayCell: {
+    width: 52,
+    height: 64,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+  },
+  timeOffDayCellSelected: {
+    backgroundColor: 'rgba(120, 80, 255, 0.8)',
+    borderColor: 'rgba(255, 255, 255, 0.30)',
+  },
+  timeOffDayLabel: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.4)',
+    marginBottom: 4,
+  },
+  timeOffDayLabelSelected: {
+    color: '#FFFFFF',
+  },
+  timeOffDateLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  timeOffDateLabelSelected: {
+    color: '#FFFFFF',
+  },
+  timeOffReasonInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  timeOffSummary: {
+    fontSize: 14,
+    color: 'rgba(120, 80, 255, 0.9)',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  timeOffActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timeOffCancelBtn: {
+    flex: 0,
+    paddingHorizontal: 24,
+  },
+  timeOffSubmitBtn: {
+    flex: 1,
+  },
+
   bottomSpacer: {
     height: 32,
   },

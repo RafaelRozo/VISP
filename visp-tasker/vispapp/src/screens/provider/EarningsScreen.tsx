@@ -22,7 +22,10 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { StaggeredBars } from '../../components/animations';
@@ -143,6 +146,7 @@ interface PayoutItemProps {
 }
 
 function PayoutItem({ payout }: PayoutItemProps): React.JSX.Element {
+  const { t } = useTranslation();
   const statusColor =
     payout.status === 'paid'
       ? Colors.success
@@ -152,10 +156,10 @@ function PayoutItem({ payout }: PayoutItemProps): React.JSX.Element {
 
   const statusLabel =
     payout.status === 'paid'
-      ? 'Paid'
+      ? t('earningsScreen.paid')
       : payout.status === 'pending'
-        ? 'Pending'
-        : 'Failed';
+        ? t('earningsScreen.pending')
+        : t('earningsScreen.failed');
 
   return (
     <GlassCard variant="dark" padding={14} style={payoutStyles.container}>
@@ -257,27 +261,28 @@ interface StripeStatusProps {
 }
 
 function StripeStatus({ status, onConnect, isConnecting, balance, recentPayouts }: StripeStatusProps): React.JSX.Element {
+  const { t } = useTranslation();
   const config = {
     not_connected: {
-      label: 'Not Connected',
+      label: t('earningsScreen.notConnected'),
       color: Colors.textTertiary,
-      message: 'Connect your bank account to receive payouts.',
+      message: t('earningsScreen.connectBank'),
     },
     pending: {
-      label: 'Pending Verification',
+      label: t('earningsScreen.pendingVerification'),
       color: Colors.warning,
-      message: 'Your account is being verified by Stripe.',
+      message: t('earningsScreen.accountBeingVerified'),
     },
     active: {
-      label: 'Active',
+      label: t('earningsScreen.active'),
       color: Colors.success,
-      message: 'Payouts will be sent to your connected account.',
+      message: t('earningsScreen.payoutsSentToAccount'),
     },
     restricted: {
-      label: 'Restricted',
+      label: t('earningsScreen.restricted'),
       color: Colors.emergencyRed,
       message:
-        'Your Stripe account has restrictions. Please update your information.',
+        t('earningsScreen.accountRestricted'),
     },
   };
 
@@ -286,7 +291,7 @@ function StripeStatus({ status, onConnect, isConnecting, balance, recentPayouts 
   return (
     <GlassCard variant="standard" style={stripeStyles.container}>
       <View style={stripeStyles.header}>
-        <Text style={stripeStyles.title}>Payout Account</Text>
+        <Text style={stripeStyles.title}>{t('earningsScreen.payoutAccount')}</Text>
         <View
           style={[
             stripeStyles.statusBadge,
@@ -302,7 +307,7 @@ function StripeStatus({ status, onConnect, isConnecting, balance, recentPayouts 
       <Text style={stripeStyles.message}>{message}</Text>
       {status === 'not_connected' && (
         <GlassButton
-          title="Set Up Payments"
+          title={t('earningsScreen.setUpPayments')}
           variant="glow"
           onPress={onConnect ?? (() => {})}
           disabled={isConnecting}
@@ -313,13 +318,13 @@ function StripeStatus({ status, onConnect, isConnecting, balance, recentPayouts 
       {(status === 'active' || status === 'pending') && balance && (
         <View style={stripeStyles.balanceRow}>
           <View style={stripeStyles.balanceItem}>
-            <Text style={stripeStyles.balanceLabel}>Available</Text>
+            <Text style={stripeStyles.balanceLabel}>{t('earningsScreen.available')}</Text>
             <Text style={[stripeStyles.balanceValue, { color: Colors.success }]}>
               ${(balance.available_cents / 100).toFixed(2)}
             </Text>
           </View>
           <View style={stripeStyles.balanceItem}>
-            <Text style={stripeStyles.balanceLabel}>Pending</Text>
+            <Text style={stripeStyles.balanceLabel}>{t('earningsScreen.pending')}</Text>
             <Text style={[stripeStyles.balanceValue, { color: Colors.warning }]}>
               ${(balance.pending_cents / 100).toFixed(2)}
             </Text>
@@ -328,7 +333,7 @@ function StripeStatus({ status, onConnect, isConnecting, balance, recentPayouts 
       )}
       {(status === 'active') && recentPayouts && recentPayouts.length > 0 && (
         <View style={stripeStyles.payoutsSection}>
-          <Text style={stripeStyles.payoutsSectionTitle}>Recent Payouts</Text>
+          <Text style={stripeStyles.payoutsSectionTitle}>{t('earningsScreen.recentPayouts')}</Text>
           {recentPayouts.slice(0, 3).map((p) => (
             <View key={p.id} style={stripeStyles.payoutRow}>
               <Text style={stripeStyles.payoutAmount}>
@@ -441,6 +446,8 @@ const stripeStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function EarningsScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const { width: screenWidth } = useWindowDimensions();
   const {
     earnings: rawEarnings,
@@ -454,6 +461,7 @@ export default function EarningsScreen(): React.JSX.Element {
   const earnings = rawEarnings ?? { today: 0, thisWeek: 0, thisMonth: 0, pendingPayout: 0, totalEarned: 0 };
 
   const user = useAuthStore((s) => s.user);
+  const navigation = useNavigation<any>();
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('week');
   const [isConnecting, setIsConnecting] = useState(false);
@@ -481,41 +489,21 @@ export default function EarningsScreen(): React.JSX.Element {
     }
   }, [providerProfile]);
 
-  const handleConnectStripe = useCallback(async () => {
-    if (!providerProfile || !user) return;
-    setIsConnecting(true);
-    try {
-      // Step 1: Create connected account
-      const account = await paymentService.createConnectAccount(
-        providerProfile.id,
-        user.email,
-        'CA',
-      );
-
-      // Step 2: Generate onboarding link
-      const link = await paymentService.getOnboardingLink(
-        account.account_id,
-        'visptasker://stripe-refresh',
-        'visptasker://stripe-return',
-      );
-
-      // Step 3: Open in browser
-      const canOpen = await Linking.canOpenURL(link.url);
-      if (canOpen) {
-        await Linking.openURL(link.url);
-      } else {
-        Alert.alert('Cannot Open', 'Unable to open Stripe onboarding link.');
-      }
-    } catch (err: any) {
-      console.error('[EarningsScreen] Stripe Connect failed:', err);
-      Alert.alert(
-        'Setup Failed',
-        err?.message ?? 'Failed to set up Stripe payments. Please try again.',
-      );
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [providerProfile, user]);
+  const handleConnectStripe = useCallback(() => {
+    Alert.alert(
+      t('earningsScreen.paymentSetup'),
+      t('earningsScreen.setUpPaymentMethod'),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: t('earningsScreen.goToProfile'),
+          onPress: () => {
+            navigation.navigate('ProviderProfile');
+          },
+        },
+      ],
+    );
+  }, [navigation]);
 
   const filteredPayouts = useMemo(() => {
     const now = new Date();
@@ -569,25 +557,25 @@ export default function EarningsScreen(): React.JSX.Element {
         {/* Summary cards */}
         <View style={styles.summaryGrid}>
           <GlassCard variant="standard" padding={14} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Today</Text>
+            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('earningsScreen.today')}</Text>
             <Text style={styles.summaryValue}>
               {formatCurrency(earnings.today)}
             </Text>
           </GlassCard>
           <GlassCard variant="standard" padding={14} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>This Week</Text>
+            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('earningsScreen.thisWeek')}</Text>
             <Text style={styles.summaryValue}>
               {formatCurrency(earnings.thisWeek)}
             </Text>
           </GlassCard>
           <GlassCard variant="standard" padding={14} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>This Month</Text>
+            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('earningsScreen.thisMonth')}</Text>
             <Text style={styles.summaryValue}>
               {formatCurrency(earnings.thisMonth)}
             </Text>
           </GlassCard>
           <GlassCard variant="standard" padding={14} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total Earned</Text>
+            <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>{t('earningsScreen.totalEarned')}</Text>
             <Text style={[styles.summaryValue, { color: Colors.primary }]}>
               {formatCurrency(earnings.totalEarned)}
             </Text>
@@ -598,7 +586,7 @@ export default function EarningsScreen(): React.JSX.Element {
         <GlassCard variant="dark" style={styles.payoutSplitCard}>
           <View style={styles.payoutSplitRow}>
             <View style={styles.payoutSplitItem}>
-              <Text style={styles.payoutSplitLabel}>Pending</Text>
+              <Text style={[styles.payoutSplitLabel, { color: theme.textSecondary }]}>{t('earningsScreen.pending')}</Text>
               <Text
                 style={[styles.payoutSplitValue, { color: Colors.warning }]}
               >
@@ -607,7 +595,7 @@ export default function EarningsScreen(): React.JSX.Element {
             </View>
             <View style={styles.payoutSplitDivider} />
             <View style={styles.payoutSplitItem}>
-              <Text style={styles.payoutSplitLabel}>Paid Out</Text>
+              <Text style={[styles.payoutSplitLabel, { color: theme.textSecondary }]}>{t('earningsScreen.paidOut')}</Text>
               <Text
                 style={[styles.payoutSplitValue, { color: Colors.success }]}
               >
@@ -620,7 +608,7 @@ export default function EarningsScreen(): React.JSX.Element {
         {/* Weekly chart */}
         {weeklyEarnings.length > 0 && (
           <GlassCard variant="standard" style={styles.chartCard}>
-            <Text style={styles.sectionTitle}>Weekly Earnings</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('earningsScreen.earnings')}</Text>
             <AnimatedBarChart data={weeklyEarnings} containerWidth={screenWidth} />
           </GlassCard>
         )}
@@ -638,7 +626,7 @@ export default function EarningsScreen(): React.JSX.Element {
 
         {/* Period filter */}
         <View style={styles.filterRow}>
-          <Text style={styles.sectionTitle}>Payouts</Text>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('earningsScreen.earnings')}</Text>
           <View style={styles.periodTabs}>
             {(['week', 'month', 'all'] as Period[]).map((period) => (
               <TouchableOpacity
@@ -658,10 +646,10 @@ export default function EarningsScreen(): React.JSX.Element {
                   ]}
                 >
                   {period === 'week'
-                    ? 'Week'
+                    ? t('earningsScreen.week')
                     : period === 'month'
-                      ? 'Month'
-                      : 'All'}
+                      ? t('earningsScreen.month')
+                      : t('earningsScreen.all')}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -671,8 +659,8 @@ export default function EarningsScreen(): React.JSX.Element {
         {/* Payouts list */}
         {filteredPayouts.length === 0 ? (
           <View style={styles.emptyPayouts}>
-            <Text style={styles.emptyPayoutsText}>
-              No payouts for this period
+            <Text style={[styles.emptyPayoutsText, { color: theme.textSecondary }]}>
+              {t('earningsScreen.noPayoutsForPeriod')}
             </Text>
           </View>
         ) : (

@@ -26,6 +26,8 @@ import MapboxGL from '@rnmapbox/maps';
 
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { Colors, getLevelColor, Spacing, GlassStyles } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { Shadows } from '../../theme/shadows';
@@ -99,6 +101,8 @@ function mapBackendStatus(backendStatus: string): TrackingStatus {
 // ──────────────────────────────────────────────
 
 function JobTrackingScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const route = useRoute<JobTrackingRouteProp>();
   const navigation = useNavigation<JobTrackingNavProp>();
   const { jobId } = route.params;
@@ -387,7 +391,7 @@ function JobTrackingScreen(): React.JSX.Element {
       <GlassBackground>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading job details...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading job details...</Text>
         </View>
       </GlassBackground>
     );
@@ -418,12 +422,12 @@ function JobTrackingScreen(): React.JSX.Element {
               <View style={styles.providerHeader}>
                 {/* Avatar */}
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{providerInitials}</Text>
+                  <Text style={[styles.avatarText, { color: theme.textPrimary }]}>{providerInitials}</Text>
                 </View>
                 <View style={styles.providerInfo}>
-                  <Text style={styles.providerName}>{providerName}</Text>
+                  <Text style={[styles.providerName, { color: theme.textPrimary }]}>{providerName}</Text>
                   {tracking?.etaMinutes != null && currentStatus !== 'in_progress' && currentStatus !== 'completed' && (
-                    <Text style={styles.providerMeta}>
+                    <Text style={[styles.providerMeta, { color: theme.textSecondary }]}>
                       ETA: {tracking.etaMinutes} min
                     </Text>
                   )}
@@ -461,10 +465,10 @@ function JobTrackingScreen(): React.JSX.Element {
             <View style={styles.section}>
               <GlassCard variant="standard" style={styles.searchingCard}>
                 <AnimatedSpinner size={48} color={Colors.primary} />
-                <Text style={styles.searchingTitle}>
+                <Text style={[styles.searchingTitle, { color: theme.textPrimary }]}>
                   Searching for providers...
                 </Text>
-                <Text style={styles.searchingSubtext}>
+                <Text style={[styles.searchingSubtext, { color: theme.textSecondary }]}>
                   We're finding the best available provider near you.
                   This usually takes a moment.
                 </Text>
@@ -533,7 +537,7 @@ function JobTrackingScreen(): React.JSX.Element {
                       coordinate={[Number(providerLng), Number(providerLat)]}
                     >
                       <View style={styles.providerMarker}>
-                        <Text style={styles.providerMarkerText}>V</Text>
+                        <Text style={[styles.providerMarkerText, { color: theme.textPrimary }]}>V</Text>
                       </View>
                     </MapboxGL.MarkerView>
                   )}
@@ -542,7 +546,7 @@ function JobTrackingScreen(): React.JSX.Element {
                 {/* ETA glass overlay */}
                 {tracking?.etaMinutes != null && tracking.etaMinutes > 0 && (
                   <View style={styles.etaOverlay}>
-                    <Text style={styles.etaOverlayLabel}>ETA</Text>
+                    <Text style={[styles.etaOverlayLabel, { color: theme.textSecondary }]}>ETA</Text>
                     <Text style={styles.etaOverlayValue}>{tracking.etaMinutes} min</Text>
                   </View>
                 )}
@@ -570,8 +574,8 @@ function JobTrackingScreen(): React.JSX.Element {
             <View style={styles.section}>
               <GlassCard variant="dark">
                 <View style={styles.noProviderContent}>
-                  <Text style={styles.noProviderTitle}>No Providers Available</Text>
-                  <Text style={styles.noProviderText}>
+                  <Text style={[styles.noProviderTitle, { color: theme.textPrimary }]}>No Providers Available</Text>
+                  <Text style={[styles.noProviderText, { color: theme.textSecondary }]}>
                     We couldn't find a provider in your area right now. Your job
                     request has been saved -- when a provider becomes available,
                     they'll receive your request and you'll be notified.
@@ -600,12 +604,12 @@ function JobTrackingScreen(): React.JSX.Element {
               <GlassCard variant="standard" style={styles.timerCardBorder}>
                 <View style={styles.timerContent}>
                   <Text style={styles.timerLabel}>Work In Progress</Text>
-                  <Text style={styles.timerValue}>{formattedTimer}</Text>
+                  <Text style={[styles.timerValue, { color: theme.textPrimary }]}>{formattedTimer}</Text>
                   <View style={styles.timerMeta}>
-                    <Text style={styles.timerMetaLabel}>Running estimate</Text>
+                    <Text style={[styles.timerMetaLabel, { color: theme.textSecondary }]}>Running estimate</Text>
                     <Text style={styles.timerMetaValue}>${runningCost}</Text>
                   </View>
-                  <Text style={styles.timerNote}>
+                  <Text style={[styles.timerNote, { color: theme.textSecondary }]}>
                     Estimated price. Final price may vary.
                   </Text>
                 </View>
@@ -619,8 +623,8 @@ function JobTrackingScreen(): React.JSX.Element {
               <GlassCard variant="elevated" style={styles.completedCardBorder}>
                 <View style={styles.completedContent}>
                   <Text style={styles.completedTitle}>Job Completed</Text>
-                  <Text style={styles.completedPrice}>${finalPrice.toFixed(2)}</Text>
-                  <Text style={styles.completedSubtext}>
+                  <Text style={[styles.completedPrice, { color: theme.textPrimary }]}>${finalPrice.toFixed(2)}</Text>
+                  <Text style={[styles.completedSubtext, { color: theme.textSecondary }]}>
                     Thank you for using VISP. Please rate your experience.
                   </Text>
                   <GlassButton
@@ -635,7 +639,7 @@ function JobTrackingScreen(): React.JSX.Element {
 
           {/* Status Timeline */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Job Timeline</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Job Timeline</Text>
             <GlassCard variant="dark">
               <View style={styles.timeline}>
                 {STATUS_STEPS.map((step, index) => {
@@ -660,7 +664,7 @@ function JobTrackingScreen(): React.JSX.Element {
                             isCurrent && styles.timelineDotCurrent,
                           ]}
                         >
-                          {isPast && <Text style={styles.timelineDotCheck}>+</Text>}
+                          {isPast && <Text style={[styles.timelineDotCheck, { color: theme.textPrimary }]}>+</Text>}
                         </View>
                         {!isLast && (
                           <View
@@ -705,7 +709,7 @@ function JobTrackingScreen(): React.JSX.Element {
           <View style={styles.section}>
             <GlassCard variant="dark" padding={Spacing.lg} style={styles.noticeCardBorder}>
               <Text style={styles.noticeTitle}>Service Scope</Text>
-              <Text style={styles.noticeText}>
+              <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
                 The provider will perform exactly the work described in your
                 booking. Additional services require a separate booking. The
                 provider cannot add scope to this job.

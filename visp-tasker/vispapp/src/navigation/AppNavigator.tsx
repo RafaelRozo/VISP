@@ -12,11 +12,14 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AnimatedSpinner } from '../components/animations';
+import Svg, { Defs, LinearGradient, Stop, Path } from 'react-native-svg';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Colors } from '../theme/colors';
 import { GlassStyles } from '../theme/glass';
+import { useTheme } from '../theme/ThemeContext';
+import { useTranslation } from '../i18n';
 import { requestLocationPermission, saveUserLocation } from '../services/geolocationService';
 import { notificationService, NotificationData } from '../services/notificationService';
 
@@ -59,6 +62,8 @@ import CredentialsScreen from '../screens/profile/CredentialsScreen';
 import VerificationScreen from '../screens/profile/VerificationScreen';
 import SettingsScreen from '../screens/profile/SettingsScreen';
 import PaymentMethodsScreen from '../screens/profile/PaymentMethodsScreen';
+import PrivacyPolicyScreen from '../screens/profile/PrivacyPolicyScreen';
+import TermsScreen from '../screens/profile/TermsScreen';
 
 // Screens - Shared
 import ChatScreen from '../screens/shared/ChatScreen';
@@ -88,6 +93,7 @@ const placeholderStyles = StyleSheet.create({
 // Screen options
 // ---------------------------------------------------------------------------
 
+// Static defaults (used by navigators that can't use hooks directly)
 const SCREEN_OPTIONS = {
   headerStyle: {
     backgroundColor: 'rgba(10, 10, 30, 0.80)',
@@ -131,6 +137,80 @@ const TAB_OPTIONS = {
   },
   headerShadowVisible: false,
 };
+
+// Dynamic theme-aware options (used inside navigator components)
+function useThemedScreenOptions() {
+  const theme = useTheme();
+  return {
+    headerStyle: {
+      backgroundColor: theme.headerBackground,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.headerBorder,
+    },
+    headerTintColor: theme.textPrimary,
+    headerTitleStyle: {
+      fontWeight: '600' as const,
+      color: theme.textPrimary,
+    },
+    headerShadowVisible: false,
+    contentStyle: {
+      backgroundColor: theme.background,
+    },
+  };
+}
+
+function useThemedTabOptions() {
+  const theme = useTheme();
+  return {
+    ...TAB_OPTIONS,
+    tabBarStyle: {
+      backgroundColor: theme.tabBarBackground,
+      borderTopWidth: 1,
+      borderTopColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+      position: 'absolute' as const,
+      elevation: 0,
+      paddingBottom: 4,
+      height: 56,
+    },
+    tabBarInactiveTintColor: theme.isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+    headerStyle: {
+      backgroundColor: theme.headerBackground,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.headerBorder,
+    },
+    headerTintColor: theme.textPrimary,
+    headerTitleStyle: {
+      fontWeight: '600' as const,
+      color: theme.textPrimary,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Header logo (left side of navigation bar)
+// ---------------------------------------------------------------------------
+
+function HeaderLogo(): React.JSX.Element {
+  return (
+    <Svg viewBox="0 0 100 100" width={24} height={24} style={{ marginRight: 12 }}>
+      <Defs>
+        <LinearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0%" stopColor="#a78bfa" />
+          <Stop offset="50%" stopColor="#7850FF" />
+          <Stop offset="100%" stopColor="#4f46e5" />
+        </LinearGradient>
+      </Defs>
+      <Path
+        d="M 20 20 L 50 80 L 80 20"
+        fill="none"
+        stroke="url(#hdrGrad)"
+        strokeWidth={8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Tab icon helper (text-based, replace with icon library in production)
@@ -198,9 +278,50 @@ const ProviderTab = createBottomTabNavigator<ProviderTabParamList>();
 // Profile Stack Navigator
 // ---------------------------------------------------------------------------
 
-function ProfileStackNavigator(): React.JSX.Element {
+function CustomHeader({ title, canGoBack, goBack }: { title: string; canGoBack: boolean; goBack: () => void }) {
+  const theme = useTheme();
   return (
-    <ProfileStack.Navigator screenOptions={SCREEN_OPTIONS}>
+    <View style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: theme.headerBackground,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.headerBorder,
+      paddingTop: 54,
+      paddingBottom: 12,
+      paddingHorizontal: 16,
+    }}>
+      <View style={{ width: 70 }}>
+        {canGoBack && (
+          <TouchableOpacity onPress={goBack}>
+            <Text style={{ color: Colors.primary, fontSize: 16 }}>{'< Back'}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <Text style={{ color: theme.textPrimary, fontSize: 17, fontWeight: '600' }}>{title}</Text>
+      <View style={{ width: 70, alignItems: 'flex-end' }}>
+        <HeaderLogo />
+      </View>
+    </View>
+  );
+}
+
+function ProfileStackNavigator(): React.JSX.Element {
+  const opts = useThemedScreenOptions();
+  return (
+    <ProfileStack.Navigator
+      screenOptions={{
+        ...opts,
+        header: ({ options, navigation }) => (
+          <CustomHeader
+            title={(options.title as string) ?? ''}
+            canGoBack={navigation.canGoBack()}
+            goBack={() => navigation.goBack()}
+          />
+        ),
+      }}
+    >
       <ProfileStack.Screen
         name="ProfileMain"
         component={ProfileScreen}
@@ -229,7 +350,17 @@ function ProfileStackNavigator(): React.JSX.Element {
       <ProfileStack.Screen
         name="PaymentMethods"
         component={PaymentMethodsScreen}
-        options={{ title: 'Payment Methods' }}
+        options={{ title: 'Payment Methods', headerBackTitle: 'Back' }}
+      />
+      <ProfileStack.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={{ title: 'Privacy Policy' }}
+      />
+      <ProfileStack.Screen
+        name="TermsOfService"
+        component={TermsScreen}
+        options={{ title: 'Terms & Conditions' }}
       />
     </ProfileStack.Navigator>
   );
@@ -240,14 +371,26 @@ function ProfileStackNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function ProviderJobStackNavigator(): React.JSX.Element {
+  const opts = useThemedScreenOptions();
   return (
-    <ProviderJobStack.Navigator screenOptions={SCREEN_OPTIONS}>
+    <ProviderJobStack.Navigator
+      screenOptions={{
+        ...opts,
+        header: ({ options, navigation }) => (
+          <CustomHeader
+            title={(options.title as string) ?? ''}
+            canGoBack={navigation.canGoBack()}
+            goBack={() => navigation.goBack()}
+          />
+        ),
+      }}
+    >
       <ProviderJobStack.Screen
         name="JobOffers"
         component={JobOffersScreen}
         options={({ navigation }) => ({
           title: 'Job Offers',
-          headerRight: () => (
+          headerLeft: () => (
             <TouchableOpacity
               onPress={() => navigation.navigate('ServiceCatalog')}
               style={{ paddingHorizontal: 8 }}
@@ -312,13 +455,20 @@ function AuthNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function CustomerTabNavigator(): React.JSX.Element {
+  const tabOpts = useThemedTabOptions();
+  const { t } = useTranslation();
   return (
-    <CustomerTab.Navigator screenOptions={TAB_OPTIONS}>
+    <CustomerTab.Navigator
+      screenOptions={{
+        ...tabOpts,
+        headerRight: () => <HeaderLogo />,
+      }}
+    >
       <CustomerTab.Screen
         name="Home"
         component={CustomerHomeScreen}
         options={{
-          title: 'Home',
+          title: t('nav.home'),
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon label="H" focused={focused} />
@@ -329,7 +479,7 @@ function CustomerTabNavigator(): React.JSX.Element {
         name="MyJobs"
         component={MyJobsScreen}
         options={{
-          title: 'My Jobs',
+          title: t('nav.myJobs'),
           tabBarIcon: ({ focused }) => (
             <TabIcon label="J" focused={focused} />
           ),
@@ -339,7 +489,7 @@ function CustomerTabNavigator(): React.JSX.Element {
         name="CustomerProfile"
         component={ProfileStackNavigator}
         options={{
-          title: 'Profile',
+          title: t('nav.profile'),
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon label="P" focused={focused} />
@@ -355,13 +505,20 @@ function CustomerTabNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function ProviderTabNavigator(): React.JSX.Element {
+  const tabOpts = useThemedTabOptions();
+  const { t } = useTranslation();
   return (
-    <ProviderTab.Navigator screenOptions={TAB_OPTIONS}>
+    <ProviderTab.Navigator
+      screenOptions={{
+        ...tabOpts,
+        headerRight: () => <HeaderLogo />,
+      }}
+    >
       <ProviderTab.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{
-          title: 'Dashboard',
+          title: t('nav.dashboard'),
           tabBarIcon: ({ focused }) => (
             <TabIcon label="D" focused={focused} />
           ),
@@ -371,7 +528,7 @@ function ProviderTabNavigator(): React.JSX.Element {
         name="JobsTab"
         component={ProviderJobStackNavigator}
         options={{
-          title: 'Jobs',
+          title: t('nav.jobs'),
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon label="J" focused={focused} />
@@ -382,7 +539,7 @@ function ProviderTabNavigator(): React.JSX.Element {
         name="Earnings"
         component={EarningsScreen}
         options={{
-          title: 'Earnings',
+          title: t('nav.earnings'),
           tabBarIcon: ({ focused }) => (
             <TabIcon label="$" focused={focused} />
           ),
@@ -392,7 +549,7 @@ function ProviderTabNavigator(): React.JSX.Element {
         name="Schedule"
         component={ScheduleScreen}
         options={{
-          title: 'Schedule',
+          title: t('nav.schedule'),
           tabBarIcon: ({ focused }) => (
             <TabIcon label="S" focused={focused} />
           ),
@@ -402,7 +559,7 @@ function ProviderTabNavigator(): React.JSX.Element {
         name="ProviderProfile"
         component={ProfileStackNavigator}
         options={{
-          title: 'Profile',
+          title: t('nav.profile'),
           headerShown: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon label="P" focused={focused} />

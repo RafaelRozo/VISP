@@ -6,6 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef } from 'react';
+import { useTranslation } from '../i18n';
 import {
   Alert,
   Animated,
@@ -40,6 +41,7 @@ function EmergencyButton({
   hasActiveEmergency = false,
   disabled = false,
 }: EmergencyButtonProps): React.JSX.Element {
+  const { t } = useTranslation();
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // ── Pulse Animation ──────────────────────
@@ -78,13 +80,12 @@ function EmergencyButton({
   // ── Confirmation Dialog ──────────────────
   const handlePress = useCallback(() => {
     Alert.alert(
-      'Request Emergency Service',
-      'This will immediately connect you with an on-call Level 4 provider. ' +
-        'Emergency rates apply. Are you sure you want to proceed?',
+      t('emergency.requestEmergency'),
+      t('emergency.emergencyConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Yes, Request Now',
+          text: t('emergency.yesRequest'),
           style: 'destructive',
           onPress,
         },
@@ -120,12 +121,12 @@ function EmergencyButton({
         <View style={styles.content}>
           <Text style={styles.icon}>{'!!'}</Text>
           <Text style={styles.label}>
-            {hasActiveEmergency ? 'EMERGENCY ACTIVE' : 'EMERGENCY'}
+            {hasActiveEmergency ? t('emergency.emergencyActive') : t('emergency.emergency')}
           </Text>
           <Text style={styles.sublabel}>
             {hasActiveEmergency
-              ? 'Tap to view status'
-              : '24/7 on-call providers'}
+              ? t('emergency.tapToViewStatus')
+              : t('emergency.onCallProviders')}
           </Text>
         </View>
       </TouchableOpacity>

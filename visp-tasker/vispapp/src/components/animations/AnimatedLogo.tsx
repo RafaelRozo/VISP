@@ -38,9 +38,9 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
   style,
   animate = true,
 }) => {
-  const drawProgress = useSharedValue(0);
+  const drawProgress = useSharedValue(animate ? 0 : 1);
   const glowScale = useSharedValue(1);
-  const glowOpacity = useSharedValue(0);
+  const glowOpacity = useSharedValue(animate ? 0 : 0.3);
 
   useEffect(() => {
     if (!animate) return;
@@ -105,13 +105,15 @@ const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
           </LinearGradient>
         </Defs>
 
-        {/* Glow circle behind the V */}
-        <AnimatedCircle
-          cx="50"
-          cy="50"
-          fill={glowColor}
-          animatedProps={animatedGlowProps}
-        />
+        {/* Glow circle behind the V (hidden when not animating) */}
+        {animate && (
+          <AnimatedCircle
+            cx="50"
+            cy="50"
+            fill={glowColor}
+            animatedProps={animatedGlowProps}
+          />
+        )}
 
         {/* The V shape — stroke draw-on */}
         <AnimatedPath

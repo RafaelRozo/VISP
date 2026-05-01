@@ -77,6 +77,13 @@ function extractErrorMessage(err: unknown): string {
   return 'An unexpected error occurred. Please try again.';
 }
 
+function extractStatusCode(err: unknown): number {
+  if (err && typeof err === 'object' && 'statusCode' in err) {
+    return (err as { statusCode: number }).statusCode;
+  }
+  return 0;
+}
+
 // ──────────────────────────────────────────────
 // Store
 // ──────────────────────────────────────────────
@@ -129,9 +136,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
         // Initialize push notifications after successful registration
         notificationService.initialize().catch(console.warn);
       } catch (err) {
+        const statusCode = extractStatusCode(err);
+        let errorMessage = extractErrorMessage(err);
+        // Provide a user-friendly message for duplicate email
+        if (statusCode === 409) {
+          errorMessage = 'This email is already registered. Please sign in with your existing account.';
+        }
         set({
           isLoading: false,
-          error: extractErrorMessage(err),
+          error: errorMessage,
         });
         throw err;
       }

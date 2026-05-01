@@ -23,6 +23,7 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status, UploadFile, File, Form
+from pydantic import BaseModel
 
 from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.provider import (
@@ -958,6 +959,68 @@ async def upload_credential(
             "status": credential.status.value,
             "documentUrl": credential.document_url,
             "createdAt": credential.created_at.isoformat() if credential.created_at else None,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /provider/time-off — Request time off
+# ---------------------------------------------------------------------------
+
+class TimeOffBody(BaseModel):
+    start_date: str
+    end_date: str
+    reason: str = "Personal"
+
+
+@router.post(
+    "/time-off",
+    summary="Request time off",
+    status_code=status.HTTP_201_CREATED,
+)
+async def request_time_off(
+    db: DBSession,
+    user: CurrentUser,
+    body: TimeOffBody,
+) -> dict[str, Any]:
+    """Submit a time-off request for approval."""
+    from sqlalchemy import text
+    from datetime import date as date_type
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    start = date_type.fromisoformat(body.start_date)
+    end = date_type.fromisoformat(body.end_date)
+
+    request_id = uuid.uuid4()
+    await db.execute(
+        text("""
+            INSERT INTO provider_time_off_requests (id, provider_id, start_date, end_date, reason, status, created_at, updated_at)
+            VALUES (:id, :provider_id, :start_date, :end_date, :reason, 'pending', NOW(), NOW())
+        """),
+        {
+            "id": request_id,
+            "provider_id": provider_id,
+            "start_date": start,
+            "end_date": end,
+            "reason": body.reason,
+        },
+    )
+    await db.commit()
+
+    return {
+        "data": {
+            "id": str(request_id),
+            "startDate": body.start_date,
+            "endDate": body.end_date,
+            "reason": body.reason,
+            "status": "pending",
         }
     }
 

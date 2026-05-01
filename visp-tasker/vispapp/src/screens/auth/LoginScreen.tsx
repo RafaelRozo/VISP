@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -164,7 +165,12 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
   // ── Render ───────────────────────────────
 
   return (
-    <GlassBackground>
+    <ImageBackground
+      source={require('../../../assets/hero-home.jpg')}
+      style={styles.flex}
+      resizeMode="cover"
+    >
+      <View style={styles.imageOverlay} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -301,7 +307,7 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </GlassBackground>
+    </ImageBackground>
   );
 }
 
@@ -312,6 +318,10 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10, 10, 30, 0.85)',
   },
   scrollContent: {
     flexGrow: 1,

@@ -7,6 +7,8 @@
  */
 
 import React, { useCallback } from 'react';
+import { useTranslation } from '../i18n';
+import { translateCategoryName } from '../i18n/services';
 import {
   Animated,
   Dimensions,
@@ -92,6 +94,7 @@ interface TileProps {
 }
 
 function CategoryTile({ category, onPress }: TileProps): React.JSX.Element {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => {
     onPress(category);
   }, [category, onPress]);
@@ -123,10 +126,10 @@ function CategoryTile({ category, onPress }: TileProps): React.JSX.Element {
         </Text>
       </View>
       <Text style={styles.categoryName} numberOfLines={1}>
-        {category.name}
+        {translateCategoryName(category.slug, category.name)}
       </Text>
       <Text style={styles.taskCount}>
-        {category.taskCount} {category.taskCount === 1 ? 'task' : 'tasks'}
+        {category.taskCount} {category.taskCount === 1 ? t('homeScreen.task') : t('homeScreen.tasks')}
       </Text>
     </TouchableOpacity>
   );

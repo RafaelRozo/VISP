@@ -32,6 +32,8 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
@@ -97,6 +99,8 @@ function formatDuration(minutes: number): string {
 // ──────────────────────────────────────────────
 
 function BookingScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const route = useRoute<BookingRouteProp>();
   const navigation = useNavigation<BookingNavProp>();
   const { task } = route.params;
@@ -301,8 +305,8 @@ function BookingScreen(): React.JSX.Element {
         >
           {/* ── Header ────────────────── */}
           <View style={styles.headerSection}>
-            <Text style={styles.headerTitle}>Review Your Booking</Text>
-            <Text style={styles.headerSubtitle}>
+            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Review Your Booking</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
               Please review all details below before confirming.
             </Text>
           </View>
@@ -311,27 +315,27 @@ function BookingScreen(): React.JSX.Element {
           <View style={styles.section}>
             <GlassCard variant="dark">
               <View style={styles.taskCardHeader}>
-                <Text style={styles.taskCardName}>{task.taskName}</Text>
+                <Text style={[styles.taskCardName, { color: theme.textPrimary }]}>{task.taskName}</Text>
                 <LevelBadge level={task.level} size="small" />
               </View>
-              <Text style={styles.taskCardDescription} numberOfLines={2}>
+              <Text style={[styles.taskCardDescription, { color: theme.textSecondary }]} numberOfLines={2}>
                 {task.description}
               </Text>
               <View style={styles.taskCardMeta}>
                 <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Level</Text>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Level</Text>
                   <Text style={[styles.metaValue, { color: levelColor }]}>
                     {LEVEL_LABELS[task.level]}
                   </Text>
                 </View>
                 <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Duration</Text>
-                  <Text style={styles.metaValue}>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Duration</Text>
+                  <Text style={[styles.metaValue, { color: theme.textPrimary }]}>
                     {formatDuration(task.estimatedDurationMinutes)}
                   </Text>
                 </View>
                 <View style={styles.metaItem}>
-                  <Text style={styles.metaLabel}>Estimate</Text>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Estimate</Text>
                   <Text style={[styles.metaValue, { color: Colors.primary }]}>
                     ${task.priceRangeMin} - ${task.priceRangeMax}
                   </Text>
@@ -343,20 +347,20 @@ function BookingScreen(): React.JSX.Element {
           {/* ── Service Location ────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Service Location</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Service Location</Text>
               <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
                 <Text style={styles.editLink}>Edit</Text>
               </TouchableOpacity>
             </View>
             <GlassCard variant="standard">
               <View style={styles.reviewCardRow}>
-                <Text style={styles.reviewCardIcon}>P</Text>
+                <Text style={[styles.reviewCardIcon, { color: theme.textSecondary }]}>P</Text>
                 <View style={styles.reviewCardContent}>
-                  <Text style={styles.reviewCardPrimary}>
+                  <Text style={[styles.reviewCardPrimary, { color: theme.textPrimary }]}>
                     {task.address?.formattedAddress ?? 'No address provided'}
                   </Text>
                   {task.address?.city ? (
-                    <Text style={styles.reviewCardSecondary}>
+                    <Text style={[styles.reviewCardSecondary, { color: theme.textSecondary }]}>
                       {task.address.city}
                       {task.address.province ? `, ${task.address.province}` : ''}
                       {task.address.postalCode ? ` ${task.address.postalCode}` : ''}
@@ -370,28 +374,28 @@ function BookingScreen(): React.JSX.Element {
           {/* ── Schedule ────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Schedule</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Schedule</Text>
               <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
                 <Text style={styles.editLink}>Edit</Text>
               </TouchableOpacity>
             </View>
             <GlassCard variant="standard">
               <View style={styles.reviewCardRow}>
-                <Text style={styles.reviewCardIcon}>C</Text>
+                <Text style={[styles.reviewCardIcon, { color: theme.textSecondary }]}>C</Text>
                 <View style={styles.reviewCardContent}>
                   {task.isFlexibleSchedule ? (
                     <>
-                      <Text style={styles.reviewCardPrimary}>Flexible Schedule</Text>
-                      <Text style={styles.reviewCardSecondary}>
+                      <Text style={[styles.reviewCardPrimary, { color: theme.textPrimary }]}>Flexible Schedule</Text>
+                      <Text style={[styles.reviewCardSecondary, { color: theme.textSecondary }]}>
                         We'll find the best available time for you
                       </Text>
                     </>
                   ) : (
                     <>
-                      <Text style={styles.reviewCardPrimary}>
+                      <Text style={[styles.reviewCardPrimary, { color: theme.textPrimary }]}>
                         {formatDisplayDate(task.scheduledDate)}
                       </Text>
-                      <Text style={styles.reviewCardSecondary}>
+                      <Text style={[styles.reviewCardSecondary, { color: theme.textSecondary }]}>
                         {formatDisplayTime(task.scheduledTimeSlot)}
                       </Text>
                     </>
@@ -404,7 +408,7 @@ function BookingScreen(): React.JSX.Element {
           {/* ── Priority ────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Priority</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Priority</Text>
               <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
                 <Text style={styles.editLink}>Edit</Text>
               </TouchableOpacity>
@@ -418,10 +422,10 @@ function BookingScreen(): React.JSX.Element {
                   ]}
                 />
                 <View style={styles.reviewCardContent}>
-                  <Text style={styles.reviewCardPrimary}>
+                  <Text style={[styles.reviewCardPrimary, { color: theme.textPrimary }]}>
                     {priorityOption?.label ?? 'Standard'}
                   </Text>
-                  <Text style={styles.reviewCardSecondary}>
+                  <Text style={[styles.reviewCardSecondary, { color: theme.textSecondary }]}>
                     {priorityOption?.description ?? ''}
                   </Text>
                   {(priorityOption?.multiplier ?? 1) > 1 && (
@@ -438,7 +442,7 @@ function BookingScreen(): React.JSX.Element {
           {selectedNoteLabels.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Additional Info</Text>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Additional Info</Text>
                 <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
                   <Text style={styles.editLink}>Edit</Text>
                 </TouchableOpacity>
@@ -446,7 +450,7 @@ function BookingScreen(): React.JSX.Element {
               <View style={styles.notesContainer}>
                 {selectedNoteLabels.map((label, idx) => (
                   <View key={idx} style={styles.noteTag}>
-                    <Text style={styles.noteTagText}>  {label}</Text>
+                    <Text style={[styles.noteTagText, { color: theme.textPrimary }]}>  {label}</Text>
                   </View>
                 ))}
               </View>
@@ -458,7 +462,7 @@ function BookingScreen(): React.JSX.Element {
             <View style={styles.section}>
               <View style={styles.slaCard}>
                 <Text style={styles.slaTitle}>Emergency SLA Terms</Text>
-                <Text style={styles.slaText}>
+                <Text style={[styles.slaText, { color: theme.textSecondary }]}>
                   Emergency services (Level 4) include a guaranteed response
                   time. A provider will be dispatched within 30 minutes.
                   Emergency pricing applies at a minimum of $150 base charge
@@ -471,8 +475,8 @@ function BookingScreen(): React.JSX.Element {
 
           {/* ── Legal Acknowledgments ────────────────── */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Legal Acknowledgments</Text>
-            <Text style={styles.legalSubtitle}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Legal Acknowledgments</Text>
+            <Text style={[styles.legalSubtitle, { color: theme.textSecondary }]}>
               You must accept all terms before booking
             </Text>
 
@@ -491,10 +495,10 @@ function BookingScreen(): React.JSX.Element {
                 ]}
               >
                 {consentIndependent && (
-                  <Text style={styles.checkmark}>✓</Text>
+                  <Text style={[styles.checkmark, { color: theme.textPrimary }]}>✓</Text>
                 )}
               </View>
-              <Text style={styles.checkboxLabel}>
+              <Text style={[styles.checkboxLabel, { color: theme.textSecondary }]}>
                 I understand VISP connects me with independent service
                 providers. VISP is a platform intermediary and does not
                 directly provide the services.
@@ -515,9 +519,9 @@ function BookingScreen(): React.JSX.Element {
                   consentScope && styles.checkboxChecked,
                 ]}
               >
-                {consentScope && <Text style={styles.checkmark}>✓</Text>}
+                {consentScope && <Text style={[styles.checkmark, { color: theme.textPrimary }]}>✓</Text>}
               </View>
-              <Text style={styles.checkboxLabel}>
+              <Text style={[styles.checkboxLabel, { color: theme.textSecondary }]}>
                 I understand the service is limited to "{task.taskName}" only.
                 The provider cannot add scope or perform additional services
                 without a separate booking.
@@ -538,9 +542,9 @@ function BookingScreen(): React.JSX.Element {
                   consentPricing && styles.checkboxChecked,
                 ]}
               >
-                {consentPricing && <Text style={styles.checkmark}>✓</Text>}
+                {consentPricing && <Text style={[styles.checkmark, { color: theme.textPrimary }]}>✓</Text>}
               </View>
-              <Text style={styles.checkboxLabel}>
+              <Text style={[styles.checkboxLabel, { color: theme.textSecondary }]}>
                 I accept the estimated pricing of ${task.priceRangeMin} - $
                 {task.priceRangeMax}. Final price may vary based on actual scope
                 of work. I will be notified of any changes before they are
@@ -564,9 +568,9 @@ function BookingScreen(): React.JSX.Element {
                     consentSLA && styles.checkboxCheckedEmergency,
                   ]}
                 >
-                  {consentSLA && <Text style={styles.checkmark}>✓</Text>}
+                  {consentSLA && <Text style={[styles.checkmark, { color: theme.textPrimary }]}>✓</Text>}
                 </View>
-                <Text style={styles.checkboxLabel}>
+                <Text style={[styles.checkboxLabel, { color: theme.textSecondary }]}>
                   I understand emergency pricing applies ($150+ base) and
                   accept the SLA terms. Cancellation after provider dispatch
                   incurs a fee.
@@ -580,36 +584,36 @@ function BookingScreen(): React.JSX.Element {
             <GlassCard variant="elevated" style={styles.estimateCardBorder}>
               {task.level <= 2 ? (
                 <View style={styles.estimateContent}>
-                  <Text style={styles.estimateLabel}>Time-Based Pricing</Text>
+                  <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>Time-Based Pricing</Text>
                   <Text style={styles.estimatePrice}>
                     ${task.priceRangeMin} - ${task.priceRangeMax}/hr
                   </Text>
                   <View style={styles.estimateDetailRow}>
-                    <Text style={styles.estimateDetailLabel}>Est. Duration</Text>
-                    <Text style={styles.estimateDetailValue}>
+                    <Text style={[styles.estimateDetailLabel, { color: theme.textSecondary }]}>Est. Duration</Text>
+                    <Text style={[styles.estimateDetailValue, { color: theme.textPrimary }]}>
                       {formatDuration(task.estimatedDurationMinutes)}
                     </Text>
                   </View>
                   <View style={styles.estimateDetailRow}>
-                    <Text style={styles.estimateDetailLabel}>Est. Total</Text>
-                    <Text style={styles.estimateDetailValue}>
+                    <Text style={[styles.estimateDetailLabel, { color: theme.textSecondary }]}>Est. Total</Text>
+                    <Text style={[styles.estimateDetailValue, { color: theme.textPrimary }]}>
                       ${task.estimatedPrice > 0
                         ? task.estimatedPrice.toFixed(2)
                         : `${task.priceRangeMin} - ${task.priceRangeMax}`}
                     </Text>
                   </View>
-                  <Text style={styles.estimateNote}>
+                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
                     You are billed based on actual time worked at the provider's
                     hourly rate. Final amount may differ from the estimate.
                   </Text>
                 </View>
               ) : task.level === 3 ? (
                 <View style={styles.estimateContent}>
-                  <Text style={styles.estimateLabel}>Negotiated Pricing</Text>
+                  <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>Negotiated Pricing</Text>
                   <Text style={styles.estimatePrice}>
                     ${task.priceRangeMin} - ${task.priceRangeMax}
                   </Text>
-                  <Text style={styles.estimateNote}>
+                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
                     This service requires a price agreement with your provider.
                     The guide range above is for reference. Your provider will
                     submit a proposal after reviewing the job details.
@@ -623,7 +627,7 @@ function BookingScreen(): React.JSX.Element {
                   <Text style={[styles.estimatePrice, { color: Colors.emergencyRed }]}>
                     ${task.priceRangeMin} - ${task.priceRangeMax}
                   </Text>
-                  <Text style={styles.estimateNote}>
+                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
                     Emergency service. Guide range shown above. Additional
                     emergency surcharges, after-hours fees, and minimum charges
                     may apply. Your provider will submit a proposal.
@@ -640,10 +644,10 @@ function BookingScreen(): React.JSX.Element {
         {/* ── Confirm Booking CTA ────────────────── */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={styles.ctaPriceLabel}>
+            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>
               {task.estimatedPrice > 0 ? 'Estimated' : 'Range'}
             </Text>
-            <Text style={styles.ctaPriceValue}>
+            <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
               {task.estimatedPrice > 0
                 ? `$${task.estimatedPrice.toFixed(2)}`
                 : `$${task.priceRangeMin} - $${task.priceRangeMax}`}

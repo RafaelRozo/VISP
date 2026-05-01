@@ -9,8 +9,8 @@
 
 import React from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import { Colors } from '../../theme/colors';
 import { GlassOrbs } from '../../theme/glass';
+import { useTheme } from '../../theme/ThemeContext';
 
 interface GlassBackgroundProps {
   children: React.ReactNode;
@@ -18,8 +18,10 @@ interface GlassBackgroundProps {
 }
 
 const GlassBackground: React.FC<GlassBackgroundProps> = ({ children, style }) => {
+  const theme = useTheme();
+
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, { backgroundColor: theme.background }, style]}>
       {/* Purple orb — top left */}
       <View
         style={[
@@ -27,7 +29,7 @@ const GlassBackground: React.FC<GlassBackgroundProps> = ({ children, style }) =>
           {
             width: GlassOrbs.purple.size,
             height: GlassOrbs.purple.size,
-            backgroundColor: GlassOrbs.purple.color,
+            backgroundColor: theme.orbPurple,
             ...GlassOrbs.purple.position,
           },
         ]}
@@ -39,7 +41,7 @@ const GlassBackground: React.FC<GlassBackgroundProps> = ({ children, style }) =>
           {
             width: GlassOrbs.blue.size,
             height: GlassOrbs.blue.size,
-            backgroundColor: GlassOrbs.blue.color,
+            backgroundColor: theme.orbBlue,
             ...GlassOrbs.blue.position,
           },
         ]}
@@ -53,7 +55,6 @@ const GlassBackground: React.FC<GlassBackgroundProps> = ({ children, style }) =>
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
     position: 'relative',
     overflow: 'hidden',
   },

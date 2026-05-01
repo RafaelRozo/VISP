@@ -19,6 +19,8 @@ import {
 } from 'react-native';
 import { AnimatedSpinner } from '../../components/animations';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
@@ -89,6 +91,8 @@ interface CategoryGroup {
 // ---------------------------------------------------------------------------
 
 export default function ServiceCatalogScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const { serviceCatalog, catalogLoading, fetchServiceCatalog } =
     useProviderStore();
 
@@ -167,7 +171,7 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
           <View style={styles.serviceContent}>
             <View style={styles.serviceHeader}>
               <View style={styles.serviceHeaderLeft}>
-                <Text style={styles.serviceName} numberOfLines={1}>
+                <Text style={[styles.serviceName, { color: theme.textPrimary }]} numberOfLines={1}>
                   {item.name}
                 </Text>
                 <View style={styles.serviceMetaRow}>
@@ -195,13 +199,13 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
             </View>
             <View style={styles.serviceDetails}>
               <View style={styles.serviceDetailItem}>
-                <Text style={styles.serviceDetailLabel}>Rate</Text>
+                <Text style={[styles.serviceDetailLabel, { color: theme.textSecondary }]}>Rate</Text>
                 <Text style={styles.serviceDetailValue}>
                   {item.rateDescription || getRateDescription(item.level)}
                 </Text>
               </View>
               <View style={styles.serviceDetailItem}>
-                <Text style={styles.serviceDetailLabel}>Duration</Text>
+                <Text style={[styles.serviceDetailLabel, { color: theme.textSecondary }]}>Duration</Text>
                 <Text style={styles.serviceDetailValue}>
                   {item.estimatedDurationMin > 0
                     ? formatDuration(item.estimatedDurationMin)
@@ -228,14 +232,14 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
             activeOpacity={0.7}
           >
             <View style={styles.categoryInfo}>
-              <Text style={styles.categoryName}>{group.categoryName}</Text>
+              <Text style={[styles.categoryName, { color: theme.textPrimary }]}>{group.categoryName}</Text>
               <View style={styles.categoryCountBadge}>
                 <Text style={styles.categoryCountText}>
                   {group.items.length}
                 </Text>
               </View>
             </View>
-            <Text style={styles.chevron}>{isExpanded ? '\u25B2' : '\u25BC'}</Text>
+            <Text style={[styles.chevron, { color: theme.textSecondary }]}>{isExpanded ? '\u25B2' : '\u25BC'}</Text>
           </TouchableOpacity>
 
           {isExpanded && (
@@ -253,8 +257,8 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
     if (catalogLoading) return null;
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>No Services Found</Text>
-        <Text style={styles.emptySubtext}>
+        <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No Services Found</Text>
+        <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
           {activeFilter !== 'All'
             ? `No services found for ${activeFilter}. Try a different filter.`
             : 'You have no qualified services yet. Complete your profile and credentials to unlock services.'}
@@ -304,7 +308,7 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
       {catalogLoading ? (
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading services...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading services...</Text>
         </View>
       ) : (
         <FlatList

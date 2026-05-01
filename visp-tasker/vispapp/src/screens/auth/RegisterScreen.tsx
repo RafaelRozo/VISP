@@ -4,7 +4,7 @@
  * Multi-step registration flow:
  *   Step 1: Email / Phone + Password
  *   Step 2: First Name / Last Name
- *   Step 3: Role Selection (Customer / Provider / Both) + Terms Acceptance
+ *   Step 3: Role Selection (Customer / Provider) + Terms Acceptance
  *
  * Includes a progress indicator, inline validation, and password strength meter.
  * Dark glassmorphism design with animated transitions.
@@ -182,11 +182,6 @@ const ROLE_OPTIONS: RoleOption[] = [
     title: 'Service Provider',
     description: 'I want to earn money providing services',
   },
-  {
-    value: 'both',
-    title: 'Both',
-    description: 'I want to book and provide services',
-  },
 ];
 
 // ──────────────────────────────────────────────
@@ -216,8 +211,10 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
   const confirmPasswordRef = useRef<TextInput>(null);
+  const firstNameRef = useRef<TextInput>(null);
   const lastNameRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
 
@@ -246,6 +243,18 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     entryAnim.start();
     return () => entryAnim.stop();
   }, []);
+
+  // ── Auto-focus on step change to trigger iOS AutoFill bar ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentStep === 1) {
+        emailInputRef.current?.focus();
+      } else if (currentStep === 2) {
+        firstNameRef.current?.focus();
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [currentStep]);
 
   // ── Autofill-safe password handler ─────
   // iOS password autofill (Apple generated passwords, authenticators) may not
@@ -405,6 +414,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
 
         {/* Email */}
         <GlassInput
+          ref={emailInputRef}
           label="EMAIL"
           value={email}
           onChangeText={(text) => {
@@ -534,6 +544,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
 
         {/* First Name */}
         <GlassInput
+          ref={firstNameRef}
           label="FIRST NAME"
           value={firstName}
           onChangeText={(text) => {
@@ -602,7 +613,16 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               ref={phoneRef}
               value={phone}
               onChangeText={(text) => {
-                const digitsOnly = text.replace(/\D/g, '');
+                let digitsOnly = text.replace(/\D/g, '');
+                // iOS autofill may include the country code (e.g. "14165551234" for +1).
+                // Strip the dial prefix digits so only the local number remains.
+                const dialDigits = selectedCountry.dial.replace(/\D/g, '');
+                if (
+                  digitsOnly.length > selectedCountry.maxDigits &&
+                  digitsOnly.startsWith(dialDigits)
+                ) {
+                  digitsOnly = digitsOnly.slice(dialDigits.length);
+                }
                 const limited = digitsOnly.slice(0, selectedCountry.maxDigits);
                 setPhone(limited);
                 if (step2Errors.phone) {
@@ -610,12 +630,12 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                 }
               }}
               placeholder={`${'0'.repeat(selectedCountry.maxDigits)}`}
-              keyboardType="number-pad"
+              keyboardType="phone-pad"
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="tel"
               textContentType="telephoneNumber"
-              maxLength={selectedCountry.maxDigits}
+              maxLength={selectedCountry.maxDigits + 5}
               returnKeyType="done"
               onSubmitEditing={handleNext}
               editable={!isLoading}

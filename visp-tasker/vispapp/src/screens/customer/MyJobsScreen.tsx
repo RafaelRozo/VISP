@@ -22,6 +22,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { GlassBackground, GlassCard } from '../../components/glass';
 import { Colors, Spacing, Typography, BorderRadius, GlassStyles } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation, t } from '../../i18n';
 import { FontWeight } from '../../theme/typography';
 import taskService from '../../services/taskService';
 import type { Job, RootStackParamList } from '../../types';
@@ -42,21 +44,21 @@ const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 
 function statusLabel(status: string): string {
     const map: Record<string, string> = {
-        draft: 'Draft',
-        pending_match: 'Searching for Provider',
-        matched: 'Provider Assigned',
-        pending_approval: 'Provider Review',
-        scheduled: 'Scheduled',
-        provider_accepted: 'Provider Accepted',
-        provider_en_route: 'Provider En Route',
-        arrived: 'Provider Arrived',
-        in_progress: 'In Progress',
-        completed: 'Completed',
-        cancelled_by_customer: 'Cancelled',
-        cancelled_by_provider: 'Cancelled',
-        cancelled_by_system: 'Cancelled',
-        disputed: 'Disputed',
-        refunded: 'Refunded',
+        draft: t('myJobs.draft'),
+        pending_match: t('myJobs.searchingForProvider'),
+        matched: t('myJobs.providerAssigned'),
+        pending_approval: t('myJobs.providerReview'),
+        scheduled: t('myJobs.scheduled'),
+        provider_accepted: t('myJobs.providerAccepted'),
+        provider_en_route: t('myJobs.providerEnRoute'),
+        arrived: t('myJobs.providerArrived'),
+        in_progress: t('myJobs.inProgress'),
+        completed: t('common.completed'),
+        cancelled_by_customer: t('common.cancelled'),
+        cancelled_by_provider: t('common.cancelled'),
+        cancelled_by_system: t('common.cancelled'),
+        disputed: t('myJobs.disputed'),
+        refunded: t('myJobs.refunded'),
     };
     return map[status] ?? status.replace(/_/g, ' ');
 }
@@ -98,6 +100,8 @@ function formatDate(iso: string | null | undefined): string {
 // ──────────────────────────────────────────────
 
 function MyJobsScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
     const navigation = useNavigation<NavProp>();
 
     const [jobs, setJobs] = useState<Job[]>([]);
@@ -138,22 +142,22 @@ function MyJobsScreen(): React.JSX.Element {
         (job: Job) => {
             if (PENDING_STATUSES.includes(job.status)) {
                 Alert.alert(
-                    'Searching for a Provider',
-                    'We\'re still looking for the best available provider in your area. You\'ll be notified as soon as one is assigned. Hang tight!',
+                    t('myJobs.searchingForProvider'),
+                    t('homeScreen.searchingMessage'),
                 );
                 return;
             }
             if (job.status === 'matched') {
                 Alert.alert(
-                    'Waiting for Provider',
-                    'Your job has been sent to a provider. Waiting for them to review and accept.',
+                    t('homeScreen.waitingForProvider'),
+                    t('homeScreen.waitingMessage'),
                 );
                 return;
             }
             if (job.status === 'pending_approval') {
                 Alert.alert(
-                    'Provider Review',
-                    'Review the provider info below and tap Approve or Reject.',
+                    t('myJobs.providerReview'),
+                    t('myJobs.reviewProviderInfo'),
                 );
                 return;
             }
@@ -186,29 +190,29 @@ function MyJobsScreen(): React.JSX.Element {
     const handleApproveProvider = useCallback(async (jobId: string) => {
         try {
             await taskService.approveProvider(jobId);
-            Alert.alert('Approved', 'Your job has been scheduled!');
+            Alert.alert(t('myJobs.approved'), t('myJobs.jobScheduled'));
             fetchJobs(true);
         } catch {
-            Alert.alert('Error', 'Failed to approve provider.');
+            Alert.alert(t('common.error'), t('myJobs.failedApprove'));
         }
     }, [fetchJobs]);
 
     const handleRejectProvider = useCallback((jobId: string) => {
         Alert.alert(
-            'Reject Provider',
-            'Are you sure? The job will be re-matched with another provider.',
+            t('myJobs.rejectProvider'),
+            t('myJobs.rejectConfirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('common.cancel'), style: 'cancel' },
                 {
-                    text: 'Reject',
+                    text: t('myJobs.reject'),
                     style: 'destructive',
                     onPress: async () => {
                         try {
                             await taskService.rejectProvider(jobId);
-                            Alert.alert('Provider Rejected', 'We\'ll find you another provider.');
+                            Alert.alert(t('myJobs.providerRejected'), t('myJobs.findAnother'));
                             fetchJobs(true);
                         } catch {
-                            Alert.alert('Error', 'Failed to reject provider.');
+                            Alert.alert(t('common.error'), t('myJobs.failedReject'));
                         }
                     },
                 },
@@ -232,8 +236,8 @@ function MyJobsScreen(): React.JSX.Element {
                 >
                     <GlassCard variant="dark">
                         <View style={styles.jobHeader}>
-                            <Text style={styles.jobName} numberOfLines={1}>
-                                {item.taskName || 'Job'}
+                            <Text style={[styles.jobName, { color: theme.textPrimary }]} numberOfLines={1}>
+                                {item.taskName || t('myJobs.job')}
                             </Text>
                             <View style={[styles.statusBadge, { backgroundColor: `${color}20`, borderColor: `${color}40` }]}>
                                 {isPending && (
@@ -250,7 +254,7 @@ function MyJobsScreen(): React.JSX.Element {
                         </View>
 
                         {item.address?.street ? (
-                            <Text style={styles.jobAddress} numberOfLines={1}>
+                            <Text style={[styles.jobAddress, { color: theme.textSecondary }]} numberOfLines={1}>
                                 {item.address.street}
                                 {item.address.city ? `, ${item.address.city}` : ''}
                             </Text>
@@ -259,16 +263,16 @@ function MyJobsScreen(): React.JSX.Element {
                         {/* Provider info for pending_approval */}
                         {isPendingApproval && providerInfo && (
                             <View style={styles.providerReviewCard}>
-                                <Text style={styles.providerReviewTitle}>Provider wants to accept your job</Text>
+                                <Text style={styles.providerReviewTitle}>{t('myJobs.wantsToAccept')}</Text>
                                 <View style={styles.providerInfoRow}>
                                     <View style={[styles.providerLevel, { backgroundColor: color }]}>
                                         <Text style={styles.providerLevelText}>L{providerInfo.level}</Text>
                                     </View>
                                     <View style={{ flex: 1 }}>
-                                        <Text style={styles.providerName}>{providerInfo.displayName}</Text>
+                                        <Text style={[styles.providerName, { color: theme.textPrimary }]}>{providerInfo.displayName}</Text>
                                         {providerInfo.yearsExperience && (
-                                            <Text style={styles.providerDetail}>
-                                                {providerInfo.yearsExperience} yrs experience
+                                            <Text style={[styles.providerDetail, { color: theme.textSecondary }]}>
+                                                {providerInfo.yearsExperience} {t('myJobs.yearsExperience')}
                                             </Text>
                                         )}
                                     </View>
@@ -278,20 +282,20 @@ function MyJobsScreen(): React.JSX.Element {
                                         style={styles.rejectButton}
                                         onPress={() => handleRejectProvider(item.id)}
                                     >
-                                        <Text style={styles.rejectButtonText}>Reject</Text>
+                                        <Text style={styles.rejectButtonText}>{t('myJobs.reject')}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.approveButton}
                                         onPress={() => handleApproveProvider(item.id)}
                                     >
-                                        <Text style={styles.approveButtonText}>Approve</Text>
+                                        <Text style={styles.approveButtonText}>{t('myJobs.approve')}</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
                         )}
 
                         <View style={styles.jobFooter}>
-                            <Text style={styles.jobDate}>
+                            <Text style={[styles.jobDate, { color: theme.textSecondary }]}>
                                 {formatDate(item.createdAt)}
                             </Text>
                             {item.estimatedPrice > 0 && (
@@ -310,13 +314,13 @@ function MyJobsScreen(): React.JSX.Element {
     // ── Empty state ──────────────────────────
     const renderEmptyState = () => (
         <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>
-                {activeTab === 'active' ? 'No Active Jobs' : 'No Past Jobs'}
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
+                {activeTab === 'active' ? t('myJobs.noActiveJobs') : t('myJobs.noPastJobs')}
             </Text>
-            <Text style={styles.emptySubtext}>
+            <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
                 {activeTab === 'active'
-                    ? 'Book a service from the Home tab to get started.'
-                    : 'Your completed and cancelled jobs will appear here.'}
+                    ? t('myJobs.bookService')
+                    : t('myJobs.pastJobsAppear')}
             </Text>
         </View>
     );
@@ -327,7 +331,7 @@ function MyJobsScreen(): React.JSX.Element {
             <GlassBackground>
                 <View style={styles.loadingContainer}>
                     <AnimatedSpinner size={48} color={Colors.primary} />
-                    <Text style={styles.loadingText}>Loading jobs...</Text>
+                    <Text style={[styles.loadingText, { color: theme.textSecondary }]}>{t('myJobs.loadingJobs')}</Text>
                 </View>
             </GlassBackground>
         );
@@ -349,7 +353,7 @@ function MyJobsScreen(): React.JSX.Element {
                                 activeTab === 'active' && styles.tabTextActive,
                             ]}
                         >
-                            Active
+                            {t('myJobs.active')}
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -362,7 +366,7 @@ function MyJobsScreen(): React.JSX.Element {
                                 activeTab === 'history' && styles.tabTextActive,
                             ]}
                         >
-                            History
+                            {t('myJobs.history')}
                         </Text>
                     </TouchableOpacity>
                 </View>

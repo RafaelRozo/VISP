@@ -23,6 +23,8 @@ import {
   View,
 } from 'react-native';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
@@ -37,16 +39,16 @@ MapboxGL.setAccessToken(Config.mapboxAccessToken);
 // ---------------------------------------------------------------------------
 
 const DISTANCE_OPTIONS = [
-  { label: '< 5km', value: 5 },
-  { label: '< 10km', value: 10 },
-  { label: '< 25km', value: 25 },
-  { label: 'All', value: null },
+  { labelKey: 'jobOffers.under5km', value: 5 },
+  { labelKey: 'jobOffers.under10km', value: 10 },
+  { labelKey: 'jobOffers.under25km', value: 25 },
+  { labelKey: 'jobOffers.all', value: null },
 ] as const;
 
 const SORT_OPTIONS = [
-  { label: 'Expiring Soon', value: 'expiry' as const },
-  { label: 'Nearest', value: 'distance' as const },
-  { label: 'Highest Pay', value: 'price' as const },
+  { labelKey: 'jobOffers.expiringSoon', value: 'expiry' as const },
+  { labelKey: 'jobOffers.nearest', value: 'distance' as const },
+  { labelKey: 'jobOffers.highestPay', value: 'price' as const },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -95,7 +97,7 @@ function getRateBadgeText(level: string): string {
       return '$80-120/hr';
     case 3:
     case 4:
-      return 'Negotiate Price';
+      return 'Negotiate';
     default:
       return '';
   }
@@ -164,6 +166,7 @@ function ProposalModal({
   onSubmit,
   isSubmitting,
 }: ProposalModalProps): React.JSX.Element {
+  const { t } = useTranslation();
   const [priceText, setPriceText] = useState('');
   const [description, setDescription] = useState('');
 
@@ -181,7 +184,7 @@ function ProposalModal({
   const handleSubmit = () => {
     const dollars = parseFloat(priceText);
     if (isNaN(dollars) || dollars <= 0) {
-      Alert.alert('Invalid Price', 'Please enter a valid dollar amount.');
+      Alert.alert(t('jobOffers.invalidPrice'), t('jobOffers.enterValidAmount'));
       return;
     }
     onSubmit(Math.round(dollars * 100), description);
@@ -196,7 +199,7 @@ function ProposalModal({
     >
       <View style={modalStyles.overlay}>
         <View style={[GlassStyles.modal, modalStyles.content]}>
-          <Text style={modalStyles.title}>Propose Your Price</Text>
+          <Text style={modalStyles.title}>{t('jobOffers.proposePrice')}</Text>
           {offer && (
             <Text style={modalStyles.taskName}>{offer.task.name}</Text>
           )}
@@ -275,6 +278,8 @@ function OfferCard({
   const levelColor = getLevelColor(levelNum);
   const negotiated = isNegotiatedLevel(offer.task.level);
 
+  const theme = useTheme();
+  const { t } = useTranslation();
   const timerColor = timer.isExpired
     ? Colors.textTertiary
     : timer.minutes < 2
@@ -289,12 +294,12 @@ function OfferCard({
     const totalPrice = formatPrice(offer.pricing.quotedPriceCents);
     const yourPay = formatPrice(offer.pricing.estimatedPayoutCents);
     Alert.alert(
-      'Accept Offer',
+      t('jobOffers.accept'),
       `Accept "${offer.task.name}"?\n\nTotal: ${totalPrice}\nYour Pay: ${yourPay}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Accept',
+          text: t('jobOffers.accept'),
           onPress: () => onAccept(offer.jobId),
         },
       ],
@@ -303,12 +308,12 @@ function OfferCard({
 
   const handleDecline = useCallback(() => {
     Alert.alert(
-      'Decline Offer',
-      'Are you sure you want to decline this offer?',
+      t('jobOffers.reject'),
+      t('jobOffers.reject') + '?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Decline',
+          text: t('jobOffers.reject'),
           style: 'destructive',
           onPress: () => onDecline(offer.jobId),
         },
@@ -329,7 +334,7 @@ function OfferCard({
               {offer.task.name}
             </Text>
             <View style={styles.offerSubHeader}>
-              <Text style={styles.offerCategory} numberOfLines={1}>
+              <Text style={[styles.offerCategory, { color: theme.textSecondary }]} numberOfLines={1}>
                 {offer.task.categoryName ?? 'Service'} {'\u2022'} {offer.referenceNumber}
               </Text>
             </View>
@@ -375,13 +380,13 @@ function OfferCard({
         {/* Details */}
         <View style={styles.offerDetails}>
           <View style={styles.offerDetailItem}>
-            <Text style={styles.offerDetailLabel}>Location</Text>
+            <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>{t('jobOffers.location')}</Text>
             <Text style={styles.offerDetailValue} numberOfLines={1}>
               {offer.serviceCity ?? offer.serviceAddress}
             </Text>
           </View>
           <View style={styles.offerDetailItem}>
-            <Text style={styles.offerDetailLabel}>Distance</Text>
+            <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>{t('jobOffers.distance')}</Text>
             <Text style={styles.offerDetailValue}>
               {formatDistance(offer.distanceKm)}
             </Text>
@@ -389,13 +394,13 @@ function OfferCard({
           {!negotiated ? (
             <>
               <View style={styles.offerDetailItem}>
-                <Text style={styles.offerDetailLabel}>Total</Text>
+                <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>Total</Text>
                 <Text style={styles.offerDetailValue}>
                   {formatPrice(offer.pricing.quotedPriceCents)}
                 </Text>
               </View>
               <View style={styles.offerDetailItem}>
-                <Text style={styles.offerDetailLabel}>Your Pay</Text>
+                <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>Your Pay</Text>
                 <Text style={styles.offerPriceValue}>
                   {formatPrice(offer.pricing.estimatedPayoutCents)}
                 </Text>
@@ -403,7 +408,7 @@ function OfferCard({
             </>
           ) : (
             <View style={styles.offerDetailItem}>
-              <Text style={styles.offerDetailLabel}>Estimate</Text>
+              <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>Estimate</Text>
               <Text style={styles.offerDetailValue}>
                 {offer.pricing.quotedPriceCents
                   ? formatPrice(offer.pricing.quotedPriceCents)
@@ -416,7 +421,7 @@ function OfferCard({
         {/* Customer info */}
         {offer.customer.displayName && (
           <View style={styles.customerRow}>
-            <Text style={styles.customerLabel}>Customer:</Text>
+            <Text style={[styles.customerLabel, { color: theme.textSecondary }]}>Customer:</Text>
             <Text style={styles.customerValue}>
               {offer.customer.displayName}
               {offer.customer.rating ? ` \u2605${offer.customer.rating}` : ''}
@@ -468,7 +473,7 @@ function OfferCard({
         {/* Action buttons */}
         <View style={styles.offerActions}>
           <GlassButton
-            title={isProcessing ? '' : 'Decline'}
+            title={isProcessing ? '' : t('jobOffers.reject')}
             variant="outline"
             onPress={handleDecline}
             disabled={isProcessing || timer.isExpired}
@@ -478,7 +483,7 @@ function OfferCard({
 
           {negotiated ? (
             <GlassButton
-              title={timer.isExpired ? 'Expired' : 'Propose Price'}
+              title={timer.isExpired ? t('common.cancelled') : t('jobOffers.proposePrice')}
               variant="glow"
               onPress={() => onPropose(offer)}
               disabled={isProcessing || timer.isExpired}
@@ -486,7 +491,7 @@ function OfferCard({
             />
           ) : (
             <GlassButton
-              title={timer.isExpired ? 'Expired' : 'Accept'}
+              title={timer.isExpired ? t('common.cancelled') : t('jobOffers.accept')}
               variant="glow"
               onPress={handleAccept}
               disabled={isProcessing || timer.isExpired}
@@ -505,6 +510,8 @@ function OfferCard({
 // ---------------------------------------------------------------------------
 
 export default function JobOffersScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const {
     isLoadingOffers,
     fetchOffers,
@@ -579,10 +586,10 @@ export default function JobOffersScreen(): React.JSX.Element {
       setIsSubmittingProposal(true);
       try {
         await submitPriceProposal(proposalOffer.jobId, priceCents, description);
-        Alert.alert('Proposal Submitted', 'Your price proposal has been sent.');
+        Alert.alert(t('common.success'), t('jobOffers.proposePrice'));
         setProposalOffer(null);
       } catch {
-        Alert.alert('Error', 'Failed to submit proposal. Please try again.');
+        Alert.alert(t('common.error'), t('common.tryAgain'));
       } finally {
         setIsSubmittingProposal(false);
       }
@@ -623,14 +630,13 @@ export default function JobOffersScreen(): React.JSX.Element {
     if (isLoadingOffers) return null;
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>No Job Offers</Text>
-        <Text style={styles.emptySubtext}>
-          New offers will appear here when customers request services in your
-          area. Make sure you are online to receive offers.
+        <Text style={styles.emptyTitle}>{t('jobOffers.noJobOffers')}</Text>
+        <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
+          {t('jobOffers.newOffersAppear')}
         </Text>
       </View>
     );
-  }, [isLoadingOffers]);
+  }, [isLoadingOffers, t, theme]);
 
   return (
     <GlassBackground>
@@ -655,7 +661,7 @@ export default function JobOffersScreen(): React.JSX.Element {
                 !offerFilterCategory && styles.filterPillTextActive,
               ]}
             >
-              All Types
+              {t('jobOffers.allTypes')}
             </Text>
           </TouchableOpacity>
           {categories.map((cat) => (
@@ -688,7 +694,7 @@ export default function JobOffersScreen(): React.JSX.Element {
           >
             {DISTANCE_OPTIONS.map((opt) => (
               <TouchableOpacity
-                key={opt.label}
+                key={t(opt.labelKey)}
                 style={[
                   styles.filterChip,
                   offerFilterMaxDistance === opt.value && styles.filterChipActive,
@@ -702,7 +708,7 @@ export default function JobOffersScreen(): React.JSX.Element {
                       styles.filterChipTextActive,
                   ]}
                 >
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -724,7 +730,7 @@ export default function JobOffersScreen(): React.JSX.Element {
                     offerSortBy === opt.value && styles.filterChipTextActive,
                   ]}
                 >
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}

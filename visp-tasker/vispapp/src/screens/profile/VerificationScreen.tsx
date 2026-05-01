@@ -20,6 +20,8 @@ import {
   View,
 } from 'react-native';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { AnimatedSpinner, AnimatedCheckmark } from '../../components/animations';
@@ -333,6 +335,8 @@ const stepStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function VerificationScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const [steps, setSteps] = useState<VerificationStep[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [currentLevel, setCurrentLevel] = useState<ServiceLevel>(1);

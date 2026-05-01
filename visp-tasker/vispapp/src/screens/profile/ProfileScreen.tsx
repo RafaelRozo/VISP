@@ -21,6 +21,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
+import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import { AnimatedSpinner } from '../../components/animations';
@@ -47,18 +49,22 @@ type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, 'ProfileMain'
 // Helpers
 // ---------------------------------------------------------------------------
 
-const LEVEL_NAMES: Record<number, string> = {
-  1: 'Helper',
-  2: 'Experienced',
-  3: 'Certified Pro',
-  4: 'Emergency',
-};
+function getLevelNames(t: (k: string) => string): Record<number, string> {
+  return {
+    1: t('profileScreen.helper'),
+    2: t('profileScreen.experienced'),
+    3: t('profileScreen.certifiedPro'),
+    4: t('profileScreen.emergency'),
+  };
+}
 
-const ROLE_LABELS: Record<string, string> = {
-  customer: 'Customer',
-  provider: 'Service Provider',
-  both: 'Customer & Provider',
-};
+function getRoleLabels(t: (k: string) => string): Record<string, string> {
+  return {
+    customer: t('profileScreen.customer'),
+    provider: t('profileScreen.serviceProvider'),
+    both: t('profileScreen.customer') + ' & ' + t('profileScreen.serviceProvider'),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Avatar sub-component
@@ -77,6 +83,7 @@ function AvatarSection({
   lastName,
   onChangeAvatar,
 }: AvatarSectionProps): React.JSX.Element {
+  const { t } = useTranslation();
   const safeFirst = firstName || '?';
   const safeLast = lastName || '?';
   const initials = `${safeFirst.charAt(0)}${safeLast.charAt(0)}`.toUpperCase();
@@ -97,7 +104,7 @@ function AvatarSection({
         </View>
       )}
       <View style={avatarStyles.editBadge}>
-        <Text style={avatarStyles.editBadgeText}>Edit</Text>
+        <Text style={avatarStyles.editBadgeText}>{t('profileScreen.edit')}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -167,6 +174,8 @@ const INITIAL_LEVEL_PROGRESS: LevelProgressInfo = {
 };
 
 export default function ProfileScreen(): React.JSX.Element {
+  const theme = useTheme();
+  const { t } = useTranslation();
   const navigation = useNavigation<ProfileNav>();
 
   // Get real user data from stores
@@ -194,7 +203,7 @@ export default function ProfileScreen(): React.JSX.Element {
           isMet: completedJobs >= threshold,
         },
         {
-          label: 'Maintain 4.5+ rating',
+          label: t('profileScreen.edit'),
           description: `Current rating: ${rating.toFixed(1)}`,
           isMet: rating >= 4.5,
         },
@@ -242,7 +251,7 @@ export default function ProfileScreen(): React.JSX.Element {
     }
   }, [user]);
 
-  const isProvider = user?.role === 'provider' || user?.role === 'both';
+  const isProvider = user?.role === 'provider';
 
   if (!user) {
     return (
@@ -255,10 +264,10 @@ export default function ProfileScreen(): React.JSX.Element {
   }
 
   const handleChangeAvatar = useCallback(() => {
-    Alert.alert('Change Photo', 'Choose a source for your profile photo.', [
-      { text: 'Camera', onPress: () => { } },
-      { text: 'Photo Library', onPress: () => { } },
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('profileScreen.edit'), t('profileScreen.edit'), [
+      { text: t('profileScreen.edit'), onPress: () => { } },
+      { text: t('profileScreen.edit'), onPress: () => { } },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   }, []);
 
@@ -280,7 +289,7 @@ export default function ProfileScreen(): React.JSX.Element {
       });
       setIsEditing(false);
     } catch {
-      Alert.alert('Error', 'Failed to update profile. Please try again.');
+      Alert.alert(t('common.error'), t('common.tryAgain'));
     } finally {
       setIsSaving(false);
     }
@@ -368,24 +377,24 @@ export default function ProfileScreen(): React.JSX.Element {
         {},
       );
       Alert.alert(
-        'Add Payment Method',
+        t('profileScreen.paymentMethods'),
         'To add a card, Stripe SDK integration is required.\n\n'
         + 'SetupIntent created successfully.\n'
         + `Customer ID: ${res.customerId}`,
-        [{ text: 'OK' }],
+        [{ text: t('common.ok') }],
       );
     } catch {
-      Alert.alert('Error', 'Failed to initialize card setup.');
+      Alert.alert(t('common.error'), t('common.tryAgain'));
     } finally {
       setIsAddingCard(false);
     }
   }, []);
 
   const handleLogout = useCallback(() => {
-    Alert.alert('Logout', 'Are you sure you want to log out?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('profileScreen.logout'), t('profileScreen.logoutConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Logout',
+        text: t('profileScreen.logout'),
         style: 'destructive',
         onPress: () => {
           logout();
@@ -414,7 +423,7 @@ export default function ProfileScreen(): React.JSX.Element {
           {isEditing ? (
             <View>
               <GlassInput
-                label="First Name"
+                label={t('auth.firstName')}
                 value={editFirstName}
                 onChangeText={setEditFirstName}
                 placeholder="First name"
@@ -422,14 +431,14 @@ export default function ProfileScreen(): React.JSX.Element {
                 containerStyle={{ marginBottom: 12 }}
               />
               <GlassInput
-                label="Last Name"
+                label={t('auth.lastName')}
                 value={editLastName}
                 onChangeText={setEditLastName}
                 placeholder="Last name"
                 autoCapitalize="words"
                 containerStyle={{ marginBottom: 12 }}
               />
-              <Text style={styles.fieldLabel}>Phone</Text>
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{t('profileScreen.phone')}</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity
                   style={styles.countryCodeButton}
@@ -443,7 +452,7 @@ export default function ProfileScreen(): React.JSX.Element {
                       { label: '+57 CO', value: '+57' },
                       { label: '+54 AR', value: '+54' },
                     ];
-                    Alert.alert('Select Country Code', '', codes.map(c => ({
+                    Alert.alert(t('auth.selectCountryCode'), '', codes.map(c => ({
                       text: c.label,
                       onPress: () => setCountryCode(c.value),
                     })));
@@ -505,7 +514,7 @@ export default function ProfileScreen(): React.JSX.Element {
               <View style={styles.roleBadgesRow}>
                 <View style={[GlassStyles.badge]}>
                   <Text style={styles.roleBadgeText}>
-                    {ROLE_LABELS[user.role]}
+                    {getRoleLabels(t)[user.role]}
                   </Text>
                 </View>
                 {user.isVerified && (
@@ -533,21 +542,21 @@ export default function ProfileScreen(): React.JSX.Element {
         {/* Contact info */}
         <GlassCard variant="standard" style={styles.glassCardMargin}>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Email</Text>
+            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('profileScreen.email')}</Text>
             <Text style={styles.infoValue}>{user.email}</Text>
           </View>
           <View style={styles.glassDivider} />
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Phone</Text>
+            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('profileScreen.phone')}</Text>
             <Text style={styles.infoValue}>
-              {user.phone ?? 'Not provided'}
+              {user.phone ?? t('profileScreen.noAddress')}
             </Text>
           </View>
           <View style={styles.glassDivider} />
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Member Since</Text>
+            <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>{t('profileScreen.memberSince')}</Text>
             <Text style={styles.infoValue}>
-              {new Date(user.createdAt).toLocaleDateString([], {
+              {new Date(user.createdAt).toLocaleDateString(t('common.ok') === 'OK' ? 'en-CA' : 'fr-CA', {
                 year: 'numeric',
                 month: 'long',
               })}
@@ -558,13 +567,13 @@ export default function ProfileScreen(): React.JSX.Element {
         {/* Saved Address */}
         <GlassCard variant="standard" style={styles.glassCardMargin}>
           <View style={styles.nameRow}>
-            <Text style={styles.sectionLabel}>Saved Address</Text>
+            <Text style={styles.sectionLabel}>{t('profileScreen.savedAddress')}</Text>
             <TouchableOpacity
               onPress={() => setIsEditingAddress(!isEditingAddress)}
               accessibilityRole="button"
             >
               <Text style={styles.editLink}>
-                {user.defaultAddress ? 'Change' : 'Add'}
+                {user.defaultAddress ? t('profileScreen.change') : t('profileScreen.edit')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -574,7 +583,7 @@ export default function ProfileScreen(): React.JSX.Element {
               <Text style={[styles.infoValue, { marginBottom: 2 }]}>
                 {user.defaultAddress.formattedAddress || user.defaultAddress.street}
               </Text>
-              <Text style={styles.infoLabel}>
+              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>
                 {user.defaultAddress.city}{user.defaultAddress.province ? `, ${user.defaultAddress.province}` : ''}
                 {user.defaultAddress.postalCode ? ` ${user.defaultAddress.postalCode}` : ''}
               </Text>
@@ -633,8 +642,8 @@ export default function ProfileScreen(): React.JSX.Element {
               onPress={() => navigation.navigate('ProviderOnboarding')}
               accessibilityRole="button"
             >
-              <Text style={styles.linkText}>My Services</Text>
-              <Text style={styles.linkArrow}>{'\u203A'}</Text>
+              <Text style={styles.linkText}>{t('profileScreen.myServices')}</Text>
+              <Text style={[styles.linkArrow, { color: theme.textSecondary }]}>{'\u203A'}</Text>
             </TouchableOpacity>
             <View style={styles.glassDivider} />
             <TouchableOpacity
@@ -642,8 +651,8 @@ export default function ProfileScreen(): React.JSX.Element {
               onPress={() => navigation.navigate('Credentials')}
               accessibilityRole="button"
             >
-              <Text style={styles.linkText}>Credentials & Documents</Text>
-              <Text style={styles.linkArrow}>{'\u203A'}</Text>
+              <Text style={styles.linkText}>{t('profileScreen.credentials')}</Text>
+              <Text style={[styles.linkArrow, { color: theme.textSecondary }]}>{'\u203A'}</Text>
             </TouchableOpacity>
             <View style={styles.glassDivider} />
             <TouchableOpacity
@@ -651,8 +660,8 @@ export default function ProfileScreen(): React.JSX.Element {
               onPress={() => navigation.navigate('Verification')}
               accessibilityRole="button"
             >
-              <Text style={styles.linkText}>Verification Status</Text>
-              <Text style={styles.linkArrow}>{'\u203A'}</Text>
+              <Text style={styles.linkText}>{t('profileScreen.verification')}</Text>
+              <Text style={[styles.linkArrow, { color: theme.textSecondary }]}>{'\u203A'}</Text>
             </TouchableOpacity>
           </GlassCard>
         )}
@@ -664,8 +673,8 @@ export default function ProfileScreen(): React.JSX.Element {
             onPress={() => navigation.navigate('PaymentMethods')}
             accessibilityRole="button"
           >
-            <Text style={styles.linkText}>Payment Methods</Text>
-            <Text style={styles.linkArrow}>{'\u203A'}</Text>
+            <Text style={styles.linkText}>{t('profileScreen.paymentMethods')}</Text>
+            <Text style={[styles.linkArrow, { color: theme.textSecondary }]}>{'\u203A'}</Text>
           </TouchableOpacity>
           <View style={styles.glassDivider} />
           <TouchableOpacity
@@ -673,14 +682,14 @@ export default function ProfileScreen(): React.JSX.Element {
             onPress={() => navigation.navigate('Settings')}
             accessibilityRole="button"
           >
-            <Text style={styles.linkText}>Settings</Text>
-            <Text style={styles.linkArrow}>{'\u203A'}</Text>
+            <Text style={styles.linkText}>{t('profileScreen.settings')}</Text>
+            <Text style={[styles.linkArrow, { color: theme.textSecondary }]}>{'\u203A'}</Text>
           </TouchableOpacity>
         </GlassCard>
 
         {/* Logout */}
         <GlassButton
-          title="Logout"
+          title={t('profileScreen.logout')}
           variant="outline"
           onPress={handleLogout}
           style={styles.logoutButton}

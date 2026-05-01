@@ -287,7 +287,7 @@ class ScheduleOut(BaseModel):
 
 class CredentialOut(BaseModel):
     """A provider credential record."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     credential_type: str = Field(alias="credentialType")
@@ -325,6 +325,8 @@ class BackgroundCheckOut(BaseModel):
 
 class CredentialsSummaryOut(BaseModel):
     """All provider credentials, insurance, and background check info."""
+    model_config = ConfigDict(populate_by_name=True)
+
     credentials: list[CredentialOut] = Field(default_factory=list)
     insurances: list[InsurancePolicyOut] = Field(default_factory=list)
     background_check: BackgroundCheckOut = Field(alias="backgroundCheck")
