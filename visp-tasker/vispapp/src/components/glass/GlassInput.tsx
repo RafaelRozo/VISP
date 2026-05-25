@@ -45,6 +45,9 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
       style,
       onFocus,
       onBlur,
+      onChange,
+      onChangeText,
+      value,
       ...rest
     },
     ref,
@@ -67,6 +70,24 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
       [onBlur],
     );
 
+    // iOS Contact AutoFill fills the native TextInput but doesn't always fire
+    // `onChangeText`, leaving the React state empty while the field looks
+    // populated. Listening to `onChange` (which Apple fires reliably for
+    // autofill) and forwarding the value through `onChangeText` makes the
+    // controlled input mirror the autofilled text. We compare against the
+    // current `value` prop to avoid re-emitting when both events fire for
+    // a user-typed character.
+    const handleChange = useCallback(
+      (e: any) => {
+        const text = e?.nativeEvent?.text;
+        if (typeof text === 'string' && text !== value) {
+          onChangeText?.(text);
+        }
+        onChange?.(e);
+      },
+      [onChange, onChangeText, value],
+    );
+
     return (
       <View style={containerStyle}>
         {label && <Text style={styles.label}>{label}</Text>}
@@ -83,6 +104,9 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
           <TextInput
             ref={ref}
             {...rest}
+            value={value}
+            onChange={handleChange}
+            onChangeText={onChangeText}
             style={styles.textInput}
             placeholderTextColor="rgba(255, 255, 255, 0.35)"
             onFocus={handleFocus}

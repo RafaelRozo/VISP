@@ -10,6 +10,29 @@ export interface PendingCredential {
     credentialId: string | null;
 }
 
+export interface PayoutsSetupResponse {
+    accountId: string;
+    onboardingUrl: string;
+}
+
+export interface PayoutsStatus {
+    connected: boolean;
+    accountId: string | null;
+    detailsSubmitted: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    transfersCapability: 'active' | 'inactive' | 'pending' | 'unknown';
+    disabledReason: string | null;
+    requirementsDue: string[];
+}
+
+/** Backend returns this body when the provider profile is missing fields. */
+export interface ProfileIncompleteError {
+    code: 'profile_incomplete';
+    missing: Array<'street' | 'city' | 'province' | 'postalCode'>;
+    message: string;
+}
+
 export const providerService = {
     /**
      * Update the provider's list of qualified services.
@@ -45,5 +68,21 @@ export const providerService = {
         }
 
         await upload('/provider/credentials', formData);
+    },
+
+    /**
+     * Start (or continue) Stripe Connect onboarding for the authenticated provider.
+     * Backend creates the connected account if missing and persists the account id.
+     * Returns a fresh onboarding URL that can be opened with Linking.openURL.
+     */
+    setupPayouts: async (): Promise<PayoutsSetupResponse> => {
+        return await post<PayoutsSetupResponse>('/provider/payouts/setup', {});
+    },
+
+    /**
+     * Check whether the provider's Stripe Connect account is fully active.
+     */
+    getPayoutsStatus: async (): Promise<PayoutsStatus> => {
+        return await get<PayoutsStatus>('/provider/payouts/status');
     },
 };

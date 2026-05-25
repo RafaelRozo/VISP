@@ -16,7 +16,6 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -35,6 +34,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { Config } from '../../services/config';
 import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import type { RootStackParamList, UserRole } from '../../types';
+import TermsScreen from '../profile/TermsScreen';
+import PrivacyPolicyScreen from '../profile/PrivacyPolicyScreen';
 
 // ──────────────────────────────────────────────
 // Types
@@ -182,6 +183,11 @@ const ROLE_OPTIONS: RoleOption[] = [
     title: 'Service Provider',
     description: 'I want to earn money providing services',
   },
+  {
+    value: 'both',
+    title: 'Both',
+    description: 'I want to request services and also provide them',
+  },
 ];
 
 // ──────────────────────────────────────────────
@@ -221,7 +227,15 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   // Track previous password length to detect autofill (jumps from 0/short to long)
   const prevPasswordLenRef = useRef(0);
 
-  const { register, isLoading, error, clearError } = useAuthStore();
+  const { register, isLoading, error, clearError, commitPendingRegistration } =
+    useAuthStore();
+
+  // Modal state for inline legal docs
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
+  // Recovery code shown after successful registration
+  const [recoveryCodeToShow, setRecoveryCodeToShow] = useState<string | null>(null);
 
   // ── Entry Animation ────────────────────────
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -341,7 +355,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     Keyboard.dismiss();
 
     try {
-      await register({
+      const code = await register({
         email: email.trim().toLowerCase(),
         phone: `${selectedCountry.dial}${phone.replace(/\D/g, '')}`,
         password,
@@ -350,9 +364,16 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
         role: selectedRole,
         acceptedTermsVersion: Config.termsVersion,
       });
-      // On success, the auth store sets isAuthenticated = true,
-      // and the navigator will redirect to the appropriate home screen.
-      // Providers land on the Dashboard which shows a setup prompt.
+      // Show recovery code modal first. The auth store deferred applying
+      // the auth response into `pendingRegistration`, so the navigator
+      // stays here until the user acknowledges the code.
+      if (code) {
+        setRecoveryCodeToShow(code);
+      } else {
+        // No code returned (shouldn't happen for a real register, but
+        // don't strand the user on the form).
+        commitPendingRegistration();
+      }
     } catch {
       // Error is displayed by the store
     }
@@ -361,11 +382,11 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   // ── Legal Links ──────────────────────────
 
   const handleOpenTerms = useCallback(() => {
-    Linking.openURL('https://vispapp.com/legal/terms');
+    setShowTermsModal(true);
   }, []);
 
   const handleOpenPrivacy = useCallback(() => {
-    Linking.openURL('https://vispapp.com/legal/privacy');
+    setShowPrivacyModal(true);
   }, []);
 
   // ── Step Validity ────────────────────────
@@ -878,9 +899,144 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Local legal docs (no external browser) */}
+      <Modal
+        visible={showTermsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTermsModal(false)}
+      >
+        <View style={legalModalStyles.header}>
+          <TouchableOpacity onPress={() => setShowTermsModal(false)}>
+            <Text style={legalModalStyles.closeText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+        <TermsScreen />
+      </Modal>
+
+      <Modal
+        visible={showPrivacyModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPrivacyModal(false)}
+      >
+        <View style={legalModalStyles.header}>
+          <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
+            <Text style={legalModalStyles.closeText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+        <PrivacyPolicyScreen />
+      </Modal>
+
+      {/* Recovery code reveal after successful registration */}
+      <Modal
+        visible={recoveryCodeToShow !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setRecoveryCodeToShow(null);
+          commitPendingRegistration();
+        }}
+      >
+        <View style={recoveryModalStyles.backdrop}>
+          <View style={recoveryModalStyles.card}>
+            <Text style={recoveryModalStyles.title}>Save your recovery code</Text>
+            <Text style={recoveryModalStyles.subtitle}>
+              This is the ONLY way to reset your password if you forget it.
+              Write it down or take a screenshot. You can view it again later
+              from Settings.
+            </Text>
+            <View style={recoveryModalStyles.codeBox}>
+              <Text selectable style={recoveryModalStyles.codeText}>
+                {recoveryCodeToShow}
+              </Text>
+            </View>
+            <Text style={recoveryModalStyles.hint}>
+              Long-press the code to copy.
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setRecoveryCodeToShow(null);
+                commitPendingRegistration();
+              }}
+              style={recoveryModalStyles.btn}
+            >
+              <Text style={recoveryModalStyles.btnText}>I have saved it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </GlassBackground>
   );
 }
+
+const recoveryModalStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  card: {
+    backgroundColor: 'rgba(20,20,40,0.95)',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  title: { fontSize: 22, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  subtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.65)',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  codeBox: {
+    backgroundColor: 'rgba(120,80,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(120,80,255,0.5)',
+    borderRadius: 14,
+    paddingVertical: 20,
+    marginBottom: 10,
+  },
+  codeText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: 24,
+    color: '#fff',
+    letterSpacing: 5,
+    textAlign: 'center',
+  },
+  hint: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  btn: {
+    backgroundColor: 'rgba(120,80,255,0.9)',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});
+
+const legalModalStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: Colors.background,
+  },
+  closeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+});
 
 // ──────────────────────────────────────────────
 // Styles

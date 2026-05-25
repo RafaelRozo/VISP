@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setOnTokenRefreshFailed } from '../services/apiClient';
 import { authService } from '../services/authService';
 import { notificationService } from '../services/notificationService';
@@ -16,6 +17,14 @@ import type {
   User,
   UserRole,
 } from '../types';
+
+export type ActiveMode = 'customer' | 'provider';
+const ACTIVE_MODE_STORAGE_KEY = '@visp:activeMode';
+
+function defaultModeForRole(role: UserRole): ActiveMode {
+  // 'both' users default to customer mode until they switch
+  return role === 'provider' ? 'provider' : 'customer';
+}
 
 // ──────────────────────────────────────────────
 // State Shape
@@ -40,9 +49,24 @@ interface AuthState {
   /** Most recent auth error message, cleared on next action. */
   error: string | null;
 
+  /**
+   * For 'both' users, which side of the app is currently active.
+   * For single-role users this mirrors their role.
+   */
+  activeMode: ActiveMode;
+
+  /**
+   * After a successful registration we hold the full auth response here
+   * (instead of applying it immediately) so the screen can show the
+   * recovery code modal before the navigator switches stacks. Call
+   * `commitPendingRegistration()` once the user acknowledges the code.
+   */
+  pendingRegistration: AuthResponse | null;
+
   // ── Actions ──────────────────────────────
   login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<string | null>;
+  commitPendingRegistration: () => void;
   loginWithApple: (identityToken: string) => Promise<void>;
   loginWithGoogle: (serverAuthCode: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
@@ -50,6 +74,7 @@ interface AuthState {
   loadStoredAuth: () => Promise<void>;
   demoLogin: (role: UserRole) => void;
   setUser: (user: User) => void;
+  setActiveMode: (mode: ActiveMode) => Promise<void>;
   clearError: () => void;
 }
 
@@ -60,13 +85,23 @@ interface AuthState {
 function applyAuthResponse(
   set: (partial: Partial<AuthState>) => void,
   response: AuthResponse,
+  storedMode: ActiveMode | null = null,
 ): void {
+  const role = response.user.role;
+  // Honor stored mode only if it's a valid choice for this user's role.
+  const allowed: ActiveMode[] =
+    role === 'both' ? ['customer', 'provider'] : [defaultModeForRole(role)];
+  const mode: ActiveMode =
+    storedMode && allowed.includes(storedMode)
+      ? storedMode
+      : defaultModeForRole(role);
   set({
     user: response.user,
     token: response.tokens.accessToken,
     isAuthenticated: true,
     isLoading: false,
     error: null,
+    activeMode: mode,
   });
 }
 
@@ -109,6 +144,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
     isLoading: false,
     isRestoring: true,
     error: null,
+    activeMode: 'customer',
+    pendingRegistration: null,
 
     // ── Login ──────────────────────────────
     login: async (credentials: LoginCredentials) => {
@@ -128,19 +165,28 @@ export const useAuthStore = create<AuthState>((set, get) => {
     },
 
     // ── Register ───────────────────────────
-    register: async (data: RegisterData) => {
+    register: async (data: RegisterData): Promise<string | null> => {
       set({ isLoading: true, error: null });
       try {
         const response = await authService.register(data);
-        applyAuthResponse(set, response);
-        // Initialize push notifications after successful registration
-        notificationService.initialize().catch(console.warn);
+        // Hold the response in pendingRegistration. The auth state is NOT
+        // applied yet so the navigator stays on the auth stack while the
+        // screen shows the recovery code modal. Once the user dismisses it,
+        // commitPendingRegistration() applies the auth and the navigator
+        // switches.
+        set({ isLoading: false, pendingRegistration: response });
+        return response.recoveryCode ?? null;
       } catch (err) {
         const statusCode = extractStatusCode(err);
         let errorMessage = extractErrorMessage(err);
-        // Provide a user-friendly message for duplicate email
+        // Provide a user-friendly message for duplicate email/phone (409)
         if (statusCode === 409) {
-          errorMessage = 'This email is already registered. Please sign in with your existing account.';
+          const detail = errorMessage.toLowerCase();
+          if (detail.includes('phone')) {
+            errorMessage = 'This phone number is already registered. Please use a different number or sign in.';
+          } else if (detail.includes('email')) {
+            errorMessage = 'This email is already registered. Please sign in with your existing account.';
+          }
         }
         set({
           isLoading: false,
@@ -148,6 +194,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
         });
         throw err;
       }
+    },
+
+    // ── Commit deferred registration ───────
+    commitPendingRegistration: () => {
+      const response = get().pendingRegistration;
+      if (!response) return;
+      applyAuthResponse(set, response);
+      set({ pendingRegistration: null });
+      notificationService.initialize().catch(console.warn);
     },
 
     // ── Apple Sign In ──────────────────────
@@ -221,14 +276,25 @@ export const useAuthStore = create<AuthState>((set, get) => {
     loadStoredAuth: async () => {
       set({ isRestoring: true });
       try {
-        const stored = await authService.loadStoredAuth();
+        const [stored, storedModeRaw] = await Promise.all([
+          authService.loadStoredAuth(),
+          AsyncStorage.getItem(ACTIVE_MODE_STORAGE_KEY).catch(() => null),
+        ]);
         if (stored) {
+          const role = stored.user.role;
+          const allowed: ActiveMode[] =
+            role === 'both' ? ['customer', 'provider'] : [defaultModeForRole(role)];
+          const mode: ActiveMode =
+            storedModeRaw && allowed.includes(storedModeRaw as ActiveMode)
+              ? (storedModeRaw as ActiveMode)
+              : defaultModeForRole(role);
           set({
             user: stored.user,
             token: stored.tokens.accessToken,
             isAuthenticated: true,
             isRestoring: false,
             error: null,
+            activeMode: mode,
           });
           // Re-initialize push notifications on session restore
           notificationService.initialize().catch(console.warn);
@@ -252,12 +318,28 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
     // ── Demo Login (MVP testing) ───────────
     demoLogin: (role: UserRole) => {
+      const demoId =
+        role === 'customer'
+          ? 'demo-customer-001'
+          : role === 'provider'
+          ? 'demo-provider-001'
+          : 'demo-both-001';
+      const demoEmail =
+        role === 'customer'
+          ? 'jane@demo.com'
+          : role === 'provider'
+          ? 'mike@demo.com'
+          : 'alex@demo.com';
+      const demoFirst =
+        role === 'customer' ? 'Jane' : role === 'provider' ? 'Mike' : 'Alex';
+      const demoLast =
+        role === 'customer' ? 'Smith' : role === 'provider' ? 'Johnson' : 'Garcia';
       const demoUser: User = {
-        id: role === 'customer' ? 'demo-customer-001' : 'demo-provider-001',
-        email: role === 'customer' ? 'jane@demo.com' : 'mike@demo.com',
+        id: demoId,
+        email: demoEmail,
         phone: null,
-        firstName: role === 'customer' ? 'Jane' : 'Mike',
-        lastName: role === 'customer' ? 'Smith' : 'Johnson',
+        firstName: demoFirst,
+        lastName: demoLast,
         role,
         avatarUrl: null,
         isVerified: true,
@@ -271,12 +353,28 @@ export const useAuthStore = create<AuthState>((set, get) => {
         isLoading: false,
         isRestoring: false,
         error: null,
+        activeMode: defaultModeForRole(role),
       });
     },
 
     // ── Set User (manual update) ───────────
     setUser: (user: User) => {
       set({ user });
+    },
+
+    // ── Set active mode (for 'both' users) ─
+    setActiveMode: async (mode: ActiveMode) => {
+      const role = get().user?.role;
+      // No-op if user can't operate in that mode
+      if (role && role !== 'both' && defaultModeForRole(role) !== mode) {
+        return;
+      }
+      set({ activeMode: mode });
+      try {
+        await AsyncStorage.setItem(ACTIVE_MODE_STORAGE_KEY, mode);
+      } catch {
+        // best-effort persistence
+      }
     },
 
     // ── Clear Error ────────────────────────

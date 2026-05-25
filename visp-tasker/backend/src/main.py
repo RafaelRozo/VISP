@@ -13,8 +13,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
 
@@ -91,6 +94,7 @@ async def health():
 # ---------------------------------------------------------------------------
 
 from src.api.routes import (  # noqa: E402
+    admin,
     auth,
     categories,
     chat,
@@ -105,6 +109,7 @@ from src.api.routes import (  # noqa: E402
     proposals,
     providers,
     scoring,
+    stripe_redirect,
     tasks,
     tips,
     users,
@@ -131,6 +136,22 @@ app.include_router(chat.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
 app.include_router(geolocation.router, prefix=_prefix)
 app.include_router(users.router, prefix=_prefix)
+app.include_router(admin.router, prefix=_prefix)
+
+# Public HTML redirect pages (no /api/v1 prefix — Stripe redirects users here)
+app.include_router(stripe_redirect.router)
+
+
+# ---------------------------------------------------------------------------
+# Mount static uploads directory (avatars, etc.)
+# ---------------------------------------------------------------------------
+# Served at /uploads/<path>. Files are written by upload endpoints under
+# backend/uploads/. The directory is created on demand.
+# ---------------------------------------------------------------------------
+
+_uploads_dir = Path(__file__).resolve().parent.parent / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
 # ---------------------------------------------------------------------------

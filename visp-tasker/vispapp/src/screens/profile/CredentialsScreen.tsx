@@ -203,6 +203,11 @@ export default function CredentialsScreen(): React.JSX.Element {
   const handlePendingUpload = useCallback(
     async (item: PendingCredential) => {
       try {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
+          return;
+        }
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           allowsMultipleSelection: false,
@@ -248,6 +253,11 @@ export default function CredentialsScreen(): React.JSX.Element {
     async (preselectedType?: CredentialType) => {
       const performUpload = async (type: CredentialType) => {
         try {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
+            return;
+          }
           const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsMultipleSelection: false,

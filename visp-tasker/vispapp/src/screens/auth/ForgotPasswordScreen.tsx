@@ -1,10 +1,8 @@
 /**
- * VISP - Forgot Password Screen
+ * VISP - Forgot Password Screen (offline recovery code flow).
  *
- * Collects the user's email and requests a password reset link.
- * Shows a success state after the request is sent.
- *
- * Styled with dark glassmorphism design system.
+ * Step 1: user enters email + recovery code + new password.
+ * Step 2: on success, shows the freshly-rotated recovery code.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -15,84 +13,103 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Typography, BorderRadius } from '../../theme';
-import { GlassStyles } from '../../theme';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import {
+  GlassBackground,
+  GlassCard,
+  GlassButton,
+  GlassInput,
+} from '../../components/glass';
 import { AnimatedCheckmark } from '../../components/animations';
+import { userService } from '../../services/userService';
 import { useAuthStore } from '../../stores/authStore';
 import type { RootStackParamList } from '../../types';
 
-// ──────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────
-
 type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
-
-// ──────────────────────────────────────────────
-// Validation
-// ──────────────────────────────────────────────
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ──────────────────────────────────────────────
-// Component
-// ──────────────────────────────────────────────
-
 function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
+  const login = useAuthStore((s) => s.login);
   const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [isSuccess, setIsSuccess] = useState(false);
-
-  const { forgotPassword, isLoading, error, clearError } = useAuthStore();
-
-  // ── Handlers ─────────────────────────────
-
-  const handleEmailChange = useCallback(
-    (text: string) => {
-      setEmail(text);
-      if (error) clearError();
-      if (emailError) setEmailError(null);
-    },
-    [error, emailError, clearError],
-  );
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [newCode, setNewCode] = useState<string | null>(null);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   const handleSubmit = useCallback(async () => {
     Keyboard.dismiss();
+    setError(null);
 
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setEmailError('Email is required');
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedCode = code.trim().toUpperCase();
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setError('Enter a valid email address.');
       return;
     }
-    if (!EMAIL_REGEX.test(trimmed)) {
-      setEmailError('Enter a valid email address');
+    if (trimmedCode.length < 8) {
+      setError('Recovery code is too short.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.');
       return;
     }
 
+    setIsLoading(true);
     try {
-      await forgotPassword(trimmed.toLowerCase());
-      setIsSuccess(true);
-    } catch {
-      // Error handled by the store
+      const rotated = await userService.recoverPassword(
+        trimmedEmail,
+        trimmedCode,
+        password,
+      );
+      setResetEmail(trimmedEmail);
+      setResetPassword(password);
+      setNewCode(rotated);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.detail ??
+        err?.message ??
+        'Could not reset your password.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
     }
-  }, [email, forgotPassword]);
+  }, [email, code, password, confirm]);
 
-  const handleBackToLogin = useCallback(() => {
-    navigation.navigate('Login');
-  }, [navigation]);
+  const handleContinue = useCallback(async () => {
+    setSignInError(null);
+    setIsSigningIn(true);
+    try {
+      await login({ email: resetEmail, password: resetPassword });
+      // The root navigator switches stacks automatically when auth state
+      // becomes authenticated; no manual navigate() needed.
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.detail ??
+        err?.message ??
+        'Could not sign in with the new password.';
+      setSignInError(msg);
+      setIsSigningIn(false);
+    }
+  }, [login, resetEmail, resetPassword]);
 
-  // ── Derived ──────────────────────────────
-
-  const isFormValid = EMAIL_REGEX.test(email.trim());
-
-  // ── Success State ────────────────────────
-
-  if (isSuccess) {
+  if (newCode) {
     return (
       <GlassBackground>
         <View style={styles.successContainer}>
@@ -100,40 +117,36 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
             <View style={styles.successIconContainer}>
               <AnimatedCheckmark size={64} />
             </View>
-            <Text style={styles.successTitle}>Check your email</Text>
+            <Text style={styles.successTitle}>Password updated</Text>
             <Text style={styles.successMessage}>
-              We sent a password reset link to{'\n'}
-              <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
+              Save your new recovery code below. The old one no longer works.
             </Text>
-            <Text style={styles.successHint}>
-              If you do not see the email, check your spam folder. The link
-              expires in 30 minutes.
-            </Text>
+
+            <View style={styles.codeBox}>
+              <Text selectable style={styles.codeText}>{newCode}</Text>
+            </View>
+
+            <Text style={styles.copyHint}>Long-press the code to copy.</Text>
+
+            {signInError ? (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>{signInError}</Text>
+              </View>
+            ) : null}
 
             <GlassButton
-              title="Back to Sign In"
+              title="Continue"
               variant="glow"
-              onPress={handleBackToLogin}
+              onPress={handleContinue}
+              loading={isSigningIn}
+              disabled={isSigningIn}
               style={styles.successBackButton}
             />
-
-            <TouchableOpacity
-              style={styles.resendButton}
-              onPress={() => {
-                setIsSuccess(false);
-              }}
-            >
-              <Text style={styles.resendText}>
-                Did not receive it? Try again
-              </Text>
-            </TouchableOpacity>
           </GlassCard>
         </View>
       </GlassBackground>
     );
   }
-
-  // ── Form State ───────────────────────────
 
   return (
     <GlassBackground>
@@ -147,7 +160,6 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Back Button */}
           <GlassButton
             title="Back"
             variant="outline"
@@ -156,82 +168,96 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
             style={styles.backButton}
           />
 
-          {/* Header */}
           <Text style={styles.title}>Reset your password</Text>
           <Text style={styles.subtitle}>
-            Enter the email address associated with your account, and we will send
-            you a link to reset your password.
+            Enter your email, the 12-character recovery code you saved when you
+            signed up, and a new password.
           </Text>
 
-          {/* Form Card */}
           <GlassCard variant="dark" padding={24} style={styles.formCard}>
-            {/* Server Error */}
             {error ? (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorBannerText}>{error}</Text>
               </View>
             ) : null}
 
-            {/* Email Field */}
             <GlassInput
               label="Email"
               value={email}
-              onChangeText={handleEmailChange}
+              onChangeText={setEmail}
               placeholder="you@example.com"
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="email"
               textContentType="emailAddress"
-              returnKeyType="send"
-              onSubmitEditing={handleSubmit}
+              returnKeyType="next"
               editable={!isLoading}
               autoFocus
-              error={emailError ?? undefined}
               containerStyle={styles.inputContainer}
             />
 
-            {/* Submit Button */}
+            <GlassInput
+              label="Recovery code"
+              value={code}
+              onChangeText={(t) => setCode(t.toUpperCase())}
+              placeholder="ABCDEFGH2345"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={20}
+              editable={!isLoading}
+              containerStyle={styles.inputContainer}
+            />
+
+            <GlassInput
+              label="New password"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="At least 8 characters"
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="new-password"
+              textContentType="newPassword"
+              editable={!isLoading}
+              containerStyle={styles.inputContainer}
+            />
+
+            <GlassInput
+              label="Confirm new password"
+              value={confirm}
+              onChangeText={setConfirm}
+              placeholder="Repeat your new password"
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="new-password"
+              textContentType="newPassword"
+              editable={!isLoading}
+              containerStyle={styles.inputContainer}
+            />
+
             <GlassButton
-              title="Send Reset Link"
+              title="Reset password"
               variant="glow"
               onPress={handleSubmit}
-              disabled={!isFormValid || isLoading}
+              disabled={isLoading}
               loading={isLoading}
               style={styles.submitButton}
             />
           </GlassCard>
-
-          {/* Back to Login */}
-          <GlassButton
-            title="Back to Sign In"
-            variant="outline"
-            onPress={handleBackToLogin}
-            disabled={isLoading}
-            style={styles.loginLinkButton}
-          />
         </ScrollView>
       </KeyboardAvoidingView>
     </GlassBackground>
   );
 }
 
-// ──────────────────────────────────────────────
-// Styles
-// ──────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
+  flex: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.xxl,
     paddingTop: Spacing.xxxl,
     paddingBottom: Spacing.xxxl,
   },
-
-  // ── Back ───────────────────────────────
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: Spacing.xxl,
@@ -239,26 +265,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     minHeight: 36,
   },
-
-  // ── Header ────────────────────────────
-  title: {
-    ...Typography.title2,
-    color: '#FFFFFF',
-    marginBottom: Spacing.sm,
-  },
+  title: { ...Typography.title2, color: '#FFFFFF', marginBottom: Spacing.sm },
   subtitle: {
     ...Typography.body,
     color: 'rgba(255, 255, 255, 0.6)',
     marginBottom: Spacing.xxl,
     lineHeight: 22,
   },
-
-  // ── Form Card ─────────────────────────
-  formCard: {
-    marginBottom: Spacing.lg,
-  },
-
-  // ── Error Banner ──────────────────────
+  formCard: { marginBottom: Spacing.lg },
   errorBanner: {
     backgroundColor: 'rgba(231, 76, 60, 0.15)',
     borderWidth: 1,
@@ -272,34 +286,16 @@ const styles = StyleSheet.create({
     color: Colors.error,
     textAlign: 'center',
   },
+  inputContainer: { marginBottom: Spacing.xxl },
+  submitButton: { width: '100%' },
 
-  // ── Input ─────────────────────────────
-  inputContainer: {
-    marginBottom: Spacing.xxl,
-  },
-
-  // ── Submit Button ─────────────────────
-  submitButton: {
-    width: '100%',
-  },
-
-  // ── Login Link ────────────────────────
-  loginLinkButton: {
-    alignSelf: 'center',
-    marginTop: Spacing.sm,
-  },
-
-  // ── Success State ─────────────────────
   successContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xxl,
   },
-  successCard: {
-    alignItems: 'center',
-    width: '100%',
-  },
+  successCard: { alignItems: 'center', width: '100%' },
   successIconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -315,32 +311,32 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.lg,
     lineHeight: 22,
   },
-  successEmail: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+  codeBox: {
+    backgroundColor: 'rgba(120, 80, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(120, 80, 255, 0.5)',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.md,
   },
-  successHint: {
+  codeText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: 24,
+    color: '#FFFFFF',
+    letterSpacing: 4,
+    textAlign: 'center',
+  },
+  copyHint: {
     ...Typography.footnote,
     color: 'rgba(255, 255, 255, 0.4)',
     textAlign: 'center',
     marginBottom: Spacing.xxl,
-    lineHeight: 18,
   },
-  successBackButton: {
-    width: '100%',
-    marginBottom: Spacing.lg,
-  },
-  resendButton: {
-    paddingVertical: Spacing.sm,
-  },
-  resendText: {
-    ...Typography.footnote,
-    color: 'rgba(120, 80, 255, 0.9)',
-    fontWeight: '500',
-  },
+  successBackButton: { width: '100%' },
 });
 
 export default ForgotPasswordScreen;

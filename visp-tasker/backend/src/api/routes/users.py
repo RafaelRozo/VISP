@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.api.deps import CurrentUser, DBSession
@@ -205,6 +205,143 @@ async def update_me(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"update_me error: {type(exc).__name__}: {exc}",
         )
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/avatar
+# ---------------------------------------------------------------------------
+
+_ALLOWED_AVATAR_MIME = {"image/jpeg", "image/jpg", "image/png", "image/heic", "image/heif", "image/webp"}
+_MAX_AVATAR_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
+@router.post(
+    "/me/avatar",
+    summary="Upload current user avatar",
+    description="Upload a new profile picture. Replaces any previous avatar on disk.",
+)
+async def upload_avatar(
+    db: DBSession,
+    user: CurrentUser,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    import os
+    import uuid as _uuid
+    from pathlib import Path
+    from src.models.user import User
+    from sqlalchemy import select
+
+    if file.content_type and file.content_type.lower() not in _ALLOWED_AVATAR_MIME:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported image type: {file.content_type}",
+        )
+
+    content = await file.read()
+    if len(content) > _MAX_AVATAR_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Avatar exceeds 8 MB limit.",
+        )
+
+    stmt = select(User).where(User.id == user.id)
+    db_user = (await db.execute(stmt)).scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    # Build absolute path to backend/uploads/avatars/{user_id}/
+    backend_root = Path(__file__).resolve().parents[3]
+    avatars_dir = backend_root / "uploads" / "avatars" / str(user.id)
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+
+    # Delete previous avatar file if it points inside the user's avatar dir
+    if db_user.avatar_url:
+        try:
+            prev_rel = db_user.avatar_url.lstrip("/")
+            prev_path = backend_root / prev_rel
+            prev_resolved = prev_path.resolve()
+            if (
+                avatars_dir.resolve() in prev_resolved.parents
+                and prev_resolved.is_file()
+            ):
+                prev_resolved.unlink()
+        except Exception as cleanup_exc:
+            logger.warning("Could not delete previous avatar: %s", cleanup_exc)
+
+    # Persist new avatar
+    ext = Path(file.filename or "").suffix.lower() or ".jpg"
+    if ext not in {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}:
+        ext = ".jpg"
+    safe_filename = f"{_uuid.uuid4().hex}{ext}"
+    file_path = avatars_dir / safe_filename
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    db_user.avatar_url = f"/uploads/avatars/{user.id}/{safe_filename}"
+
+    try:
+        await db.commit()
+        await db.refresh(db_user)
+    except Exception as db_exc:
+        await db.rollback()
+        logger.error("DB commit failed setting avatar: %s", db_exc)
+        # Roll back the file write so disk and DB stay consistent
+        try:
+            file_path.unlink()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save avatar.",
+        )
+
+    return {"data": _build_user_response(db_user)}
+
+
+@router.delete(
+    "/me/avatar",
+    summary="Remove current user avatar",
+    description="Delete the user's profile picture and clear the stored URL.",
+)
+async def delete_avatar(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from pathlib import Path
+    from src.models.user import User
+    from sqlalchemy import select
+
+    stmt = select(User).where(User.id == user.id)
+    db_user = (await db.execute(stmt)).scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    backend_root = Path(__file__).resolve().parents[3]
+    avatars_dir = (backend_root / "uploads" / "avatars" / str(user.id)).resolve()
+
+    if db_user.avatar_url:
+        try:
+            prev_rel = db_user.avatar_url.lstrip("/")
+            prev_path = (backend_root / prev_rel).resolve()
+            if avatars_dir in prev_path.parents and prev_path.is_file():
+                prev_path.unlink()
+        except Exception as cleanup_exc:
+            logger.warning("Could not delete avatar file: %s", cleanup_exc)
+
+    db_user.avatar_url = None
+
+    try:
+        await db.commit()
+        await db.refresh(db_user)
+    except Exception as db_exc:
+        await db.rollback()
+        logger.error("DB commit failed clearing avatar: %s", db_exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not remove avatar.",
+        )
+
+    return {"data": _build_user_response(db_user)}
 
 
 # ---------------------------------------------------------------------------
@@ -412,3 +549,62 @@ async def attach_my_payment_method(
     except Exception as e:
         logger.error("Failed to attach payment method: %s", e)
         raise HTTPException(status_code=500, detail="Failed to attach payment method")
+
+
+# ---------------------------------------------------------------------------
+# Recovery code (offline password reset)
+# ---------------------------------------------------------------------------
+
+class RecoveryCodeRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
+
+
+@router.post(
+    "/me/recovery-code",
+    summary="Get the user's recovery code (requires password)",
+)
+async def get_my_recovery_code(
+    db: DBSession,
+    user: CurrentUser,
+    body: RecoveryCodeRequest,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.user import User
+    from src.services import auth_service
+
+    stmt = select(User).where(User.id == user.id)
+    db_user = (await db.execute(stmt)).scalar_one_or_none()
+    if db_user is None or db_user.password_hash is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not auth_service.verify_password(body.password, db_user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    if not db_user.recovery_code:
+        db_user.recovery_code = auth_service.generate_recovery_code()
+        await db.commit()
+        await db.refresh(db_user)
+    return {"data": {"recoveryCode": db_user.recovery_code}}
+
+
+@router.post(
+    "/me/recovery-code/rotate",
+    summary="Rotate the user's recovery code (requires password)",
+)
+async def rotate_my_recovery_code(
+    db: DBSession,
+    user: CurrentUser,
+    body: RecoveryCodeRequest,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.user import User
+    from src.services import auth_service
+
+    stmt = select(User).where(User.id == user.id)
+    db_user = (await db.execute(stmt)).scalar_one_or_none()
+    if db_user is None or db_user.password_hash is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not auth_service.verify_password(body.password, db_user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    db_user.recovery_code = auth_service.generate_recovery_code()
+    await db.commit()
+    await db.refresh(db_user)
+    return {"data": {"recoveryCode": db_user.recovery_code}}

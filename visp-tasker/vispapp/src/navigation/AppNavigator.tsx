@@ -114,7 +114,6 @@ const SCREEN_OPTIONS = {
 const TAB_OPTIONS = {
   tabBarStyle: {
     ...GlassStyles.tabBar,
-    position: 'absolute' as const,
     elevation: 0,
     paddingBottom: 4,
     height: 56,
@@ -167,7 +166,6 @@ function useThemedTabOptions() {
       backgroundColor: theme.tabBarBackground,
       borderTopWidth: 1,
       borderTopColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-      position: 'absolute' as const,
       elevation: 0,
       paddingBottom: 4,
       height: 56,
@@ -313,13 +311,19 @@ function ProfileStackNavigator(): React.JSX.Element {
     <ProfileStack.Navigator
       screenOptions={{
         ...opts,
-        header: ({ options, navigation }) => (
-          <CustomHeader
-            title={(options.title as string) ?? ''}
-            canGoBack={navigation.canGoBack()}
-            goBack={() => navigation.goBack()}
-          />
-        ),
+        header: ({ options, navigation }) => {
+          // Only show back when there's a screen above us in this stack —
+          // tab switches make navigation.canGoBack() return true, which would
+          // wrongly send the user back to the previous tab.
+          const stackHasParent = navigation.getState().index > 0;
+          return (
+            <CustomHeader
+              title={(options.title as string) ?? ''}
+              canGoBack={stackHasParent}
+              goBack={() => navigation.goBack()}
+            />
+          );
+        },
       }}
     >
       <ProfileStack.Screen
@@ -376,13 +380,16 @@ function ProviderJobStackNavigator(): React.JSX.Element {
     <ProviderJobStack.Navigator
       screenOptions={{
         ...opts,
-        header: ({ options, navigation }) => (
-          <CustomHeader
-            title={(options.title as string) ?? ''}
-            canGoBack={navigation.canGoBack()}
-            goBack={() => navigation.goBack()}
-          />
-        ),
+        header: ({ options, navigation }) => {
+          const stackHasParent = navigation.getState().index > 0;
+          return (
+            <CustomHeader
+              title={(options.title as string) ?? ''}
+              canGoBack={stackHasParent}
+              goBack={() => navigation.goBack()}
+            />
+          );
+        },
       }}
     >
       <ProviderJobStack.Screen
@@ -575,8 +582,12 @@ function ProviderTabNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 export default function AppNavigator(): React.JSX.Element {
-  const { isAuthenticated, isRestoring, user } = useAuthStore();
+  const { isAuthenticated, isRestoring, user, activeMode } = useAuthStore();
   const userRole = user?.role ?? 'customer';
+  // For 'both' users, the active tab navigator is dictated by activeMode.
+  // Single-role users always see their own role's tabs.
+  const effectiveRole: 'customer' | 'provider' =
+    userRole === 'both' ? activeMode : (userRole as 'customer' | 'provider');
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
 
   // Handle notification tap deep-links
@@ -603,8 +614,8 @@ export default function AppNavigator(): React.JSX.Element {
           }
           break;
         case 'new_job_offer':
-          // Provider: navigate to job offers tab
-          if (userRole === 'provider') {
+          // Provider mode: navigate to job offers tab
+          if (effectiveRole === 'provider') {
             nav.navigate('ProviderHome' as any);
           }
           break;
@@ -612,7 +623,7 @@ export default function AppNavigator(): React.JSX.Element {
           console.log('[AppNavigator] Unhandled notification type:', data.type);
       }
     },
-    [userRole],
+    [effectiveRole],
   );
 
   // Wire up notification navigation handler
@@ -649,7 +660,7 @@ export default function AppNavigator(): React.JSX.Element {
       >
         {!isAuthenticated ? (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
-        ) : userRole === 'customer' ? (
+        ) : effectiveRole === 'customer' ? (
           <>
             <RootStack.Screen
               name="CustomerHome"

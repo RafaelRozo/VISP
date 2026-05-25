@@ -33,6 +33,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../../stores/appStore';
 import { useTranslation } from '../../i18n';
+import { userService } from '../../services/userService';
+import { Modal, TextInput } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -258,6 +260,56 @@ export default function SettingsScreen(): React.JSX.Element {
   // Payment methods
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
 
+  // Recovery code modal
+  const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
+  const [recoveryPwd, setRecoveryPwd] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+
+  const closeRecoveryModal = useCallback(() => {
+    setRecoveryModalOpen(false);
+    setRecoveryPwd('');
+    setRecoveryCode(null);
+    setRecoveryError(null);
+  }, []);
+
+  const fetchRecoveryCode = useCallback(async () => {
+    if (recoveryPwd.length < 1) return;
+    setRecoveryLoading(true);
+    setRecoveryError(null);
+    try {
+      const code = await userService.getRecoveryCode(recoveryPwd);
+      setRecoveryCode(code);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.detail ??
+        err?.message ??
+        'Could not retrieve recovery code.';
+      setRecoveryError(msg);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }, [recoveryPwd]);
+
+  const rotateRecoveryCode = useCallback(async () => {
+    if (recoveryPwd.length < 1) return;
+    setRecoveryLoading(true);
+    setRecoveryError(null);
+    try {
+      const code = await userService.rotateRecoveryCode(recoveryPwd);
+      setRecoveryCode(code);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.detail ??
+        err?.message ??
+        'Could not rotate recovery code.';
+      setRecoveryError(msg);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }, [recoveryPwd]);
+
   // Fetch current notification preferences from backend on mount
   useEffect(() => {
     if (!userId) return;
@@ -425,6 +477,20 @@ export default function SettingsScreen(): React.JSX.Element {
           />
         </GlassCard>
 
+        {/* Account / Recovery code */}
+        <Text style={styles.sectionHeader}>{t('settings.account')}</Text>
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          <SettingsLink
+            label={t('settings.viewRecoveryCode')}
+            onPress={() => {
+              setRecoveryModalOpen(true);
+              setRecoveryCode(null);
+              setRecoveryPwd('');
+              setRecoveryError(null);
+            }}
+          />
+        </GlassCard>
+
         {/* Privacy & Legal Section */}
         <Text style={styles.sectionHeader}>{t('settings.privacyLegal')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
@@ -480,9 +546,145 @@ export default function SettingsScreen(): React.JSX.Element {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      <Modal
+        visible={recoveryModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeRecoveryModal}
+      >
+        <View style={recoveryStyles.backdrop}>
+          <GlassCard variant="dark" padding={24} style={recoveryStyles.card}>
+            <Text style={recoveryStyles.title}>
+              {t('settings.recoveryCodeTitle')}
+            </Text>
+            <Text style={recoveryStyles.subtitle}>
+              {recoveryCode
+                ? t('settings.recoveryCodeShown')
+                : t('settings.recoveryCodeEnterPassword')}
+            </Text>
+
+            {recoveryCode ? (
+              <>
+                <View style={recoveryStyles.codeBox}>
+                  <Text selectable style={recoveryStyles.codeText}>
+                    {recoveryCode}
+                  </Text>
+                </View>
+                <Text style={recoveryStyles.hint}>
+                  {t('settings.recoveryCodeWarning')}
+                </Text>
+                <View style={recoveryStyles.btnRow}>
+                  <GlassButton
+                    title={t('settings.recoveryCodeRotate')}
+                    variant="outline"
+                    onPress={rotateRecoveryCode}
+                    loading={recoveryLoading}
+                    style={recoveryStyles.btnFlex}
+                  />
+                  <GlassButton
+                    title={t('common.close')}
+                    variant="glow"
+                    onPress={closeRecoveryModal}
+                    style={recoveryStyles.btnFlex}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={recoveryStyles.input}
+                  placeholder={t('settings.recoveryCodePasswordPlaceholder')}
+                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  value={recoveryPwd}
+                  onChangeText={setRecoveryPwd}
+                  editable={!recoveryLoading}
+                />
+                {recoveryError ? (
+                  <Text style={recoveryStyles.error}>{recoveryError}</Text>
+                ) : null}
+                <View style={recoveryStyles.btnRow}>
+                  <GlassButton
+                    title={t('common.cancel')}
+                    variant="outline"
+                    onPress={closeRecoveryModal}
+                    style={recoveryStyles.btnFlex}
+                  />
+                  <GlassButton
+                    title={t('settings.recoveryCodeReveal')}
+                    variant="glow"
+                    onPress={fetchRecoveryCode}
+                    disabled={recoveryPwd.length < 1 || recoveryLoading}
+                    loading={recoveryLoading}
+                    style={recoveryStyles.btnFlex}
+                  />
+                </View>
+              </>
+            )}
+          </GlassCard>
+        </View>
+      </Modal>
     </GlassBackground>
   );
 }
+
+const recoveryStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  card: { width: '100%' },
+  title: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 8 },
+  subtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: '#fff',
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  error: {
+    fontSize: 13,
+    color: Colors.error,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  codeBox: {
+    backgroundColor: 'rgba(120,80,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(120,80,255,0.5)',
+    borderRadius: 12,
+    paddingVertical: 18,
+    marginBottom: 12,
+  },
+  codeText: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    fontSize: 22,
+    color: '#fff',
+    letterSpacing: 4,
+    textAlign: 'center',
+  },
+  hint: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  btnRow: { flexDirection: 'row', gap: 8 },
+  btnFlex: { flex: 1 },
+});
 
 // ---------------------------------------------------------------------------
 // Styles

@@ -6,7 +6,7 @@
 // User & Auth
 // ──────────────────────────────────────────────
 
-export type UserRole = 'customer' | 'provider';
+export type UserRole = 'customer' | 'provider' | 'both';
 
 export interface UserDefaultAddress {
   street: string;
@@ -67,6 +67,7 @@ export interface RegisterData {
 export interface AuthResponse {
   user: User;
   tokens: AuthTokens;
+  recoveryCode?: string | null;
 }
 
 // ──────────────────────────────────────────────

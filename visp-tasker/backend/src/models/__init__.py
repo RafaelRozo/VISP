@@ -90,6 +90,15 @@ from .notification import (
     NotificationType,
 )
 
+# -- 012: Admin / Superusers --
+from .superuser import SuperUser
+
+# -- 013: Promotions --
+from .promotion import Promotion
+
+# -- 014: Admin access codes --
+from .admin_access_code import AdminAccessCode
+
 __all__ = [
     # Base
     "Base",
@@ -156,4 +165,10 @@ __all__ = [
     "Notification",
     "NotificationType",
     "NotificationPreference",
+    # Admin
+    "SuperUser",
+    # Promotions
+    "Promotion",
+    # Admin access codes
+    "AdminAccessCode",
 ]

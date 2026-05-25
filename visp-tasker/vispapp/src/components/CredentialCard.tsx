@@ -137,7 +137,12 @@ function CredentialCard({
 
       {/* Content */}
       <View style={styles.content}>
-        <Text style={styles.typeLabel} numberOfLines={1}>
+        {/* Document name (e.g. "Emergency Flood Water Extraction") — primary */}
+        <Text style={styles.nameLabel} numberOfLines={2}>
+          {credential.label || typeLabel}
+        </Text>
+        {/* Credential type (e.g. "Certification") — secondary */}
+        <Text style={styles.typeSubLabel} numberOfLines={1}>
           {typeLabel}
         </Text>
 
@@ -223,6 +228,18 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     marginRight: 8,
+  },
+  nameLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  typeSubLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    marginBottom: 2,
   },
   typeLabel: {
     fontSize: 15,

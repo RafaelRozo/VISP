@@ -10,8 +10,10 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActionSheetIOS,
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +22,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -38,6 +41,7 @@ import {
 } from '../../types';
 import { get, patch, post } from '../../services/apiClient';
 import { geolocationService } from '../../services/geolocationService';
+import { userService, resolveAvatarUrl } from '../../services/userService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,6 +79,7 @@ interface AvatarSectionProps {
   firstName: string;
   lastName: string;
   onChangeAvatar: () => void;
+  isUploading: boolean;
 }
 
 function AvatarSection({
@@ -82,25 +87,33 @@ function AvatarSection({
   firstName,
   lastName,
   onChangeAvatar,
+  isUploading,
 }: AvatarSectionProps): React.JSX.Element {
   const { t } = useTranslation();
   const safeFirst = firstName || '?';
   const safeLast = lastName || '?';
   const initials = `${safeFirst.charAt(0)}${safeLast.charAt(0)}`.toUpperCase();
+  const resolvedUrl = resolveAvatarUrl(avatarUrl);
 
   return (
     <TouchableOpacity
       style={avatarStyles.container}
       onPress={onChangeAvatar}
       activeOpacity={0.7}
+      disabled={isUploading}
       accessibilityRole="button"
-      accessibilityLabel="Change profile photo"
+      accessibilityLabel={t('profileScreen.changePhotoTitle')}
     >
-      {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={avatarStyles.image} />
+      {resolvedUrl ? (
+        <Image source={{ uri: resolvedUrl }} style={avatarStyles.image} />
       ) : (
         <View style={avatarStyles.placeholder}>
           <Text style={avatarStyles.initials}>{initials}</Text>
+        </View>
+      )}
+      {isUploading && (
+        <View style={avatarStyles.uploadingOverlay}>
+          <AnimatedSpinner size={32} color={Colors.white} />
         </View>
       )}
       <View style={avatarStyles.editBadge}>
@@ -153,6 +166,17 @@ const avatarStyles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.primary,
   },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -179,7 +203,7 @@ export default function ProfileScreen(): React.JSX.Element {
   const navigation = useNavigation<ProfileNav>();
 
   // Get real user data from stores
-  const { user, setUser, logout } = useAuthStore();
+  const { user, setUser, logout, activeMode } = useAuthStore();
   const { providerProfile } = useProviderStore();
 
   // Compute level progress from real profile data
@@ -198,18 +222,18 @@ export default function ProfileScreen(): React.JSX.Element {
       progressPercent,
       requirements: [
         {
-          label: `Complete ${threshold} jobs`,
-          description: `${completedJobs} of ${threshold} completed`,
+          label: t('profileScreen.completeJobs', { count: threshold }),
+          description: t('profileScreen.jobsCompleted', { done: completedJobs, total: threshold }),
           isMet: completedJobs >= threshold,
         },
         {
-          label: t('profileScreen.edit'),
-          description: `Current rating: ${rating.toFixed(1)}`,
+          label: t('profileScreen.maintainRating'),
+          description: t('profileScreen.currentRating', { rating: rating.toFixed(1) }),
           isMet: rating >= 4.5,
         },
       ],
     };
-  }, [providerProfile]);
+  }, [providerProfile, t]);
   const [isEditing, setIsEditing] = useState(false);
 
   // Initialize edit state with user data (safely handle null user)
@@ -229,6 +253,9 @@ export default function ProfileScreen(): React.JSX.Element {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodInfo[]>([]);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
+
+  // Avatar upload state
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Update local edit state when user changes (e.g. after save)
   useEffect(() => {
@@ -251,7 +278,10 @@ export default function ProfileScreen(): React.JSX.Element {
     }
   }, [user]);
 
-  const isProvider = user?.role === 'provider';
+  // 'both' users see the provider section while in provider mode.
+  const isProvider =
+    user?.role === 'provider' ||
+    (user?.role === 'both' && activeMode === 'provider');
 
   if (!user) {
     return (
@@ -263,13 +293,119 @@ export default function ProfileScreen(): React.JSX.Element {
     );
   }
 
+  const performAvatarUpload = useCallback(
+    async (asset: ImagePicker.ImagePickerAsset) => {
+      if (!user) return;
+      setIsUploadingAvatar(true);
+      try {
+        const updated = await userService.uploadAvatar({
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName,
+        });
+        setUser({ ...user, ...updated });
+      } catch (err) {
+        console.error('[AVATAR_UPLOAD] Failed:', err);
+        Alert.alert(t('common.error'), t('profileScreen.uploadPhotoFailed'));
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    },
+    [user, setUser, t],
+  );
+
+  const pickFromCamera = useCallback(async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      await performAvatarUpload(result.assets[0]);
+    }
+  }, [performAvatarUpload, t]);
+
+  const performAvatarRemove = useCallback(async () => {
+    if (!user) return;
+    setIsUploadingAvatar(true);
+    try {
+      const updated = await userService.removeAvatar();
+      setUser({ ...user, ...updated });
+    } catch (err) {
+      console.error('[AVATAR_REMOVE] Failed:', err);
+      Alert.alert(t('common.error'), t('common.tryAgain'));
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }, [user, setUser, t]);
+
+  const pickFromLibrary = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      await performAvatarUpload(result.assets[0]);
+    }
+  }, [performAvatarUpload, t]);
+
   const handleChangeAvatar = useCallback(() => {
-    Alert.alert(t('profileScreen.edit'), t('profileScreen.edit'), [
-      { text: t('profileScreen.edit'), onPress: () => { } },
-      { text: t('profileScreen.edit'), onPress: () => { } },
-      { text: t('common.cancel'), style: 'cancel' },
-    ]);
-  }, []);
+    if (!user) return;
+    const hasAvatar = !!user.avatarUrl;
+
+    if (Platform.OS === 'ios') {
+      const options = [
+        t('profileScreen.takePhoto'),
+        t('profileScreen.chooseFromLibrary'),
+        ...(hasAvatar ? [t('profileScreen.removePhoto')] : []),
+        t('common.cancel'),
+      ];
+      const cancelIndex = options.length - 1;
+      const destructiveIndex = hasAvatar ? options.length - 2 : -1;
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: t('profileScreen.changePhotoTitle'),
+          options,
+          cancelButtonIndex: cancelIndex,
+          destructiveButtonIndex: destructiveIndex >= 0 ? destructiveIndex : undefined,
+          userInterfaceStyle: 'dark',
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) pickFromCamera();
+          else if (buttonIndex === 1) pickFromLibrary();
+          else if (hasAvatar && buttonIndex === 2) performAvatarRemove();
+        },
+      );
+    } else {
+      const buttons: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [
+        { text: t('profileScreen.takePhoto'), onPress: pickFromCamera },
+        { text: t('profileScreen.chooseFromLibrary'), onPress: pickFromLibrary },
+      ];
+      if (hasAvatar) {
+        buttons.push({
+          text: t('profileScreen.removePhoto'),
+          style: 'destructive',
+          onPress: performAvatarRemove,
+        });
+      }
+      buttons.push({ text: t('common.cancel'), style: 'cancel' });
+      Alert.alert(t('profileScreen.changePhotoTitle'), '', buttons);
+    }
+  }, [user, t, pickFromCamera, pickFromLibrary, performAvatarRemove]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!user) return;
@@ -416,6 +552,7 @@ export default function ProfileScreen(): React.JSX.Element {
           firstName={user.firstName}
           lastName={user.lastName}
           onChangeAvatar={handleChangeAvatar}
+          isUploading={isUploadingAvatar}
         />
 
         {/* Name display / edit */}
@@ -426,7 +563,7 @@ export default function ProfileScreen(): React.JSX.Element {
                 label={t('auth.firstName')}
                 value={editFirstName}
                 onChangeText={setEditFirstName}
-                placeholder="First name"
+                placeholder={t('profileScreen.firstNamePlaceholder')}
                 autoCapitalize="words"
                 containerStyle={{ marginBottom: 12 }}
               />
@@ -434,7 +571,7 @@ export default function ProfileScreen(): React.JSX.Element {
                 label={t('auth.lastName')}
                 value={editLastName}
                 onChangeText={setEditLastName}
-                placeholder="Last name"
+                placeholder={t('profileScreen.lastNamePlaceholder')}
                 autoCapitalize="words"
                 containerStyle={{ marginBottom: 12 }}
               />
@@ -468,14 +605,14 @@ export default function ProfileScreen(): React.JSX.Element {
                   <GlassInput
                     value={editPhone}
                     onChangeText={setEditPhone}
-                    placeholder="Phone number"
+                    placeholder={t('profileScreen.phoneNumberPlaceholder')}
                     keyboardType="phone-pad"
                   />
                 </View>
               </View>
               <View style={styles.editActions}>
                 <GlassButton
-                  title="Cancel"
+                  title={t('common.cancel')}
                   variant="outline"
                   onPress={() => {
                     setIsEditing(false);
@@ -486,7 +623,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   style={{ flex: 1 }}
                 />
                 <GlassButton
-                  title="Save"
+                  title={t('profileScreen.saveButton')}
                   variant="glow"
                   onPress={handleSaveProfile}
                   disabled={isSaving}
@@ -504,9 +641,9 @@ export default function ProfileScreen(): React.JSX.Element {
                 <TouchableOpacity
                   onPress={() => setIsEditing(true)}
                   accessibilityRole="button"
-                  accessibilityLabel="Edit name"
+                  accessibilityLabel={t('profileScreen.edit')}
                 >
-                  <Text style={styles.editLink}>Edit</Text>
+                  <Text style={styles.editLink}>{t('profileScreen.edit')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -530,7 +667,7 @@ export default function ProfileScreen(): React.JSX.Element {
                         { color: Colors.success },
                       ]}
                     >
-                      Verified
+                      {t('profileScreen.verified')}
                     </Text>
                   </View>
                 )}
@@ -589,7 +726,7 @@ export default function ProfileScreen(): React.JSX.Element {
               </Text>
             </View>
           ) : (
-            <Text style={[styles.infoLabel, { marginTop: 8 }]}>No address saved</Text>
+            <Text style={[styles.infoLabel, { marginTop: 8 }]}>{t('profileScreen.noAddressSaved')}</Text>
           )}
 
           {isEditingAddress && (
@@ -597,7 +734,7 @@ export default function ProfileScreen(): React.JSX.Element {
               <GlassInput
                 value={addressInput}
                 onChangeText={handleAddressSearch}
-                placeholder="Search your address..."
+                placeholder={t('profileScreen.searchAddress')}
                 autoCapitalize="words"
                 returnKeyType="search"
               />
@@ -695,7 +832,7 @@ export default function ProfileScreen(): React.JSX.Element {
           style={styles.logoutButton}
         />
 
-        <Text style={styles.versionText}>v1.0.0 (Build 42)</Text>
+        <Text style={styles.versionText}>{t('profileScreen.appVersion', { version: '1.0.0', build: '8' })}</Text>
       </ScrollView>
     </GlassBackground>
   );
@@ -844,6 +981,23 @@ const styles = StyleSheet.create({
   linkArrow: {
     fontSize: 22,
     color: 'rgba(255, 255, 255, 0.35)',
+  },
+  modeSwitcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modeSwitcherLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modeSwitcherHint: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  modeSwitcherButton: {
+    minWidth: 130,
   },
   logoutButton: {
     marginHorizontal: 16,

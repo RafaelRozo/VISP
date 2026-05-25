@@ -32,6 +32,7 @@ import { StaggeredBars } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
 import { paymentService, ProviderBalance, PayoutInfo } from '../../services/paymentService';
+import { providerService, PayoutsStatus } from '../../services/providerService';
 import { EarningsPayout, WeeklyEarnings } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -467,10 +468,21 @@ export default function EarningsScreen(): React.JSX.Element {
   const [isConnecting, setIsConnecting] = useState(false);
   const [stripeBalance, setStripeBalance] = useState<ProviderBalance | null>(null);
   const [stripePayouts, setStripePayouts] = useState<PayoutInfo[]>([]);
+  const [livePayoutsStatus, setLivePayoutsStatus] = useState<PayoutsStatus | null>(null);
+
+  const refreshPayoutsStatus = useCallback(async () => {
+    try {
+      const s = await providerService.getPayoutsStatus();
+      setLivePayoutsStatus(s);
+    } catch (err) {
+      console.warn('[EarningsScreen] Payouts status fetch failed:', err);
+    }
+  }, []);
 
   useEffect(() => {
     fetchEarnings();
-  }, [fetchEarnings]);
+    refreshPayoutsStatus();
+  }, [fetchEarnings, refreshPayoutsStatus]);
 
   // Fetch Stripe balance and payouts when provider is connected
   useEffect(() => {
@@ -489,21 +501,90 @@ export default function EarningsScreen(): React.JSX.Element {
     }
   }, [providerProfile]);
 
+  /**
+   * Inner step that actually hits the backend and opens the Stripe hosted
+   * onboarding URL. Wrapped by `handleConnectStripe` which shows a heads-up
+   * explainer first so the user knows what Stripe will ask for.
+   */
+  const doConnectStripe = useCallback(async () => {
+    setIsConnecting(true);
+    try {
+      const res = await providerService.setupPayouts();
+      const canOpen = await Linking.canOpenURL(res.onboardingUrl);
+      if (!canOpen) {
+        throw new Error('Cannot open onboarding URL');
+      }
+      await Linking.openURL(res.onboardingUrl);
+    } catch (err: any) {
+      console.error('[EarningsScreen] Stripe connect failed:', err);
+      const detail = err?.response?.data?.detail ?? err?.data?.detail;
+
+      // Backend tells us the VISP profile is missing required fields. Surface
+      // them to the user and offer to jump to the Profile screen instead of
+      // forcing them to figure out what's wrong.
+      if (detail && typeof detail === 'object' && detail.code === 'profile_incomplete') {
+        const missing: string[] = Array.isArray(detail.missing) ? detail.missing : [];
+        const friendly = missing
+          .map((f) => t(`payouts.field${f.charAt(0).toUpperCase() + f.slice(1)}` as any) || f)
+          .join(', ');
+        Alert.alert(
+          t('payouts.incompleteTitle'),
+          t('payouts.incompleteBody', { missing: friendly }),
+          [
+            { text: t('common.cancel'), style: 'cancel' },
+            {
+              text: t('payouts.openProfile'),
+              onPress: () => navigation.navigate('ProfileTab' as any),
+            },
+          ],
+        );
+        return;
+      }
+
+      // Country isn't on the Stripe Connect supported list for VISP's
+      // transfers-only model (e.g., MX requires card_payments capability).
+      if (detail && typeof detail === 'object' && detail.code === 'unsupported_country') {
+        const country = (detail.country as string) || '';
+        const supported = Array.isArray(detail.supportedCountries)
+          ? detail.supportedCountries.join(', ')
+          : 'CA, US';
+        Alert.alert(
+          t('payouts.unsupportedCountryTitle'),
+          t('payouts.unsupportedCountryBody', { country, supported }),
+          [
+            { text: t('common.cancel'), style: 'cancel' },
+            {
+              text: t('payouts.openProfile'),
+              onPress: () => navigation.navigate('ProfileTab' as any),
+            },
+          ],
+        );
+        return;
+      }
+
+      const apiDetail = typeof detail === 'string' ? detail : err?.message;
+      const message = apiDetail
+        ? `${t('profileScreen.stripeConnectError')}\n\n${apiDetail}`
+        : t('profileScreen.stripeConnectError');
+      Alert.alert(t('common.error'), message);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [t, navigation]);
+
   const handleConnectStripe = useCallback(() => {
+    // Heads-up explainer so the provider knows what Stripe will require BEFORE
+    // they leave the app for the hosted form. This dramatically reduces drop-off
+    // in the Stripe Connect funnel (industry pattern — Uber Eats does this).
     Alert.alert(
-      t('earningsScreen.paymentSetup'),
-      t('earningsScreen.setUpPaymentMethod'),
+      t('payouts.confirmTitle'),
+      t('payouts.confirmBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: t('earningsScreen.goToProfile'),
-          onPress: () => {
-            navigation.navigate('ProviderProfile');
-          },
-        },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('payouts.continue'), onPress: () => void doConnectStripe() },
       ],
     );
-  }, [navigation]);
+  }, [t, doConnectStripe]);
 
   const filteredPayouts = useMemo(() => {
     const now = new Date();
@@ -538,7 +619,22 @@ export default function EarningsScreen(): React.JSX.Element {
 
   const onRefresh = useCallback(() => {
     fetchEarnings();
-  }, [fetchEarnings]);
+    refreshPayoutsStatus();
+  }, [fetchEarnings, refreshPayoutsStatus]);
+
+  // Derive the live status. Prefer the dedicated /payouts/status endpoint
+  // because the dashboard one only checks for the existence of an account id,
+  // not whether payouts are actually enabled.
+  const effectiveStripeStatus: 'not_connected' | 'pending' | 'active' | 'restricted' =
+    livePayoutsStatus
+      ? !livePayoutsStatus.connected
+        ? 'not_connected'
+        : livePayoutsStatus.payoutsEnabled
+        ? 'active'
+        : livePayoutsStatus.requirementsDue.length > 0
+        ? 'restricted'
+        : 'pending'
+      : providerProfile?.stripeConnectStatus ?? 'not_connected';
 
   return (
     <GlassBackground>
@@ -615,13 +711,35 @@ export default function EarningsScreen(): React.JSX.Element {
 
         {/* Stripe connect status */}
         {providerProfile && (
-          <StripeStatus
-            status={providerProfile.stripeConnectStatus}
-            onConnect={handleConnectStripe}
-            isConnecting={isConnecting}
-            balance={stripeBalance}
-            recentPayouts={stripePayouts}
-          />
+          <>
+            <StripeStatus
+              status={effectiveStripeStatus}
+              onConnect={handleConnectStripe}
+              isConnecting={isConnecting}
+              balance={stripeBalance}
+              recentPayouts={stripePayouts}
+            />
+            {effectiveStripeStatus === 'pending' && (
+              <View style={{ marginHorizontal: 16, marginTop: 8 }}>
+                <GlassButton
+                  title={t('profileScreen.stripeConnectCheckButton')}
+                  variant="outline"
+                  onPress={refreshPayoutsStatus}
+                />
+              </View>
+            )}
+            {effectiveStripeStatus === 'restricted' && (
+              <View style={{ marginHorizontal: 16, marginTop: 8 }}>
+                <GlassButton
+                  title={t('profileScreen.stripeConnectContinueButton')}
+                  variant="glow"
+                  onPress={handleConnectStripe}
+                  loading={isConnecting}
+                  disabled={isConnecting}
+                />
+              </View>
+            )}
+          </>
         )}
 
         {/* Period filter */}

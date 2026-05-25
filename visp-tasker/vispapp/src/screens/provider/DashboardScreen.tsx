@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   Platform,
   RefreshControl,
   ScrollView,
@@ -20,7 +21,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { GlassStyles } from '../../theme/glass';
@@ -32,6 +33,8 @@ import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
 import JobCard from '../../components/JobCard';
 import OnCallToggle from '../../components/OnCallToggle';
+import RoleSwitcher from '../../components/RoleSwitcher';
+import { resolveAvatarUrl } from '../../services/userService';
 import { taxonomyService } from '../../services/taxonomyService';
 import { ProviderTabParamList, ServiceLevel } from '../../types';
 
@@ -56,6 +59,8 @@ function formatCurrency(amount: number): string {
 export default function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<DashboardNav>();
   const user = useAuthStore((state) => state.user);
+  const activeMode = useAuthStore((state) => state.activeMode);
+  const setActiveMode = useAuthStore((state) => state.setActiveMode);
   const theme = useTheme();
   const { t } = useTranslation();
 
@@ -83,11 +88,26 @@ export default function DashboardScreen(): React.JSX.Element {
   // Initial load
   useEffect(() => {
     fetchDashboard();
-    // Check if provider has selected any services
-    taxonomyService.getMyServices()
-      .then((res) => setHasServices(res.taskIds.length > 0))
-      .catch(() => setHasServices(null));
   }, [fetchDashboard]);
+
+  // Re-check selected services every time the screen regains focus so the
+  // "Complete Your Profile" CTA disappears right after the user saves
+  // services in ProviderOnboarding and navigates back.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      taxonomyService.getMyServices()
+        .then((res) => {
+          if (!cancelled) setHasServices(res.taskIds.length > 0);
+        })
+        .catch(() => {
+          if (!cancelled) setHasServices(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   // Pull-to-refresh
   const onRefresh = useCallback(() => {
@@ -98,6 +118,32 @@ export default function DashboardScreen(): React.JSX.Element {
   const levelColor = providerProfile
     ? getLevelColor(providerProfile.level)
     : Colors.primary;
+
+  // User initials fallback for avatar
+  const userInitials = useMemo(() => {
+    const first = (user?.firstName?.[0] ?? '').toUpperCase();
+    const last = (user?.lastName?.[0] ?? '').toUpperCase();
+    return `${first}${last}` || '?';
+  }, [user?.firstName, user?.lastName]);
+
+  // Level metadata (name + next-level CTA)
+  const levelMeta = useMemo(() => {
+    if (!providerProfile) return null;
+    const lvl = providerProfile.level;
+    const name = t(`dashboard.levelName${lvl}` as any);
+    const nextMsg =
+      lvl === 4
+        ? t('dashboard.nextLevelL4Top')
+        : t(`dashboard.nextLevelL${lvl}` as any);
+    return { level: lvl, name, nextMsg };
+  }, [providerProfile, t]);
+
+  // Show level banner only when the provider has finished onboarding
+  // (has at least one service selected). Until then the setup CTA does the job.
+  const showLevelBanner = providerProfile != null && hasServices === true;
+
+  // 'both' users get a Customer/Provider toggle in the header
+  const isBoth = user?.role === 'both';
 
   const currentShift = useMemo(() => {
     if (!onCallShifts || onCallShifts.length === 0) return null;
@@ -411,42 +457,97 @@ export default function DashboardScreen(): React.JSX.Element {
           />
         }
       >
-        {/* Provider level header */}
-        {providerProfile && (
-          <GlassCard variant="dark" style={styles.headerCard}>
-            <View
-              style={[
-                styles.levelBadge,
-                {
-                  backgroundColor: `${levelColor}30`,
-                  borderColor: levelColor,
-                  ...(Platform.OS === 'ios'
-                    ? {
-                        shadowColor: levelColor,
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: 0.6,
-                        shadowRadius: 10,
-                      }
-                    : {}),
-                },
-              ]}
-            >
-              <Text style={[styles.levelBadgeText, { color: levelColor }]}>
-                L{providerProfile.level}
-              </Text>
+        {/* Welcome card: avatar + greeting + stats. Mode switch for 'both' users. */}
+        <GlassCard variant="dark" style={styles.welcomeCard}>
+          <View style={styles.welcomeRow}>
+            {/* Avatar (real image or initials fallback) */}
+            <View style={styles.avatarWrap}>
+              {(() => {
+                // Use the same resolver Profile uses so relative paths like
+                // "/uploads/avatars/xyz.jpg" become absolute URLs the Image
+                // component can actually load.
+                const avatarUri = resolveAvatarUrl(user?.avatarUrl);
+                return avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <Text style={styles.avatarInitials}>{userInitials}</Text>
+                  </View>
+                );
+              })()}
             </View>
-            <View style={styles.headerInfo}>
-              <Text style={[styles.headerGreeting, { color: theme.textPrimary }]}>
+
+            <View style={styles.welcomeInfo}>
+              <Text
+                style={[styles.welcomeGreeting, { color: theme.textPrimary }]}
+                numberOfLines={1}
+              >
                 {t('dashboard.welcomeBack', { name: user?.firstName || '' })}
               </Text>
-              <Text style={[styles.headerSubtext, { color: theme.textSecondary }]}>
-                {t('dashboard.jobsCompleted', { count: providerProfile.completedJobs })} | {t('dashboard.rating', { rating: providerProfile.rating.toFixed(1) })}
-              </Text>
+              {providerProfile && (
+                <View style={styles.welcomeStatsRow}>
+                  <View style={styles.welcomeStat}>
+                    <Text style={styles.welcomeStatIcon}>💼</Text>
+                    <Text style={[styles.welcomeStatText, { color: theme.textSecondary }]}>
+                      {t('dashboard.statsJobs', { count: providerProfile.completedJobs })}
+                    </Text>
+                  </View>
+                  <View style={styles.welcomeStatDot} />
+                  <View style={styles.welcomeStat}>
+                    <Text style={[styles.welcomeStatIcon, { color: '#FFCC4D' }]}>★</Text>
+                    <Text style={[styles.welcomeStatText, { color: theme.textSecondary }]}>
+                      {providerProfile.rating.toFixed(1)}
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
-          </GlassCard>
-        )}
+          </View>
+
+          {/* Mode switcher: only for 'both' users */}
+          {isBoth && (
+            <View style={styles.modeSwitcherWrap}>
+              <RoleSwitcher
+                mode={activeMode}
+                onChange={(m) => void setActiveMode(m)}
+              />
+            </View>
+          )}
+        </GlassCard>
 
         {renderSetupServicesPrompt()}
+
+        {/* Level progress banner: only after profile is set up */}
+        {showLevelBanner && levelMeta && (
+          <View
+            style={[
+              styles.levelBanner,
+              { borderColor: `${levelColor}55`, backgroundColor: `${levelColor}12` },
+            ]}
+          >
+            <View
+              style={[
+                styles.levelChipSmall,
+                { backgroundColor: `${levelColor}30`, borderColor: levelColor },
+              ]}
+            >
+              <Text style={[styles.levelChipSmallText, { color: levelColor }]}>
+                L{levelMeta.level}
+              </Text>
+            </View>
+            <View style={styles.levelBannerInfo}>
+              <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
+                {levelMeta.name}
+              </Text>
+              <Text
+                style={[styles.levelBannerMsg, { color: theme.textSecondary }]}
+                numberOfLines={2}
+              >
+                {levelMeta.nextMsg}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {renderAvailabilityToggle()}
 
@@ -492,37 +593,119 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.6)',
   },
-  headerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // --- Welcome card (avatar + greeting + mode switcher) ---
+  welcomeCard: {
     marginHorizontal: 16,
     marginBottom: 12,
   },
-  levelBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  welcomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarWrap: {
+    marginRight: 14,
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  avatarFallback: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    backgroundColor: 'rgba(120,80,255,0.22)',
     borderWidth: 2,
+    borderColor: 'rgba(120,80,255,0.55)',
   },
-  levelBadgeText: {
-    fontSize: 16,
+  avatarInitials: {
+    fontSize: 18,
     fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-  headerInfo: {
+  welcomeInfo: {
     flex: 1,
+    minWidth: 0,
   },
-  headerGreeting: {
+  welcomeGreeting: {
     fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  headerSubtext: {
+  welcomeStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    flexWrap: 'wrap',
+  },
+  welcomeStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  welcomeStatIcon: {
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.6)',
-    marginTop: 2,
+  },
+  welcomeStatText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+  },
+  welcomeStatDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 10,
+  },
+  // --- Mode switcher wrapper ---
+  modeSwitcherWrap: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  // --- Level progress banner ---
+  levelBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  levelChipSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    marginRight: 12,
+  },
+  levelChipSmallText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  levelBannerInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  levelBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  levelBannerMsg: {
+    fontSize: 12.5,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 17,
   },
   availabilityCard: {
     marginHorizontal: 16,

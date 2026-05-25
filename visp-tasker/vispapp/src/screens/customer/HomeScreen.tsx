@@ -37,6 +37,7 @@ import { useAuthStore } from '../../stores/authStore';
 import EmergencyButton from '../../components/EmergencyButton';
 import CategoryGrid from '../../components/CategoryGrid';
 import ActiveJobCard from '../../components/ActiveJobCard';
+import RoleSwitcher from '../../components/RoleSwitcher';
 import { get } from '../../services/apiClient';
 import taskService from '../../services/taskService';
 import type {
@@ -114,6 +115,9 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
   const user = useAuthStore((state) => state.user);
+  const activeMode = useAuthStore((state) => state.activeMode);
+  const setActiveMode = useAuthStore((state) => state.setActiveMode);
+  const isBoth = user?.role === 'both';
 
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
@@ -294,6 +298,16 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Mode switcher — only for 'both' users */}
+        {isBoth && (
+          <View style={styles.modeSwitcherWrap}>
+            <RoleSwitcher
+              mode={activeMode}
+              onChange={(m) => void setActiveMode(m)}
+            />
+          </View>
+        )}
       </View>
     );
   }
@@ -524,6 +538,10 @@ const styles = StyleSheet.create({
     ...Typography.footnote,
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  modeSwitcherWrap: {
+    marginTop: Spacing.md,
+    alignItems: 'center',
   },
 
   // ── Emergency ─────────────────────────

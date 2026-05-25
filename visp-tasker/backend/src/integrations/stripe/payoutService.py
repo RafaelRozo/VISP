@@ -18,13 +18,14 @@ All monetary amounts are in cents (integers).
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import stripe
+
+from src.core.config import settings
 
 from .paymentService import PaymentError, _handle_stripe_error
 
@@ -33,13 +34,39 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Stripe SDK configuration (inherited from paymentService, but ensure set)
 # ---------------------------------------------------------------------------
+# Read from validated settings (same source as paymentService) — avoids the
+# "last import wins" race where two modules each clobber stripe.api_key.
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+stripe.api_key = settings.stripe_secret_key
 
 
 # ---------------------------------------------------------------------------
 # Response dataclasses
 # ---------------------------------------------------------------------------
+
+# E.164 country-code prefixes for the most common Stripe-supported countries.
+# Used to validate that a user's stored phone matches the Connect account
+# country before pre-filling — Stripe rejects phones that don't match.
+_E164_COUNTRY_PREFIXES: dict[str, str] = {
+    "CA": "+1", "US": "+1", "MX": "+52", "GB": "+44",
+    "FR": "+33", "DE": "+49", "ES": "+34", "AU": "+61",
+    "BR": "+55", "IT": "+39", "JP": "+81", "IN": "+91",
+}
+
+
+def _phone_matches_country(phone: Optional[str], country: str) -> bool:
+    """Return True if ``phone`` has the E.164 prefix expected for ``country``.
+
+    Unknown countries are trusted (returns True) — the Stripe API will be
+    the final arbiter via its own validation.
+    """
+    if not phone or not phone.startswith("+"):
+        return False
+    expected = _E164_COUNTRY_PREFIXES.get(country.upper())
+    if expected is None:
+        return True
+    return phone.startswith(expected)
+
 
 @dataclass(frozen=True)
 class ConnectedAccountResult:
@@ -55,7 +82,11 @@ class AccountStatus:
     account_id: str
     charges_enabled: bool
     payouts_enabled: bool
+    details_submitted: bool
+    transfers_capability: str  # "active" | "inactive" | "pending" | "unknown"
+    disabled_reason: Optional[str]
     requirements_due: list[str]
+    deleted: bool = False  # True if Stripe says the account no longer exists
 
 
 @dataclass(frozen=True)
@@ -103,16 +134,36 @@ async def create_connected_account(
     provider_id: uuid.UUID,
     email: str,
     country: str = "CA",
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    phone: Optional[str] = None,
+    address_line1: Optional[str] = None,
+    address_city: Optional[str] = None,
+    address_state: Optional[str] = None,
+    address_postal_code: Optional[str] = None,
 ) -> ConnectedAccountResult:
     """Create a Stripe Connect Express account for a provider.
 
     Express accounts are recommended for marketplaces because Stripe handles
     the onboarding UI, identity verification, and tax reporting.
 
+    Pre-fill arguments (first_name, last_name, phone, address fields,
+    business_url) are optional. Stripe will skip the corresponding form
+    steps if the data passes validation, otherwise the provider sees the
+    field pre-populated and just confirms. Phone must be in E.164 format
+    (e.g. ``+15551234567``).
+
     Args:
         provider_id: The VISP provider profile UUID.
         email: Provider email address.
         country: Two-letter ISO country code (default ``CA`` for Canada).
+        first_name: Provider's legal first name (pre-fill).
+        last_name: Provider's legal last name (pre-fill).
+        phone: Phone in E.164 format (pre-fill).
+        address_line1: Street address line 1 (pre-fill).
+        address_city: City (pre-fill).
+        address_state: Province / state code (pre-fill).
+        address_postal_code: Postal code (pre-fill).
 
     Returns:
         ConnectedAccountResult with the account details.
@@ -120,30 +171,100 @@ async def create_connected_account(
     Raises:
         PaymentError: If the Stripe API call fails.
     """
-    try:
-        account = stripe.Account.create(
-            type="express",
-            country=country.upper(),
-            email=email,
-            capabilities={
-                "card_payments": {"requested": True},
-                "transfers": {"requested": True},
-            },
-            metadata={
-                "visp_provider_id": str(provider_id),
-                "platform": "visp_tasker",
-            },
-            business_type="individual",
-            settings={
-                "payouts": {
-                    "schedule": {
-                        "interval": "daily",
-                    },
+    # Build individual sub-dict only with present fields — Stripe rejects
+    # null values, and partial data is better than no pre-fill at all.
+    individual: dict[str, Any] = {}
+    if first_name:
+        individual["first_name"] = first_name
+    if last_name:
+        individual["last_name"] = last_name
+    # Only include phone if it matches the account country — Stripe rejects
+    # mismatched phones (e.g. +52 Mexican phone on a CA account).
+    if phone and _phone_matches_country(phone, country):
+        individual["phone"] = phone
+    if email:
+        individual["email"] = email
+
+    address: dict[str, Any] = {}
+    if address_line1:
+        address["line1"] = address_line1
+    if address_city:
+        address["city"] = address_city
+    if address_state:
+        address["state"] = address_state
+    if address_postal_code:
+        address["postal_code"] = address_postal_code
+    if address:
+        address["country"] = country.upper()
+        individual["address"] = address
+
+    # VISP is the merchant of record (customers pay the platform via PaymentIntent
+    # on the platform account, then VISP transfers commission to the provider).
+    # Providers only need ``transfers`` capability — NOT ``card_payments`` —
+    # which reduces the KYC scope.
+    #
+    # NOTE on Business Details screen: Stripe still shows the "Business details"
+    # step for transfers-only Express accounts in many countries (CA included),
+    # apparently for risk classification regardless of capability. We pre-fill
+    # ``business_profile`` so the user only confirms (does not type) the fields.
+    #
+    # NOTE on TOS acceptance: server-side ``tos_acceptance`` is NOT supported
+    # for Express accounts (Stripe collects TOS in their hosted form). It IS
+    # supported for Custom accounts under Accounts v2 — revisit when migrating.
+    create_kwargs: dict[str, Any] = {
+        "type": "express",
+        "country": country.upper(),
+        "email": email,
+        "capabilities": {
+            "transfers": {"requested": True},
+        },
+        "metadata": {
+            "visp_provider_id": str(provider_id),
+            "platform": "visp_tasker",
+        },
+        "business_type": "individual",
+        "business_profile": {
+            # MCC 7299: "Services Not Elsewhere Classified" — fits a mixed
+            # home-services marketplace (cleaning, handyman, emergency, etc.).
+            "mcc": "7299",
+            "product_description": (
+                "Independent home services provider on the VISP Tasker "
+                "marketplace, offering on-demand cleaning, handyman, and "
+                "emergency services to customers across Canada."
+            ),
+            "url": "https://richieyanez.com",
+        },
+        "settings": {
+            "payouts": {
+                "schedule": {
+                    "interval": "daily",
                 },
             },
-        )
+        },
+    }
+    if individual:
+        create_kwargs["individual"] = individual
+
+    # Pre-fill is best-effort. If Stripe still rejects the individual block
+    # (e.g. weird address), drop ONLY that block on retry — keep the
+    # business_profile because mcc/url/description are hardcoded and safe.
+    # The provider re-enters personal info in the hosted form; business
+    # details stay pre-populated.
+    try:
+        account = stripe.Account.create(**create_kwargs)
     except stripe.StripeError as exc:
-        raise _handle_stripe_error(exc) from exc
+        if "individual" in create_kwargs:
+            logger.warning(
+                "Stripe account create with individual pre-fill failed (%s) — retrying without individual",
+                exc,
+            )
+            create_kwargs.pop("individual", None)
+            try:
+                account = stripe.Account.create(**create_kwargs)
+            except stripe.StripeError as exc2:
+                raise _handle_stripe_error(exc2) from exc2
+        else:
+            raise _handle_stripe_error(exc) from exc
 
     logger.info(
         "Connected account created: account_id=%s, provider_id=%s, country=%s",
@@ -215,22 +336,74 @@ async def check_account_status(account_id: str) -> AccountStatus:
     Raises:
         PaymentError: If the retrieval fails.
     """
+    # We catch the broad `stripe.StripeError` (always exists across SDK
+    # versions) and inspect both the error code and message text to decide
+    # whether the account was deleted. Doing it this way avoids depending on
+    # `stripe.error.InvalidRequestError` resolving — older SDK versions and
+    # some lazy-loading setups expose that symbol differently and importing
+    # it at function-call time can raise AttributeError under uvicorn.
     try:
         account = stripe.Account.retrieve(account_id)
     except stripe.StripeError as exc:
+        code = (getattr(exc, "code", None) or "").lower()
+        msg = str(exc).lower()
+        deleted_markers = (
+            "no such account",
+            "does not exist",
+            "account_not_found",
+            "account_invalid",
+            "resource_missing",
+        )
+        looks_deleted = (
+            code in {"account_invalid", "resource_missing", "account_not_found"}
+            or any(marker in msg for marker in deleted_markers)
+        )
+        if looks_deleted:
+            logger.warning(
+                "Stripe account %s no longer exists (deleted) — code=%s msg=%s",
+                account_id, code, msg[:200],
+            )
+            return AccountStatus(
+                account_id=account_id,
+                charges_enabled=False,
+                payouts_enabled=False,
+                details_submitted=False,
+                transfers_capability="unknown",
+                disabled_reason="deleted",
+                requirements_due=[],
+                deleted=True,
+            )
+        logger.error(
+            "Stripe error retrieving account %s — code=%s msg=%s",
+            account_id, code, msg[:300],
+        )
         raise _handle_stripe_error(exc) from exc
 
-    requirements_due: list[str] = []
+    # currently_due is what's blocking right now; the union with eventually_due
+    # gives the full checklist so the frontend can show overall progress.
+    currently_due: list[str] = []
+    eventually_due: list[str] = []
     if account.requirements:
-        currently_due = account.requirements.currently_due or []
-        eventually_due = account.requirements.eventually_due or []
-        requirements_due = list(set(currently_due + eventually_due))
+        currently_due = list(account.requirements.currently_due or [])
+        eventually_due = list(account.requirements.eventually_due or [])
+
+    transfers_cap = "unknown"
+    if account.capabilities:
+        transfers_cap = account.capabilities.get("transfers", "unknown")
+
+    disabled_reason = None
+    if account.requirements and account.requirements.disabled_reason:
+        disabled_reason = account.requirements.disabled_reason
 
     return AccountStatus(
         account_id=account.id,
         charges_enabled=bool(account.charges_enabled),
         payouts_enabled=bool(account.payouts_enabled),
-        requirements_due=requirements_due,
+        details_submitted=bool(account.details_submitted),
+        transfers_capability=transfers_cap,
+        disabled_reason=disabled_reason,
+        requirements_due=list({*currently_due, *eventually_due}),
+        deleted=False,
     )
 
 

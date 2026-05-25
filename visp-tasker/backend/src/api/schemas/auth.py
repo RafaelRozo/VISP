@@ -168,6 +168,7 @@ class AuthData(BaseModel):
 
     user: UserOut
     tokens: TokensOut
+    recovery_code: Optional[str] = None
 
 
 class TokenRefreshResponse(BaseModel):

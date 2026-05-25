@@ -65,6 +65,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     phone_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Recovery code (offline password reset until email/SMS infra exists)
+    recovery_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, unique=True)
+
     # Default address (saved from profile for booking auto-fill)
     default_address_street: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     default_address_city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

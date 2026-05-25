@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActionSheetIOS,
   Alert,
   Platform,
   RefreshControl,
@@ -19,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -31,6 +33,7 @@ import {
   ServiceLevel,
 } from '../../types';
 import { get } from '../../services/apiClient';
+import { providerService } from '../../services/providerService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -341,6 +344,7 @@ export default function VerificationScreen(): React.JSX.Element {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [currentLevel, setCurrentLevel] = useState<ServiceLevel>(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
 
   const fetchVerificationData = useCallback(async () => {
     setIsLoading(true);
@@ -419,13 +423,98 @@ export default function VerificationScreen(): React.JSX.Element {
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  const handleStepAction = useCallback((step: VerificationStep) => {
-    Alert.alert(
-      step.title,
-      'In production, this will open the document upload flow for this verification step.',
-      [{ text: 'OK' }],
-    );
-  }, []);
+  const performUpload = useCallback(
+    async (step: VerificationStep, source: 'camera' | 'library') => {
+      if (!step.credentialType) return;
+
+      const permRequest =
+        source === 'camera'
+          ? ImagePicker.requestCameraPermissionsAsync
+          : ImagePicker.requestMediaLibraryPermissionsAsync;
+      const perm = await permRequest();
+      if (!perm.granted) {
+        Alert.alert(
+          t('common.error'),
+          source === 'camera'
+            ? t('profileScreen.permissionDenied')
+            : t('profileScreen.permissionDenied'),
+        );
+        return;
+      }
+
+      const launcher =
+        source === 'camera'
+          ? ImagePicker.launchCameraAsync
+          : ImagePicker.launchImageLibraryAsync;
+      const result = await launcher({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setIsUploading(true);
+      try {
+        await providerService.uploadCredential(
+          {
+            uri: asset.uri,
+            type: asset.mimeType,
+            name: asset.fileName,
+          },
+          step.credentialType,
+        );
+        Alert.alert(
+          t('credentials.documentUploaded'),
+          t('verification.uploadSuccess', { defaultValue: 'Your document has been submitted for review.' }),
+        );
+        await fetchVerificationData();
+      } catch (error) {
+        console.error('[VERIFICATION_UPLOAD] Failed:', error);
+        Alert.alert(t('common.error'), t('credentials.uploadFailed'));
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [t, fetchVerificationData],
+  );
+
+  const handleStepAction = useCallback(
+    (step: VerificationStep) => {
+      if (!step.credentialType) {
+        Alert.alert(step.title, step.description);
+        return;
+      }
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            title: step.title,
+            options: [
+              t('common.cancel'),
+              t('profileScreen.takePhoto'),
+              t('profileScreen.chooseFromLibrary'),
+            ],
+            cancelButtonIndex: 0,
+            userInterfaceStyle: 'dark',
+          },
+          (buttonIndex) => {
+            if (buttonIndex === 1) performUpload(step, 'camera');
+            else if (buttonIndex === 2) performUpload(step, 'library');
+          },
+        );
+      } else {
+        Alert.alert(step.title, '', [
+          { text: t('profileScreen.takePhoto'), onPress: () => performUpload(step, 'camera') },
+          { text: t('profileScreen.chooseFromLibrary'), onPress: () => performUpload(step, 'library') },
+          { text: t('common.cancel'), style: 'cancel' },
+        ]);
+      }
+    },
+    [t, performUpload],
+  );
 
   if (isLoading) {
     return (
@@ -520,20 +609,12 @@ export default function VerificationScreen(): React.JSX.Element {
           />
         ))}
 
-        {/* Submit all button when there are actionable steps */}
-        {steps.some((s) => s.status === 'not_started' || s.status === 'failed') && (
-          <View style={styles.submitContainer}>
-            <GlassButton
-              title="Submit All Documents"
-              variant="glow"
-              onPress={() => {
-                Alert.alert(
-                  'Submit All',
-                  'In production, this will submit all uploaded documents for review.',
-                  [{ text: 'OK' }],
-                );
-              }}
-            />
+        {isUploading && (
+          <View style={styles.uploadingBanner}>
+            <AnimatedSpinner size={20} color={Colors.primary} />
+            <Text style={styles.uploadingText}>
+              {t('profileScreen.uploadingPhoto')}
+            </Text>
           </View>
         )}
 
@@ -677,6 +758,24 @@ const styles = StyleSheet.create({
   submitContainer: {
     marginHorizontal: 16,
     marginTop: 8,
+  },
+  uploadingBanner: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(120, 80, 255, 0.12)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 80, 255, 0.30)',
+  },
+  uploadingText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '600',
   },
   bottomSpacer: {
     height: 32,
