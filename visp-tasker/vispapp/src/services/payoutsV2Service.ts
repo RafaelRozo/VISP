@@ -90,6 +90,10 @@ export const payoutsV2Service = {
     return post<IdentitySessionOut>(`${BASE}/identity-document`);
   },
 
+  startIdentityLink(): Promise<{ url: string; expiresAt: number }> {
+    return post<{ url: string; expiresAt: number }>(`${BASE}/identity-link`);
+  },
+
   acceptTos(): Promise<PayoutStatus> {
     return post<PayoutStatus>(`${BASE}/tos`, { accepted: true });
   },

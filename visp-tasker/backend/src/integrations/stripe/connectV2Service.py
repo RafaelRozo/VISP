@@ -405,6 +405,15 @@ async def create_identity_session(
     The mobile app uses the returned ``client_secret`` + ``ephemeral_key_secret``
     with ``@stripe/stripe-identity-react-native`` to render the native
     document + selfie capture UI.
+
+    Identity sessions live on the platform (Stripe rejects
+    ``stripe_account=`` impersonation on this endpoint). To clear the
+    connected account's ``individual.verification.proof_of_liveness`` the
+    webhook handler picks up the ``verified`` event, reads the file IDs
+    from ``verified_outputs``, and posts them onto
+    ``Account.modify(individual.verification.document.{front,back})``.
+    The metadata below tells that handler which connected account to
+    link.
     """
     try:
         session = stripe.identity.VerificationSession.create(
@@ -417,8 +426,6 @@ async def create_identity_session(
         logger.error("create_identity_session failed for %s: %s", account_id, exc)
         raise _handle_stripe_error(exc) from exc
 
-    # The mobile SDK also needs an ephemeral key tied to the session for
-    # client-side document submission.
     try:
         ephemeral_key = stripe.EphemeralKey.create(
             verification_session=session.id,
