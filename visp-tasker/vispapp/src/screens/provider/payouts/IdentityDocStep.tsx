@@ -1,73 +1,75 @@
 /**
  * VISP — Payouts onboarding · Identity document step.
  *
- * Opens a Stripe Identity verification session (document + selfie). The
- * native UI is rendered by @stripe/stripe-identity-react-native — that
- * package is NOT yet installed (requires `npx expo install
- * @stripe/stripe-identity-react-native && cd ios && pod install` + a
- * native rebuild). Until then this screen calls the backend to provision
- * the session, surfaces the session ID, and lets the user skip ahead so
- * the rest of onboarding can be tested end-to-end.
+ * Opens the native Stripe Identity verification sheet (document + selfie
+ * with liveness check) via @stripe/stripe-identity-react-native. The sheet
+ * is fully native; we just provide the session/ephemeral key fetched from
+ * /v2/identity-document and listen for the completion status.
+ *
+ * Outcomes:
+ *  - FlowCompleted  → refresh status and advance to next step (TOS or exit)
+ *  - FlowCanceled   → stay on screen, let the user retry
+ *  - FlowFailed     → surface the error and let the user retry
  */
 
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect } from 'react';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useStripeIdentity } from '@stripe/stripe-identity-react-native';
 
 import { Screen } from '../../../components/visp';
 import { useVispTheme, VispText, VispSpace } from '../../../theme/visp';
 import { GlassButton } from '../../../components/glass';
 import { useTranslation } from '../../../i18n';
-import { IdentitySessionOut, payoutsV2Service } from '../../../services/payoutsV2Service';
+import { payoutsV2Service } from '../../../services/payoutsV2Service';
 import { advanceToStep } from './navigation';
+
+const brandLogo = Image.resolveAssetSource(require('../../../../assets/icon.png'));
 
 export default function IdentityDocStep(): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
   const navigation = useNavigation<any>();
-  const [session, setSession] = useState<IdentitySessionOut | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const fetchOptions = useCallback(async () => {
+    const session = await payoutsV2Service.startIdentityDocument();
+    return {
+      sessionId: session.sessionId,
+      ephemeralKeySecret: session.ephemeralKeySecret,
+      brandLogo,
+    };
+  }, []);
+
+  const { present, status, loading, error } = useStripeIdentity(fetchOptions);
 
   useEffect(() => {
-    let cancelled = false;
+    if (status !== 'FlowCompleted') return;
     (async () => {
       try {
-        const s = await payoutsV2Service.startIdentityDocument();
-        if (!cancelled) setSession(s);
+        const fresh = await payoutsV2Service.getStatus();
+        const needsTos = (fresh.requirementsDue ?? []).some((r) =>
+          r === 'tos_acceptance.date' || r === 'tos_acceptance.ip',
+        );
+        if (needsTos) {
+          advanceToStep(navigation, 'tos');
+        } else {
+          navigation.popToTop();
+          navigation.goBack();
+        }
       } catch (err: any) {
-        if (!cancelled) setError(err?.message ?? tr('payoutsV2.errorGeneric'));
-      } finally {
-        if (!cancelled) setLoading(false);
+        Alert.alert(tr('common.error'), err?.message ?? tr('payoutsV2.errorGeneric'));
       }
     })();
-    return () => { cancelled = true; };
-  }, [tr]);
+  }, [status, navigation, tr]);
 
-  const onSkip = async () => {
-    // Without the native Identity SDK installed, `proof_of_liveness`
-    // cannot be completed from the app — it requires either the camera
-    // sheet (Option B, pending) or an admin approval from the Stripe
-    // Dashboard. Bounce the user to TOS if it's still pending, otherwise
-    // exit to Earnings so they don't get stuck in a re-mount loop here.
-    try {
-      const status = await payoutsV2Service.getStatus();
-      const needsTos = (status.requirementsDue ?? []).some((r) =>
-        r === 'tos_acceptance.date' || r === 'tos_acceptance.ip',
-      );
-      if (needsTos) {
-        advanceToStep(navigation, 'tos');
-      } else {
-        navigation.popToTop();
-        navigation.goBack();
-      }
-    } catch (err: any) {
-      Alert.alert(tr('common.error'), err?.message ?? tr('payoutsV2.errorGeneric'));
+  useEffect(() => {
+    if (status === 'FlowFailed' && error) {
+      Alert.alert(tr('payoutsV2.idDocFailedTitle'), error.localizedMessage || error.message);
     }
-  };
+  }, [status, error, tr]);
 
   return (
-    <Screen edges={["top","bottom"]}>
+    <Screen edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
           <Text style={[VispText.bodyStrong, { color: t.violet }]}>{'< '}</Text>
@@ -79,21 +81,32 @@ export default function IdentityDocStep(): React.JSX.Element {
           {tr('payoutsV2.idDocSubtitle')}
         </Text>
 
-        {loading && <ActivityIndicator size="large" color={t.violet} />}
-        {error && <Text style={[VispText.body, { color: t.danger }]}>{error}</Text>}
+        <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+          <Text style={[VispText.caption, { color: t.text3, marginBottom: 6 }]}>{tr('payoutsV2.idDocWhatYouNeed')}</Text>
+          <Text style={[VispText.body, { color: t.text }]}>{tr('payoutsV2.idDocStep1')}</Text>
+          <Text style={[VispText.body, { color: t.text, marginTop: 4 }]}>{tr('payoutsV2.idDocStep2')}</Text>
+          <Text style={[VispText.body, { color: t.text, marginTop: 4 }]}>{tr('payoutsV2.idDocStep3')}</Text>
+        </View>
 
-        {session && (
-          <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
-            <Text style={[VispText.caption, { color: t.text3, marginBottom: 6 }]}>{tr('payoutsV2.idDocSessionLabel')}</Text>
-            <Text style={[VispText.label, { color: t.text }]} numberOfLines={1}>{session.sessionId}</Text>
-            <Text style={[VispText.body, { color: t.text3, marginTop: VispSpace.section }]}>
-              {tr('payoutsV2.idDocSdkNote')}
-            </Text>
+        {status === 'FlowCanceled' && (
+          <Text style={[VispText.body, { color: t.text3, marginTop: VispSpace.section, textAlign: 'center' }]}>
+            {tr('payoutsV2.idDocCanceled')}
+          </Text>
+        )}
+
+        {loading && (
+          <View style={{ alignItems: 'center', marginTop: VispSpace.section }}>
+            <ActivityIndicator size="large" color={t.violet} />
           </View>
         )}
 
         <View style={{ height: VispSpace.section * 2 }} />
-        <GlassButton title={tr('payoutsV2.idDocSkip')} variant="outline" onPress={onSkip} />
+        <GlassButton
+          title={status === 'FlowCanceled' ? tr('payoutsV2.idDocRetry') : tr('payoutsV2.idDocStart')}
+          variant="glow"
+          loading={loading}
+          onPress={() => { present(); }}
+        />
       </ScrollView>
     </Screen>
   );
@@ -102,5 +115,5 @@ export default function IdentityDocStep(): React.JSX.Element {
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: VispSpace.gutter, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: VispSpace.gutter, paddingTop: 12, paddingBottom: VispSpace.section },
-  card: { borderRadius: 14, borderWidth: 1, padding: VispSpace.card, marginTop: VispSpace.section },
+  card: { borderRadius: 14, borderWidth: 1, padding: VispSpace.card },
 });

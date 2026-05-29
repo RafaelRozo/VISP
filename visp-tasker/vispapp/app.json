@@ -74,7 +74,8 @@
           "enableGooglePay": false
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-web-browser"
     ]
   }
 }
