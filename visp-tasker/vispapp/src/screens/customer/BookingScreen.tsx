@@ -38,7 +38,8 @@ import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import LevelBadge from '../../components/LevelBadge';
 import { taskService, PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
 import { paymentService } from '../../services/paymentService';
@@ -296,7 +297,7 @@ function BookingScreen(): React.JSX.Element {
   }, [isFormValid, task, navigation]);
 
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -666,7 +667,7 @@ function BookingScreen(): React.JSX.Element {
           />
         </View>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

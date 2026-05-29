@@ -24,7 +24,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MapboxGL from '@rnmapbox/maps';
 
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { Colors, getLevelColor, Spacing, GlassStyles } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -388,28 +389,28 @@ function JobTrackingScreen(): React.JSX.Element {
   // ── Loading state ────────────────────────
   if (isLoading) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
           <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading job details...</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   if (error || !job) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>{error ?? 'Job not found'}</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   // ── Render ────────────────────────────────
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -683,6 +684,7 @@ function JobTrackingScreen(): React.JSX.Element {
                         <Text
                           style={[
                             styles.timelineLabel,
+                            { color: theme.textPrimary },
                             isFuture && styles.timelineLabelFuture,
                             isCurrent && styles.timelineLabelCurrent,
                           ]}
@@ -692,6 +694,7 @@ function JobTrackingScreen(): React.JSX.Element {
                         <Text
                           style={[
                             styles.timelineDescription,
+                            { color: theme.textSecondary },
                             isFuture && styles.timelineDescriptionFuture,
                           ]}
                         >
@@ -720,7 +723,7 @@ function JobTrackingScreen(): React.JSX.Element {
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

@@ -21,9 +21,11 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { AnimatedSpinner } from '../../components/animations';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
@@ -77,6 +79,7 @@ const NEGATIVE_FEEDBACK_TAGS = [
 // ──────────────────────────────────────────────
 
 function RatingScreen(): React.JSX.Element {
+  const theme = useTheme();
   const route = useRoute<RatingRouteProp>();
   const navigation = useNavigation<RatingNavProp>();
   const { jobId, taskName, finalPrice } = route.params;
@@ -173,7 +176,7 @@ function RatingScreen(): React.JSX.Element {
   const isFormValid = rating > 0;
 
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -186,14 +189,14 @@ function RatingScreen(): React.JSX.Element {
             <GlassCard variant="standard" style={styles.jobSummaryBorder}>
               <View style={styles.jobSummaryContent}>
                 <Text style={styles.jobSummaryLabel}>Completed Service</Text>
-                <Text style={styles.jobSummaryName}>{taskName}</Text>
+                <Text style={[styles.jobSummaryName, { color: theme.textPrimary }]}>{taskName}</Text>
               </View>
             </GlassCard>
           </View>
 
           {/* Star Rating */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>How was your experience?</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>How was your experience?</Text>
             <GlassCard variant="dark">
               <View style={styles.starsContainer}>
                 {STAR_VALUES.map((star) => {
@@ -232,8 +235,8 @@ function RatingScreen(): React.JSX.Element {
           {/* Feedback Tags */}
           {rating > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>What stood out?</Text>
-              <Text style={styles.tagSubtitle}>Select any that apply</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>What stood out?</Text>
+              <Text style={[styles.tagSubtitle, { color: theme.textTertiary }]}>Select any that apply</Text>
               <View style={styles.tagsContainer}>
                 {visibleTags.map((tag) => {
                   const isSelected = selectedTags.includes(tag.id);
@@ -256,6 +259,7 @@ function RatingScreen(): React.JSX.Element {
                       <Text
                         style={[
                           styles.tagChipText,
+                          { color: theme.textSecondary },
                           isSelected && !isNegative && styles.tagChipTextSelected,
                           isSelected && isNegative && styles.tagChipTextSelectedNegative,
                         ]}
@@ -272,8 +276,8 @@ function RatingScreen(): React.JSX.Element {
           {/* Optional Feedback Text */}
           {rating > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Additional Comments</Text>
-              <Text style={styles.feedbackSubtitle}>Optional</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Additional Comments</Text>
+              <Text style={[styles.feedbackSubtitle, { color: theme.textTertiary }]}>Optional</Text>
               <GlassInput
                 placeholder="Share more about your experience..."
                 value={feedbackText}
@@ -286,7 +290,7 @@ function RatingScreen(): React.JSX.Element {
                 containerStyle={styles.feedbackContainer}
                 style={styles.feedbackInput}
               />
-              <Text style={styles.charCount}>
+              <Text style={[styles.charCount, { color: theme.textTertiary }]}>
                 {feedbackText.length}/500
               </Text>
             </View>
@@ -294,34 +298,34 @@ function RatingScreen(): React.JSX.Element {
 
           {/* Cost Breakdown */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Cost Breakdown</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Cost Breakdown</Text>
             <GlassCard variant="dark">
               <View style={styles.costRow}>
-                <Text style={styles.costLabel}>Labor</Text>
-                <Text style={styles.costValue}>
+                <Text style={[styles.costLabel, { color: theme.textSecondary }]}>Labor</Text>
+                <Text style={[styles.costValue, { color: theme.textPrimary }]}>
                   ${costBreakdown.labor.toFixed(2)}
                 </Text>
               </View>
               <View style={styles.costRow}>
-                <Text style={styles.costLabel}>Platform Fee</Text>
-                <Text style={styles.costValue}>
+                <Text style={[styles.costLabel, { color: theme.textSecondary }]}>Platform Fee</Text>
+                <Text style={[styles.costValue, { color: theme.textPrimary }]}>
                   ${costBreakdown.platformFee.toFixed(2)}
                 </Text>
               </View>
               <View style={styles.costDivider} />
               <View style={styles.costRow}>
-                <Text style={styles.costLabel}>Subtotal</Text>
-                <Text style={styles.costValue}>${finalPrice.toFixed(2)}</Text>
+                <Text style={[styles.costLabel, { color: theme.textSecondary }]}>Subtotal</Text>
+                <Text style={[styles.costValue, { color: theme.textPrimary }]}>${finalPrice.toFixed(2)}</Text>
               </View>
               <View style={styles.costRow}>
-                <Text style={styles.costLabel}>Tax (HST 13%)</Text>
-                <Text style={styles.costValue}>
+                <Text style={[styles.costLabel, { color: theme.textSecondary }]}>Tax (HST 13%)</Text>
+                <Text style={[styles.costValue, { color: theme.textPrimary }]}>
                   ${costBreakdown.tax.toFixed(2)}
                 </Text>
               </View>
               <View style={styles.costDivider} />
               <View style={styles.costRow}>
-                <Text style={styles.costTotalLabel}>Total</Text>
+                <Text style={[styles.costTotalLabel, { color: theme.textPrimary }]}>Total</Text>
                 <Text style={styles.costTotalValue}>
                   ${costBreakdown.total.toFixed(2)}
                 </Text>
@@ -332,7 +336,7 @@ function RatingScreen(): React.JSX.Element {
           {/* Legal Footer */}
           <View style={styles.section}>
             <View style={styles.legalCard}>
-              <Text style={styles.legalText}>
+              <Text style={[styles.legalText, { color: theme.textTertiary }]}>
                 VISP acts as a platform intermediary only. Payment is
                 processed securely through Stripe. The service provider is an
                 independent professional and not an employee of VISP.
@@ -347,8 +351,8 @@ function RatingScreen(): React.JSX.Element {
         {/* Submit CTA */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={styles.ctaPriceLabel}>Total</Text>
-            <Text style={styles.ctaPriceValue}>
+            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Total</Text>
+            <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
               ${costBreakdown.total.toFixed(2)}
             </Text>
           </View>
@@ -362,7 +366,7 @@ function RatingScreen(): React.JSX.Element {
           />
         </View>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

@@ -1,18 +1,9 @@
 /**
- * GlassInput
+ * GlassInput — theme-aware text input.
  *
- * Glass-themed text input with optional label, error state, and icon.
- * Supports ref forwarding for focus management.
- *
- * Usage:
- *   <GlassInput
- *     ref={inputRef}
- *     label="Email"
- *     placeholder="you@example.com"
- *     value={email}
- *     onChangeText={setEmail}
- *     error="Invalid email"
- *   />
+ * Reads `useTheme()` for input background, border, text and placeholder.
+ * Listens to native `onChange` and forwards through `onChangeText` so iOS
+ * Contact AutoFill works with controlled inputs (see feedback memory).
  */
 
 import React, { forwardRef, useState, useCallback } from 'react';
@@ -24,7 +15,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { GlassStyles } from '../../theme/glass';
+import { useTheme } from '../../theme/ThemeContext';
 import { Typography } from '../../theme/typography';
 import { Spacing } from '../../theme/spacing';
 
@@ -52,6 +43,7 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
     },
     ref,
   ) => {
+    const theme = useTheme();
     const [focused, setFocused] = useState(false);
 
     const handleFocus = useCallback(
@@ -70,13 +62,7 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
       [onBlur],
     );
 
-    // iOS Contact AutoFill fills the native TextInput but doesn't always fire
-    // `onChangeText`, leaving the React state empty while the field looks
-    // populated. Listening to `onChange` (which Apple fires reliably for
-    // autofill) and forwarding the value through `onChangeText` makes the
-    // controlled input mirror the autofilled text. We compare against the
-    // current `value` prop to avoid re-emitting when both events fire for
-    // a user-typed character.
+    // iOS Contact AutoFill — see feedback_stripe_onboarding_pattern memory
     const handleChange = useCallback(
       (e: any) => {
         const text = e?.nativeEvent?.text;
@@ -88,18 +74,25 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
       [onChange, onChangeText, value],
     );
 
+    const wrapStyle = {
+      backgroundColor: theme.inputBackground,
+      borderWidth: 1,
+      borderColor: focused
+        ? theme.isDark ? 'rgba(120, 80, 255, 0.6)' : 'rgba(124, 58, 237, 0.6)'
+        : error
+          ? theme.isDark ? 'rgba(231, 76, 60, 0.8)' : 'rgba(185, 28, 28, 0.7)'
+          : theme.inputBorder,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    };
+
     return (
       <View style={containerStyle}>
-        {label && <Text style={styles.label}>{label}</Text>}
-        <View
-          style={[
-            GlassStyles.input,
-            styles.row,
-            focused && GlassStyles.inputFocused,
-            !!error && GlassStyles.inputError,
-            style,
-          ]}
-        >
+        {label && (
+          <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text>
+        )}
+        <View style={[wrapStyle, styles.row, style]}>
           {icon && <View style={styles.icon}>{icon}</View>}
           <TextInput
             ref={ref}
@@ -107,13 +100,17 @@ const GlassInput = forwardRef<TextInput, GlassInputProps>(
             value={value}
             onChange={handleChange}
             onChangeText={onChangeText}
-            style={styles.textInput}
-            placeholderTextColor="rgba(255, 255, 255, 0.35)"
+            style={[styles.textInput, { color: theme.inputText }]}
+            placeholderTextColor={theme.inputPlaceholder}
             onFocus={handleFocus}
             onBlur={handleBlur}
           />
         </View>
-        {!!error && <Text style={styles.error}>{error}</Text>}
+        {!!error && (
+          <Text style={[styles.error, { color: theme.isDark ? '#FC8181' : '#B91C1C' }]}>
+            {error}
+          </Text>
+        )}
       </View>
     );
   },
@@ -124,7 +121,6 @@ GlassInput.displayName = 'GlassInput';
 const styles = StyleSheet.create({
   label: {
     ...Typography.label,
-    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.xs,
   },
   row: {
@@ -136,13 +132,11 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    color: '#FFFFFF',
     fontSize: 16,
     padding: 0,
   },
   error: {
     ...Typography.caption,
-    color: '#E74C3C',
     marginTop: Spacing.xs,
   },
 });

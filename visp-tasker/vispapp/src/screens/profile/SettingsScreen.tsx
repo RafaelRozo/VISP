@@ -22,8 +22,10 @@ import {
   View,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import {
   NotificationPreferences,
   PaymentMethod,
@@ -66,9 +68,10 @@ function SettingsToggle({
   value,
   onToggle,
 }: SettingsToggleProps): React.JSX.Element {
+  const theme = useTheme();
   return (
     <View style={rowStyles.container}>
-      <Text style={rowStyles.label}>{label}</Text>
+      <Text style={[rowStyles.label, { color: theme.textPrimary }]}>{label}</Text>
       <Switch
         value={value}
         onValueChange={onToggle}
@@ -93,6 +96,7 @@ function SettingsLink({
   value,
   onPress,
 }: SettingsLinkProps): React.JSX.Element {
+  const theme = useTheme();
   return (
     <TouchableOpacity
       style={rowStyles.container}
@@ -100,10 +104,10 @@ function SettingsLink({
       activeOpacity={0.7}
       accessibilityRole="button"
     >
-      <Text style={rowStyles.label}>{label}</Text>
+      <Text style={[rowStyles.label, { color: theme.textPrimary }]}>{label}</Text>
       <View style={rowStyles.valueRow}>
-        {value && <Text style={rowStyles.value}>{value}</Text>}
-        <Text style={rowStyles.arrow}>{'\u203A'}</Text>
+        {value && <Text style={[rowStyles.value, { color: theme.textSecondary }]}>{value}</Text>}
+        <Text style={[rowStyles.arrow, { color: theme.textTertiary }]}>{'\u203A'}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -150,17 +154,18 @@ function PaymentMethodCard({
   method,
   onRemove,
 }: PaymentMethodCardProps): React.JSX.Element {
+  const theme = useTheme();
   return (
     <View style={paymentStyles.container}>
       <View style={paymentStyles.left}>
-        <Text style={paymentStyles.type}>
+        <Text style={[paymentStyles.type, { color: theme.textPrimary }]}>
           {method.brand ?? method.type === 'card' ? 'Card' : 'Bank'}
         </Text>
-        <Text style={paymentStyles.last4}>
+        <Text style={[paymentStyles.last4, { color: theme.textSecondary }]}>
           {'\u2022\u2022\u2022\u2022'} {method.last4}
         </Text>
         {method.expiresAt && (
-          <Text style={paymentStyles.expiry}>
+          <Text style={[paymentStyles.expiry, { color: theme.textTertiary }]}>
             Exp:{' '}
             {new Date(method.expiresAt).toLocaleDateString([], {
               month: '2-digit',
@@ -241,6 +246,7 @@ const paymentStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function SettingsScreen(): React.JSX.Element {
+  const theme = useTheme();
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
   const navigation = useNavigation<any>();
@@ -427,14 +433,14 @@ export default function SettingsScreen(): React.JSX.Element {
     LANGUAGES.find((l) => l.code === language)?.label ?? 'English';
 
   return (
-    <GlassBackground>
+    <Screen>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
         {/* Notifications Section */}
-        <Text style={styles.sectionHeader}>{t('settings.notifications')}</Text>
+        <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{t('settings.notifications')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsToggle
             label={t('settings.pushNotifications')}
@@ -462,7 +468,7 @@ export default function SettingsScreen(): React.JSX.Element {
         </GlassCard>
 
         {/* App Settings Section */}
-        <Text style={styles.sectionHeader}>{t('settings.appSettings')}</Text>
+        <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{t('settings.appSettings')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsLink
             label={t('settings.language')}
@@ -478,7 +484,7 @@ export default function SettingsScreen(): React.JSX.Element {
         </GlassCard>
 
         {/* Account / Recovery code */}
-        <Text style={styles.sectionHeader}>{t('settings.account')}</Text>
+        <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{t('settings.account')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsLink
             label={t('settings.viewRecoveryCode')}
@@ -492,7 +498,7 @@ export default function SettingsScreen(): React.JSX.Element {
         </GlassCard>
 
         {/* Privacy & Legal Section */}
-        <Text style={styles.sectionHeader}>{t('settings.privacyLegal')}</Text>
+        <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{t('settings.privacyLegal')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
           <SettingsLink
             label={t('settings.privacySettings')}
@@ -517,14 +523,24 @@ export default function SettingsScreen(): React.JSX.Element {
         </GlassCard>
 
         {/* About Section */}
-        <Text style={styles.sectionHeader}>{t('settings.about')}</Text>
+        <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{t('settings.about')}</Text>
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>{t('settings.appVersion')}</Text>
-            <Text style={styles.aboutValue}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onLongPress={() => {
+              if (__DEV__) {
+                // Dev-only: long-press version label to open the design-system preview.
+                navigation.navigate('__DesignSystem' as never);
+              }
+            }}
+            delayLongPress={1200}
+            style={styles.aboutRow}
+          >
+            <Text style={[styles.aboutLabel, { color: theme.textPrimary }]}>{t('settings.appVersion')}</Text>
+            <Text style={[styles.aboutValue, { color: theme.textSecondary }]}>
               {APP_VERSION} ({BUILD_NUMBER})
             </Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.glassDivider} />
           <SettingsLink
             label={t('settings.rateApp')}
@@ -555,10 +571,10 @@ export default function SettingsScreen(): React.JSX.Element {
       >
         <View style={recoveryStyles.backdrop}>
           <GlassCard variant="dark" padding={24} style={recoveryStyles.card}>
-            <Text style={recoveryStyles.title}>
+            <Text style={[recoveryStyles.title, { color: theme.textPrimary }]}>
               {t('settings.recoveryCodeTitle')}
             </Text>
-            <Text style={recoveryStyles.subtitle}>
+            <Text style={[recoveryStyles.subtitle, { color: theme.textSecondary }]}>
               {recoveryCode
                 ? t('settings.recoveryCodeShown')
                 : t('settings.recoveryCodeEnterPassword')}
@@ -567,11 +583,11 @@ export default function SettingsScreen(): React.JSX.Element {
             {recoveryCode ? (
               <>
                 <View style={recoveryStyles.codeBox}>
-                  <Text selectable style={recoveryStyles.codeText}>
+                  <Text selectable style={[recoveryStyles.codeText, { color: theme.textPrimary }]}>
                     {recoveryCode}
                   </Text>
                 </View>
-                <Text style={recoveryStyles.hint}>
+                <Text style={[recoveryStyles.hint, { color: theme.textSecondary }]}>
                   {t('settings.recoveryCodeWarning')}
                 </Text>
                 <View style={recoveryStyles.btnRow}>
@@ -593,9 +609,9 @@ export default function SettingsScreen(): React.JSX.Element {
             ) : (
               <>
                 <TextInput
-                  style={recoveryStyles.input}
+                  style={[recoveryStyles.input, { color: theme.inputText, backgroundColor: theme.inputBackground }]}
                   placeholder={t('settings.recoveryCodePasswordPlaceholder')}
-                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  placeholderTextColor={theme.inputPlaceholder}
                   secureTextEntry
                   autoCapitalize="none"
                   value={recoveryPwd}
@@ -626,7 +642,7 @@ export default function SettingsScreen(): React.JSX.Element {
           </GlassCard>
         </View>
       </Modal>
-    </GlassBackground>
+    </Screen>
   );
 }
 

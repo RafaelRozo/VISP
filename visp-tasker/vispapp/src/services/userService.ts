@@ -1,4 +1,4 @@
-import { del, post, upload } from './apiClient';
+import { del, patch, post, upload } from './apiClient';
 import { Config } from './config';
 import type { User } from '../types';
 
@@ -18,7 +18,27 @@ function inferExt(uri: string, mimeType?: string | null): string {
   return 'jpg';
 }
 
+export interface UpdateProfileBody {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  defaultAddress?: {
+    street?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    country?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    formattedAddress?: string;
+  };
+}
+
 export const userService = {
+  updateProfile: async (body: UpdateProfileBody): Promise<User> => {
+    return patch<User>('/users/me', body);
+  },
+
   uploadAvatar: async (asset: AvatarUploadAsset): Promise<User> => {
     const formData = new FormData();
     const ext = inferExt(asset.uri, asset.mimeType);

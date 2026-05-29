@@ -7,10 +7,12 @@
  */
 
 import React, {useEffect} from 'react';
-import {StatusBar, LogBox, StyleSheet} from 'react-native';
+import {StatusBar, LogBox, StyleSheet, View} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {StripeProvider} from '@stripe/stripe-react-native';
+import {useFonts as useManrope, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold} from '@expo-google-fonts/manrope';
+import {JetBrainsMono_500Medium} from '@expo-google-fonts/jetbrains-mono';
 import AppNavigator from './src/navigation/AppNavigator';
 import {Colors} from './src/theme/colors';
 import {Config} from './src/services/config';
@@ -30,10 +32,22 @@ export default function App(): React.JSX.Element {
   const loadSettings = useAppStore(state => state.loadSettings);
   const darkMode = useAppStore(state => state.darkMode);
 
+  const [fontsLoaded] = useManrope({
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    JetBrainsMono_500Medium,
+  });
+
   useEffect(() => {
     loadStoredAuth();
     loadSettings();
   }, [loadStoredAuth, loadSettings]);
+
+  // Hold render until fonts are ready so first paint has correct typography.
+  if (!fontsLoaded) {
+    return <View style={[styles.root, { backgroundColor: darkMode ? Colors.background : '#F2F4F8' }]} />;
+  }
 
   return (
     <GestureHandlerRootView style={[styles.root, { backgroundColor: darkMode ? Colors.background : '#F2F4F8' }]}>

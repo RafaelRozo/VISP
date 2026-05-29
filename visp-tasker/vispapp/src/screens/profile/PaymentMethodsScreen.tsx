@@ -25,7 +25,9 @@ import {
 } from 'react-native';
 import { CardForm, useConfirmSetupIntent } from '@stripe/stripe-react-native';
 import { Colors } from '../../theme/colors';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { useTheme } from '../../theme/ThemeContext';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { AnimatedSpinner } from '../../components/animations';
 import { useAuthStore } from '../../stores/authStore';
 import { post } from '../../services/apiClient';
@@ -63,6 +65,7 @@ interface CardItemProps {
 }
 
 function CardItem({ method, isDefault, onRemove }: CardItemProps): React.JSX.Element {
+  const theme = useTheme();
   return (
     <GlassCard variant="standard" style={cardStyles.cardMargin}>
       <View style={cardStyles.container}>
@@ -76,15 +79,15 @@ function CardItem({ method, isDefault, onRemove }: CardItemProps): React.JSX.Ele
         {/* Card details */}
         <View style={cardStyles.info}>
           <View style={cardStyles.topRow}>
-            <Text style={cardStyles.brand}>{brandLabel(method.brand)}</Text>
+            <Text style={[cardStyles.brand, { color: theme.textPrimary }]}>{brandLabel(method.brand)}</Text>
             {isDefault && (
               <View style={cardStyles.defaultBadge}>
                 <Text style={cardStyles.defaultText}>Default</Text>
               </View>
             )}
           </View>
-          <Text style={cardStyles.last4}>**** **** **** {method.last4}</Text>
-          <Text style={cardStyles.expiry}>
+          <Text style={[cardStyles.last4, { color: theme.textSecondary }]}>**** **** **** {method.last4}</Text>
+          <Text style={[cardStyles.expiry, { color: theme.textTertiary }]}>
             Expires {String(method.exp_month).padStart(2, '0')}/{method.exp_year}
           </Text>
         </View>
@@ -205,6 +208,7 @@ const cardStyles = StyleSheet.create({
 // ---------------------------------------------------------------------------
 
 export default function PaymentMethodsScreen(): React.JSX.Element {
+  const theme = useTheme();
   const stripeCustomerId = useAuthStore((s) => s.user?.stripeCustomerId);
   const [methods, setMethods] = useState<PaymentMethodInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -338,16 +342,16 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
 
   if (isLoading) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.center}>
           <AnimatedSpinner size={48} color={Colors.primary} />
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   return (
-    <GlassBackground>
+    <Screen>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
@@ -362,10 +366,10 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
         }
       >
         {/* Header */}
-        <Text style={styles.title}>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>
           {showAddCard ? 'Add New Card' : 'Payment Methods'}
         </Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
           {showAddCard
             ? 'Enter your card number, expiry, CVC, and postal code'
             : 'Manage your saved cards for booking services.'}
@@ -377,10 +381,10 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
               <GlassCard variant="dark" style={styles.emptyCard}>
                 <View style={styles.emptyState}>
                   <View style={styles.emptyIconCircle}>
-                    <Text style={styles.emptyIcon}>$</Text>
+                    <Text style={[styles.emptyIcon, { color: theme.textTertiary }]}>$</Text>
                   </View>
-                  <Text style={styles.emptyTitle}>No Payment Methods</Text>
-                  <Text style={styles.emptySubtitle}>
+                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No Payment Methods</Text>
+                  <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
                     {stripeCustomerId
                       ? 'You have no saved cards yet. Add one to speed up bookings.'
                       : 'Add a card to get started with VISP services.'}
@@ -455,7 +459,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

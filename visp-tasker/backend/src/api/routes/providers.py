@@ -25,8 +25,14 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, HTTPException, Query, status, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Query, Request, status, UploadFile, File, Form
 from pydantic import BaseModel
+from src.api.schemas.payouts import (
+    PayoutBankIn,
+    PayoutIdentityIn,
+    PayoutTaxIn,
+    PayoutTosIn,
+)
 
 from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.provider import (
@@ -1521,6 +1527,422 @@ async def setup_payouts(
             "onboardingUrl": url,
         }
     }
+
+
+# ---------------------------------------------------------------------------
+# Stripe Connect Accounts v2 — native onboarding (replaces hosted Express flow)
+# ---------------------------------------------------------------------------
+#
+# 7 endpoints + 1 status endpoint that walk the provider through KYC entirely
+# inside the VISP mobile app. Each step pushes the captured data to Stripe
+# via the v2 / v1 surface and returns the updated onboarding state.
+#
+#   POST /payouts/v2/init               → create v2 account
+#   POST /payouts/v2/identity           → submit personal info
+#   POST /payouts/v2/tax                → submit SSN/SIN
+#   POST /payouts/v2/bank               → attach bank account
+#   POST /payouts/v2/identity-document  → open Stripe Identity session
+#   POST /payouts/v2/tos                → record TOS acceptance
+#   GET  /payouts/v2/status             → fetch current state
+# ---------------------------------------------------------------------------
+
+
+async def _get_my_provider_profile(db, user):  # type: ignore[no-untyped-def]
+    """Return the caller's ProviderProfile or raise 403."""
+    from src.models.provider import ProviderProfile
+    from sqlalchemy import select as sa_select
+
+    stmt = sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+    profile = (await db.execute(stmt)).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+    return profile
+
+
+def _v2_status_dict(profile, status_result, has_external_account: bool) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+    """Shape a V2AccountResult into the JSON payload the mobile UI expects."""
+    return {
+        "data": {
+            "accountId": status_result.account_id,
+            "onboardingStep": status_result.onboarding_step,
+            "requirementsDue": status_result.requirements_due,
+            "capabilities": status_result.capabilities,
+            "payoutsEnabled": status_result.payouts_enabled,
+            "detailsSubmitted": status_result.details_submitted,
+            "hasExternalAccount": has_external_account,
+            "identitySessionId": profile.stripe_identity_session_id,
+        }
+    }
+
+
+@router.post(
+    "/payouts/v2/init",
+    summary="Create a Stripe Connect v2 account for the provider",
+    description=(
+        "Creates a Stripe Connect account via /v2/core/accounts with "
+        "controller.requirement_collection='application', so VISP collects "
+        "the KYC fields natively in the mobile app instead of redirecting "
+        "to Stripe's hosted form. Idempotent — if the provider already has "
+        "an account id, returns the current status instead of creating "
+        "another."
+    ),
+)
+async def init_payouts_v2(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.connectV2Service import (
+        create_v2_account,
+        get_account_status,
+    )
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+
+    # Country defaults to the user's home address country, falling back to CA
+    # (Ontario-first market). US fully supported; rest of the world is gated
+    # at the platform level — same allow-list as the Express endpoint.
+    country = (
+        (user.default_address_country or profile.home_country or "CA")
+        .upper()
+    )
+    if country not in ("CA", "US"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "unsupported_country",
+                "supported": ["CA", "US"],
+                "country": country,
+            },
+        )
+
+    try:
+        if profile.stripe_account_id:
+            result = await get_account_status(profile.stripe_account_id)
+        else:
+            result = await create_v2_account(
+                provider_id=profile.id,
+                email=user.email,
+                country=country,
+            )
+            profile.stripe_account_id = result.account_id
+
+        profile.stripe_onboarding_step = result.onboarding_step
+        profile.stripe_requirements_due = result.requirements_due
+        profile.stripe_capabilities = result.capabilities
+        await db.commit()
+
+    except PaymentError as exc:
+        logger.error("init_payouts_v2 Stripe error for provider %s: %s", profile.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Stripe error: {exc}",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("init_payouts_v2 unexpected error for provider %s", profile.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error during payouts init: {type(exc).__name__}",
+        )
+
+    return _v2_status_dict(
+        profile, result, has_external_account=bool(profile.stripe_external_account_id),
+    )
+
+
+@router.post(
+    "/payouts/v2/identity",
+    summary="Submit personal identity fields for the provider's Stripe account",
+)
+async def submit_payouts_identity(
+    payload: "PayoutIdentityIn",  # forward ref — imported below
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.connectV2Service import submit_identity
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first to create the connected account.",
+        )
+
+    try:
+        result = await submit_identity(
+            profile.stripe_account_id,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+            dob_year=payload.dob_year,
+            dob_month=payload.dob_month,
+            dob_day=payload.dob_day,
+            address_line1=payload.address_line1,
+            address_city=payload.address_city,
+            address_state=payload.address_state,
+            address_postal_code=payload.address_postal_code,
+            address_country=payload.address_country,
+            phone=payload.phone,
+            email=payload.email,
+        )
+        profile.stripe_onboarding_step = result.onboarding_step
+        profile.stripe_requirements_due = result.requirements_due
+        profile.stripe_capabilities = result.capabilities
+        await db.commit()
+    except PaymentError as exc:
+        logger.error("submit_payouts_identity Stripe error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stripe rejected identity data: {exc}",
+        )
+
+    return _v2_status_dict(
+        profile, result, has_external_account=bool(profile.stripe_external_account_id),
+    )
+
+
+@router.post(
+    "/payouts/v2/tax",
+    summary="Submit national tax identifier (SSN for US, SIN for CA)",
+)
+async def submit_payouts_tax(
+    payload: "PayoutTaxIn",
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.connectV2Service import submit_tax
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first.",
+        )
+
+    try:
+        result = await submit_tax(
+            profile.stripe_account_id,
+            id_number=payload.id_number,
+        )
+        profile.stripe_onboarding_step = result.onboarding_step
+        profile.stripe_requirements_due = result.requirements_due
+        profile.stripe_capabilities = result.capabilities
+        await db.commit()
+    except PaymentError as exc:
+        logger.error("submit_payouts_tax Stripe error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stripe rejected tax id: {exc}",
+        )
+
+    return _v2_status_dict(
+        profile, result, has_external_account=bool(profile.stripe_external_account_id),
+    )
+
+
+@router.post(
+    "/payouts/v2/bank",
+    summary="Attach a bank account for payouts (routing + account number)",
+)
+async def submit_payouts_bank(
+    payload: "PayoutBankIn",
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.connectV2Service import submit_bank
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first.",
+        )
+
+    try:
+        result, external_account_id = await submit_bank(
+            profile.stripe_account_id,
+            country=payload.country,
+            currency=payload.currency,
+            account_holder_name=payload.account_holder_name,
+            routing_number=payload.routing_number,
+            account_number=payload.account_number,
+        )
+        profile.stripe_external_account_id = external_account_id
+        profile.stripe_onboarding_step = result.onboarding_step
+        profile.stripe_requirements_due = result.requirements_due
+        profile.stripe_capabilities = result.capabilities
+        await db.commit()
+    except PaymentError as exc:
+        logger.error("submit_payouts_bank Stripe error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stripe rejected bank account: {exc}",
+        )
+
+    return _v2_status_dict(profile, result, has_external_account=True)
+
+
+@router.post(
+    "/payouts/v2/identity-document",
+    summary="Open a Stripe Identity session for ID document + selfie capture",
+)
+async def open_identity_session(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.connectV2Service import create_identity_session
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first.",
+        )
+
+    try:
+        session = await create_identity_session(
+            profile.stripe_account_id,
+            customer_email=user.email,
+        )
+        profile.stripe_identity_session_id = session.session_id
+        await db.commit()
+    except PaymentError as exc:
+        logger.error("open_identity_session Stripe error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stripe Identity error: {exc}",
+        )
+
+    return {
+        "data": {
+            "sessionId": session.session_id,
+            "clientSecret": session.client_secret,
+            "ephemeralKeySecret": session.ephemeral_key_secret,
+            "publishableKey": _settings.stripe_publishable_key,
+        }
+    }
+
+
+@router.post(
+    "/payouts/v2/tos",
+    summary="Record provider acceptance of the Stripe Services Agreement",
+)
+async def accept_payouts_tos(
+    payload: "PayoutTosIn",
+    request: Request,
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from datetime import datetime, timezone
+    from src.integrations.stripe.connectV2Service import accept_tos
+    from src.integrations.stripe.paymentService import PaymentError
+
+    if not payload.accepted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Acceptance flag must be true.",
+        )
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first.",
+        )
+
+    # Use the request-side IP + user agent so the client can't spoof them.
+    # Cloudflare and other proxies set X-Forwarded-For — prefer it if present.
+    fwd = request.headers.get("x-forwarded-for") or ""
+    client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "0.0.0.0"))
+    user_agent = request.headers.get("user-agent", "unknown")[:500]
+    accepted_at = datetime.now(timezone.utc)
+
+    try:
+        result = await accept_tos(
+            profile.stripe_account_id,
+            ip=client_ip,
+            user_agent=user_agent,
+            accepted_at=accepted_at,
+        )
+        profile.stripe_tos_accepted_at = accepted_at
+        profile.stripe_tos_acceptance_ip = client_ip
+        profile.stripe_tos_acceptance_user_agent = user_agent
+        profile.stripe_onboarding_step = result.onboarding_step
+        profile.stripe_requirements_due = result.requirements_due
+        profile.stripe_capabilities = result.capabilities
+        await db.commit()
+    except PaymentError as exc:
+        logger.error("accept_payouts_tos Stripe error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stripe rejected TOS acceptance: {exc}",
+        )
+
+    return _v2_status_dict(
+        profile, result, has_external_account=bool(profile.stripe_external_account_id),
+    )
+
+
+@router.get(
+    "/payouts/v2/status",
+    summary="Current Stripe Connect v2 onboarding state for the authenticated provider",
+)
+async def get_payouts_v2_status(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.connectV2Service import get_account_status
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        return {
+            "data": {
+                "accountId": None,
+                "onboardingStep": "init",
+                "requirementsDue": [],
+                "capabilities": {},
+                "payoutsEnabled": False,
+                "detailsSubmitted": False,
+                "hasExternalAccount": False,
+                "identitySessionId": None,
+            }
+        }
+
+    try:
+        result = await get_account_status(profile.stripe_account_id)
+        profile.stripe_onboarding_step = result.onboarding_step
+        profile.stripe_requirements_due = result.requirements_due
+        profile.stripe_capabilities = result.capabilities
+        await db.commit()
+    except PaymentError as exc:
+        logger.warning("get_payouts_v2_status Stripe error: %s — returning cached", exc)
+        # Fall back to cached state so the mobile UI keeps working when
+        # Stripe is briefly unreachable.
+        return {
+            "data": {
+                "accountId": profile.stripe_account_id,
+                "onboardingStep": profile.stripe_onboarding_step or "identity",
+                "requirementsDue": list(profile.stripe_requirements_due or []),
+                "capabilities": dict(profile.stripe_capabilities or {}),
+                "payoutsEnabled": False,
+                "detailsSubmitted": False,
+                "hasExternalAccount": bool(profile.stripe_external_account_id),
+                "identitySessionId": profile.stripe_identity_session_id,
+            }
+        }
+
+    return _v2_status_dict(
+        profile, result, has_external_account=bool(profile.stripe_external_account_id),
+    )
 
 
 @router.get(

@@ -29,10 +29,12 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Typography } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
 import { GlassStyles } from '../../theme/glass';
 import { useAuthStore } from '../../stores/authStore';
 import { Config } from '../../services/config';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import type { RootStackParamList, UserRole } from '../../types';
 import TermsScreen from '../profile/TermsScreen';
 import PrivacyPolicyScreen from '../profile/PrivacyPolicyScreen';
@@ -195,6 +197,7 @@ const ROLE_OPTIONS: RoleOption[] = [
 // ──────────────────────────────────────────────
 
 function RegisterScreen({ navigation }: Props): React.JSX.Element {
+  const theme = useTheme();
   // ── Form State ───────────────────────────
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -418,7 +421,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
             />
           ))}
         </View>
-        <Text style={styles.progressLabel}>
+        <Text style={[styles.progressLabel, { color: theme.textTertiary }]}>
           Step {currentStep} of {TOTAL_STEPS}
         </Text>
       </View>
@@ -428,8 +431,8 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   function renderStep1(): React.JSX.Element {
     return (
       <GlassCard variant="dark" padding={24} style={styles.stepCard}>
-        <Text style={styles.stepTitle}>Create your account</Text>
-        <Text style={styles.stepSubtitle}>
+        <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>Create your account</Text>
+        <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
           Enter your email and create a secure password
         </Text>
 
@@ -459,7 +462,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
 
         {/* Password */}
         <View style={styles.fieldSpacing}>
-          <Text style={styles.inputLabel}>PASSWORD</Text>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>PASSWORD</Text>
           <View
             style={[
               GlassStyles.input,
@@ -469,12 +472,12 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           >
             <TextInput
               ref={passwordInputRef}
-              style={styles.passwordTextInput}
+              style={[styles.passwordTextInput, { color: theme.inputText }]}
               value={password}
               onChangeText={handlePasswordChange}
               onChange={handlePasswordNativeChange}
               placeholder="Minimum 8 characters"
-              placeholderTextColor="rgba(255, 255, 255, 0.35)"
+              placeholderTextColor={theme.inputPlaceholder}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
@@ -558,8 +561,8 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   function renderStep2(): React.JSX.Element {
     return (
       <GlassCard variant="dark" padding={24} style={styles.stepCard}>
-        <Text style={styles.stepTitle}>What is your name?</Text>
-        <Text style={styles.stepSubtitle}>
+        <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>What is your name?</Text>
+        <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
           This will be visible to other users on the platform
         </Text>
 
@@ -611,7 +614,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
 
         {/* Phone Number */}
         <View style={styles.fieldSpacing}>
-          <Text style={styles.inputLabel}>PHONE NUMBER</Text>
+          <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>PHONE NUMBER</Text>
           <View style={styles.phoneRow}>
             {/* Country code selector */}
             <TouchableOpacity
@@ -625,8 +628,8 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               disabled={isLoading}
             >
               <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
-              <Text style={styles.countryDial}>{selectedCountry.dial}</Text>
-              <Text style={styles.countryArrow}>{'>'}</Text>
+              <Text style={[styles.countryDial, { color: theme.textPrimary }]}>{selectedCountry.dial}</Text>
+              <Text style={[styles.countryArrow, { color: theme.textTertiary }]}>{'>'}</Text>
             </TouchableOpacity>
 
             {/* Phone input */}
@@ -664,7 +667,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               containerStyle={styles.phoneInputContainer}
             />
           </View>
-          <Text style={styles.phoneHint}>
+          <Text style={[styles.phoneHint, { color: theme.textTertiary }]}>
             {phoneDigits.length}/{selectedCountry.maxDigits} digits
           </Text>
         </View>
@@ -678,7 +681,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
         >
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country Code</Text>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Select Country Code</Text>
               <TouchableOpacity
                 onPress={() => setShowCountryPicker(false)}
                 style={styles.modalCloseButton}
@@ -706,8 +709,8 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                   activeOpacity={0.7}
                 >
                   <Text style={styles.countryRowFlag}>{item.flag}</Text>
-                  <Text style={styles.countryRowName}>{item.name}</Text>
-                  <Text style={styles.countryRowDial}>{item.dial}</Text>
+                  <Text style={[styles.countryRowName, { color: theme.textPrimary }]}>{item.name}</Text>
+                  <Text style={[styles.countryRowDial, { color: theme.textSecondary }]}>{item.dial}</Text>
                   {item.code === selectedCountry.code && (
                     <Text style={styles.countryRowCheck}>{'>'}</Text>
                   )}
@@ -725,8 +728,8 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   function renderStep3(): React.JSX.Element {
     return (
       <GlassCard variant="dark" padding={24} style={styles.stepCard}>
-        <Text style={styles.stepTitle}>How will you use VISP?</Text>
-        <Text style={styles.stepSubtitle}>
+        <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>How will you use VISP?</Text>
+        <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
           You can change this later in your profile settings
         </Text>
 
@@ -753,6 +756,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                     <Text
                       style={[
                         styles.roleCardTitle,
+                        { color: theme.textPrimary },
                         isSelected && styles.roleCardTitleSelected,
                       ]}
                     >
@@ -769,7 +773,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                       ) : null}
                     </View>
                   </View>
-                  <Text style={styles.roleCardDescription}>
+                  <Text style={[styles.roleCardDescription, { color: theme.textSecondary }]}>
                     {option.description}
                   </Text>
                 </GlassCard>
@@ -795,7 +799,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               <Text style={styles.checkmark}>{'  '}</Text>
             ) : null}
           </View>
-          <Text style={styles.termsText}>
+          <Text style={[styles.termsText, { color: theme.textSecondary }]}>
             {'I agree to the '}
             <Text style={styles.termsLink} onPress={handleOpenTerms}>
               Terms of Service
@@ -818,7 +822,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     (currentStep === 3 && isStep3Valid);
 
   return (
-    <GlassBackground>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -888,7 +892,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
 
             {/* Login Link */}
             <View style={styles.loginRow}>
-              <Text style={styles.loginLabel}>Already have an account? </Text>
+              <Text style={[styles.loginLabel, { color: theme.textSecondary }]}>Already have an account? </Text>
               <TouchableOpacity
                 onPress={() => navigation.navigate('Login')}
                 disabled={isLoading}
@@ -967,7 +971,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           </View>
         </View>
       </Modal>
-    </GlassBackground>
+    </Screen>
   );
 }
 

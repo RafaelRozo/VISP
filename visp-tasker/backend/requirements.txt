@@ -32,7 +32,9 @@ python-socketio>=5.10.0
 httpx>=0.26.0
 
 # -- Payments --
-stripe>=7.0.0
+# Accounts v2 API surface (stripe.v2.core.accounts) requires SDK >=9.0;
+# pin 11+ for current stability.
+stripe>=11.0.0
 
 # -- Firebase Cloud Messaging --
 firebase-admin>=6.2.0

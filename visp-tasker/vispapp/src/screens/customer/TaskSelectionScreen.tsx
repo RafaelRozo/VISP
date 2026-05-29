@@ -38,7 +38,8 @@ import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
 import { PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
@@ -358,19 +359,19 @@ function TaskSelectionScreen(): React.JSX.Element {
   // Loading
   if (isLoadingDetail || !taskDetail) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
           <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading...</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   const levelColor = getLevelColor(taskDetail.level);
 
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -473,6 +474,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                     <Text
                       style={[
                         styles.dateDayOfWeek,
+                        { color: theme.textSecondary },
                         isSelected && styles.dateTextSelected,
                       ]}
                     >
@@ -481,6 +483,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                     <Text
                       style={[
                         styles.dateDayOfMonth,
+                        { color: theme.textPrimary },
                         isSelected && styles.dateTextSelected,
                       ]}
                     >
@@ -489,6 +492,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                     <Text
                       style={[
                         styles.dateMonth,
+                        { color: theme.textSecondary },
                         isSelected && styles.dateTextSelected,
                       ]}
                     >
@@ -536,6 +540,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                         <Text
                           style={[
                             styles.timeSlotText,
+                            { color: theme.textPrimary },
                             isSelected && styles.timeSlotTextSelected,
                             isDisabled && styles.timeSlotTextDisabled,
                           ]}
@@ -622,6 +627,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                       <Text
                         style={[
                           styles.priorityLabel,
+                          { color: theme.textPrimary },
                           isSelected && { color: option.color },
                         ]}
                       >
@@ -667,6 +673,7 @@ function TaskSelectionScreen(): React.JSX.Element {
                     <Text
                       style={[
                         styles.noteChipText,
+                        { color: theme.textSecondary },
                         isSelected && styles.noteChipTextSelected,
                       ]}
                     >
@@ -739,7 +746,7 @@ function TaskSelectionScreen(): React.JSX.Element {
           />
         </View>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

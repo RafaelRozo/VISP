@@ -19,9 +19,11 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { AnimatedCheckmark } from '../../components/animations';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { post } from '../../services/apiClient';
@@ -49,6 +51,7 @@ const TIP_PERCENTAGES = [
 // ──────────────────────────────────────────────
 
 function TipScreen(): React.JSX.Element {
+  const theme = useTheme();
   const route = useRoute<TipRouteProp>();
   const navigation = useNavigation<TipNavProp>();
   const { jobId, taskName, finalPrice, providerName } = route.params;
@@ -123,14 +126,14 @@ function TipScreen(): React.JSX.Element {
   // Success state
   if (tipSent) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.successContainer}>
           <GlassCard variant="elevated" style={styles.successCard}>
             <View style={styles.successContent}>
               <AnimatedCheckmark size={64} color="#27AE60" />
               <View style={styles.successIconSpacer} />
-              <Text style={styles.successTitle}>Tip Sent!</Text>
-              <Text style={styles.successMessage}>
+              <Text style={[styles.successTitle, { color: theme.textPrimary }]}>Tip Sent!</Text>
+              <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
                 Your ${tipAmountDisplay} tip has been sent
                 {providerName ? ` to ${providerName}` : ''}.
                 Thank you for your generosity!
@@ -144,12 +147,12 @@ function TipScreen(): React.JSX.Element {
             </View>
           </GlassCard>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -158,9 +161,9 @@ function TipScreen(): React.JSX.Element {
         >
           {/* Header */}
           <View style={styles.section}>
-            <Text style={styles.headerTitle}>Add a Tip</Text>
+            <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Add a Tip</Text>
             {providerName && (
-              <Text style={styles.headerSubtitle}>
+              <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
                 For {providerName}
               </Text>
             )}
@@ -171,10 +174,10 @@ function TipScreen(): React.JSX.Element {
             <GlassCard variant="standard" style={styles.jobSummaryBorder}>
               <View style={styles.jobSummaryContent}>
                 <Text style={styles.jobSummaryLabel}>Completed Service</Text>
-                <Text style={styles.jobSummaryName}>{taskName}</Text>
+                <Text style={[styles.jobSummaryName, { color: theme.textPrimary }]}>{taskName}</Text>
                 <View style={styles.jobSummaryPrice}>
-                  <Text style={styles.jobSummaryPriceLabel}>Final Price</Text>
-                  <Text style={styles.jobSummaryPriceValue}>
+                  <Text style={[styles.jobSummaryPriceLabel, { color: theme.textSecondary }]}>Final Price</Text>
+                  <Text style={[styles.jobSummaryPriceValue, { color: theme.textPrimary }]}>
                     ${finalPrice.toFixed(2)}
                   </Text>
                 </View>
@@ -184,7 +187,7 @@ function TipScreen(): React.JSX.Element {
 
           {/* Quick Tip Buttons */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Quick Tip</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Quick Tip</Text>
             <View style={styles.percentRow}>
               {TIP_PERCENTAGES.map((opt) => {
                 const isSelected = selectedPercent === opt.value;
@@ -202,7 +205,9 @@ function TipScreen(): React.JSX.Element {
                     <Text
                       style={[
                         styles.percentLabel,
+                        { color: theme.textSecondary },
                         isSelected && styles.percentLabelSelected,
+                        isSelected && { color: theme.textPrimary },
                       ]}
                     >
                       {opt.label}
@@ -210,6 +215,7 @@ function TipScreen(): React.JSX.Element {
                     <Text
                       style={[
                         styles.percentAmount,
+                        { color: theme.textTertiary },
                         isSelected && styles.percentAmountSelected,
                       ]}
                     >
@@ -223,9 +229,9 @@ function TipScreen(): React.JSX.Element {
 
           {/* Custom Amount */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Custom Amount</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Custom Amount</Text>
             <View style={styles.customInputRow}>
-              <Text style={styles.dollarSign}>$</Text>
+              <Text style={[styles.dollarSign, { color: theme.textSecondary }]}>$</Text>
               <GlassInput
                 placeholder="0.00"
                 value={customAmount}
@@ -244,7 +250,7 @@ function TipScreen(): React.JSX.Element {
             <View style={styles.section}>
               <GlassCard variant="standard" style={styles.previewCardBorder}>
                 <View style={styles.previewContent}>
-                  <Text style={styles.previewLabel}>Tip Amount</Text>
+                  <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Tip Amount</Text>
                   <Text style={styles.previewValue}>${tipAmountDisplay}</Text>
                 </View>
               </GlassCard>
@@ -272,7 +278,7 @@ function TipScreen(): React.JSX.Element {
           />
         </View>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

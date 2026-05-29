@@ -1,97 +1,183 @@
 /**
- * VISP - Role Switcher
+ * VISP - Role Switcher (editorial refresh, mockup #10 fidelity)
  *
- * Animated segmented switch for 'both' users to flip between
- * Customer and Provider modes. Sliding violet thumb with spring
- * physics + label opacity crossfade. Native-driven for 60 fps.
+ * Two-pane card: ACTIVE MODE pill on the active side (background = t.text,
+ * text = t.bg) and SWITCH TO pill on the inactive side (transparent, text2).
+ * A reanimated thumb slides between the two halves on toggle.
  *
- * Used in the provider DashboardScreen and the customer HomeScreen.
+ * Eyebrow text uses JetBrains Mono uppercase (9px, 0.14em tracking).
+ * Active label uses Manrope 700 with -0.01em letter-spacing and a
+ * monochrome 14px icon (plus for customer, briefcase for provider).
+ *
+ * Drop-in replacement: same prop signature (`mode`, `onChange`).
  */
 
-import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useTranslation } from '../i18n';
-import { Colors } from '../theme/colors';
+import { useVispTheme, VispText, VispRadius, VispSpace, FontSansBold } from '../theme/visp';
+import { Icon } from './visp/Icon';
 import type { ActiveMode } from '../stores/authStore';
 
 interface Props {
   mode: ActiveMode;
   onChange: (mode: ActiveMode) => void;
-  /** Optional explicit width override; defaults to fill the parent (max 320). */
+  /** Optional explicit total width. Defaults to (screen width - 2 * gutter). */
   width?: number;
 }
 
-const TRACK_HEIGHT = 44;
-const TRACK_PADDING = 4;
-const DEFAULT_WIDTH = 280;
+const PADDING = 4;
+const INNER_GAP = 4;
 
 export default function RoleSwitcher({ mode, onChange, width }: Props): React.JSX.Element {
-  const { t } = useTranslation();
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
+  const { width: screenW } = useWindowDimensions();
 
-  const trackWidth = width ?? DEFAULT_WIDTH;
-  const thumbWidth = (trackWidth - TRACK_PADDING * 2) / 2;
+  const trackWidth = width ?? screenW - VispSpace.gutter * 2;
+  const innerWidth = trackWidth - PADDING * 2;
+  const paneWidth = (innerWidth - INNER_GAP) / 2;
 
-  // 0 = customer, 1 = provider. Spring-animated.
-  const anim = useRef(new Animated.Value(mode === 'provider' ? 1 : 0)).current;
+  // 0 = customer (left), 1 = provider (right)
+  const target = mode === 'provider' ? 1 : 0;
+  const progress = useSharedValue(target);
 
   useEffect(() => {
-    Animated.spring(anim, {
-      toValue: mode === 'provider' ? 1 : 0,
-      useNativeDriver: true,
-      friction: 8,
-      tension: 70,
-    }).start();
-  }, [mode, anim]);
+    progress.value = withTiming(target, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [target, progress]);
 
-  const thumbTranslateX = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, thumbWidth],
-  });
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: progress.value * (paneWidth + INNER_GAP) }],
+  }));
 
-  const customerOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.5] });
-  const providerOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] });
+  // Press scale per pane for tactile feedback
+  const leftScale = useSharedValue(1);
+  const rightScale = useSharedValue(1);
+  const leftStyle = useAnimatedStyle(() => ({ transform: [{ scale: leftScale.value }] }));
+  const rightStyle = useAnimatedStyle(() => ({ transform: [{ scale: rightScale.value }] }));
+
+  const isCustomerActive = mode === 'customer';
+  const isProviderActive = mode === 'provider';
 
   return (
-    <View style={[styles.track, { width: trackWidth, height: TRACK_HEIGHT, padding: TRACK_PADDING }]}>
-      {/* Sliding thumb */}
+    <View
+      style={[
+        styles.track,
+        {
+          width: trackWidth,
+          backgroundColor: t.card,
+          borderColor: t.border,
+          padding: PADDING,
+        },
+      ]}
+    >
+      {/* Sliding thumb — drawn behind the labels */}
       <Animated.View
         style={[
           styles.thumb,
+          thumbStyle,
           {
-            width: thumbWidth,
-            height: TRACK_HEIGHT - TRACK_PADDING * 2,
-            transform: [{ translateX: thumbTranslateX }],
+            width: paneWidth,
+            backgroundColor: t.text,
           },
         ]}
       />
 
-      {/* Touch targets + labels */}
-      <View style={styles.labelsRow} pointerEvents="box-none">
-        <TouchableWithoutFeedback
+      <View style={[styles.row, { gap: INNER_GAP }]}>
+        {/* Customer pane */}
+        <Pressable
+          onPressIn={() => {
+            leftScale.value = withTiming(0.97, { duration: 80 });
+          }}
+          onPressOut={() => {
+            leftScale.value = withTiming(1, { duration: 140 });
+          }}
           onPress={() => mode !== 'customer' && onChange('customer')}
           accessibilityRole="button"
-          accessibilityLabel={t('dashboard.modeCustomer')}
-          accessibilityState={{ selected: mode === 'customer' }}
+          accessibilityState={{ selected: isCustomerActive }}
+          accessibilityLabel={tr('dashboard.modeCustomer')}
+          style={[styles.pane, { width: paneWidth }]}
         >
-          <View style={styles.labelHit}>
-            <Animated.Text style={[styles.label, { opacity: customerOpacity }]}>
-              <Text style={styles.icon}>👤</Text>  {t('dashboard.modeCustomer')}
-            </Animated.Text>
-          </View>
-        </TouchableWithoutFeedback>
+          <Animated.View style={leftStyle}>
+            <Text
+              style={[
+                VispText.eyebrow,
+                styles.eyebrow,
+                { color: isCustomerActive ? t.text3 : t.text4 },
+              ]}
+            >
+              {isCustomerActive ? 'ACTIVE MODE' : 'SWITCH TO'}
+            </Text>
+            <View style={styles.labelRow}>
+              <Icon
+                name="plus"
+                size={14}
+                color={isCustomerActive ? t.bg : t.text2}
+                active={isCustomerActive}
+              />
+              <Text
+                style={[
+                  styles.label,
+                  { color: isCustomerActive ? t.bg : t.text2 },
+                ]}
+              >
+                {tr('dashboard.modeCustomer')}
+              </Text>
+            </View>
+          </Animated.View>
+        </Pressable>
 
-        <TouchableWithoutFeedback
+        {/* Provider pane */}
+        <Pressable
+          onPressIn={() => {
+            rightScale.value = withTiming(0.97, { duration: 80 });
+          }}
+          onPressOut={() => {
+            rightScale.value = withTiming(1, { duration: 140 });
+          }}
           onPress={() => mode !== 'provider' && onChange('provider')}
           accessibilityRole="button"
-          accessibilityLabel={t('dashboard.modeProvider')}
-          accessibilityState={{ selected: mode === 'provider' }}
+          accessibilityState={{ selected: isProviderActive }}
+          accessibilityLabel={tr('dashboard.modeProvider')}
+          style={[styles.pane, { width: paneWidth }]}
         >
-          <View style={styles.labelHit}>
-            <Animated.Text style={[styles.label, { opacity: providerOpacity }]}>
-              <Text style={styles.icon}>🛠️</Text>  {t('dashboard.modeProvider')}
-            </Animated.Text>
-          </View>
-        </TouchableWithoutFeedback>
+          <Animated.View style={rightStyle}>
+            <Text
+              style={[
+                VispText.eyebrow,
+                styles.eyebrow,
+                { color: isProviderActive ? t.text3 : t.text4 },
+              ]}
+            >
+              {isProviderActive ? 'ACTIVE MODE' : 'SWITCH TO'}
+            </Text>
+            <View style={styles.labelRow}>
+              <Icon
+                name="briefcase"
+                size={14}
+                color={isProviderActive ? t.bg : t.text2}
+                active={isProviderActive}
+              />
+              <Text
+                style={[
+                  styles.label,
+                  { color: isProviderActive ? t.bg : t.text2 },
+                ]}
+              >
+                {tr('dashboard.modeProvider')}
+              </Text>
+            </View>
+          </Animated.View>
+        </Pressable>
       </View>
     </View>
   );
@@ -99,48 +185,38 @@ export default function RoleSwitcher({ mode, onChange, width }: Props): React.JS
 
 const styles = StyleSheet.create({
   track: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
-    overflow: 'hidden',
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
     position: 'relative',
   },
   thumb: {
     position: 'absolute',
-    top: TRACK_PADDING,
-    left: TRACK_PADDING,
-    borderRadius: 999,
-    backgroundColor: 'rgba(120, 80, 255, 0.95)',
-    ...(Platform.OS === 'ios'
-      ? {
-          shadowColor: Colors.primary,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.6,
-          shadowRadius: 10,
-        }
-      : {
-          elevation: 6,
-        }),
+    top: PADDING,
+    left: PADDING,
+    bottom: PADDING,
+    borderRadius: 7,
   },
-  labelsRow: {
-    flex: 1,
+  row: {
+    flexDirection: 'row',
+  },
+  pane: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  eyebrow: {
+    fontSize: 9,
+    letterSpacing: 1.26, // 0.14em at 9px
+  },
+  labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  labelHit: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
+    gap: 6,
+    marginTop: 4,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
-  icon: {
-    fontSize: 13,
+    fontFamily: FontSansBold,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.14, // -0.01em at 14px
   },
 });

@@ -25,7 +25,8 @@ import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { AnimatedSpinner, AnimatedCheckmark } from '../../components/animations';
 import {
   Credential,
@@ -124,6 +125,7 @@ function StepCard({
   isLast,
   onAction,
 }: StepCardProps): React.JSX.Element {
+  const theme = useTheme();
   const statusConfig = getStepStatusConfig(step.status);
   const levelColor = getLevelColor(step.requiredForLevel);
 
@@ -165,7 +167,7 @@ function StepCard({
               },
             ]}
           >
-            <Text style={stepStyles.circleText}>
+            <Text style={[stepStyles.circleText, step.status === 'not_started' && { color: theme.textPrimary }]}>
               {String(stepNumber)}
             </Text>
           </View>
@@ -201,7 +203,7 @@ function StepCard({
       >
         <View style={stepStyles.header}>
           <View style={stepStyles.headerLeft}>
-            <Text style={stepStyles.title}>{step.title}</Text>
+            <Text style={[stepStyles.title, { color: theme.textPrimary }]}>{step.title}</Text>
             <View
               style={[
                 stepStyles.levelTag,
@@ -234,7 +236,7 @@ function StepCard({
           </View>
         </View>
 
-        <Text style={stepStyles.description}>{step.description}</Text>
+        <Text style={[stepStyles.description, { color: theme.textSecondary }]}>{step.description}</Text>
 
         {step.status === 'not_started' && (
           <GlassButton
@@ -518,17 +520,17 @@ export default function VerificationScreen(): React.JSX.Element {
 
   if (isLoading) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading verification status...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading verification status...</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   return (
-    <GlassBackground>
+    <Screen>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
@@ -545,7 +547,7 @@ export default function VerificationScreen(): React.JSX.Element {
         {/* Progress overview */}
         <GlassCard variant="elevated" style={styles.glassCardMargin}>
           <View style={styles.progressHeader}>
-            <Text style={styles.progressTitle}>Verification Progress</Text>
+            <Text style={[styles.progressTitle, { color: theme.textPrimary }]}>Verification Progress</Text>
             <Text style={styles.progressPercent}>{progressPercent}%</Text>
           </View>
 
@@ -558,12 +560,12 @@ export default function VerificationScreen(): React.JSX.Element {
             />
           </View>
 
-          <Text style={styles.progressSubtext}>
+          <Text style={[styles.progressSubtext, { color: theme.textSecondary }]}>
             {completedCount} of {totalCount} steps completed
           </Text>
 
           <View style={styles.currentLevelRow}>
-            <Text style={styles.currentLevelLabel}>Current Level:</Text>
+            <Text style={[styles.currentLevelLabel, { color: theme.textSecondary }]}>Current Level:</Text>
             <View
               style={[
                 GlassStyles.badge,
@@ -590,7 +592,7 @@ export default function VerificationScreen(): React.JSX.Element {
               Next: Level {currentLevel + 1} -{' '}
               {LEVEL_NAMES[(currentLevel + 1) as ServiceLevel]}
             </Text>
-            <Text style={styles.nextStepsText}>
+            <Text style={[styles.nextStepsText, { color: theme.textSecondary }]}>
               Complete the remaining verification steps below to unlock the next
               service level and access higher-paying jobs.
             </Text>
@@ -598,7 +600,7 @@ export default function VerificationScreen(): React.JSX.Element {
         )}
 
         {/* Verification steps */}
-        <Text style={styles.sectionTitle}>Verification Steps</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Verification Steps</Text>
         {steps.map((step, index) => (
           <StepCard
             key={step.id}
@@ -620,7 +622,7 @@ export default function VerificationScreen(): React.JSX.Element {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

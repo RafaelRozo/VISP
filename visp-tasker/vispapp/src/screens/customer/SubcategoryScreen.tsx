@@ -29,11 +29,13 @@ import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { useTaskStore } from '../../stores/taskStore';
 import LevelBadge from '../../components/LevelBadge';
 import type { CustomerFlowParamList } from '../../types';
@@ -58,6 +60,7 @@ const PHOTO_HEIGHT = 200;
 // ──────────────────────────────────────────────
 
 function SubcategoryScreen(): React.JSX.Element {
+  const theme = useTheme();
   const route = useRoute<SubcategoryScreenRouteProp>();
   const navigation = useNavigation<SubcategoryScreenNavProp>();
   const { taskId } = route.params;
@@ -104,23 +107,23 @@ function SubcategoryScreen(): React.JSX.Element {
   // Loading
   if (isLoadingDetail) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color="rgba(120, 80, 255, 0.9)" />
-          <Text style={styles.loadingText}>Loading task details...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading task details...</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   // Error
   if (error) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.errorContainer}>
           <GlassCard variant="dark" padding={32} style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Unable to load task</Text>
-            <Text style={styles.errorMessage}>{error}</Text>
+            <Text style={[styles.errorTitle, { color: theme.textPrimary }]}>Unable to load task</Text>
+            <Text style={[styles.errorMessage, { color: theme.textSecondary }]}>{error}</Text>
             <GlassButton
               title="Try Again"
               variant="glow"
@@ -129,27 +132,27 @@ function SubcategoryScreen(): React.JSX.Element {
             />
           </GlassCard>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   // No data
   if (!taskDetail) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.errorContainer}>
           <GlassCard variant="dark" padding={32} style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Task not found</Text>
+            <Text style={[styles.errorTitle, { color: theme.textPrimary }]}>Task not found</Text>
           </GlassCard>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   const levelColor = getLevelColor(taskDetail.level);
 
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
@@ -190,17 +193,17 @@ function SubcategoryScreen(): React.JSX.Element {
           {/* Header with name and badge */}
           <View style={styles.headerSection}>
             <LevelBadge level={taskDetail.level} size="medium" />
-            <Text style={styles.taskName}>{taskDetail.name}</Text>
+            <Text style={[styles.taskName, { color: theme.textPrimary }]}>{taskDetail.name}</Text>
           </View>
 
           {/* Price range */}
           <View style={styles.priceSection}>
             <GlassCard variant="elevated" padding={Spacing.lg}>
-              <Text style={styles.priceLabel}>Estimated Price Range</Text>
+              <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Estimated Price Range</Text>
               <Text style={styles.priceValue}>
                 ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
               </Text>
-              <Text style={styles.priceNote}>
+              <Text style={[styles.priceNote, { color: theme.textTertiary }]}>
                 Final price depends on scope of work and provider availability
               </Text>
             </GlassCard>
@@ -209,13 +212,13 @@ function SubcategoryScreen(): React.JSX.Element {
           {/* Duration and Level info */}
           <View style={styles.infoRow}>
             <GlassCard variant="standard" padding={Spacing.lg} style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Estimated Duration</Text>
-              <Text style={styles.infoValue}>
+              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Estimated Duration</Text>
+              <Text style={[styles.infoValue, { color: theme.textPrimary }]}>
                 {formatDuration(taskDetail.estimatedDurationMinutes)}
               </Text>
             </GlassCard>
             <GlassCard variant="standard" padding={Spacing.lg} style={styles.infoItem}>
-              <Text style={styles.infoLabel}>Service Level</Text>
+              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Service Level</Text>
               <Text style={[styles.infoValue, { color: levelColor }]}>
                 Level {taskDetail.level}
               </Text>
@@ -224,8 +227,8 @@ function SubcategoryScreen(): React.JSX.Element {
 
           {/* Full description */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.descriptionText}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Description</Text>
+            <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>
               {taskDetail.fullDescription}
             </Text>
           </View>
@@ -233,11 +236,11 @@ function SubcategoryScreen(): React.JSX.Element {
           {/* Requirements */}
           {taskDetail.requirements.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Requirements</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Requirements</Text>
               {taskDetail.requirements.map((requirement, index) => (
                 <View key={index} style={styles.requirementItem}>
                   <View style={styles.bulletPoint} />
-                  <Text style={styles.requirementText}>{requirement}</Text>
+                  <Text style={[styles.requirementText, { color: theme.textSecondary }]}>{requirement}</Text>
                 </View>
               ))}
             </View>
@@ -247,7 +250,7 @@ function SubcategoryScreen(): React.JSX.Element {
           <View style={styles.noticeSection}>
             <GlassCard variant="dark" padding={Spacing.lg} style={styles.noticeCard}>
               <Text style={styles.noticeTitle}>Service Scope</Text>
-              <Text style={styles.noticeText}>
+              <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
                 This is a predefined service task. The provider will perform
                 exactly the work described above. Additional services require
                 a separate booking. The provider cannot add scope to this job.
@@ -262,8 +265,8 @@ function SubcategoryScreen(): React.JSX.Element {
         {/* Book Now CTA */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={styles.ctaPriceLabel}>From</Text>
-            <Text style={styles.ctaPriceValue}>
+            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>From</Text>
+            <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
               ${taskDetail.priceRangeMin}
             </Text>
           </View>
@@ -275,7 +278,7 @@ function SubcategoryScreen(): React.JSX.Element {
           />
         </View>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

@@ -19,9 +19,10 @@ import {
 } from 'react-native';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { useAuthStore } from '../../stores/authStore';
 import { get, post } from '../../services/apiClient';
-import { GlassBackground } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import ChatBubble from '../../components/ChatBubble';
 import ChatInput from '../../components/ChatInput';
 import type { ChatMessage, RootStackParamList } from '../../types';
@@ -38,6 +39,7 @@ type ChatRoute = RouteProp<RootStackParamList, 'Chat'>;
 // ---------------------------------------------------------------------------
 
 export default function ChatScreen(): React.JSX.Element {
+  const theme = useTheme();
   const route = useRoute<ChatRoute>();
   const { jobId, otherUserName } = route.params;
   const user = useAuthStore((state) => state.user);
@@ -131,8 +133,8 @@ export default function ChatScreen(): React.JSX.Element {
     if (isLoading) return null;
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>No Messages Yet</Text>
-        <Text style={styles.emptySubtext}>
+        <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No Messages Yet</Text>
+        <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
           Start a conversation about your job
         </Text>
       </View>
@@ -144,7 +146,7 @@ export default function ChatScreen(): React.JSX.Element {
     return (
       <View style={styles.typingContainer}>
         <View style={styles.typingBubble}>
-          <Text style={styles.typingText}>{otherUserName} is typing...</Text>
+          <Text style={[styles.typingText, { color: theme.textSecondary }]}>{otherUserName} is typing...</Text>
         </View>
       </View>
     );
@@ -153,7 +155,7 @@ export default function ChatScreen(): React.JSX.Element {
   // ---- Main render ----
 
   return (
-    <GlassBackground>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -172,7 +174,7 @@ export default function ChatScreen(): React.JSX.Element {
         />
         <ChatInput onSend={handleSend} isSending={isSending} />
       </KeyboardAvoidingView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

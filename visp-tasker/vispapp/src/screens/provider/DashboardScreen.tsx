@@ -27,7 +27,9 @@ import { Colors, getLevelColor } from '../../theme/colors';
 import { GlassStyles } from '../../theme/glass';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen, ScreenTitle, Chip } from '../../components/visp';
+import { FontMono } from '../../theme/visp';
 import { AnimatedSpinner, MorphingBlob } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -174,21 +176,21 @@ export default function DashboardScreen(): React.JSX.Element {
         <View style={styles.earningsRow}>
           <View style={styles.earningsItem}>
             <Text style={[styles.earningsLabel, { color: theme.textSecondary }]}>{t('dashboard.today')}</Text>
-            <Text style={styles.earningsValue}>
+            <Text style={[styles.earningsValue, { fontFamily: FontMono, color: theme.textPrimary, letterSpacing: -0.5 }]}>
               {formatCurrency(earnings.today)}
             </Text>
           </View>
           <View style={styles.earningsDivider} />
           <View style={styles.earningsItem}>
             <Text style={[styles.earningsLabel, { color: theme.textSecondary }]}>{t('dashboard.thisWeek')}</Text>
-            <Text style={styles.earningsValue}>
+            <Text style={[styles.earningsValue, { fontFamily: FontMono, color: theme.textPrimary, letterSpacing: -0.5 }]}>
               {formatCurrency(earnings.thisWeek)}
             </Text>
           </View>
           <View style={styles.earningsDivider} />
           <View style={styles.earningsItem}>
             <Text style={[styles.earningsLabel, { color: theme.textSecondary }]}>{t('dashboard.thisMonth')}</Text>
-            <Text style={styles.earningsValue}>
+            <Text style={[styles.earningsValue, { fontFamily: FontMono, color: theme.textPrimary, letterSpacing: -0.5 }]}>
               {formatCurrency(earnings.thisMonth)}
             </Text>
           </View>
@@ -219,13 +221,16 @@ export default function DashboardScreen(): React.JSX.Element {
 
     return (
       <GlassCard variant="standard" style={styles.performanceCard}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('dashboard.performanceScore')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginBottom: 0 }]}>{t('dashboard.performanceScore')}</Text>
+          <Chip>{(t('profileScreen.performanceScorePreview') || 'PREVIEW').toUpperCase()}</Chip>
+        </View>
         <View style={styles.performanceRow}>
-          <View style={[styles.scoreCircle, { borderColor: scoreColor }]}>
-            <Text style={[styles.scoreValue, { color: scoreColor }]}>
+          <View style={[styles.scoreCircle, { borderColor: scoreColor, opacity: 0.7 }]}>
+            <Text style={[styles.scoreValue, { color: scoreColor, fontFamily: FontMono }]}>
               {performanceScore}
             </Text>
-            <Text style={[styles.scoreMax, { color: theme.textSecondary }]}>/100</Text>
+            <Text style={[styles.scoreMax, { color: theme.textSecondary, fontFamily: FontMono }]}>/100</Text>
           </View>
           <View style={styles.performanceInfo}>
             <Text style={[styles.performanceLabel, { color: theme.textPrimary }]}>
@@ -235,8 +240,8 @@ export default function DashboardScreen(): React.JSX.Element {
                   ? t('dashboard.good')
                   : t('dashboard.needsImprovement')}
             </Text>
-            <Text style={[styles.performanceSubtext, { color: theme.textSecondary }]}>
-              {t('dashboard.basedOnRatings')}
+            <Text style={[styles.performanceSubtext, { color: theme.textSecondary, fontStyle: 'italic' }]}>
+              {t('dashboard.basedOnRatings')} · not yet wired to live data
             </Text>
           </View>
         </View>
@@ -434,17 +439,19 @@ export default function DashboardScreen(): React.JSX.Element {
 
   if (isLoadingDashboard && !providerProfile) {
     return (
-      <GlassBackground>
+      <Screen>
+        <ScreenTitle title={t('nav.dashboard')} sub="§ Provider" />
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
           <Text style={[styles.loadingText, { color: theme.textSecondary }]}>{t('common.loading')}</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   return (
-    <GlassBackground>
+    <Screen>
+      <ScreenTitle title={t('nav.dashboard')} sub="§ Provider" />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -568,7 +575,7 @@ export default function DashboardScreen(): React.JSX.Element {
         {/* Bottom spacer */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

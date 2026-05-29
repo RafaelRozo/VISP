@@ -19,8 +19,10 @@ import {
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { get, post } from '../../services/apiClient';
@@ -38,6 +40,7 @@ type ProposalNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'PricePr
 // ──────────────────────────────────────────────
 
 function PriceProposalScreen(): React.JSX.Element {
+  const theme = useTheme();
   const route = useRoute<ProposalRouteProp>();
   const navigation = useNavigation<ProposalNavProp>();
   const { jobId, taskName, level, guideMin, guideMax } = route.params;
@@ -131,12 +134,12 @@ function PriceProposalScreen(): React.JSX.Element {
   // Loading state
   if (isLoading) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.loadingContainer}>
           <AnimatedSpinner size={48} color={Colors.primary} />
-          <Text style={styles.loadingText}>Loading proposals...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading proposals...</Text>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
@@ -144,7 +147,7 @@ function PriceProposalScreen(): React.JSX.Element {
   const pastProposals = proposals.filter(p => p.status !== 'pending');
 
   return (
-    <GlassBackground>
+    <Screen>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -152,7 +155,7 @@ function PriceProposalScreen(): React.JSX.Element {
       >
         {/* Header */}
         <View style={styles.section}>
-          <Text style={styles.headerTitle}>{taskName}</Text>
+          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>{taskName}</Text>
           <View style={[styles.levelBadge, { backgroundColor: `${levelColor}30`, borderColor: `${levelColor}60` }]}>
             <Text style={[styles.levelBadgeText, { color: levelColor }]}>Level {level}</Text>
           </View>
@@ -163,11 +166,11 @@ function PriceProposalScreen(): React.JSX.Element {
           <View style={styles.section}>
             <GlassCard variant="dark">
               <View style={styles.guideContent}>
-                <Text style={styles.guideLabel}>Guide Price Range</Text>
-                <Text style={styles.guideValue}>
+                <Text style={[styles.guideLabel, { color: theme.textSecondary }]}>Guide Price Range</Text>
+                <Text style={[styles.guideValue, { color: theme.textPrimary }]}>
                   ${guideMin} - ${guideMax}
                 </Text>
-                <Text style={styles.guideNote}>
+                <Text style={[styles.guideNote, { color: theme.textTertiary }]}>
                   For reference only. Provider proposals may differ based on
                   the specific scope of your job.
                 </Text>
@@ -179,7 +182,7 @@ function PriceProposalScreen(): React.JSX.Element {
         {/* Pending proposals */}
         {pendingProposals.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Pending Proposals</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Pending Proposals</Text>
             {pendingProposals.map((proposal) => {
               const isResponding = respondingId === proposal.id;
               const priceDollars = (proposal.proposedPriceCents / 100).toFixed(2);
@@ -190,13 +193,13 @@ function PriceProposalScreen(): React.JSX.Element {
                   style={styles.proposalCardBorder}
                 >
                   <View style={styles.proposalHeader}>
-                    <Text style={styles.proposalPrice}>${priceDollars}</Text>
-                    <Text style={styles.proposalDate}>
+                    <Text style={[styles.proposalPrice, { color: theme.textPrimary }]}>${priceDollars}</Text>
+                    <Text style={[styles.proposalDate, { color: theme.textTertiary }]}>
                       {new Date(proposal.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
                   {proposal.description ? (
-                    <Text style={styles.proposalDescription}>
+                    <Text style={[styles.proposalDescription, { color: theme.textSecondary }]}>
                       {proposal.description}
                     </Text>
                   ) : null}
@@ -226,8 +229,8 @@ function PriceProposalScreen(): React.JSX.Element {
           <View style={styles.section}>
             <GlassCard variant="dark">
               <View style={styles.emptyContent}>
-                <Text style={styles.emptyTitle}>Waiting for Proposal</Text>
-                <Text style={styles.emptyText}>
+                <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Waiting for Proposal</Text>
+                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                   Your provider is reviewing the job details and will submit a
                   price proposal shortly. You will be notified when it arrives.
                 </Text>
@@ -239,7 +242,7 @@ function PriceProposalScreen(): React.JSX.Element {
         {/* Past proposals */}
         {pastProposals.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Previous Proposals</Text>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Previous Proposals</Text>
             {pastProposals.map((proposal) => {
               const priceDollars = (proposal.proposedPriceCents / 100).toFixed(2);
               const statusLabelText = proposal.status === 'accepted' ? 'Accepted' : 'Rejected';
@@ -273,7 +276,7 @@ function PriceProposalScreen(): React.JSX.Element {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

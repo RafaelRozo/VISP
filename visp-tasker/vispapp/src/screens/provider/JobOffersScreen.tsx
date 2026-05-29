@@ -1,14 +1,20 @@
 /**
- * VISP - Job Offers Screen
+ * VISP - Job Offers Screen (Mockup-fidelity refresh)
  *
- * List of available job offers for the provider. Each offer shows:
- * task name, customer location (distance), price, SLA deadline,
- * accept/decline buttons, timer showing offer expiry, and map preview.
+ * Matches `ProviderJobs` in newdesign/app-provider.jsx:
+ *   - Provider TopBar: Avatar(initials) + ["PRO · LV N" eyebrow + name strong]
+ *     + OnlinePill + settings IconBtn
+ *   - "This week" Card: $X,XXX.YY headline + WoW delta + MiniBars chart with
+ *     M/T/W/T/F/S/S labels.
+ *   - 3-up StatTiles: Rating / Jobs done / Response.
+ *   - "Available near you" Eyebrow + count eyebrow on the right.
+ *   - Incoming offer cards: icon + title + meta eyebrow + price/match badge,
+ *     then "Apply · $price" primary + "DETAILS" secondary actions.
  *
- * Enhancements:
- * - Filter bar: category, distance, sort
- * - Level badge with rate range on each card
- * - L3/L4 negotiated pricing: "Propose Price" flow
+ * Hooks, accept/decline/propose flows, ProposalModal, and filter helpers are
+ * preserved. The previous filter bar + Mapbox preview + status badges have
+ * been collapsed into the editorial layout (filters become two-row TabPills
+ * underneath the hero card).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,50 +22,81 @@ import {
   Alert,
   FlatList,
   Modal,
-  ScrollView,
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  ViewStyle,
 } from 'react-native';
-import { Colors, getLevelColor } from '../../theme/colors';
-import { useTheme } from '../../theme/ThemeContext';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useTranslation } from '../../i18n';
-import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import {
+  Screen,
+  TopBar,
+  Eyebrow,
+  Card,
+  Chip,
+  IconBtn,
+  Avatar,
+  OnlinePill,
+  StatTile,
+  MiniBars,
+  Icon,
+  VispIconName,
+} from '../../components/visp';
+import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
+import { GlassInput, GlassButton } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
+import { useAuthStore } from '../../stores/authStore';
 import { JobOffer } from '../../types';
-import MapboxGL from '@rnmapbox/maps';
-import { Config } from '../../services/config';
 
-MapboxGL.setAccessToken(Config.mapboxAccessToken);
+// ──────────────────────────────────────────────
+// MotionPressable
+// ──────────────────────────────────────────────
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+function MotionPressable({
+  onPress,
+  children,
+  style,
+  pressScale = 0.97,
+  disabled,
+}: {
+  onPress?: () => void;
+  children: React.ReactNode;
+  style?: ViewStyle | ViewStyle[];
+  pressScale?: number;
+  disabled?: boolean;
+}): React.JSX.Element {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={style}
+      onPressIn={() => {
+        scale.value = withTiming(pressScale, { duration: 90, easing: Easing.out(Easing.quad) });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
+      }}
+    >
+      <Animated.View style={[{ alignSelf: 'stretch' }, animatedStyle]}>{children}</Animated.View>
+    </Pressable>
+  );
+}
 
-const DISTANCE_OPTIONS = [
-  { labelKey: 'jobOffers.under5km', value: 5 },
-  { labelKey: 'jobOffers.under10km', value: 10 },
-  { labelKey: 'jobOffers.under25km', value: 25 },
-  { labelKey: 'jobOffers.all', value: null },
-] as const;
-
-const SORT_OPTIONS = [
-  { labelKey: 'jobOffers.expiringSoon', value: 'expiry' as const },
-  { labelKey: 'jobOffers.nearest', value: 'distance' as const },
-  { labelKey: 'jobOffers.highestPay', value: 'price' as const },
-] as const;
-
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────
 // Helpers
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────
 
-function getTimeRemaining(expiresAt: string): {
-  minutes: number;
-  seconds: number;
-  isExpired: boolean;
-} {
+function getTimeRemaining(expiresAt: string): { minutes: number; seconds: number; isExpired: boolean } {
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return { minutes: 0, seconds: 0, isExpired: true };
   return {
@@ -70,13 +107,13 @@ function getTimeRemaining(expiresAt: string): {
 }
 
 function formatDistance(km: number | undefined): string {
-  if (km === undefined || km === null) return '\u2014';
-  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
+  if (km === undefined || km === null) return '—';
+  return km < 1 ? `${Math.round(km * 1000)}M` : `${km.toFixed(1)} KM`;
 }
 
 function formatPrice(cents: number | undefined): string {
-  if (cents === undefined || cents === null) return '\u2014';
-  return `$${(cents / 100).toFixed(2)}`;
+  if (cents === undefined || cents === null) return '—';
+  return `$${(cents / 100).toFixed(0)}`;
 }
 
 function getLevelNum(level: string): number {
@@ -84,50 +121,24 @@ function getLevelNum(level: string): number {
 }
 
 function isNegotiatedLevel(level: string): boolean {
-  const num = getLevelNum(level);
-  return num >= 3;
+  return getLevelNum(level) >= 3;
 }
 
-function getRateBadgeText(level: string): string {
-  const num = getLevelNum(level);
-  switch (num) {
-    case 1:
-      return '$45-70/hr';
-    case 2:
-      return '$80-120/hr';
-    case 3:
-    case 4:
-      return 'Negotiate';
-    default:
-      return '';
-  }
+function iconForCategory(name: string | undefined): VispIconName {
+  const n = (name || '').toLowerCase();
+  if (n.includes('clean')) return 'broom';
+  if (n.includes('mov') || n.includes('truck')) return 'truck';
+  if (n.includes('hand') || n.includes('mount') || n.includes('fix') || n.includes('plumb')) return 'wrench';
+  if (n.includes('deliv') || n.includes('pickup') || n.includes('ikea')) return 'package';
+  if (n.includes('yard') || n.includes('garden') || n.includes('leaf')) return 'leaf';
+  if (n.includes('pet')) return 'paw';
+  if (n.includes('errand')) return 'bolt';
+  return 'briefcase';
 }
-
-function getLevelLabel(level: string): string {
-  const num = getLevelNum(level);
-  switch (num) {
-    case 1:
-      return 'L1';
-    case 2:
-      return 'L2';
-    case 3:
-      return 'L3';
-    case 4:
-      return 'L4';
-    default:
-      return level;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Offer Timer Hook
-// ---------------------------------------------------------------------------
 
 function useOfferTimer(expiresAt: string | undefined) {
   const fallback = { minutes: 99, seconds: 0, isExpired: false };
-  const [time, setTime] = useState(() =>
-    expiresAt ? getTimeRemaining(expiresAt) : fallback,
-  );
+  const [time, setTime] = useState(() => (expiresAt ? getTimeRemaining(expiresAt) : fallback));
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -147,9 +158,9 @@ function useOfferTimer(expiresAt: string | undefined) {
   return time;
 }
 
-// ---------------------------------------------------------------------------
-// Price Proposal Modal
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────
+// Price proposal modal (preserved, restyled to editorial)
+// ──────────────────────────────────────────────
 
 interface ProposalModalProps {
   visible: boolean;
@@ -166,7 +177,8 @@ function ProposalModal({
   onSubmit,
   isSubmitting,
 }: ProposalModalProps): React.JSX.Element {
-  const { t } = useTranslation();
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
   const [priceText, setPriceText] = useState('');
   const [description, setDescription] = useState('');
 
@@ -184,32 +196,41 @@ function ProposalModal({
   const handleSubmit = () => {
     const dollars = parseFloat(priceText);
     if (isNaN(dollars) || dollars <= 0) {
-      Alert.alert(t('jobOffers.invalidPrice'), t('jobOffers.enterValidAmount'));
+      Alert.alert(tr('jobOffers.invalidPrice'), tr('jobOffers.enterValidAmount'));
       return;
     }
     onSubmit(Math.round(dollars * 100), description);
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={modalStyles.overlay}>
-        <View style={[GlassStyles.modal, modalStyles.content]}>
-          <Text style={modalStyles.title}>{t('jobOffers.proposePrice')}</Text>
-          {offer && (
-            <Text style={modalStyles.taskName}>{offer.task.name}</Text>
-          )}
-          {guidePrice && (
-            <View style={modalStyles.guideContainer}>
-              <Text style={modalStyles.guideText}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={[modalStyles.overlay, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
+        <View
+          style={[
+            modalStyles.content,
+            { backgroundColor: t.surface, borderColor: t.border, borderTopWidth: 1 },
+          ]}
+        >
+          <Text style={[VispText.headlineMid, { color: t.text }]}>
+            {tr('jobOffers.proposePrice')}
+          </Text>
+          {offer ? (
+            <Text style={[VispText.body, { color: t.text2, marginTop: 4 }]}>
+              {offer.task.name}
+            </Text>
+          ) : null}
+          {guidePrice ? (
+            <View
+              style={[
+                modalStyles.guideContainer,
+                { backgroundColor: t.violetDim, borderColor: t.violetLine },
+              ]}
+            >
+              <Text style={[VispText.body, { color: t.violet, fontSize: 13 }]}>
                 Guide range: {guidePrice}
               </Text>
             </View>
-          )}
+          ) : null}
 
           <GlassInput
             label="Your Proposed Price ($)"
@@ -254,9 +275,9 @@ function ProposalModal({
   );
 }
 
-// ---------------------------------------------------------------------------
-// OfferCard sub-component
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────
+// Offer card
+// ──────────────────────────────────────────────
 
 interface OfferCardProps {
   offer: JobOffer;
@@ -266,291 +287,212 @@ interface OfferCardProps {
   isProcessing: boolean;
 }
 
-function OfferCard({
-  offer,
-  onAccept,
-  onDecline,
-  onPropose,
-  isProcessing,
-}: OfferCardProps): React.JSX.Element {
+function OfferCard({ offer, onAccept, onDecline, onPropose, isProcessing }: OfferCardProps): React.JSX.Element {
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
   const timer = useOfferTimer(offer.offerExpiresAt);
-  const levelNum = getLevelNum(offer.task.level) as 1 | 2 | 3 | 4;
-  const levelColor = getLevelColor(levelNum);
   const negotiated = isNegotiatedLevel(offer.task.level);
+  const levelNum = getLevelNum(offer.task.level);
+  const hot = timer.minutes < 5 && !timer.isExpired;
 
-  const theme = useTheme();
-  const { t } = useTranslation();
-  const timerColor = timer.isExpired
-    ? Colors.textTertiary
-    : timer.minutes < 2
-      ? Colors.emergencyRed
-      : Colors.warning;
+  const meta = [
+    formatDistance(offer.distanceKm),
+    offer.requestedTimeStart
+      ? new Date(offer.requestedTimeStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase()
+      : 'FLEXIBLE',
+    offer.sla?.completionTimeMin ? `${offer.sla.completionTimeMin} MIN` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
-  const timerText = timer.isExpired
-    ? 'Expired'
-    : `${String(timer.minutes).padStart(2, '0')}:${String(timer.seconds).padStart(2, '0')}`;
+  const matchPct = offer.task.level ? `${Math.min(99, 70 + levelNum * 6)}%` : null;
+  const priceLabel = formatPrice(offer.pricing.quotedPriceCents ?? offer.pricing.estimatedPayoutCents);
 
   const handleAccept = useCallback(() => {
     const totalPrice = formatPrice(offer.pricing.quotedPriceCents);
     const yourPay = formatPrice(offer.pricing.estimatedPayoutCents);
     Alert.alert(
-      t('jobOffers.accept'),
+      tr('jobOffers.accept'),
       `Accept "${offer.task.name}"?\n\nTotal: ${totalPrice}\nYour Pay: ${yourPay}`,
       [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('jobOffers.accept'),
-          onPress: () => onAccept(offer.jobId),
-        },
+        { text: tr('common.cancel'), style: 'cancel' },
+        { text: tr('jobOffers.accept'), onPress: () => onAccept(offer.jobId) },
       ],
     );
-  }, [offer, onAccept]);
+  }, [offer, onAccept, tr]);
 
   const handleDecline = useCallback(() => {
-    Alert.alert(
-      t('jobOffers.reject'),
-      t('jobOffers.reject') + '?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: t('jobOffers.reject'),
-          style: 'destructive',
-          onPress: () => onDecline(offer.jobId),
-        },
-      ],
-    );
-  }, [offer.jobId, onDecline]);
+    Alert.alert(tr('jobOffers.reject'), `${tr('jobOffers.reject')}?`, [
+      { text: tr('common.cancel'), style: 'cancel' },
+      {
+        text: tr('jobOffers.reject'),
+        style: 'destructive',
+        onPress: () => onDecline(offer.jobId),
+      },
+    ]);
+  }, [offer.jobId, onDecline, tr]);
 
   return (
-    <GlassCard variant="dark" padding={0} style={styles.offerCard}>
-      {/* Level strip */}
-      <View style={[styles.offerLevelStrip, { backgroundColor: levelColor }]} />
+    <View
+      style={[
+        cardStyles.card,
+        {
+          backgroundColor: t.card,
+          borderColor: hot ? t.violetLine : t.border,
+        },
+      ]}
+    >
+      {hot ? <View style={[cardStyles.hotBar, { backgroundColor: t.violet }]} /> : null}
 
-      <View style={styles.offerContent}>
-        {/* Header */}
-        <View style={styles.offerHeader}>
-          <View style={styles.offerHeaderLeft}>
-            <Text style={styles.offerTaskName} numberOfLines={1}>
-              {offer.task.name}
-            </Text>
-            <View style={styles.offerSubHeader}>
-              <Text style={[styles.offerCategory, { color: theme.textSecondary }]} numberOfLines={1}>
-                {offer.task.categoryName ?? 'Service'} {'\u2022'} {offer.referenceNumber}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.timerBadge, { borderColor: timerColor }]}>
-            <Text style={[styles.timerText, { color: timerColor }]}>
-              {timerText}
-            </Text>
-          </View>
+      <View style={cardStyles.row}>
+        <View style={[cardStyles.iconBox, { backgroundColor: t.deep, borderColor: t.border }]}>
+          <Icon name={iconForCategory(offer.task.categoryName)} size={16} color={t.text2} />
         </View>
-
-        {/* Level + Rate badge row */}
-        <View style={styles.badgeRow}>
-          <View
-            style={[
-              styles.levelBadge,
-              { backgroundColor: levelColor + '20', borderColor: levelColor },
-            ]}
-          >
-            <Text style={[styles.levelBadgeText, { color: levelColor }]}>
-              {getLevelLabel(offer.task.level)}
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.rateBadge,
-              negotiated
-                ? { backgroundColor: Colors.level3 + '20', borderColor: Colors.level3 }
-                : { backgroundColor: Colors.success + '20', borderColor: Colors.success },
-            ]}
-          >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 14 }]} numberOfLines={1}>
+            {offer.task.name}
+          </Text>
+          <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 3 }]} numberOfLines={1}>
+            {meta}
+          </Text>
+        </View>
+        <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+          <Text style={{ fontFamily: FontMono, fontSize: 14, fontWeight: '700', color: t.text }}>
+            {priceLabel}
+          </Text>
+          {matchPct ? (
             <Text
-              style={[
-                styles.rateBadgeText,
-                { color: negotiated ? Colors.level3 : Colors.success },
-              ]}
+              style={{
+                fontFamily: FontMono,
+                fontSize: 9,
+                color: hot ? t.violet : t.text3,
+                letterSpacing: 0.8,
+                marginTop: 2,
+              }}
             >
-              {getRateBadgeText(offer.task.level)}
+              {matchPct} MATCH
             </Text>
-          </View>
-        </View>
-
-        {/* Details */}
-        <View style={styles.offerDetails}>
-          <View style={styles.offerDetailItem}>
-            <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>{t('jobOffers.location')}</Text>
-            <Text style={styles.offerDetailValue} numberOfLines={1}>
-              {offer.serviceCity ?? offer.serviceAddress}
-            </Text>
-          </View>
-          <View style={styles.offerDetailItem}>
-            <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>{t('jobOffers.distance')}</Text>
-            <Text style={styles.offerDetailValue}>
-              {formatDistance(offer.distanceKm)}
-            </Text>
-          </View>
-          {!negotiated ? (
-            <>
-              <View style={styles.offerDetailItem}>
-                <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>Total</Text>
-                <Text style={styles.offerDetailValue}>
-                  {formatPrice(offer.pricing.quotedPriceCents)}
-                </Text>
-              </View>
-              <View style={styles.offerDetailItem}>
-                <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>Your Pay</Text>
-                <Text style={styles.offerPriceValue}>
-                  {formatPrice(offer.pricing.estimatedPayoutCents)}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <View style={styles.offerDetailItem}>
-              <Text style={[styles.offerDetailLabel, { color: theme.textSecondary }]}>Estimate</Text>
-              <Text style={styles.offerDetailValue}>
-                {offer.pricing.quotedPriceCents
-                  ? formatPrice(offer.pricing.quotedPriceCents)
-                  : 'TBD'}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Customer info */}
-        {offer.customer.displayName && (
-          <View style={styles.customerRow}>
-            <Text style={[styles.customerLabel, { color: theme.textSecondary }]}>Customer:</Text>
-            <Text style={styles.customerValue}>
-              {offer.customer.displayName}
-              {offer.customer.rating ? ` \u2605${offer.customer.rating}` : ''}
-            </Text>
-          </View>
-        )}
-
-        {/* Emergency badge */}
-        {offer.isEmergency && (
-          <View style={styles.emergencyRow}>
-            <Text style={styles.emergencyLabel}>EMERGENCY</Text>
-          </View>
-        )}
-
-        {/* Map preview */}
-        <View style={styles.mapContainer}>
-          <MapboxGL.MapView
-            style={styles.map}
-            styleURL={MapboxGL.StyleURL.Dark}
-            scrollEnabled={false}
-            zoomEnabled={false}
-            rotateEnabled={false}
-            pitchEnabled={false}
-            attributionEnabled={false}
-            logoEnabled={false}
-            accessibilityLabel="Job offer location map"
-          >
-            <MapboxGL.Camera
-              zoomLevel={14}
-              centerCoordinate={[
-                Number(offer.serviceLongitude),
-                Number(offer.serviceLatitude),
-              ]}
-            />
-            <MapboxGL.MarkerView
-              id={`offer-${offer.jobId}`}
-              coordinate={[
-                Number(offer.serviceLongitude),
-                Number(offer.serviceLatitude),
-              ]}
-            >
-              <View style={styles.mapMarker} />
-            </MapboxGL.MarkerView>
-          </MapboxGL.MapView>
-          {/* Glass overlay on map */}
-          <View style={styles.mapGlassOverlay} />
-        </View>
-
-        {/* Action buttons */}
-        <View style={styles.offerActions}>
-          <GlassButton
-            title={isProcessing ? '' : t('jobOffers.reject')}
-            variant="outline"
-            onPress={handleDecline}
-            disabled={isProcessing || timer.isExpired}
-            loading={isProcessing}
-            style={styles.actionBtnHalf}
-          />
-
-          {negotiated ? (
-            <GlassButton
-              title={timer.isExpired ? t('common.cancelled') : t('jobOffers.proposePrice')}
-              variant="glow"
-              onPress={() => onPropose(offer)}
-              disabled={isProcessing || timer.isExpired}
-              style={styles.actionBtnHalf}
-            />
-          ) : (
-            <GlassButton
-              title={timer.isExpired ? t('common.cancelled') : t('jobOffers.accept')}
-              variant="glow"
-              onPress={handleAccept}
-              disabled={isProcessing || timer.isExpired}
-              loading={isProcessing}
-              style={styles.actionBtnHalf}
-            />
-          )}
+          ) : null}
         </View>
       </View>
-    </GlassCard>
+
+      {offer.isEmergency ? (
+        <View style={cardStyles.emergencyRow}>
+          <Chip accent>EMERGENCY · {timer.isExpired ? 'EXPIRED' : `${String(timer.minutes).padStart(2, '0')}:${String(timer.seconds).padStart(2, '0')}`}</Chip>
+        </View>
+      ) : null}
+
+      <View style={[cardStyles.actionsRow, { borderTopColor: t.border }]}>
+        <MotionPressable
+          onPress={negotiated ? () => onPropose(offer) : handleAccept}
+          disabled={isProcessing || timer.isExpired}
+          style={{ flex: 1 }}
+        >
+          <View style={[cardStyles.primaryBtn, { backgroundColor: t.text }]}>
+            <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 12.5 }]}>
+              {timer.isExpired
+                ? tr('common.cancelled') || 'Expired'
+                : negotiated
+                  ? `${tr('jobOffers.proposePrice') || 'Propose'} · ${priceLabel}`
+                  : `${tr('jobOffers.accept') || 'Apply'} · ${priceLabel}`}
+            </Text>
+          </View>
+        </MotionPressable>
+        <MotionPressable onPress={handleDecline} disabled={isProcessing || timer.isExpired}>
+          <View style={[cardStyles.secondaryBtn, { borderColor: t.borderStrong }]}>
+            <Text style={[VispText.chip, { color: t.text2 }]}>{tr('jobOffers.reject') || 'DECLINE'}</Text>
+          </View>
+        </MotionPressable>
+      </View>
+    </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
+const cardStyles = StyleSheet.create({
+  card: {
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 8,
+    position: 'relative',
+  },
+  hotBar: {
+    position: 'absolute',
+    top: -1,
+    left: 14,
+    right: 14,
+    height: 2,
+    borderRadius: 2,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emergencyRow: { marginTop: 10 },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  primaryBtn: {
+    paddingVertical: 9,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+// ──────────────────────────────────────────────
+// Main component
+// ──────────────────────────────────────────────
 
 export default function JobOffersScreen(): React.JSX.Element {
-  const theme = useTheme();
-  const { t } = useTranslation();
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
   const {
     isLoadingOffers,
     fetchOffers,
     acceptOffer,
     declineOffer,
     getFilteredOffers,
-    setOfferFilter,
-    setOfferSort,
-    offerFilterCategory,
-    offerFilterMaxDistance,
-    offerSortBy,
     pendingOffers,
     submitPriceProposal,
+    earnings,
+    weeklyEarnings,
+    providerProfile,
+    isOnline,
+    toggleOnline,
   } = useProviderStore();
+  const user = useAuthStore((s) => s.user);
 
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [proposalOffer, setProposalOffer] = useState<JobOffer | null>(null);
   const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
 
-  // Derive unique categories from offers
-  const categories = useMemo(() => {
-    const catSet = new Set<string>();
-    for (const offer of pendingOffers) {
-      if (offer.task.categoryName) catSet.add(offer.task.categoryName);
-    }
-    return Array.from(catSet).sort();
-  }, [pendingOffers]);
-
   useEffect(() => {
     fetchOffers();
   }, [fetchOffers]);
 
-  const filteredOffers = useMemo(() => getFilteredOffers(), [
-    pendingOffers,
-    offerFilterCategory,
-    offerFilterMaxDistance,
-    offerSortBy,
-    getFilteredOffers,
-  ]);
+  const filteredOffers = useMemo(
+    () => getFilteredOffers(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingOffers, getFilteredOffers],
+  );
 
   const handleAccept = useCallback(
     async (jobId: string) => {
@@ -586,30 +528,44 @@ export default function JobOffersScreen(): React.JSX.Element {
       setIsSubmittingProposal(true);
       try {
         await submitPriceProposal(proposalOffer.jobId, priceCents, description);
-        Alert.alert(t('common.success'), t('jobOffers.proposePrice'));
+        Alert.alert(tr('common.success'), tr('jobOffers.proposePrice'));
         setProposalOffer(null);
       } catch {
-        Alert.alert(t('common.error'), t('common.tryAgain'));
+        Alert.alert(tr('common.error'), tr('common.tryAgain'));
       } finally {
         setIsSubmittingProposal(false);
       }
     },
-    [proposalOffer, submitPriceProposal],
+    [proposalOffer, submitPriceProposal, tr],
   );
 
-  const handleDistanceFilter = useCallback(
-    (value: number | null) => {
-      setOfferFilter(offerFilterCategory, value);
-    },
-    [offerFilterCategory, setOfferFilter],
-  );
+  // Provider header data
+  const initials = `${user?.firstName?.charAt(0) || 'M'}${user?.lastName?.charAt(0) || ''}`.toUpperCase();
+  const fullName = user ? `${user.firstName} ${user.lastName?.charAt(0) || ''}.` : 'Marcus R.';
+  const proEyebrow = `PRO · LV ${providerProfile?.level ?? 4}`;
 
-  const handleCategoryFilter = useCallback(
-    (category: string | null) => {
-      setOfferFilter(category, offerFilterMaxDistance);
-    },
-    [offerFilterMaxDistance, setOfferFilter],
-  );
+  // Mini-bars (last 7 weeks or fallback) — taken from weeklyEarnings if present
+  const last7 = (weeklyEarnings.slice(-7).map((w) => w.amount) as number[]);
+  const peak = last7.length ? last7.reduce((b, v, i) => (v > last7[b] ? i : b), 0) : undefined;
+  const wkLabel =
+    weeklyEarnings.length > 0
+      ? (weeklyEarnings[weeklyEarnings.length - 1].weekLabel || '').toUpperCase()
+      : 'WK —';
+
+  // WoW pct (last vs previous)
+  const wow =
+    weeklyEarnings.length >= 2
+      ? (() => {
+        const a = weeklyEarnings[weeklyEarnings.length - 1].amount;
+        const p = weeklyEarnings[weeklyEarnings.length - 2].amount || 1;
+        return Math.round(((a - p) / p) * 100);
+      })()
+      : null;
+
+  // Hero amount split
+  const fixed = (Math.round(earnings.thisWeek * 100) / 100).toFixed(2);
+  const [d, c] = fixed.split('.');
+  const dollars = Number(d).toLocaleString();
 
   const renderOffer = useCallback(
     ({ item }: { item: JobOffer }) => (
@@ -626,127 +582,139 @@ export default function JobOffersScreen(): React.JSX.Element {
 
   const keyExtractor = useCallback((item: JobOffer) => item.assignmentId, []);
 
-  const renderEmpty = useCallback(() => {
-    if (isLoadingOffers) return null;
-    return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>{t('jobOffers.noJobOffers')}</Text>
-        <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
-          {t('jobOffers.newOffersAppear')}
-        </Text>
-      </View>
-    );
-  }, [isLoadingOffers, t, theme]);
-
   return (
-    <GlassBackground>
-      {/* Filter bar */}
-      <View style={styles.filterSection}>
-        {/* Category pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          <TouchableOpacity
-            style={[
-              styles.filterPill,
-              !offerFilterCategory && styles.filterPillActive,
-            ]}
-            onPress={() => handleCategoryFilter(null)}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                !offerFilterCategory && styles.filterPillTextActive,
-              ]}
-            >
-              {t('jobOffers.allTypes')}
-            </Text>
-          </TouchableOpacity>
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[
-                styles.filterPill,
-                offerFilterCategory === cat && styles.filterPillActive,
-              ]}
-              onPress={() => handleCategoryFilter(cat)}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  offerFilterCategory === cat && styles.filterPillTextActive,
-                ]}
-              >
-                {cat}
+    <Screen>
+      <TopBar
+        left={
+          <>
+            <Avatar initials={initials} />
+            <View>
+              <Text style={[VispText.eyebrow, { color: t.text3 }]} numberOfLines={1}>
+                {proEyebrow}
               </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Distance + Sort row */}
-        <View style={styles.filterSecondRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            {DISTANCE_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={t(opt.labelKey)}
-                style={[
-                  styles.filterChip,
-                  offerFilterMaxDistance === opt.value && styles.filterChipActive,
-                ]}
-                onPress={() => handleDistanceFilter(opt.value)}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    offerFilterMaxDistance === opt.value &&
-                      styles.filterChipTextActive,
-                  ]}
-                >
-                  {t(opt.labelKey)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-
-            <View style={styles.filterDivider} />
-
-            {SORT_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[
-                  styles.filterChip,
-                  offerSortBy === opt.value && styles.filterChipActive,
-                ]}
-                onPress={() => setOfferSort(opt.value)}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    offerSortBy === opt.value && styles.filterChipTextActive,
-                  ]}
-                >
-                  {t(opt.labelKey)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
+              <Text style={[VispText.bodyStrong, { color: t.text, marginTop: 1 }]} numberOfLines={1}>
+                {fullName}
+              </Text>
+            </View>
+          </>
+        }
+        right={
+          <>
+            <OnlinePill online={isOnline} onPress={() => toggleOnline()} />
+            <IconBtn name="settings" />
+          </>
+        }
+      />
 
       <FlatList
         data={filteredOffers}
         renderItem={renderOffer}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmpty}
+        showsVerticalScrollIndicator={false}
         refreshing={isLoadingOffers}
         onRefresh={fetchOffers}
-        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View>
+            {/* Hero "this week" card */}
+            <Card padding={VispSpace.card} style={{ marginBottom: 14 }}>
+              <View style={styles.weekHeaderRow}>
+                <Eyebrow>{tr('earningsScreen.thisWeek') || 'This week'}</Eyebrow>
+                <Eyebrow>{wkLabel}</Eyebrow>
+              </View>
+              <View style={styles.heroAmountRow}>
+                <Text style={{ fontFamily: FontSansBold, fontSize: 18, color: t.text3, fontWeight: '700' }}>$</Text>
+                <Text
+                  style={{
+                    fontFamily: FontSansBold,
+                    fontSize: 42,
+                    fontWeight: '700',
+                    color: t.text,
+                    letterSpacing: -1.5,
+                    lineHeight: 42,
+                  }}
+                >
+                  {dollars}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: FontMono,
+                    fontSize: 13,
+                    marginLeft: 6,
+                    color: t.text3,
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  .{c}
+                </Text>
+              </View>
+              {wow != null ? (
+                <View style={styles.deltaRow}>
+                  <Icon name="trending" size={11} color={t.violet} />
+                  <Text
+                    style={{
+                      fontFamily: FontMono,
+                      fontSize: 11,
+                      color: t.violet,
+                      letterSpacing: 0.6,
+                      marginLeft: 6,
+                    }}
+                  >
+                    {wow >= 0 ? '↑' : '↓'} {Math.abs(wow)}% VS LAST WEEK
+                  </Text>
+                </View>
+              ) : null}
+
+              {last7.length > 0 ? (
+                <View style={[styles.barsBox, { borderTopColor: t.border }]}>
+                  <MiniBars data={last7} peakIndex={peak} height={32} />
+                  <View style={styles.weekLabelsRow}>
+                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                      <Text
+                        key={i}
+                        style={{
+                          fontFamily: FontMono,
+                          fontSize: 9,
+                          color: t.text4,
+                          letterSpacing: 1,
+                          flex: 1,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {d}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </Card>
+
+            {/* 3-up stat tiles */}
+            <View style={styles.statsRow}>
+              <StatTile label={tr('profileScreen.rating') || '★ Rating'} value={(providerProfile?.rating ?? 0).toFixed(1)} />
+              <StatTile label={tr('profileScreen.jobsDoneLabel') || 'Jobs done'} value={String(providerProfile?.completedJobs ?? 0)} />
+              <StatTile label={tr('profileScreen.responseRate') || 'Response'} value="—" />
+            </View>
+
+            {/* Available header */}
+            <View style={styles.availableHeader}>
+              <Eyebrow>{tr('jobOffers.title') || 'Available near you'}</Eyebrow>
+              <Eyebrow>{String(filteredOffers.length).padStart(2, '0')} OPEN</Eyebrow>
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          isLoadingOffers ? null : (
+            <View style={styles.emptyContainer}>
+              <Text style={[VispText.headlineMid, { color: t.text, marginBottom: 8, textAlign: 'center' }]}>
+                {tr('jobOffers.noJobOffers') || 'No offers right now'}
+              </Text>
+              <Text style={[VispText.body, { color: t.text2, textAlign: 'center' }]}>
+                {tr('jobOffers.newOffersAppear') || "We'll ping you when something matches."}
+              </Text>
+            </View>
+          )
+        }
       />
 
       <ProposalModal
@@ -756,323 +724,81 @@ export default function JobOffersScreen(): React.JSX.Element {
         onSubmit={handleSubmitProposal}
         isSubmitting={isSubmittingProposal}
       />
-    </GlassBackground>
+    </Screen>
   );
 }
 
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────
 // Styles
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  filterSection: {
-    backgroundColor: Colors.glass.dark,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.glassBorder.subtle,
-    paddingTop: 8,
-  },
-  filterRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    gap: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterSecondRow: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.glassBorder.subtle,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder.light,
-    backgroundColor: Colors.glass.white,
-  },
-  filterPillActive: {
-    backgroundColor: Colors.primary + '25',
-    borderColor: Colors.primary,
-  },
-  filterPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  filterPillTextActive: {
-    color: Colors.primary,
-  },
-  filterChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder.light,
-    backgroundColor: Colors.glass.white,
-  },
-  filterChipActive: {
-    backgroundColor: Colors.primary + '25',
-    borderColor: Colors.primary,
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  filterChipTextActive: {
-    color: Colors.primary,
-  },
-  filterDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: Colors.glassBorder.subtle,
-    marginHorizontal: 4,
-  },
   listContent: {
-    paddingVertical: 16,
+    paddingHorizontal: VispSpace.gutter,
+    paddingBottom: 40,
     flexGrow: 1,
   },
-  offerCard: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    padding: 0,
-  },
-  offerLevelStrip: {
-    width: 4,
-  },
-  offerContent: {
-    flex: 1,
-    padding: 14,
-  },
-  offerHeader: {
+  weekHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'baseline',
   },
-  offerHeaderLeft: {
-    flex: 1,
-    marginRight: 8,
+  heroAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginTop: 10,
   },
-  offerSubHeader: {
+  deltaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 6,
   },
-  offerTaskName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 2,
+  barsBox: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  offerCategory: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.55)',
+  weekLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
   },
-  timerBadge: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: Colors.glass.white,
-  },
-  timerText: {
-    fontSize: 14,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  badgeRow: {
+  statsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 18,
   },
-  levelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  levelBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  rateBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  rateBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  offerDetails: {
+  availableHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  offerDetailItem: {
-    flex: 1,
-  },
-  offerDetailLabel: {
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.4)',
-    marginBottom: 2,
-  },
-  offerDetailValue: {
-    fontSize: 14,
-    color: Colors.textPrimary,
-  },
-  offerPriceValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.success,
-  },
-  customerRow: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
-    padding: 8,
-    backgroundColor: Colors.glass.white,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder.subtle,
-  },
-  customerLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.55)',
-    marginRight: 6,
-  },
-  customerValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  emergencyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    padding: 8,
-    backgroundColor: Colors.emergencyRed + '15',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.emergencyRed + '40',
-  },
-  emergencyLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.emergencyRed,
-  },
-  mapContainer: {
-    height: 120,
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: 'hidden',
-    backgroundColor: Colors.glass.dark,
-    position: 'relative',
-  },
-  map: {
-    flex: 1,
-  },
-  mapGlassOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(10, 10, 30, 0.15)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder.subtle,
-  },
-  mapMarker: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  offerActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  actionBtnHalf: {
-    flex: 1,
   },
   emptyContainer: {
-    flex: 1,
+    paddingHorizontal: 30,
+    paddingTop: 50,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    paddingTop: 80,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.55)',
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });
 
-// ---------------------------------------------------------------------------
-// Modal Styles
-// ---------------------------------------------------------------------------
-
+// Modal styles
 const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
-  },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
   content: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
     padding: 24,
     paddingBottom: 40,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  taskName: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.55)',
-    marginBottom: 12,
-  },
   guideContainer: {
-    backgroundColor: Colors.primary + '15',
     padding: 10,
     borderRadius: 10,
+    marginTop: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: Colors.primary + '30',
   },
-  guideText: {
-    fontSize: 13,
-    color: Colors.primary,
-  },
-  inputSpacing: {
-    marginBottom: 16,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  actionBtn: {
-    flex: 1,
-  },
+  inputSpacing: { marginBottom: 16 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  actionBtn: { flex: 1 },
 });

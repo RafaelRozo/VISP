@@ -22,7 +22,8 @@ import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { useProviderStore } from '../../stores/providerStore';
 import { ServiceCatalogItem } from '../../types';
 
@@ -200,13 +201,13 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
             <View style={styles.serviceDetails}>
               <View style={styles.serviceDetailItem}>
                 <Text style={[styles.serviceDetailLabel, { color: theme.textSecondary }]}>Rate</Text>
-                <Text style={styles.serviceDetailValue}>
+                <Text style={[styles.serviceDetailValue, { color: theme.textPrimary }]}>
                   {item.rateDescription || getRateDescription(item.level)}
                 </Text>
               </View>
               <View style={styles.serviceDetailItem}>
                 <Text style={[styles.serviceDetailLabel, { color: theme.textSecondary }]}>Duration</Text>
-                <Text style={styles.serviceDetailValue}>
+                <Text style={[styles.serviceDetailValue, { color: theme.textPrimary }]}>
                   {item.estimatedDurationMin > 0
                     ? formatDuration(item.estimatedDurationMin)
                     : 'Varies'}
@@ -268,7 +269,7 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
   }, [catalogLoading, activeFilter]);
 
   return (
-    <GlassBackground>
+    <Screen>
       {/* Level filter pills */}
       <View style={styles.filterBar}>
         {LEVEL_FILTERS.map((filter) => {
@@ -295,6 +296,7 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
               <Text
                 style={[
                   styles.filterPillText,
+                  { color: theme.textSecondary },
                   isActive && { color: pillColor },
                 ]}
               >
@@ -322,7 +324,7 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
         />
       )}
-    </GlassBackground>
+    </Screen>
   );
 }
 

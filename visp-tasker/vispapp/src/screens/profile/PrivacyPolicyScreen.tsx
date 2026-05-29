@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { GlassBackground } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
 
@@ -56,7 +56,7 @@ export default function PrivacyPolicyScreen(): React.JSX.Element {
   const c = content[language] ?? content.en;
 
   return (
-    <GlassBackground>
+    <Screen>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>{c.title}</Text>
         <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{c.subtitle}</Text>
@@ -68,7 +68,7 @@ export default function PrivacyPolicyScreen(): React.JSX.Element {
         ))}
         <View style={styles.spacer} />
       </ScrollView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

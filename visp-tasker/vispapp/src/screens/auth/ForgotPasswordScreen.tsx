@@ -18,12 +18,13 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Typography, BorderRadius } from '../../theme';
+import { useTheme } from '../../theme/ThemeContext';
 import {
-  GlassBackground,
   GlassCard,
   GlassButton,
   GlassInput,
 } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { AnimatedCheckmark } from '../../components/animations';
 import { userService } from '../../services/userService';
 import { useAuthStore } from '../../stores/authStore';
@@ -34,6 +35,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
+  const theme = useTheme();
   const login = useAuthStore((s) => s.login);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -111,22 +113,22 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
 
   if (newCode) {
     return (
-      <GlassBackground>
+      <Screen>
         <View style={styles.successContainer}>
           <GlassCard variant="dark" padding={32} style={styles.successCard}>
             <View style={styles.successIconContainer}>
               <AnimatedCheckmark size={64} />
             </View>
-            <Text style={styles.successTitle}>Password updated</Text>
-            <Text style={styles.successMessage}>
+            <Text style={[styles.successTitle, { color: theme.textPrimary }]}>Password updated</Text>
+            <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
               Save your new recovery code below. The old one no longer works.
             </Text>
 
             <View style={styles.codeBox}>
-              <Text selectable style={styles.codeText}>{newCode}</Text>
+              <Text selectable style={[styles.codeText, { color: theme.textPrimary }]}>{newCode}</Text>
             </View>
 
-            <Text style={styles.copyHint}>Long-press the code to copy.</Text>
+            <Text style={[styles.copyHint, { color: theme.textTertiary }]}>Long-press the code to copy.</Text>
 
             {signInError ? (
               <View style={styles.errorBanner}>
@@ -144,12 +146,12 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
             />
           </GlassCard>
         </View>
-      </GlassBackground>
+      </Screen>
     );
   }
 
   return (
-    <GlassBackground>
+    <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -168,8 +170,8 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
             style={styles.backButton}
           />
 
-          <Text style={styles.title}>Reset your password</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>Reset your password</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             Enter your email, the 12-character recovery code you saved when you
             signed up, and a new password.
           </Text>
@@ -246,7 +248,7 @@ function ForgotPasswordScreen({ navigation }: Props): React.JSX.Element {
           </GlassCard>
         </ScrollView>
       </KeyboardAvoidingView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

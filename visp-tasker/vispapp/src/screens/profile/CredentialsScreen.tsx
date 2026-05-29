@@ -27,7 +27,8 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation, t } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassButton } from '../../components/glass';
+import { GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import CredentialCard from '../../components/CredentialCard';
 import {
   Credential,
@@ -377,6 +378,7 @@ export default function CredentialsScreen(): React.JSX.Element {
               <Text
                 style={[
                   styles.filterTabText,
+                  { color: theme.textSecondary },
                   isActive && styles.filterTabTextActive,
                 ]}
               >
@@ -405,7 +407,7 @@ export default function CredentialsScreen(): React.JSX.Element {
     if (isLoading) return null;
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyTitle}>{t('credentials.noCredentials')}</Text>
+        <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>{t('credentials.noCredentials')}</Text>
         <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
           Upload your credentials to get verified and start receiving jobs.
           Required documents depend on your selected services.
@@ -415,7 +417,7 @@ export default function CredentialsScreen(): React.JSX.Element {
   }, [isLoading]);
 
   return (
-    <GlassBackground>
+    <Screen>
       <FlatList
         data={filteredCredentials}
         renderItem={renderCredential}
@@ -433,7 +435,7 @@ export default function CredentialsScreen(): React.JSX.Element {
         }
         showsVerticalScrollIndicator={false}
       />
-    </GlassBackground>
+    </Screen>
   );
 }
 

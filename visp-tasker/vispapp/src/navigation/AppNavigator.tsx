@@ -55,6 +55,12 @@ import EarningsScreen from '../screens/provider/EarningsScreen';
 import ScheduleScreen from '../screens/provider/ScheduleScreen';
 import ProviderOnboardingScreen from '../screens/provider/ProviderOnboardingScreen';
 import ServiceCatalogScreen from '../screens/provider/ServiceCatalogScreen';
+import PayoutsOnboardingScreen from '../screens/provider/payouts/PayoutsOnboardingScreen';
+import PayoutsPersonalInfoStep from '../screens/provider/payouts/PersonalInfoStep';
+import PayoutsTaxStep from '../screens/provider/payouts/TaxStep';
+import PayoutsBankStep from '../screens/provider/payouts/BankStep';
+import PayoutsIdentityDocStep from '../screens/provider/payouts/IdentityDocStep';
+import PayoutsTosStep from '../screens/provider/payouts/TosStep';
 
 // Screens - Profile
 import ProfileScreen from '../screens/profile/ProfileScreen';
@@ -62,11 +68,33 @@ import CredentialsScreen from '../screens/profile/CredentialsScreen';
 import VerificationScreen from '../screens/profile/VerificationScreen';
 import SettingsScreen from '../screens/profile/SettingsScreen';
 import PaymentMethodsScreen from '../screens/profile/PaymentMethodsScreen';
+import AddressEditScreen from '../screens/profile/AddressEditScreen';
 import PrivacyPolicyScreen from '../screens/profile/PrivacyPolicyScreen';
 import TermsScreen from '../screens/profile/TermsScreen';
 
 // Screens - Shared
 import ChatScreen from '../screens/shared/ChatScreen';
+
+// Screens - Dev (only in __DEV__)
+import DesignSystemScreen from '../screens/dev/DesignSystemScreen';
+
+// Editorial primitives
+import { VispTabBar } from '../components/visp';
+import type { VispIconName } from '../components/visp';
+
+const CUSTOMER_TAB_ICONS: Record<string, VispIconName> = {
+  Home: 'home',
+  MyJobs: 'briefcase',
+  CustomerProfile: 'user',
+};
+
+const PROVIDER_TAB_ICONS: Record<string, VispIconName> = {
+  Dashboard: 'home',
+  JobsTab: 'briefcase',
+  Earnings: 'money',
+  Schedule: 'cal',
+  ProviderProfile: 'user',
+};
 
 // CustomerJobsScreen is now MyJobsScreen (imported above)
 
@@ -357,6 +385,11 @@ function ProfileStackNavigator(): React.JSX.Element {
         options={{ title: 'Payment Methods', headerBackTitle: 'Back' }}
       />
       <ProfileStack.Screen
+        name="AddressEdit"
+        component={AddressEditScreen}
+        options={{ title: 'Saved address', headerBackTitle: 'Back' }}
+      />
+      <ProfileStack.Screen
         name="PrivacyPolicy"
         component={PrivacyPolicyScreen}
         options={{ title: 'Privacy Policy' }}
@@ -462,46 +495,26 @@ function AuthNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function CustomerTabNavigator(): React.JSX.Element {
-  const tabOpts = useThemedTabOptions();
   const { t } = useTranslation();
   return (
     <CustomerTab.Navigator
-      screenOptions={{
-        ...tabOpts,
-        headerRight: () => <HeaderLogo />,
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <VispTabBar {...props} iconMap={CUSTOMER_TAB_ICONS} />}
     >
       <CustomerTab.Screen
         name="Home"
         component={CustomerHomeScreen}
-        options={{
-          title: t('nav.home'),
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="H" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.home') }}
       />
       <CustomerTab.Screen
         name="MyJobs"
         component={MyJobsScreen}
-        options={{
-          title: t('nav.myJobs'),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="J" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.myJobs') }}
       />
       <CustomerTab.Screen
         name="CustomerProfile"
         component={ProfileStackNavigator}
-        options={{
-          title: t('nav.profile'),
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="P" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.profile') }}
       />
     </CustomerTab.Navigator>
   );
@@ -512,66 +525,36 @@ function CustomerTabNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function ProviderTabNavigator(): React.JSX.Element {
-  const tabOpts = useThemedTabOptions();
   const { t } = useTranslation();
   return (
     <ProviderTab.Navigator
-      screenOptions={{
-        ...tabOpts,
-        headerRight: () => <HeaderLogo />,
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <VispTabBar {...props} iconMap={PROVIDER_TAB_ICONS} />}
     >
       <ProviderTab.Screen
         name="Dashboard"
         component={DashboardScreen}
-        options={{
-          title: t('nav.dashboard'),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="D" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.dashboard') }}
       />
       <ProviderTab.Screen
         name="JobsTab"
         component={ProviderJobStackNavigator}
-        options={{
-          title: t('nav.jobs'),
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="J" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.jobs') }}
       />
       <ProviderTab.Screen
         name="Earnings"
         component={EarningsScreen}
-        options={{
-          title: t('nav.earnings'),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="$" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.earnings') }}
       />
       <ProviderTab.Screen
         name="Schedule"
         component={ScheduleScreen}
-        options={{
-          title: t('nav.schedule'),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="S" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.schedule') }}
       />
       <ProviderTab.Screen
         name="ProviderProfile"
         component={ProfileStackNavigator}
-        options={{
-          title: t('nav.profile'),
-          headerShown: false,
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="P" focused={focused} />
-          ),
-        }}
+        options={{ tabBarLabel: t('nav.profile') }}
       />
     </ProviderTab.Navigator>
   );
@@ -717,7 +700,20 @@ export default function AppNavigator(): React.JSX.Element {
                 title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
               })}
             />
+            <RootStack.Screen name="PayoutsOnboarding" component={PayoutsOnboardingScreen} />
+            <RootStack.Screen name="PayoutsPersonalInfo" component={PayoutsPersonalInfoStep} />
+            <RootStack.Screen name="PayoutsTax" component={PayoutsTaxStep} />
+            <RootStack.Screen name="PayoutsBank" component={PayoutsBankStep} />
+            <RootStack.Screen name="PayoutsIdentityDoc" component={PayoutsIdentityDocStep} />
+            <RootStack.Screen name="PayoutsTos" component={PayoutsTosStep} />
           </>
+        )}
+        {__DEV__ && isAuthenticated && (
+          <RootStack.Screen
+            name="__DesignSystem"
+            component={DesignSystemScreen}
+            options={{ headerShown: false }}
+          />
         )}
       </RootStack.Navigator>
     </NavigationContainer>

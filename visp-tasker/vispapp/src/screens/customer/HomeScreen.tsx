@@ -1,52 +1,79 @@
 /**
- * VISP - Customer Home Screen
+ * VISP — Customer Home Screen (mockup-faithful refresh).
  *
- * Main landing screen for customers with:
- * - Personalized greeting header
- * - Emergency button (prominent, top position)
- * - Service category grid (2-column, closed catalog)
- * - Active jobs horizontal scroll
- * - Recent activity section
- * - Pull-to-refresh
+ * Composition (top to bottom):
+ *   1. TopBar — pin + city / "Good [time], [Name]" + bell + initials avatar
+ *   2. RoleSwitcher (only if user.role === 'both')
+ *   3. Compact Emergency banner (single row, red tint)
+ *   4. Hero "What needs doing?" — functional search input + quick chips,
+ *      filters categories below as the user types.
+ *   5. Browse categories — 4-col grid (8 by default) with "See all" toggle.
+ *   6. Your active jobs — real job cards from taskService.
+ *   7. Recently used — providers derived from recent activity / fallback empty.
  *
- * Glass redesign: GlassBackground + GlassCard surfaces
+ * Motion via react-native-reanimated:
+ *   - Section fade-in stagger on mount (60ms apart).
+ *   - Scale-spring press on chips/tiles/avatar/IconBtn (MotionPressable helper).
+ *   - Hero card dim briefly when 'both' user toggles mode.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Keyboard,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  TextInput,
+  useWindowDimensions,
   View,
+  ViewStyle,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { Colors, Spacing, Typography, BorderRadius } from '../../theme';
-import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
-import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard } from '../../components/glass';
-import { MorphingBlob } from '../../components/animations';
 import { useAuthStore } from '../../stores/authStore';
-import EmergencyButton from '../../components/EmergencyButton';
-import CategoryGrid from '../../components/CategoryGrid';
-import ActiveJobCard from '../../components/ActiveJobCard';
+import {
+  Screen,
+  TopBar,
+  Eyebrow,
+  IconBtn,
+  Avatar,
+  Card,
+  Chip,
+  Icon,
+} from '../../components/visp';
+import {
+  useVispTheme,
+  VispText,
+  VispSpace,
+  VispRadius,
+  FontSansBold,
+  FontSans,
+} from '../../theme/visp';
 import RoleSwitcher from '../../components/RoleSwitcher';
 import { get } from '../../services/apiClient';
 import taskService from '../../services/taskService';
 import type {
   Job,
-  PaginatedResponse,
   RootStackParamList,
   CustomerTabParamList,
   ServiceCategory,
 } from '../../types';
+import type { VispIconName } from '../../components/visp';
 
 // ──────────────────────────────────────────────
 // Types
@@ -57,12 +84,14 @@ type Props = CompositeScreenProps<
   NativeStackScreenProps<RootStackParamList>
 >;
 
-interface RecentActivity {
+interface RecentProvider {
   id: string;
-  type: 'job_completed' | 'job_cancelled' | 'review_left' | 'payment_processed';
-  title: string;
-  description: string;
-  timestamp: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl?: string | null;
+  rating?: number;
+  primaryCategories?: string[];
+  lastJobId?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -76,91 +105,205 @@ function getGreetingKey(): string {
   return 'homeScreen.goodEvening';
 }
 
-function formatRelativeTime(isoDate: string): string {
-  const now = Date.now();
-  const date = new Date(isoDate).getTime();
-  const diffMs = now - date;
-  const diffMinutes = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
+// Maps backend slug → editorial icon name. Exact slugs first, then we fall back
+// to keyword matching against the category name so unknown backend slugs
+// (e.g. `gardening_landscaping`, `moving_hauling`, `assembly`) still get a
+// reasonable icon instead of the generic `grid`.
+const CATEGORY_ICON_MAP: Record<string, VispIconName> = {
+  // Cleaning
+  cleaning: 'broom',
+  house_cleaning: 'broom',
+  deep_cleaning: 'broom',
+  // Moving
+  moving: 'truck',
+  moving_hauling: 'truck',
+  hauling: 'truck',
+  // Handyman / assembly / repairs
+  handyman: 'wrench',
+  assembly: 'wrench',
+  repairs: 'wrench',
+  furniture: 'wrench',
+  furniture_assembly: 'wrench',
+  // Delivery
+  delivery: 'package',
+  pickup: 'package',
+  // Errands
+  errands: 'bolt',
+  groceries: 'bolt',
+  // Pet care
+  pet_care: 'paw',
+  petcare: 'paw',
+  pets: 'paw',
+  // Yard / gardening / landscaping
+  yard: 'leaf',
+  gardening: 'leaf',
+  landscaping: 'leaf',
+  gardening_landscaping: 'leaf',
+  lawn: 'leaf',
+  lawn_care: 'leaf',
+  // Tech / beauty / tutoring / events
+  tech: 'spark',
+  tech_help: 'spark',
+  beauty: 'spark',
+  tutoring: 'book',
+  event: 'cal',
+  events: 'cal',
+  // Emergency
+  emergency: 'bolt',
+};
 
-  if (diffMinutes < 1) {
-    try { return require('../../i18n').t('homeScreen.justNow'); } catch { return 'Just now'; }
-  }
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return new Date(isoDate).toLocaleDateString();
+function iconForCategory(cat: ServiceCategory): VispIconName {
+  const exact = CATEGORY_ICON_MAP[cat.slug];
+  if (exact) return exact;
+  const name = (cat.name || '').toLowerCase();
+  if (name.includes('clean')) return 'broom';
+  if (name.includes('mov') || name.includes('haul')) return 'truck';
+  if (
+    name.includes('handy') ||
+    name.includes('assembly') ||
+    name.includes('repair') ||
+    name.includes('furnit') ||
+    name.includes('mount')
+  )
+    return 'wrench';
+  if (name.includes('deliv') || name.includes('pickup')) return 'package';
+  if (name.includes('errand') || name.includes('groc')) return 'bolt';
+  if (name.includes('pet') || name.includes('dog') || name.includes('cat')) return 'paw';
+  if (
+    name.includes('yard') ||
+    name.includes('garden') ||
+    name.includes('lawn') ||
+    name.includes('landsc')
+  )
+    return 'leaf';
+  if (name.includes('tech') || name.includes('beauty')) return 'spark';
+  if (name.includes('tutor')) return 'book';
+  if (name.includes('event')) return 'cal';
+  if (name.includes('emerg')) return 'bolt';
+  return 'grid';
 }
 
-const ACTIVITY_TYPE_LABEL_KEYS: Record<RecentActivity['type'], string> = {
-  job_completed: 'common.completed',
-  job_cancelled: 'common.cancelled',
-  review_left: 'homeScreen.review',
-  payment_processed: 'homeScreen.payment',
-};
+function formatScheduleStamp(iso: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isToday = date.toDateString() === today.toDateString();
+  const isTomorrow = date.toDateString() === tomorrow.toDateString();
+  const prefix = isToday ? 'TODAY' : isTomorrow ? 'TOMORROW' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${prefix} ${time}`;
+}
 
-const ACTIVITY_TYPE_COLORS: Record<RecentActivity['type'], string> = {
-  job_completed: Colors.success,
-  job_cancelled: Colors.textTertiary,
-  review_left: Colors.info,
-  payment_processed: Colors.warning,
-};
+// ──────────────────────────────────────────────
+// Motion primitives
+// ──────────────────────────────────────────────
+
+interface MotionPressableProps {
+  onPress?: () => void;
+  children: React.ReactNode;
+  /** Layout style applied to the outer Pressable (so flex/width/aspect work). */
+  style?: ViewStyle | ViewStyle[];
+  pressScale?: number;
+  disabled?: boolean;
+}
+
+function MotionPressable({ onPress, children, style, pressScale = 0.95, disabled }: MotionPressableProps): React.JSX.Element {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={style}
+      onPressIn={() => {
+        scale.value = withTiming(pressScale, { duration: 90, easing: Easing.out(Easing.quad) });
+        opacity.value = withTiming(0.85, { duration: 90 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
+        opacity.value = withTiming(1, { duration: 140 });
+      }}
+    >
+      <Animated.View style={animatedStyle}>{children}</Animated.View>
+    </Pressable>
+  );
+}
+
+const TILE_GAP = 8;
 
 // ──────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────
 
+const VISIBLE_CATEGORY_COUNT = 8;
+
 function HomeScreen({ navigation }: Props): React.JSX.Element {
-  const theme = useTheme();
-  const { t } = useTranslation();
-  const user = useAuthStore((state) => state.user);
-  const activeMode = useAuthStore((state) => state.activeMode);
-  const setActiveMode = useAuthStore((state) => state.setActiveMode);
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
+  const { width: screenW } = useWindowDimensions();
+  const tileSize = Math.floor((screenW - VispSpace.gutter * 2 - TILE_GAP * 3) / 4);
+  const user = useAuthStore((s) => s.user);
+  const activeMode = useAuthStore((s) => s.activeMode);
+  const setActiveMode = useAuthStore((s) => s.setActiveMode);
   const isBoth = user?.role === 'both';
 
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const [recentProviders, setRecentProviders] = useState<RecentProvider[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
-  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
   const greetingKey = useMemo(() => getGreetingKey(), []);
-  const greeting = t(greetingKey);
-  const firstName = user?.firstName ?? 'there';
+  const greeting = tr(greetingKey);
+  const firstName = user?.firstName ?? '';
+  const userCity = (user as any)?.city ?? 'BURLINGTON';
+  const initials = ((user?.firstName?.charAt(0) ?? '') + (user?.lastName?.charAt(0) ?? '')) || 'U';
 
-  // ── Data Fetching ────────────────────────
+  // Hero dim animation on role switch
+  const heroDim = useSharedValue(1);
+  const heroDimStyle = useAnimatedStyle(() => ({ opacity: heroDim.value }));
+  useEffect(() => {
+    heroDim.value = withSequence(
+      withTiming(0.55, { duration: 100 }),
+      withTiming(1, { duration: 200 }),
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode]);
 
+  // ── Data fetching ────────────────────────
   const fetchCategories = useCallback(async () => {
     try {
       setIsLoadingCategories(true);
-      // get() already unwraps response.data.data, so we receive the array directly
-      const rawCategories = await get<Array<{
+      const raw = await get<Array<{
         id: string;
         slug: string;
         name: string;
         icon_url?: string | null;
         task_count?: number;
-        is_active?: boolean;
         display_order?: number;
       }>>('/categories');
-      // Map backend snake_case fields to mobile ServiceCategory type
-      const mapped: ServiceCategory[] = (rawCategories ?? []).map((cat) => ({
-        id: cat.id,
-        name: cat.name,
-        slug: cat.slug,
-        icon: cat.icon_url ?? '',
-        taskCount: cat.task_count ?? 0,
+      const mapped: ServiceCategory[] = (raw ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        icon: c.icon_url ?? '',
+        taskCount: c.task_count ?? 0,
         isEmergency: false,
-        sortOrder: cat.display_order ?? 0,
+        sortOrder: c.display_order ?? 0,
       }));
       setCategories(mapped);
     } catch {
-      // If we fail to fetch, we show error state (controlled by TaskStore)
-      // No fallback to mock data in production alignment
-
+      // silent
     } finally {
       setIsLoadingCategories(false);
     }
@@ -172,316 +315,444 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
       const jobs = await taskService.getActiveJobs();
       setActiveJobs(jobs);
     } catch {
-      // Silently fail
+      // silent
     } finally {
       setIsLoadingJobs(false);
     }
   }, []);
 
-  const fetchRecentActivity = useCallback(async () => {
+  const fetchRecentProviders = useCallback(async () => {
     try {
-      setIsLoadingActivity(true);
-      const data = await get<RecentActivity[]>('/activity/recent');
-      setRecentActivity(data);
+      // Endpoint may not exist yet — fail soft to empty list
+      const data = await get<RecentProvider[]>('/users/me/recent-providers');
+      setRecentProviders(Array.isArray(data) ? data : []);
     } catch {
-      // Silently fail
-    } finally {
-      setIsLoadingActivity(false);
+      setRecentProviders([]);
     }
   }, []);
 
-  const loadAllData = useCallback(async () => {
-    await Promise.all([
-      fetchCategories(),
-      fetchActiveJobs(),
-      fetchRecentActivity(),
-    ]);
-  }, [fetchCategories, fetchActiveJobs, fetchRecentActivity]);
+  const loadAll = useCallback(async () => {
+    await Promise.all([fetchCategories(), fetchActiveJobs(), fetchRecentProviders()]);
+  }, [fetchCategories, fetchActiveJobs, fetchRecentProviders]);
 
   useEffect(() => {
-    loadAllData();
-  }, [loadAllData]);
-
-  // ── Pull-to-Refresh ──────────────────────
+    loadAll();
+  }, [loadAll]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await loadAllData();
+    await loadAll();
     setIsRefreshing(false);
-  }, [loadAllData]);
+  }, [loadAll]);
 
-  // ── Navigation Handlers ──────────────────
-
+  // ── Nav handlers ─────────────────────────
   const handleEmergencyPress = useCallback(() => {
     navigation.navigate('EmergencyFlow');
   }, [navigation]);
 
-  const handleCategoryPress = useCallback(
-    (category: ServiceCategory) => {
-      navigation.navigate('CategoryDetail', {
-        categoryId: category.id,
-        categoryName: category.name,
-      });
-    },
-    [navigation],
+  const handleCategoryPress = useCallback((category: ServiceCategory) => {
+    Keyboard.dismiss();
+    navigation.navigate('CategoryDetail', {
+      categoryId: category.id,
+      categoryName: category.name,
+    });
+  }, [navigation]);
+
+  const handleJobPress = useCallback((job: Job) => {
+    const pendingStatuses = ['pending_match', 'draft', 'pending'];
+    if (pendingStatuses.includes(job.status)) {
+      Alert.alert(tr('homeScreen.searchingForProvider'), tr('homeScreen.searchingMessage'));
+      return;
+    }
+    if (job.status === 'matched') {
+      Alert.alert(tr('homeScreen.waitingForProvider'), tr('homeScreen.waitingMessage'));
+      return;
+    }
+    if (job.status === 'pending_approval') {
+      navigation.navigate('MyJobs');
+      return;
+    }
+    navigation.navigate('JobTracking', { jobId: job.id });
+  }, [navigation, tr]);
+
+  const handleProfilePress = useCallback(() => {
+    navigation.navigate('CustomerProfile' as never);
+  }, [navigation]);
+
+  // ── Derived state ────────────────────────
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const filteredCategories = useMemo(() => {
+    if (!trimmedQuery) return [];
+    return categories
+      .filter((c) =>
+        c.name.toLowerCase().includes(trimmedQuery) ||
+        c.slug.toLowerCase().includes(trimmedQuery),
+      )
+      .slice(0, 5);
+  }, [categories, trimmedQuery]);
+
+  const quickChips = useMemo(() => categories.slice(0, 4), [categories]);
+
+  const visibleCategories = useMemo(
+    () => (showAllCategories ? categories : categories.slice(0, VISIBLE_CATEGORY_COUNT)),
+    [categories, showAllCategories],
   );
+  const hasMoreCategories = categories.length > VISIBLE_CATEGORY_COUNT;
 
-  const handleJobPress = useCallback(
-    (job: Job) => {
-      const pendingStatuses = ['pending_match', 'draft', 'pending'];
-      if (pendingStatuses.includes(job.status)) {
-        Alert.alert(
-          t('homeScreen.searchingForProvider'),
-          t('homeScreen.searchingMessage'),
-        );
-        return;
-      }
-      if (job.status === 'matched') {
-        Alert.alert(
-          t('homeScreen.waitingForProvider'),
-          t('homeScreen.waitingMessage'),
-        );
-        return;
-      }
-      if (job.status === 'pending_approval') {
-        // Navigate to MyJobs tab where the inline Approve/Reject card is shown
-        navigation.navigate('MyJobs');
-        return;
-      }
-      // Only provider_accepted and later statuses go to tracking
-      navigation.navigate('JobTracking', { jobId: job.id });
-    },
-    [navigation],
-  );
+  const openActiveJobsCount = activeJobs.filter((j) => !['completed', 'cancelled_by_customer', 'cancelled_by_provider', 'cancelled_by_system'].includes(j.status)).length;
 
-  // ── Derived State ────────────────────────
-
-  const hasActiveEmergency = useMemo(
-    () =>
-      activeJobs.some(
-        (job) =>
-          job.level === 4 &&
-          !['completed', 'cancelled'].includes(job.status),
-      ),
-    [activeJobs],
-  );
-
-  // ── Render Sections ──────────────────────
-
-  function renderHeader(): React.JSX.Element {
-    return (
-      <View style={styles.header}>
-        <MorphingBlob
-          size={220}
-          color="#7850FF"
-          opacity={0.1}
-          style={styles.headerBlob}
-        />
-        <View style={styles.greetingRow}>
-          <View>
-            <Text style={[styles.greeting, { color: theme.textPrimary }]}>
-              {greeting}, {firstName}
-            </Text>
-            <Text style={[styles.greetingSub, { color: theme.textSecondary }]}>
-              {t('homeScreen.whatDoYouNeedHelp')}
-            </Text>
-          </View>
-          {/* Profile Avatar */}
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => navigation.navigate('CustomerProfile')}
-            accessibilityLabel="Open profile"
-          >
-            <Text style={[styles.profileInitials, { color: theme.textPrimary }]}>
-              {(user?.firstName?.charAt(0) ?? '') +
-                (user?.lastName?.charAt(0) ?? '')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Mode switcher — only for 'both' users */}
-        {isBoth && (
-          <View style={styles.modeSwitcherWrap}>
-            <RoleSwitcher
-              mode={activeMode}
-              onChange={(m) => void setActiveMode(m)}
-            />
-          </View>
-        )}
-      </View>
-    );
-  }
-
-  function renderActiveJobs(): React.JSX.Element | null {
-    if (isLoadingJobs) {
-      return (
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.activeJobs')}</Text>
-          <View style={styles.jobsLoadingContainer}>
-            {[1, 2].map((i) => (
-              <View key={i} style={styles.jobSkeletonCard}>
-                <View style={styles.jobSkeletonStrip} />
-                <View style={styles.jobSkeletonBody}>
-                  <View style={styles.jobSkeletonLine} />
-                  <View style={styles.jobSkeletonLineShort} />
-                  <View style={styles.jobSkeletonLineShort} />
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-      );
-    }
-
-    if (activeJobs.length === 0) {
-      return null;
-    }
-
-    return (
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.activeJobs')}</Text>
-          <View style={styles.sectionCountBadge}>
-            <Text style={styles.sectionCount}>{activeJobs.length}</Text>
-          </View>
-        </View>
-        <FlatList
-          data={activeJobs}
-          renderItem={({ item }) => (
-            <ActiveJobCard job={item} onPress={handleJobPress} />
-          )}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.jobsList}
-          ItemSeparatorComponent={() => <View style={styles.jobSeparator} />}
-        />
-      </View>
-    );
-  }
-
-  function renderRecentActivity(): React.JSX.Element | null {
-    if (isLoadingActivity) {
-      return (
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.recentActivity')}</Text>
-          {[1, 2, 3].map((i) => (
-            <View key={i} style={styles.activitySkeletonRow}>
-              <View style={styles.activitySkeletonDot} />
-              <View style={styles.activitySkeletonLines}>
-                <View style={styles.activitySkeletonLine} />
-                <View style={styles.activitySkeletonLineShort} />
-              </View>
-            </View>
-          ))}
-        </View>
-      );
-    }
-
-    if (recentActivity.length === 0) {
-      return null;
-    }
-
-    return (
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.recentActivity')}</Text>
-        <GlassCard variant="dark" padding={0}>
-          {recentActivity.map((activity, index) => {
-            const typeColor = ACTIVITY_TYPE_COLORS[activity.type];
-            const typeLabel = t(ACTIVITY_TYPE_LABEL_KEYS[activity.type]);
-            const isLast = index === recentActivity.length - 1;
-
-            return (
-              <View
-                key={activity.id}
-                style={[
-                  styles.activityRow,
-                  !isLast && styles.activityRowBorder,
-                ]}
-              >
-                <View
-                  style={[styles.activityDot, { backgroundColor: typeColor }]}
-                />
-                <View style={styles.activityContent}>
-                  <View style={styles.activityTop}>
-                    <Text style={[styles.activityTitle, { color: theme.textPrimary }]} numberOfLines={1}>
-                      {activity.title}
-                    </Text>
-                    <Text style={[styles.activityTime, { color: theme.textSecondary }]}>
-                      {formatRelativeTime(activity.timestamp)}
-                    </Text>
-                  </View>
-                  <Text style={[styles.activityDescription, { color: theme.textSecondary }]} numberOfLines={1}>
-                    {activity.description}
-                  </Text>
-                  <View
-                    style={[
-                      styles.activityBadge,
-                      { backgroundColor: `${typeColor}20` },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.activityBadgeText, { color: typeColor }]}
-                    >
-                      {typeLabel}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-        </GlassCard>
-      </View>
-    );
-  }
-
-  // ── Main Render ──────────────────────────
-
+  // ──────────────────────────────────────────
+  // Render
+  // ──────────────────────────────────────────
   return (
-    <GlassBackground>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+    <Screen>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
-          />
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={t.text2} />
         }
       >
-        {/* Greeting Header */}
-        {renderHeader()}
-
-        {/* Emergency Button */}
-        <View style={styles.emergencySection}>
-          <EmergencyButton
-            onPress={handleEmergencyPress}
-            hasActiveEmergency={hasActiveEmergency}
+        {/* — Top header — */}
+        <View>
+          <TopBar
+            left={
+              <>
+                <Icon name="pin" size={14} color={t.text2} />
+                <View>
+                  <Eyebrow>{String(userCity).toUpperCase()}</Eyebrow>
+                  <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 14, marginTop: 2 }]} numberOfLines={1}>
+                    {greeting}{firstName ? `, ${firstName}` : ''}
+                  </Text>
+                </View>
+              </>
+            }
+            right={
+              <>
+                <MotionPressable pressScale={0.92}>
+                  <IconBtn name="bell" />
+                </MotionPressable>
+                <MotionPressable onPress={handleProfilePress} pressScale={0.92}>
+                  <Avatar initials={initials} />
+                </MotionPressable>
+              </>
+            }
           />
         </View>
 
-        {/* Active Jobs (horizontal scroll) */}
-        {renderActiveJobs()}
+        {/* — Role switcher (both users) — */}
+        {isBoth && (
+          <View style={styles.switcher}>
+            <RoleSwitcher mode={activeMode} onChange={(m) => void setActiveMode(m)} />
+          </View>
+        )}
 
-        {/* Service Categories */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{t('homeScreen.services')}</Text>
-          <CategoryGrid
-            categories={categories}
-            onCategoryPress={handleCategoryPress}
-            isLoading={isLoadingCategories}
-          />
+        {/* — Compact Emergency banner — */}
+        <View style={styles.sectionGutter}>
+          <MotionPressable onPress={handleEmergencyPress} pressScale={0.98}>
+            <View
+              style={[
+                styles.emergencyBanner,
+                {
+                  backgroundColor: t.isDark ? 'rgba(252,129,129,0.10)' : 'rgba(220,38,38,0.06)',
+                  borderColor: t.isDark ? 'rgba(252,129,129,0.30)' : 'rgba(220,38,38,0.20)',
+                },
+              ]}
+            >
+              <View style={[styles.emergencyIcon, { backgroundColor: t.danger }]}>
+                <Icon name="bolt" size={16} color={t.bg} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                  {tr('homeScreen.emergency')}
+                </Text>
+                <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}>
+                  {String(tr('homeScreen.emergencySub')).toUpperCase()}
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={16} color={t.text3} />
+            </View>
+          </MotionPressable>
         </View>
 
-        {/* Recent Activity */}
-        {renderRecentActivity()}
+        {/* — Hero "What needs doing?" — */}
+        <View style={styles.sectionGutter}>
+          <Animated.View style={heroDimStyle}>
+            <Card>
+              <Eyebrow>{String(tr('homeScreen.needHelp')).toUpperCase()}</Eyebrow>
+              <View style={styles.heroInputRow}>
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder={tr('homeScreen.whatNeedsDoing')}
+                  placeholderTextColor={t.text3}
+                  style={[
+                    styles.heroInput,
+                    { color: t.text, fontFamily: FontSansBold },
+                  ]}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+                <MotionPressable pressScale={0.92}>
+                  <IconBtn name={searchQuery ? 'x' : 'plus'} onPress={() => searchQuery ? setSearchQuery('') : null} />
+                </MotionPressable>
+              </View>
 
-        {/* Bottom Spacer */}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-    </GlassBackground>
+              {/* Quick chips when no query, dropdown when typing */}
+              {!searchQuery && quickChips.length > 0 && (
+                <View style={styles.chipsRow}>
+                  {quickChips.map((c) => (
+                    <MotionPressable key={c.id} onPress={() => handleCategoryPress(c)} pressScale={0.92}>
+                      <Chip>{c.name}</Chip>
+                    </MotionPressable>
+                  ))}
+                </View>
+              )}
+              {searchQuery.length > 0 && (
+                <View style={[styles.dropdown, { borderTopColor: t.border }]}>
+                  {filteredCategories.length === 0 ? (
+                    <Text style={[VispText.body, { color: t.text3, paddingVertical: 8 }]}>
+                      No matches for "{searchQuery}"
+                    </Text>
+                  ) : (
+                    filteredCategories.map((cat) => (
+                      <MotionPressable key={cat.id} onPress={() => handleCategoryPress(cat)} pressScale={0.97}>
+                        <View style={styles.dropdownRow}>
+                          <View style={[styles.dropdownIcon, { backgroundColor: t.deep, borderColor: t.border }]}>
+                            <Icon name={iconForCategory(cat)} size={14} color={t.text2} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 14 }]}>{cat.name}</Text>
+                            {cat.taskCount > 0 && (
+                              <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}>
+                                {cat.taskCount} {cat.taskCount === 1 ? tr('homeScreen.task') : tr('homeScreen.tasks')}
+                              </Text>
+                            )}
+                          </View>
+                          <Icon name="chevron-right" size={14} color={t.text3} />
+                        </View>
+                      </MotionPressable>
+                    ))
+                  )}
+                </View>
+              )}
+            </Card>
+          </Animated.View>
+        </View>
+
+        {/* — Browse categories — */}
+        <View style={styles.sectionGutter}>
+          <View style={styles.sectionHeader}>
+            <Eyebrow>{String(tr('homeScreen.browseCategories')).toUpperCase()}</Eyebrow>
+            {hasMoreCategories && (
+              <Pressable onPress={() => setShowAllCategories((s) => !s)}>
+                <Eyebrow color={t.text2}>
+                  {String(tr(showAllCategories ? 'homeScreen.seeLess' : 'homeScreen.seeAll')).toUpperCase()}
+                </Eyebrow>
+              </Pressable>
+            )}
+          </View>
+          {isLoadingCategories ? (
+            <View style={styles.catGrid}>
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.catTile,
+                    { width: tileSize, height: tileSize, backgroundColor: t.card, borderColor: t.border },
+                  ]}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.catGrid}>
+              {visibleCategories.map((cat) => (
+                <MotionPressable
+                  key={cat.id}
+                  onPress={() => handleCategoryPress(cat)}
+                  pressScale={0.94}
+                  style={{ width: tileSize, height: tileSize }}
+                >
+                  <View
+                    style={[
+                      styles.catTile,
+                      { width: tileSize, height: tileSize, backgroundColor: t.card, borderColor: t.border },
+                    ]}
+                  >
+                    <Icon name={iconForCategory(cat)} size={22} color={t.text} />
+                    <Text
+                      style={[
+                        VispText.label,
+                        { color: t.text, marginTop: 8, textAlign: 'center', fontSize: 12, lineHeight: 14 },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {cat.name}
+                    </Text>
+                  </View>
+                </MotionPressable>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* — Your active jobs — */}
+        <View style={styles.sectionGutter}>
+          <View style={styles.sectionHeader}>
+            <Eyebrow>{String(tr('homeScreen.yourActiveJobs')).toUpperCase()}</Eyebrow>
+            {!isLoadingJobs && openActiveJobsCount > 0 && (
+              <Eyebrow color={t.text2}>
+                {`${String(openActiveJobsCount).padStart(2, '0')} ${tr('homeScreen.openCount', { count: openActiveJobsCount }).split(' ').slice(-1)[0] ?? 'OPEN'}`.toUpperCase()}
+              </Eyebrow>
+            )}
+          </View>
+          {isLoadingJobs ? (
+            <View style={[styles.skeletonRow, { backgroundColor: t.card, borderColor: t.border }]} />
+          ) : activeJobs.length === 0 ? (
+            <Card>
+              <Text style={[VispText.body, { color: t.text3, textAlign: 'center' }]}>
+                {tr('homeScreen.noActiveJobs')}
+              </Text>
+            </Card>
+          ) : (
+            <FlatList
+              data={activeJobs}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              ItemSeparatorComponent={() => <View style={{ width: 10 }} />}
+              renderItem={({ item }) => <ActiveJobRow job={item} onPress={() => handleJobPress(item)} />}
+            />
+          )}
+        </View>
+
+        {/* — Recently used providers — */}
+        <View style={[styles.sectionGutter, { marginBottom: 24 }]}>
+          <View style={styles.sectionHeader}>
+            <Eyebrow>{String(tr('homeScreen.recentlyUsed')).toUpperCase()}</Eyebrow>
+          </View>
+          {recentProviders.length === 0 ? (
+            <Card>
+              <Text style={[VispText.body, { color: t.text3, textAlign: 'center' }]}>
+                {tr('homeScreen.noProvidersUsed')}
+              </Text>
+            </Card>
+          ) : (
+            <Card padding={0}>
+              {recentProviders.slice(0, 5).map((p, idx, arr) => (
+                <View
+                  key={p.id}
+                  style={[
+                    styles.recentRow,
+                    idx < arr.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border },
+                  ]}
+                >
+                  <Avatar initials={`${p.firstName?.[0] ?? ''}${p.lastName?.[0] ?? ''}`} size={36} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.recentNameRow}>
+                      <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                        {p.firstName} {p.lastName?.[0] ?? ''}{p.lastName ? '.' : ''}
+                      </Text>
+                      {typeof p.rating === 'number' && (
+                        <View style={styles.recentRating}>
+                          <Icon name="star" size={11} color={t.text2} />
+                          <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 12, marginLeft: 3 }]}>
+                            {p.rating.toFixed(1)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    {p.primaryCategories && p.primaryCategories.length > 0 && (
+                      <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]} numberOfLines={1}>
+                        {p.primaryCategories.join(' · ').toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
+                  <MotionPressable pressScale={0.96}>
+                    <View style={[styles.rehireBtn, { borderColor: t.borderStrong }]}>
+                      <Text style={[VispText.chip, { color: t.text }]}>{String(tr('homeScreen.rehire')).toUpperCase()}</Text>
+                    </View>
+                  </MotionPressable>
+                </View>
+              ))}
+            </Card>
+          )}
+        </View>
+
+        <View style={{ height: 24 }} />
+      </Animated.ScrollView>
+    </Screen>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Active job row (horizontal card)
+// ──────────────────────────────────────────────
+
+function ActiveJobRow({ job, onPress }: { job: Job; onPress: () => void }): React.JSX.Element {
+  const t = useVispTheme();
+  const isPending = ['pending_match', 'pending', 'draft', 'matched'].includes(job.status);
+  const provider = job.provider;
+  const initials = provider ? `${provider.firstName?.[0] ?? ''}${provider.lastName?.[0] ?? ''}`.toUpperCase() : null;
+  const sched = formatScheduleStamp(job.scheduledAt);
+
+  return (
+    <MotionPressable onPress={onPress} pressScale={0.97}>
+      <View style={[activeJobStyles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+        <View style={activeJobStyles.topRow}>
+          <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 15, flex: 1 }]} numberOfLines={1}>
+            {job.taskName}
+          </Text>
+          <View
+            style={[
+              activeJobStyles.statusChip,
+              {
+                backgroundColor: isPending ? t.violetDim : t.deep,
+                borderColor: isPending ? t.violetLine : t.border,
+              },
+            ]}
+          >
+            <Text style={[VispText.chip, { color: isPending ? t.violet : t.text2 }]} numberOfLines={1}>
+              {isPending ? 'PENDING' : job.status.replace(/_/g, ' ').toUpperCase()}
+            </Text>
+          </View>
+        </View>
+
+        {sched ? (
+          <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 8 }]}>
+            {sched}
+          </Text>
+        ) : null}
+
+        <View style={activeJobStyles.metaRow}>
+          {provider && initials ? (
+            <View style={activeJobStyles.providerCol}>
+              <Avatar initials={initials} size={28} />
+              <View style={{ marginLeft: 8 }}>
+                <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 13 }]} numberOfLines={1}>
+                  {provider.firstName} {provider.lastName?.[0] ?? ''}.
+                </Text>
+                {typeof provider.rating === 'number' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
+                    <Icon name="star" size={10} color={t.text3} />
+                    <Text style={[VispText.eyebrowTight, { color: t.text3, marginLeft: 3 }]}>
+                      {provider.rating.toFixed(1)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : (
+            <Text style={[VispText.eyebrowTight, { color: t.text3 }]}>FINDING PROVIDER…</Text>
+          )}
+
+          <Text style={[{ fontFamily: FontSansBold, fontSize: 16, fontWeight: '700', letterSpacing: -0.4, color: t.text }]}>
+            ${job.estimatedPrice.toFixed(2)}
+          </Text>
+        </View>
+      </View>
+    </MotionPressable>
   );
 }
 
@@ -490,225 +761,153 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: Spacing.massive,
+  scroll: { paddingBottom: 20 },
+  switcher: { paddingHorizontal: VispSpace.gutter, marginBottom: 10, alignItems: 'center' },
+  sectionGutter: { paddingHorizontal: VispSpace.gutter, marginBottom: 14 },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
 
-  // ── Header ────────────────────────────
-  header: {
-    paddingHorizontal: Spacing.xxl,
-    paddingTop: Spacing.giant,
-    paddingBottom: Spacing.lg,
-    overflow: 'visible',
-  },
-  headerBlob: {
-    position: 'absolute',
-    top: -40,
-    right: -60,
-    zIndex: -1,
-  },
-  greetingRow: {
+  // Emergency banner
+  emergencyBanner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  greeting: {
-    ...Typography.title2,
-    color: '#FFFFFF',
-    marginBottom: Spacing.xxs,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
-  },
-  greetingSub: {
-    ...Typography.body,
-    color: 'rgba(255, 255, 255, 0.55)',
-  },
-  profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.glass.white,
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: VispRadius.card,
     borderWidth: 1,
-    borderColor: Colors.glassBorder.light,
+  },
+  emergencyIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileInitials: {
-    ...Typography.footnote,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  modeSwitcherWrap: {
-    marginTop: Spacing.md,
-    alignItems: 'center',
-  },
 
-  // ── Emergency ─────────────────────────
-  emergencySection: {
-    paddingHorizontal: Spacing.xxl,
-    marginBottom: Spacing.xxl,
-  },
-
-  // ── Sections ──────────────────────────
-  section: {
-    paddingHorizontal: Spacing.xxl,
-    marginBottom: Spacing.xxl,
-  },
-  sectionHeader: {
+  // Hero
+  heroInputRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginTop: 12,
+    gap: 12,
   },
-  sectionTitle: {
-    ...Typography.title3,
-    color: '#FFFFFF',
-    marginBottom: Spacing.lg,
-    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  heroInput: {
+    flex: 1,
+    fontSize: 22,
+    letterSpacing: -0.44,
+    padding: 0,
+    minHeight: 38,
   },
-  sectionCountBadge: {
-    ...GlassStyles.badge,
-    marginBottom: Spacing.lg,
-  },
-  sectionCount: {
-    ...Typography.footnote,
-    color: Colors.primary,
-    fontWeight: '700',
-  },
-
-  // ── Active Jobs List ──────────────────
-  jobsList: {
-    paddingRight: Spacing.xxl,
-  },
-  jobSeparator: {
-    width: Spacing.md,
-  },
-
-  // ── Job Skeletons ─────────────────────
-  jobsLoadingContainer: {
+  chipsRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 14,
   },
-  jobSkeletonCard: {
-    width: 280,
-    backgroundColor: Colors.glass.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder.light,
-    overflow: 'hidden',
+  dropdown: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  jobSkeletonStrip: {
-    height: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  dropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
   },
-  jobSkeletonBody: {
-    padding: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  jobSkeletonLine: {
-    height: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  dropdownIcon: {
+    width: 30,
+    height: 30,
     borderRadius: 7,
-    width: '80%',
-  },
-  jobSkeletonLineShort: {
-    height: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 5,
-    width: '55%',
-  },
-
-  // ── Activity ──────────────────────────
-  activityRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-  },
-  activityRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  activityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 6,
-    marginRight: Spacing.md,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    borderWidth: 1,
     alignItems: 'center',
-    marginBottom: Spacing.xxs,
-  },
-  activityTitle: {
-    ...Typography.footnote,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  activityTime: {
-    ...Typography.caption,
-    color: 'rgba(255, 255, 255, 0.4)',
-  },
-  activityDescription: {
-    ...Typography.caption,
-    color: 'rgba(255, 255, 255, 0.55)',
-    marginBottom: Spacing.sm,
-  },
-  activityBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xxs,
-    borderRadius: BorderRadius.xs,
-  },
-  activityBadgeText: {
-    ...Typography.caption,
-    fontWeight: '600',
+    justifyContent: 'center',
   },
 
-  // ── Activity Skeletons ────────────────
-  activitySkeletonRow: {
+  // Browse grid — tile width/height supplied inline (from useWindowDimensions)
+  catGrid: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: Spacing.md,
+    flexWrap: 'wrap',
+    gap: TILE_GAP,
   },
-  activitySkeletonDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    marginTop: 6,
-    marginRight: Spacing.md,
-  },
-  activitySkeletonLines: {
-    flex: 1,
-    gap: Spacing.sm,
-  },
-  activitySkeletonLine: {
-    height: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 6,
-    width: '70%',
-  },
-  activitySkeletonLineShort: {
-    height: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 5,
-    width: '45%',
+  catTile: {
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
 
-  // ── Bottom ────────────────────────────
-  bottomSpacer: {
-    height: Spacing.xxxl,
+  // Active jobs
+  skeletonRow: {
+    height: 110,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+  },
+
+  // Recently used
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: VispSpace.card,
+    paddingVertical: 14,
+  },
+  recentNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recentRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rehireBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+});
+
+const activeJobStyles = StyleSheet.create({
+  card: {
+    width: 280,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+    padding: 16,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  statusChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: VispRadius.chip,
+    borderWidth: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  providerCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
 });
 

@@ -19,8 +19,10 @@ import {
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { taxonomyService, ProviderCategory, ProviderTask } from '../../services/taxonomyService';
 import { providerService } from '../../services/providerService';
 import { useAuthStore } from '../../stores/authStore';
@@ -28,6 +30,7 @@ import { useProviderStore } from '../../stores/providerStore';
 
 
 export default function ProviderOnboardingScreen() {
+    const theme = useTheme();
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { user } = useAuthStore();
@@ -163,22 +166,22 @@ export default function ProviderOnboardingScreen() {
 
     if (isLoading) {
         return (
-            <GlassBackground>
+            <Screen>
                 <View style={styles.loadingContainer}>
                     <AnimatedSpinner size={48} color={Colors.primary} />
-                    <Text style={styles.loadingText}>Loading services...</Text>
+                    <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading services...</Text>
                 </View>
-            </GlassBackground>
+            </Screen>
         );
     }
 
     return (
-        <GlassBackground>
+        <Screen>
             <View style={styles.container}>
                 {/* Header with glass dark panel */}
                 <View style={styles.header}>
-                    <Text style={styles.title}>Select Your Services</Text>
-                    <Text style={styles.subtitle}>
+                    <Text style={[styles.title, { color: theme.textPrimary }]}>Select Your Services</Text>
+                    <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
                         Choose the services you are qualified to perform.
                     </Text>
 
@@ -192,7 +195,7 @@ export default function ProviderOnboardingScreen() {
                                 ]}
                             />
                         </View>
-                        <Text style={styles.progressText}>
+                        <Text style={[styles.progressText, { color: theme.textSecondary }]}>
                             {selectedTaskIds.size} selected
                         </Text>
                     </View>
@@ -215,7 +218,7 @@ export default function ProviderOnboardingScreen() {
                                     activeOpacity={0.7}
                                 >
                                     <View style={styles.categoryInfo}>
-                                        <Text style={styles.categoryName}>{category.name}</Text>
+                                        <Text style={[styles.categoryName, { color: theme.textPrimary }]}>{category.name}</Text>
                                         {selectedCount > 0 && (
                                             <View style={styles.selectedBadge}>
                                                 <Text style={styles.selectedBadgeText}>
@@ -224,7 +227,7 @@ export default function ProviderOnboardingScreen() {
                                             </View>
                                         )}
                                     </View>
-                                    <Text style={styles.chevron}>
+                                    <Text style={[styles.chevron, { color: theme.textSecondary }]}>
                                         {isExpanded ? '\u25B2' : '\u25BC'}
                                     </Text>
                                 </TouchableOpacity>
@@ -260,7 +263,9 @@ export default function ProviderOnboardingScreen() {
                                                     <View style={styles.taskInfo}>
                                                         <Text style={[
                                                             styles.taskName,
+                                                            { color: theme.textPrimary },
                                                             isSelected && styles.taskNameSelected,
+                                                            isSelected && { color: theme.textPrimary },
                                                         ]}>
                                                             {task.name}
                                                         </Text>
@@ -311,7 +316,7 @@ export default function ProviderOnboardingScreen() {
                     />
                 </View>
             </View>
-        </GlassBackground>
+        </Screen>
     );
 }
 

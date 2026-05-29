@@ -92,6 +92,19 @@ export async function saveUserLocation(): Promise<void> {
     }
 }
 
+/**
+ * Push known coordinates to the backend without re-querying GPS. Used by
+ * the provider's active-job map, which already has a live position from
+ * watchPosition().
+ */
+export async function pushUserLocation(latitude: number, longitude: number): Promise<void> {
+    try {
+        await apiClient.post('/users/me/location', { latitude, longitude });
+    } catch (err) {
+        console.warn('Failed to push user location:', err);
+    }
+}
+
 // ─── Backend Geo API ────────────────────────────────────────────────────────
 export interface GeocodeResult {
     lat: number;

@@ -346,25 +346,115 @@ async def _handle_account_updated(
     event: stripe.Event,
     db: AsyncSession | None = None,
 ) -> str:
-    """Handle a connected account update."""
+    """Handle a connected account update.
+
+    Persist the refreshed requirements / capabilities / onboarding step on
+    the matching ``provider_profiles`` row so the mobile app's polling of
+    ``/v2/status`` reflects the new state immediately. Also fires when an
+    admin manually approves a Stripe Identity verification session in test
+    mode — the connected account's ``payouts_enabled`` will flip to True
+    once Stripe propagates the verification.
+    """
     account = event.data.object
-    charges_enabled = account.charges_enabled
-    payouts_enabled = account.payouts_enabled
-    provider_id = account.metadata.get("visp_provider_id", "unknown")
+    charges_enabled = bool(getattr(account, "charges_enabled", False))
+    payouts_enabled = bool(getattr(account, "payouts_enabled", False))
+    details_submitted = bool(getattr(account, "details_submitted", False))
+
+    if db is None:
+        logger.warning("account.updated received without DB session — skipping persist")
+        return f"Account {account.id} updated (no db)"
+
+    # Lazy imports to avoid circular dependency with connectV2Service.
+    from sqlalchemy import select
+    from src.models.provider import ProviderProfile
+    from src.integrations.stripe.connectV2Service import (
+        _next_step,
+        _extract_requirements_due,
+        _extract_capabilities,
+    )
+
+    stmt = select(ProviderProfile).where(ProviderProfile.stripe_account_id == account.id)
+    profile = (await db.execute(stmt)).scalar_one_or_none()
+    if profile is None:
+        logger.warning("account.updated for %s but no ProviderProfile matched", account.id)
+        return f"Account {account.id} updated (no profile)"
+
+    requirements_due = _extract_requirements_due(account)
+    capabilities = _extract_capabilities(account)
+    onboarding_step = _next_step(requirements_due)
+
+    profile.stripe_requirements_due = requirements_due
+    profile.stripe_capabilities = capabilities
+    profile.stripe_onboarding_step = onboarding_step
+    await db.commit()
 
     logger.info(
-        "Account updated: account=%s, provider_id=%s, "
-        "charges_enabled=%s, payouts_enabled=%s",
-        account.id,
-        provider_id,
-        charges_enabled,
-        payouts_enabled,
+        "Account updated and persisted: account=%s provider=%s step=%s "
+        "payouts_enabled=%s details_submitted=%s requirements_due=%d",
+        account.id, profile.id, onboarding_step,
+        payouts_enabled, details_submitted, len(requirements_due),
     )
 
     return (
-        f"Account {account.id} updated for provider {provider_id}: "
-        f"charges={charges_enabled}, payouts={payouts_enabled}"
+        f"Account {account.id} → step={onboarding_step} "
+        f"payouts={payouts_enabled} requirements={len(requirements_due)}"
     )
+
+
+async def _handle_identity_verification_verified(
+    event: stripe.Event,
+    db: AsyncSession | None = None,
+) -> str:
+    """Identity Verification Session reached the ``verified`` state.
+
+    Stripe propagates the verification to the linked connected account
+    asynchronously, so the matching ``account.updated`` event (handled
+    above) is what actually flips ``payouts_enabled``. This handler is
+    informational + a safety net: it re-fetches the connected account from
+    Stripe and forces a status refresh in case the ``account.updated``
+    event is delayed or missed.
+    """
+    session = event.data.object
+    session_id = getattr(session, "id", "?")
+    metadata = getattr(session, "metadata", None) or {}
+    account_id = (metadata.get("stripe_account_id") if hasattr(metadata, "get") else None) or ""
+
+    logger.info(
+        "identity.verification_session.verified: session=%s account=%s",
+        session_id, account_id,
+    )
+
+    if not account_id or db is None:
+        return f"verification verified session={session_id} account={account_id or 'unknown'}"
+
+    # Refresh the connected account so any unprocessed account.updated
+    # webhook does not leave the profile stale.
+    try:
+        account = stripe.Account.retrieve(account_id)
+    except stripe.StripeError as exc:
+        logger.warning("Could not retrieve %s after verification: %s", account_id, exc)
+        return f"verification verified session={session_id} (retrieve failed)"
+
+    from sqlalchemy import select
+    from src.models.provider import ProviderProfile
+    from src.integrations.stripe.connectV2Service import (
+        _next_step,
+        _extract_requirements_due,
+        _extract_capabilities,
+    )
+
+    stmt = select(ProviderProfile).where(ProviderProfile.stripe_account_id == account_id)
+    profile = (await db.execute(stmt)).scalar_one_or_none()
+    if profile is None:
+        return f"verification verified session={session_id} (no profile)"
+
+    requirements_due = _extract_requirements_due(account)
+    profile.stripe_requirements_due = requirements_due
+    profile.stripe_capabilities = _extract_capabilities(account)
+    profile.stripe_onboarding_step = _next_step(requirements_due)
+    await db.commit()
+
+    return f"verification verified session={session_id} step={profile.stripe_onboarding_step}"
 
 
 async def _handle_transfer_created(
@@ -440,6 +530,7 @@ _EVENT_HANDLERS: dict[str, callable] = {
     "payment_intent.payment_failed": _handle_payment_intent_failed,
     "charge.refunded": _handle_charge_refunded,
     "account.updated": _handle_account_updated,
+    "identity.verification_session.verified": _handle_identity_verification_verified,
     "transfer.created": _handle_transfer_created,
     "payout.paid": _handle_payout_paid,
     "payout.failed": _handle_payout_failed,

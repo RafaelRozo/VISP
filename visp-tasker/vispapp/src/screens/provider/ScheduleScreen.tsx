@@ -26,7 +26,8 @@ import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../stores/appStore';
 import { GlassStyles } from '../../theme/glass';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen, ScreenTitle } from '../../components/visp';
 import { useProviderStore } from '../../stores/providerStore';
 import { OnCallShift, ScheduledJob, TimeOffRequest } from '../../types';
 import { post } from '../../services/apiClient';
@@ -128,6 +129,7 @@ function CalendarStrip({
   onSelectDate,
   jobDates,
 }: CalendarStripProps): React.JSX.Element {
+  const theme = useTheme();
   const lang = useAppStore((s) => s.language);
   const days = useMemo(() => getCalendarDays(lang), [lang]);
 
@@ -156,6 +158,7 @@ function CalendarStrip({
             <Text
               style={[
                 calendarStyles.dayLabel,
+                !isSelected && { color: theme.textSecondary },
                 isSelected && calendarStyles.dayLabelSelected,
               ]}
             >
@@ -164,6 +167,7 @@ function CalendarStrip({
             <Text
               style={[
                 calendarStyles.dateLabel,
+                !isSelected && { color: theme.textPrimary },
                 isSelected && calendarStyles.dateLabelSelected,
               ]}
             >
@@ -255,6 +259,7 @@ interface ScheduledJobItemProps {
 }
 
 function ScheduledJobItem({ job, onPress }: ScheduledJobItemProps): React.JSX.Element {
+  const theme = useTheme();
   const levelColor = getLevelColor(job.level);
   const statusColor = getStatusColor(job.status);
 
@@ -273,7 +278,7 @@ function ScheduledJobItem({ job, onPress }: ScheduledJobItemProps): React.JSX.El
       <View style={[jobItemStyles.levelStrip, { backgroundColor: levelColor }]} />
       <View style={jobItemStyles.content}>
         <View style={jobItemStyles.header}>
-          <Text style={jobItemStyles.taskName} numberOfLines={1}>
+          <Text style={[jobItemStyles.taskName, { color: theme.textPrimary }]} numberOfLines={1}>
             {job.taskName}
           </Text>
           <View
@@ -286,10 +291,10 @@ function ScheduledJobItem({ job, onPress }: ScheduledJobItemProps): React.JSX.El
           </View>
         </View>
         <View style={jobItemStyles.details}>
-          <Text style={jobItemStyles.detailText}>
+          <Text style={[jobItemStyles.detailText, { color: theme.textSecondary }]}>
             {formatTime(job.scheduledAt)} | {formatDuration(job.estimatedDurationMinutes)}
           </Text>
-          <Text style={jobItemStyles.locationText}>{job.customerArea}</Text>
+          <Text style={[jobItemStyles.locationText, { color: theme.textTertiary }]}>{job.customerArea}</Text>
         </View>
         {canStart && (
           <View style={jobItemStyles.startRouteContainer}>
@@ -394,6 +399,7 @@ interface ShiftItemProps {
 }
 
 function ShiftItem({ shift }: ShiftItemProps): React.JSX.Element {
+  const theme = useTheme();
   return (
     <GlassCard variant="dark" padding={14} style={shiftStyles.container}>
       <View style={shiftStyles.row}>
@@ -419,10 +425,10 @@ function ShiftItem({ shift }: ShiftItemProps): React.JSX.Element {
           ]}
         />
         <View style={shiftStyles.content}>
-          <Text style={shiftStyles.dateText}>
+          <Text style={[shiftStyles.dateText, { color: theme.textPrimary }]}>
             {formatDate(shift.startTime)}
           </Text>
-          <Text style={shiftStyles.timeText}>
+          <Text style={[shiftStyles.timeText, { color: theme.textSecondary }]}>
             {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
           </Text>
         </View>
@@ -737,10 +743,10 @@ export default function ScheduleScreen(): React.JSX.Element {
                     }
                   }}
                 >
-                  <Text style={[styles.timeOffDayLabel, isSelected && styles.timeOffDayLabelSelected]}>
+                  <Text style={[styles.timeOffDayLabel, !isSelected && { color: theme.textSecondary }, isSelected && styles.timeOffDayLabelSelected]}>
                     {day.dayLabel}
                   </Text>
-                  <Text style={[styles.timeOffDateLabel, isSelected && styles.timeOffDateLabelSelected]}>
+                  <Text style={[styles.timeOffDateLabel, !isSelected && { color: theme.textPrimary }, isSelected && styles.timeOffDateLabelSelected]}>
                     {day.label}
                   </Text>
                 </TouchableOpacity>
@@ -782,11 +788,11 @@ export default function ScheduleScreen(): React.JSX.Element {
           {/* Reason */}
           <Text style={[styles.timeOffFormLabel, { color: theme.textSecondary }]}>{t('scheduleScreen.reason')}</Text>
           <TextInput
-            style={[styles.timeOffReasonInput, { color: theme.textPrimary }]}
+            style={[styles.timeOffReasonInput, { color: theme.textPrimary, backgroundColor: theme.inputBackground, borderColor: theme.inputBorder }]}
             value={timeOffReason}
             onChangeText={setTimeOffReason}
             placeholder={language === 'fr' ? 'Personnel, vacances, etc.' : 'Personal, vacation, etc.'}
-            placeholderTextColor="rgba(255, 255, 255, 0.3)"
+            placeholderTextColor={theme.inputPlaceholder}
             maxLength={100}
           />
 
@@ -868,7 +874,8 @@ export default function ScheduleScreen(): React.JSX.Element {
   );
 
   return (
-    <GlassBackground>
+    <Screen>
+      <ScreenTitle title={t('nav.schedule')} sub="§ Provider" />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -903,6 +910,7 @@ export default function ScheduleScreen(): React.JSX.Element {
               <Text
                 style={[
                   styles.tabText,
+                  { color: theme.textSecondary },
                   activeTab === tab.key && styles.tabTextActive,
                 ]}
               >
@@ -918,7 +926,7 @@ export default function ScheduleScreen(): React.JSX.Element {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
-    </GlassBackground>
+    </Screen>
   );
 }
 

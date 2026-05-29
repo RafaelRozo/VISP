@@ -19,9 +19,11 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { GlassCard, GlassButton } from '../../components/glass';
+import { Screen } from '../../components/visp';
 import { PulseRing, AnimatedCheckmark } from '../../components/animations';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import type { CustomerFlowParamList } from '../../types';
@@ -46,6 +48,7 @@ const POSTING_DURATION_MS = 1800;
 // ──────────────────────────────────────────────
 
 function MatchingScreen(): React.JSX.Element {
+  const theme = useTheme();
   const route = useRoute<MatchingRouteProp>();
   const navigation = useNavigation<MatchingNavProp>();
   const { jobId, taskName } = route.params;
@@ -149,14 +152,14 @@ function MatchingScreen(): React.JSX.Element {
   const isPosted = phase === 'posted';
 
   return (
-    <GlassBackground>
+    <Screen>
       <View style={styles.container}>
         {/* Top section: task name */}
         <View style={styles.topSection}>
-          <Text style={styles.taskLabel}>
+          <Text style={[styles.taskLabel, { color: theme.textSecondary }]}>
             {isPosted ? 'Job Posted' : 'Booking'}
           </Text>
-          <Text style={styles.taskName}>{taskName}</Text>
+          <Text style={[styles.taskName, { color: theme.textPrimary }]}>{taskName}</Text>
         </View>
 
         {/* Center animation inside glass panel */}
@@ -199,7 +202,7 @@ function MatchingScreen(): React.JSX.Element {
           </GlassCard>
 
           {/* Status text */}
-          <Text style={styles.statusText}>
+          <Text style={[styles.statusText, { color: theme.textSecondary }]}>
             {isPosted
               ? 'Job Posted!'
               : 'Posting your job...'}
@@ -208,7 +211,7 @@ function MatchingScreen(): React.JSX.Element {
           {/* Success message and buttons */}
           {isPosted && (
             <Animated.View style={[styles.successContent, { opacity: contentOpacity }]}>
-              <Text style={styles.successMessage}>
+              <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
                 Your job request has been posted! You'll be notified when Vispers apply
                 to your job. Check your jobs list for updates.
               </Text>
@@ -251,13 +254,13 @@ function MatchingScreen(): React.JSX.Element {
 
         {/* Bottom section */}
         <View style={styles.bottomSection}>
-          <Text style={styles.footerText}>
+          <Text style={[styles.footerText, { color: theme.textTertiary }]}>
             VISP acts as a platform intermediary only.
             {'\n'}Providers are independent service professionals.
           </Text>
         </View>
       </View>
-    </GlassBackground>
+    </Screen>
   );
 }
 

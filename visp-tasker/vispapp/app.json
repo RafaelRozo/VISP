@@ -73,7 +73,8 @@
           "merchantIdentifier": "merchant.com.visp.tasker",
           "enableGooglePay": false
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

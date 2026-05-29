@@ -22,7 +22,7 @@ from sqlalchemy import (
     Text,
     Time,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -121,8 +121,23 @@ class ProviderProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     portfolio_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     years_experience: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    # Financial
+    # Financial — Stripe Connect Accounts v2
     stripe_account_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # 'identity' | 'tax' | 'bank' | 'identity_doc' | 'tos' | 'complete'
+    stripe_onboarding_step: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    stripe_tos_accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stripe_tos_acceptance_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    stripe_tos_acceptance_user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stripe_external_account_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    stripe_identity_session_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    stripe_requirements_due: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default="'[]'::jsonb", default=list
+    )
+    stripe_capabilities: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="'{}'::jsonb", default=dict
+    )
 
     # Metadata
     activated_at: Mapped[Optional[datetime]] = mapped_column(

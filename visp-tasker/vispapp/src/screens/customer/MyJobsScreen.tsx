@@ -1,98 +1,228 @@
 /**
- * VISP - My Jobs Screen (Glass Redesign)
+ * VISP - My Jobs Screen (Mockup-fidelity refresh)
  *
- * Displays the customer's jobs grouped by status:
- *   - Active (pending_match, matched, provider_en_route, arrived, in_progress)
- *   - Completed / Cancelled (history)
+ * Matches `CustomerJobs` in newdesign/app-customer.jsx:
+ *   - ScreenTitle "Jobs" / "§ Activity" with a dark "New job" pill on the right
+ *   - TabPills row: Active (N) / Completed (N) / Drafts (N)
+ *   - Each Active card is split: top strip with status Chip + JOB-XXXX mono id,
+ *     body with title + meta + footer row with date + price.
+ *   - Pending-approval (provider review) jobs surface an inline accent
+ *     sub-card with Approve / Reject actions.
+ *   - Recently completed list rendered with `Row` primitive.
+ *
+ * Business logic (fetch, navigation, approval handlers) is preserved.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { GlassBackground, GlassCard } from '../../components/glass';
-import { Colors, Spacing, Typography, BorderRadius, GlassStyles } from '../../theme';
-import { useTheme } from '../../theme/ThemeContext';
-import { useTranslation, t } from '../../i18n';
-import { FontWeight } from '../../theme/typography';
+import { useTranslation } from '../../i18n';
+import {
+  Screen,
+  ScreenTitle,
+  Eyebrow,
+  Card,
+  Chip,
+  Row,
+  Icon,
+  VispIconName,
+} from '../../components/visp';
+import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
 import taskService from '../../services/taskService';
 import type { Job, RootStackParamList } from '../../types';
 
-// ──────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────
-
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-
-type TabKey = 'active' | 'history';
-
-// ──────────────────────────────────────────────
-// Status helpers
-// ──────────────────────────────────────────────
+type TabKey = 'active' | 'completed' | 'drafts';
 
 const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 
-function statusLabel(status: string): string {
-    const map: Record<string, string> = {
-        draft: t('myJobs.draft'),
-        pending_match: t('myJobs.searchingForProvider'),
-        matched: t('myJobs.providerAssigned'),
-        pending_approval: t('myJobs.providerReview'),
-        scheduled: t('myJobs.scheduled'),
-        provider_accepted: t('myJobs.providerAccepted'),
-        provider_en_route: t('myJobs.providerEnRoute'),
-        arrived: t('myJobs.providerArrived'),
-        in_progress: t('myJobs.inProgress'),
-        completed: t('common.completed'),
-        cancelled_by_customer: t('common.cancelled'),
-        cancelled_by_provider: t('common.cancelled'),
-        cancelled_by_system: t('common.cancelled'),
-        disputed: t('myJobs.disputed'),
-        refunded: t('myJobs.refunded'),
-    };
-    return map[status] ?? status.replace(/_/g, ' ');
+// ──────────────────────────────────────────────
+// MotionPressable — scale-spring press feedback
+// ──────────────────────────────────────────────
+
+function MotionPressable({
+  onPress,
+  children,
+  style,
+  pressScale = 0.97,
+  disabled,
+}: {
+  onPress?: () => void;
+  children: React.ReactNode;
+  style?: ViewStyle | ViewStyle[];
+  pressScale?: number;
+  disabled?: boolean;
+}): React.JSX.Element {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={style}
+      onPressIn={() => {
+        scale.value = withTiming(pressScale, { duration: 90, easing: Easing.out(Easing.quad) });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
+      }}
+    >
+      <Animated.View style={[{ alignSelf: 'stretch' }, animatedStyle]}>{children}</Animated.View>
+    </Pressable>
+  );
 }
 
-function statusColor(status: string): string {
-    if (PENDING_STATUSES.includes(status)) return Colors.warning;
-    if (status === 'pending_approval') return '#FF8C00';
-    if (status === 'scheduled') return Colors.info ?? '#5B9BD5';
-    if (['matched', 'provider_accepted', 'provider_en_route', 'arrived'].includes(status)) return Colors.info ?? '#5B9BD5';
-    if (status === 'in_progress') return Colors.primary;
-    if (status === 'completed') return Colors.success;
-    return Colors.textTertiary;
+// ──────────────────────────────────────────────
+// TabPills (local helper)
+// ──────────────────────────────────────────────
+
+interface TabPillsProps {
+  tabs: { key: TabKey; label: string; count: number }[];
+  active: TabKey;
+  onChange: (k: TabKey) => void;
 }
 
-function isActiveStatus(status: string): boolean {
-    return ![
-        'completed',
-        'cancelled_by_customer',
-        'cancelled_by_provider',
-        'cancelled_by_system',
-        'disputed',
-        'refunded',
-    ].includes(status);
+function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element {
+  const t = useVispTheme();
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={pillStyles.row}
+    >
+      {tabs.map((tab) => {
+        const isActive = tab.key === active;
+        return (
+          <Pressable
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={[
+              pillStyles.pill,
+              {
+                backgroundColor: isActive ? t.text : 'transparent',
+                borderColor: isActive ? t.text : t.border,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                VispText.chip,
+                { color: isActive ? t.bg : t.text2 },
+              ]}
+            >
+              {tab.label} ({String(tab.count).padStart(2, '0')})
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
 }
 
-function formatDate(iso: string | null | undefined): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    });
+const pillStyles = StyleSheet.create({
+  row: {
+    paddingHorizontal: VispSpace.gutter,
+    paddingBottom: 14,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: VispRadius.pill,
+    borderWidth: 1,
+  },
+});
+
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+
+function statusLabelKey(status: string): string {
+  const map: Record<string, string> = {
+    draft: 'myJobs.draft',
+    pending_match: 'myJobs.searchingForProvider',
+    matched: 'myJobs.providerAssigned',
+    pending_approval: 'myJobs.providerReview',
+    scheduled: 'myJobs.scheduled',
+    provider_accepted: 'myJobs.providerAccepted',
+    provider_en_route: 'myJobs.providerEnRoute',
+    arrived: 'myJobs.providerArrived',
+    in_progress: 'myJobs.inProgress',
+    completed: 'common.completed',
+    cancelled_by_customer: 'common.cancelled',
+    cancelled_by_provider: 'common.cancelled',
+    cancelled_by_system: 'common.cancelled',
+    disputed: 'myJobs.disputed',
+    refunded: 'myJobs.refunded',
+  };
+  return map[status] ?? '';
+}
+
+function isCompletedStatus(status: string): boolean {
+  return [
+    'completed',
+    'cancelled_by_customer',
+    'cancelled_by_provider',
+    'cancelled_by_system',
+    'disputed',
+    'refunded',
+  ].includes(status);
+}
+
+function isDraftStatus(status: string): boolean {
+  return status === 'draft';
+}
+
+function isAccentStatus(status: string): boolean {
+  return ['pending_match', 'pending_approval', 'matched'].includes(status);
+}
+
+function formatJobId(id: string): string {
+  // Show short uppercase id à la JOB-2104
+  const tail = id.replace(/-/g, '').slice(-4).toUpperCase();
+  return `JOB-${tail || '----'}`;
+}
+
+function formatDateMeta(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    .toUpperCase();
+}
+
+function iconForCategory(name: string | undefined): VispIconName {
+  const n = (name || '').toLowerCase();
+  if (n.includes('clean')) return 'broom';
+  if (n.includes('mov')) return 'truck';
+  if (n.includes('hand') || n.includes('mount') || n.includes('fix')) return 'wrench';
+  if (n.includes('deliv') || n.includes('pickup')) return 'package';
+  if (n.includes('yard') || n.includes('garden')) return 'leaf';
+  if (n.includes('pet')) return 'paw';
+  if (n.includes('errand')) return 'bolt';
+  return 'briefcase';
 }
 
 // ──────────────────────────────────────────────
@@ -100,300 +230,339 @@ function formatDate(iso: string | null | undefined): string {
 // ──────────────────────────────────────────────
 
 function MyJobsScreen(): React.JSX.Element {
-  const theme = useTheme();
-  const { t } = useTranslation();
-    const navigation = useNavigation<NavProp>();
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
+  const navigation = useNavigation<NavProp>();
 
-    const [jobs, setJobs] = useState<Job[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState<TabKey>('active');
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('active');
 
-    // ── Fetch ────────────────────────────────
-    const fetchJobs = useCallback(async (silent = false) => {
-        try {
-            if (!silent) setIsLoading(true);
-            const data = await taskService.getActiveJobs();
-            setJobs(data);
-        } catch {
-            // Silently fail
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchJobs();
-    }, [fetchJobs]);
-
-    const handleRefresh = useCallback(() => {
-        setIsRefreshing(true);
-        fetchJobs(true);
-    }, [fetchJobs]);
-
-    // ── Filter ───────────────────────────────
-    const filteredJobs = jobs.filter((j) =>
-        activeTab === 'active' ? isActiveStatus(j.status) : !isActiveStatus(j.status),
-    );
-
-    // ── Press handler ────────────────────────
-    const handleJobPress = useCallback(
-        (job: Job) => {
-            if (PENDING_STATUSES.includes(job.status)) {
-                Alert.alert(
-                    t('myJobs.searchingForProvider'),
-                    t('homeScreen.searchingMessage'),
-                );
-                return;
-            }
-            if (job.status === 'matched') {
-                Alert.alert(
-                    t('homeScreen.waitingForProvider'),
-                    t('homeScreen.waitingMessage'),
-                );
-                return;
-            }
-            if (job.status === 'pending_approval') {
-                Alert.alert(
-                    t('myJobs.providerReview'),
-                    t('myJobs.reviewProviderInfo'),
-                );
-                return;
-            }
-            // Only provider_accepted and later statuses go to tracking
-            navigation.navigate('JobTracking', { jobId: job.id });
-        },
-        [navigation],
-    );
-
-    // ── Provider info cache for pending_approval jobs ─
-    const [providerInfoMap, setProviderInfoMap] = useState<Record<string, any>>({});
-
-    // Fetch provider info for pending_approval jobs
-    useEffect(() => {
-        const pendingApprovalJobs = jobs.filter(j => j.status === 'pending_approval');
-        pendingApprovalJobs.forEach(async (job) => {
-            if (providerInfoMap[job.id]) return;
-            try {
-                const info = await taskService.getPendingProvider(job.id);
-                if (info) {
-                    setProviderInfoMap(prev => ({ ...prev, [job.id]: info }));
-                }
-            } catch {
-                // ignore
-            }
-        });
-    }, [jobs]);
-
-    // ── Approve / Reject provider ─────────────
-    const handleApproveProvider = useCallback(async (jobId: string) => {
-        try {
-            await taskService.approveProvider(jobId);
-            Alert.alert(t('myJobs.approved'), t('myJobs.jobScheduled'));
-            fetchJobs(true);
-        } catch {
-            Alert.alert(t('common.error'), t('myJobs.failedApprove'));
-        }
-    }, [fetchJobs]);
-
-    const handleRejectProvider = useCallback((jobId: string) => {
-        Alert.alert(
-            t('myJobs.rejectProvider'),
-            t('myJobs.rejectConfirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('myJobs.reject'),
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await taskService.rejectProvider(jobId);
-                            Alert.alert(t('myJobs.providerRejected'), t('myJobs.findAnother'));
-                            fetchJobs(true);
-                        } catch {
-                            Alert.alert(t('common.error'), t('myJobs.failedReject'));
-                        }
-                    },
-                },
-            ],
-        );
-    }, [fetchJobs]);
-
-    // ── Render job card ──────────────────────
-    const renderJobCard = useCallback(
-        ({ item }: { item: Job }) => {
-            const color = statusColor(item.status);
-            const isPending = PENDING_STATUSES.includes(item.status);
-            const isPendingApproval = item.status === 'pending_approval';
-            const providerInfo = providerInfoMap[item.id];
-
-            return (
-                <TouchableOpacity
-                    onPress={() => handleJobPress(item)}
-                    activeOpacity={0.7}
-                    style={styles.jobCardTouchable}
-                >
-                    <GlassCard variant="dark">
-                        <View style={styles.jobHeader}>
-                            <Text style={[styles.jobName, { color: theme.textPrimary }]} numberOfLines={1}>
-                                {item.taskName || t('myJobs.job')}
-                            </Text>
-                            <View style={[styles.statusBadge, { backgroundColor: `${color}20`, borderColor: `${color}40` }]}>
-                                {isPending && (
-                                    <AnimatedSpinner
-                                        size={10}
-                                        color={color}
-                                        style={{ marginRight: 4 }}
-                                    />
-                                )}
-                                <Text style={[styles.statusText, { color }]}>
-                                    {statusLabel(item.status)}
-                                </Text>
-                            </View>
-                        </View>
-
-                        {item.address?.street ? (
-                            <Text style={[styles.jobAddress, { color: theme.textSecondary }]} numberOfLines={1}>
-                                {item.address.street}
-                                {item.address.city ? `, ${item.address.city}` : ''}
-                            </Text>
-                        ) : null}
-
-                        {/* Provider info for pending_approval */}
-                        {isPendingApproval && providerInfo && (
-                            <View style={styles.providerReviewCard}>
-                                <Text style={styles.providerReviewTitle}>{t('myJobs.wantsToAccept')}</Text>
-                                <View style={styles.providerInfoRow}>
-                                    <View style={[styles.providerLevel, { backgroundColor: color }]}>
-                                        <Text style={styles.providerLevelText}>L{providerInfo.level}</Text>
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={[styles.providerName, { color: theme.textPrimary }]}>{providerInfo.displayName}</Text>
-                                        {providerInfo.yearsExperience && (
-                                            <Text style={[styles.providerDetail, { color: theme.textSecondary }]}>
-                                                {providerInfo.yearsExperience} {t('myJobs.yearsExperience')}
-                                            </Text>
-                                        )}
-                                    </View>
-                                </View>
-                                <View style={styles.approvalButtons}>
-                                    <TouchableOpacity
-                                        style={styles.rejectButton}
-                                        onPress={() => handleRejectProvider(item.id)}
-                                    >
-                                        <Text style={styles.rejectButtonText}>{t('myJobs.reject')}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.approveButton}
-                                        onPress={() => handleApproveProvider(item.id)}
-                                    >
-                                        <Text style={styles.approveButtonText}>{t('myJobs.approve')}</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        )}
-
-                        <View style={styles.jobFooter}>
-                            <Text style={[styles.jobDate, { color: theme.textSecondary }]}>
-                                {formatDate(item.createdAt)}
-                            </Text>
-                            {item.estimatedPrice > 0 && (
-                                <Text style={styles.jobPrice}>
-                                    ${item.estimatedPrice.toFixed(2)}
-                                </Text>
-                            )}
-                        </View>
-                    </GlassCard>
-                </TouchableOpacity>
-            );
-        },
-        [handleJobPress, providerInfoMap, handleApproveProvider, handleRejectProvider],
-    );
-
-    // ── Empty state ──────────────────────────
-    const renderEmptyState = () => (
-        <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
-                {activeTab === 'active' ? t('myJobs.noActiveJobs') : t('myJobs.noPastJobs')}
-            </Text>
-            <Text style={[styles.emptySubtext, { color: theme.textSecondary }]}>
-                {activeTab === 'active'
-                    ? t('myJobs.bookService')
-                    : t('myJobs.pastJobsAppear')}
-            </Text>
-        </View>
-    );
-
-    // ── Loading ──────────────────────────────
-    if (isLoading) {
-        return (
-            <GlassBackground>
-                <View style={styles.loadingContainer}>
-                    <AnimatedSpinner size={48} color={Colors.primary} />
-                    <Text style={[styles.loadingText, { color: theme.textSecondary }]}>{t('myJobs.loadingJobs')}</Text>
-                </View>
-            </GlassBackground>
-        );
+  const fetchJobs = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setIsLoading(true);
+      const data = await taskService.getActiveJobs();
+      setJobs(data);
+    } catch {
+      // Silently fail
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
+  }, []);
 
-    // ── Render ────────────────────────────────
-    return (
-        <GlassBackground>
-            <View style={styles.container}>
-                {/* Glass pill tab bar */}
-                <View style={styles.tabBar}>
-                    <TouchableOpacity
-                        style={[styles.tab, activeTab === 'active' && styles.tabActive]}
-                        onPress={() => setActiveTab('active')}
-                    >
-                        <Text
-                            style={[
-                                styles.tabText,
-                                activeTab === 'active' && styles.tabTextActive,
-                            ]}
-                        >
-                            {t('myJobs.active')}
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.tab, activeTab === 'history' && styles.tabActive]}
-                        onPress={() => setActiveTab('history')}
-                    >
-                        <Text
-                            style={[
-                                styles.tabText,
-                                activeTab === 'history' && styles.tabTextActive,
-                            ]}
-                        >
-                            {t('myJobs.history')}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
 
-                {/* Job list */}
-                <FlatList
-                    data={filteredJobs}
-                    renderItem={renderJobCard}
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={
-                        filteredJobs.length === 0
-                            ? styles.emptyList
-                            : styles.listContent
-                    }
-                    ListEmptyComponent={renderEmptyState}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={isRefreshing}
-                            onRefresh={handleRefresh}
-                            tintColor={Colors.primary}
-                        />
-                    }
-                    showsVerticalScrollIndicator={false}
-                />
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    fetchJobs(true);
+  }, [fetchJobs]);
+
+  // Group / count jobs per tab
+  const grouped = useMemo(() => {
+    const active: Job[] = [];
+    const completed: Job[] = [];
+    const drafts: Job[] = [];
+    for (const j of jobs) {
+      if (isDraftStatus(j.status)) drafts.push(j);
+      else if (isCompletedStatus(j.status)) completed.push(j);
+      else active.push(j);
+    }
+    return { active, completed, drafts };
+  }, [jobs]);
+
+  const tabs = useMemo(
+    () => [
+      { key: 'active' as TabKey, label: tr('myJobs.active') || 'Active', count: grouped.active.length },
+      { key: 'completed' as TabKey, label: tr('common.completed') || 'Completed', count: grouped.completed.length },
+      { key: 'drafts' as TabKey, label: tr('myJobs.draft') || 'Drafts', count: grouped.drafts.length },
+    ],
+    [grouped, tr],
+  );
+
+  const filteredJobs = grouped[activeTab];
+
+  const handleJobPress = useCallback(
+    (job: Job) => {
+      if (PENDING_STATUSES.includes(job.status)) {
+        Alert.alert(tr('myJobs.searchingForProvider'), tr('homeScreen.searchingMessage'));
+        return;
+      }
+      if (job.status === 'matched') {
+        Alert.alert(tr('homeScreen.waitingForProvider'), tr('homeScreen.waitingMessage'));
+        return;
+      }
+      if (job.status === 'pending_approval') {
+        Alert.alert(tr('myJobs.providerReview'), tr('myJobs.reviewProviderInfo'));
+        return;
+      }
+      navigation.navigate('JobTracking', { jobId: job.id });
+    },
+    [navigation, tr],
+  );
+
+  // Provider info cache for pending_approval jobs
+  const [providerInfoMap, setProviderInfoMap] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    const pendingApprovalJobs = jobs.filter((j) => j.status === 'pending_approval');
+    pendingApprovalJobs.forEach(async (job) => {
+      if (providerInfoMap[job.id]) return;
+      try {
+        const info = await taskService.getPendingProvider(job.id);
+        if (info) setProviderInfoMap((prev) => ({ ...prev, [job.id]: info }));
+      } catch {
+        // ignore
+      }
+    });
+  }, [jobs, providerInfoMap]);
+
+  const handleApproveProvider = useCallback(
+    async (jobId: string) => {
+      try {
+        await taskService.approveProvider(jobId);
+        Alert.alert(tr('myJobs.approved'), tr('myJobs.jobScheduled'));
+        fetchJobs(true);
+      } catch {
+        Alert.alert(tr('common.error'), tr('myJobs.failedApprove'));
+      }
+    },
+    [fetchJobs, tr],
+  );
+
+  const handleRejectProvider = useCallback(
+    (jobId: string) => {
+      Alert.alert(tr('myJobs.rejectProvider'), tr('myJobs.rejectConfirm'), [
+        { text: tr('common.cancel'), style: 'cancel' },
+        {
+          text: tr('myJobs.reject'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await taskService.rejectProvider(jobId);
+              Alert.alert(tr('myJobs.providerRejected'), tr('myJobs.findAnother'));
+              fetchJobs(true);
+            } catch {
+              Alert.alert(tr('common.error'), tr('myJobs.failedReject'));
+            }
+          },
+        },
+      ]);
+    },
+    [fetchJobs, tr],
+  );
+
+  const handleNewJob = useCallback(() => {
+    navigation.navigate('CustomerHome');
+  }, [navigation]);
+
+  // ── Active card renderer ──────────────────
+  const renderActiveCard = useCallback(
+    (item: Job) => {
+      const isPending = PENDING_STATUSES.includes(item.status);
+      const isPendingApproval = item.status === 'pending_approval';
+      const accent = isAccentStatus(item.status);
+      const providerInfo = providerInfoMap[item.id];
+      const labelKey = statusLabelKey(item.status);
+      const statusText = (labelKey ? tr(labelKey) : item.status.replace(/_/g, ' ')).toUpperCase();
+      const city = item.address?.city ? `, ${item.address.city}` : '';
+      const meta = [item.address?.street, city, item.categoryName?.toUpperCase()]
+        .filter(Boolean)
+        .join(' · ');
+
+      return (
+        <MotionPressable
+          key={item.id}
+          onPress={() => handleJobPress(item)}
+          style={{ marginBottom: 10 }}
+        >
+          <Card accent={accent} padding={0}>
+            {/* Top strip — status chip + mono job id */}
+            <View style={[styles.cardStrip, { borderBottomColor: t.border }]}>
+              <View style={styles.chipRow}>
+                {isPending ? <AnimatedSpinner size={10} color={t.violet} style={{ marginRight: 6 }} /> : null}
+                <Chip accent={accent} dark={!accent}>
+                  {statusText}
+                </Chip>
+              </View>
+              <Text style={[VispText.eyebrow, { color: t.text3 }]}>{formatJobId(item.id)}</Text>
             </View>
-        </GlassBackground>
+
+            {/* Body */}
+            <View style={styles.cardBody}>
+              <Text
+                style={[VispText.bodyStrong, styles.cardTitle, { color: t.text }]}
+                numberOfLines={1}
+              >
+                {item.taskName || tr('myJobs.job')}
+              </Text>
+              {meta ? (
+                <Text style={[VispText.eyebrow, { color: t.text3, marginBottom: 12 }]} numberOfLines={1}>
+                  {meta}
+                </Text>
+              ) : null}
+
+              {/* Footer — date eyebrow + price */}
+              <View style={styles.cardFooter}>
+                <Text style={[VispText.eyebrow, { color: t.text3 }]}>{formatDateMeta(item.createdAt)}</Text>
+                {item.estimatedPrice > 0 ? (
+                  <Text
+                    style={{
+                      fontFamily: FontMono,
+                      fontSize: 14,
+                      fontWeight: '700',
+                      color: t.text,
+                    }}
+                  >
+                    ${item.estimatedPrice.toFixed(2)}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Pending approval — provider preview + actions */}
+            {isPendingApproval && providerInfo ? (
+              <View style={[styles.providerCard, { borderTopColor: t.border, backgroundColor: t.violetDim }]}>
+                <Eyebrow color={t.violet}>{tr('myJobs.wantsToAccept').toUpperCase()}</Eyebrow>
+                <View style={styles.providerRow}>
+                  <View style={[styles.providerLevel, { backgroundColor: t.violet }]}>
+                    <Text style={{ fontFamily: FontSansBold, color: t.bg, fontSize: 13, fontWeight: '800' }}>
+                      L{providerInfo.level}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[VispText.bodyStrong, { color: t.text }]} numberOfLines={1}>
+                      {providerInfo.displayName}
+                    </Text>
+                    {providerInfo.yearsExperience ? (
+                      <Text style={[VispText.body, { color: t.text2, fontSize: 12, marginTop: 2 }]} numberOfLines={1}>
+                        {providerInfo.yearsExperience} {tr('myJobs.yearsExperience')}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.approvalButtons}>
+                  <Pressable
+                    onPress={() => handleRejectProvider(item.id)}
+                    style={[styles.approveBtn, { borderColor: t.borderStrong, backgroundColor: 'transparent' }]}
+                  >
+                    <Text style={[VispText.chip, { color: t.danger }]}>{tr('myJobs.reject')}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleApproveProvider(item.id)}
+                    style={[styles.approveBtn, { backgroundColor: t.text, borderColor: t.text }]}
+                  >
+                    <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 13 }]}>{tr('myJobs.approve')}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </Card>
+        </MotionPressable>
+      );
+    },
+    [handleApproveProvider, handleJobPress, handleRejectProvider, providerInfoMap, t, tr],
+  );
+
+  // ── Completed / drafts row renderer ──────
+  const renderHistoryRow = useCallback(
+    (item: Job, isLast: boolean) => {
+      const labelKey = statusLabelKey(item.status);
+      const statusText = (labelKey ? tr(labelKey) : item.status.replace(/_/g, ' ')).toUpperCase();
+      const date = formatDateMeta(item.completedAt || item.updatedAt || item.createdAt);
+      const meta = [date, item.provider ? `${item.provider.firstName?.toUpperCase()} ${item.provider.lastName?.charAt(0).toUpperCase() || ''}.` : null]
+        .filter(Boolean)
+        .join(' · ');
+      const price = (item.finalPrice ?? item.estimatedPrice) || 0;
+      return (
+        <View key={item.id} style={isLast ? undefined : [styles.rowDivider, { borderBottomColor: t.border }]}>
+          <Row
+            icon={iconForCategory(item.categoryName)}
+            title={item.taskName || statusText}
+            sub={meta}
+            chevron={false}
+            onPress={() => handleJobPress(item)}
+            trailing={
+              <View style={{ alignItems: 'flex-end' }}>
+                {price > 0 ? (
+                  <Text style={{ fontFamily: FontMono, fontSize: 13, fontWeight: '700', color: t.text }}>
+                    ${price.toFixed(0)}
+                  </Text>
+                ) : null}
+                <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 2 }]}>{statusText}</Text>
+              </View>
+            }
+          />
+        </View>
+      );
+    },
+    [handleJobPress, t, tr],
+  );
+
+  // ── Empty / loading ──────────────────────
+  if (isLoading) {
+    return (
+      <Screen>
+        <View style={styles.loading}>
+          <AnimatedSpinner size={32} color={t.violet} />
+          <Text style={[VispText.body, { color: t.text2, marginTop: 12 }]}>
+            {tr('myJobs.loadingJobs')}
+          </Text>
+        </View>
+      </Screen>
     );
+  }
+
+  const newJobButton = (
+    <MotionPressable onPress={handleNewJob}>
+      <View style={[styles.newJobPill, { backgroundColor: t.text }]}>
+        <Icon name="plus" size={14} color={t.bg} active />
+        <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 12 }]}>
+          {tr('myJobs.newJob') || 'New job'}
+        </Text>
+      </View>
+    </MotionPressable>
+  );
+
+  return (
+    <Screen>
+      <ScreenTitle title={tr('myJobs.title') || 'Jobs'} sub="§ Activity" right={newJobButton} />
+
+      <TabPills tabs={tabs} active={activeTab} onChange={setActiveTab} />
+
+      <FlatList
+        data={filteredJobs}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item, index }) =>
+          activeTab === 'active'
+            ? renderActiveCard(item)
+            : renderHistoryRow(item, index === filteredJobs.length - 1)
+        }
+        contentContainerStyle={filteredJobs.length === 0 ? styles.emptyList : styles.list}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={[VispText.headlineMid, { color: t.text, textAlign: 'center', marginBottom: 8 }]}>
+              {activeTab === 'completed'
+                ? tr('myJobs.noPastJobs')
+                : activeTab === 'drafts'
+                  ? tr('myJobs.draft') || 'No drafts'
+                  : tr('myJobs.noActiveJobs')}
+            </Text>
+            <Text style={[VispText.body, { color: t.text2, textAlign: 'center' }]}>
+              {activeTab === 'completed' ? tr('myJobs.pastJobsAppear') : tr('myJobs.bookService')}
+            </Text>
+          </View>
+        }
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={t.text2} />
+        }
+        showsVerticalScrollIndicator={false}
+      />
+    </Screen>
+  );
 }
 
 // ──────────────────────────────────────────────
@@ -401,199 +570,70 @@ function MyJobsScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-    // Loading
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    loadingText: {
-        ...Typography.body,
-        color: 'rgba(255, 255, 255, 0.6)',
-        marginTop: Spacing.md,
-    },
+  list: { paddingHorizontal: VispSpace.gutter, paddingTop: 4, paddingBottom: 60 },
+  emptyList: { flex: 1, justifyContent: 'center', paddingHorizontal: VispSpace.gutter },
 
-    // Glass pill tab bar
-    tabBar: {
-        flexDirection: 'row',
-        paddingHorizontal: Spacing.lg,
-        paddingTop: Spacing.md + 48,
-        paddingBottom: Spacing.sm,
-        gap: Spacing.sm,
-    },
-    tab: {
-        flex: 1,
-        paddingVertical: Spacing.sm,
-        borderRadius: 999,
-        alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.07)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.10)',
-    },
-    tabActive: {
-        backgroundColor: 'rgba(120, 80, 255, 0.35)',
-        borderColor: 'rgba(120, 80, 255, 0.6)',
-    },
-    tabText: {
-        ...Typography.headline,
-        color: 'rgba(255, 255, 255, 0.5)',
-    },
-    tabTextActive: {
-        color: '#FFFFFF',
-    },
+  empty: { alignItems: 'center', justifyContent: 'center' },
 
-    // List
-    listContent: {
-        paddingHorizontal: Spacing.lg,
-        paddingTop: Spacing.sm,
-        paddingBottom: Spacing.massive,
-    },
-    emptyList: {
-        flex: 1,
-        justifyContent: 'center',
-        paddingHorizontal: Spacing.lg,
-    },
+  newJobPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
 
-    // Job card
-    jobCardTouchable: {
-        marginBottom: Spacing.md,
-    },
-    jobHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: Spacing.sm,
-    },
-    jobName: {
-        ...Typography.headline,
-        color: '#FFFFFF',
-        flex: 1,
-        marginRight: Spacing.sm,
-    },
-    statusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: Spacing.xxs,
-        borderRadius: 999,
-        borderWidth: 1,
-    },
-    statusText: {
-        ...Typography.caption1,
-        fontWeight: FontWeight.semiBold as '600',
-    },
-    jobAddress: {
-        ...Typography.footnote,
-        color: 'rgba(255, 255, 255, 0.5)',
-        marginBottom: Spacing.sm,
-    },
-    jobFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    jobDate: {
-        ...Typography.caption1,
-        color: 'rgba(255, 255, 255, 0.35)',
-    },
-    jobPrice: {
-        ...Typography.headline,
-        color: Colors.primary,
-    },
+  cardStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  chipRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
 
-    // Empty state
-    emptyContainer: {
-        alignItems: 'center',
-        paddingHorizontal: Spacing.xl,
-    },
-    emptyTitle: {
-        ...Typography.title3,
-        color: '#FFFFFF',
-        marginBottom: Spacing.sm,
-        textAlign: 'center',
-    },
-    emptySubtext: {
-        ...Typography.footnote,
-        color: 'rgba(255, 255, 255, 0.5)',
-        textAlign: 'center',
-        lineHeight: 20,
-    },
+  cardBody: { padding: 16 },
+  cardTitle: { fontSize: 16, marginBottom: 6, letterSpacing: -0.24 },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
 
-    // Provider review card
-    providerReviewCard: {
-        backgroundColor: 'rgba(255, 140, 0, 0.10)',
-        borderRadius: BorderRadius.md,
-        padding: Spacing.md,
-        marginTop: Spacing.sm,
-        marginBottom: Spacing.sm,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 140, 0, 0.25)',
-    },
-    providerReviewTitle: {
-        ...Typography.caption1,
-        fontWeight: '700' as const,
-        color: '#FF8C00',
-        marginBottom: Spacing.sm,
-    },
-    providerInfoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: Spacing.md,
-    },
-    providerLevel: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: Spacing.sm,
-    },
-    providerLevelText: {
-        fontSize: 14,
-        fontWeight: '800' as const,
-        color: '#fff',
-    },
-    providerName: {
-        ...Typography.headline,
-        color: '#FFFFFF',
-    },
-    providerDetail: {
-        ...Typography.caption1,
-        color: 'rgba(255, 255, 255, 0.5)',
-    },
-    approvalButtons: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        gap: Spacing.sm,
-    },
-    rejectButton: {
-        paddingVertical: Spacing.xs,
-        paddingHorizontal: Spacing.lg,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: 'rgba(231, 76, 60, 0.6)',
-        backgroundColor: 'rgba(231, 76, 60, 0.12)',
-    },
-    rejectButtonText: {
-        ...Typography.headline,
-        color: Colors.error,
-    },
-    approveButton: {
-        paddingVertical: Spacing.xs,
-        paddingHorizontal: Spacing.lg,
-        borderRadius: BorderRadius.md,
-        backgroundColor: 'rgba(39, 174, 96, 0.7)',
-        borderWidth: 1,
-        borderColor: 'rgba(39, 174, 96, 0.4)',
-    },
-    approveButtonText: {
-        ...Typography.headline,
-        color: '#fff',
-    },
+  providerCard: {
+    padding: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  providerLevel: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approvalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  approveBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+
+  rowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
 });
 
 export default MyJobsScreen;

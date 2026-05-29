@@ -193,6 +193,13 @@ export type RootStackParamList = {
   JobTracking: { jobId: string };
   EmergencyFlow: undefined;
   Chat: { jobId: string; otherUserName: string };
+  PayoutsOnboarding: undefined;
+  PayoutsPersonalInfo: undefined;
+  PayoutsTax: undefined;
+  PayoutsBank: undefined;
+  PayoutsIdentityDoc: undefined;
+  PayoutsTos: undefined;
+  __DesignSystem: undefined;
 };
 
 // ──────────────────────────────────────────────
@@ -493,6 +500,7 @@ export type ProfileStackParamList = {
   PaymentMethods: undefined;
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
+  AddressEdit: undefined;
 };
 
 export type AuthStackParamList = {
