@@ -25,7 +25,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Colors, Spacing, Typography } from '../../theme';
 import { GlassStyles } from '../../theme/glass';
 import { useAuthStore } from '../../stores/authStore';
-import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import { AnimatedLogo, MorphingBlob } from '../../components/animations';
 import type { RootStackParamList } from '../../types';
 
@@ -111,6 +111,17 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
     [password, touched.email, error, clearError],
   );
 
+  // iOS autofill native-event fallback (same rationale as the password field).
+  const handleEmailNativeChange = useCallback(
+    (e: { nativeEvent: { text: string } }) => {
+      const text = e.nativeEvent.text;
+      if (text !== email) {
+        handleEmailChange(text);
+      }
+    },
+    [email, handleEmailChange],
+  );
+
   const handlePasswordChange = useCallback(
     (text: string) => {
       setPassword(text);
@@ -121,6 +132,20 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
       }
     },
     [email, touched.password, error, clearError],
+  );
+
+  // iOS password autofill (iCloud Keychain / generated passwords) may not
+  // trigger onChangeText reliably on a controlled secureTextEntry input.
+  // We use onChange (native event) as a fallback. Same pattern as RegisterScreen
+  // and GlassInput — see feedback_stripe_onboarding_pattern memory.
+  const handlePasswordNativeChange = useCallback(
+    (e: { nativeEvent: { text: string } }) => {
+      const text = e.nativeEvent.text;
+      if (text !== password) {
+        handlePasswordChange(text);
+      }
+    },
+    [password, handlePasswordChange],
   );
 
   const handleBlur = useCallback(
@@ -212,24 +237,36 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
             {/* Login Form Card */}
             <GlassCard variant="dark" padding={24} style={styles.formCard}>
-              {/* Email Field */}
-              <GlassInput
-                label="EMAIL"
-                value={email}
-                onChangeText={handleEmailChange}
-                onBlur={() => handleBlur('email')}
-                placeholder="you@example.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="email"
-                textContentType="emailAddress"
-                returnKeyType="next"
-                onSubmitEditing={() => passwordRef.current?.focus()}
-                editable={!isLoading}
-                error={touched.email ? formErrors.email : undefined}
-                containerStyle={styles.fieldSpacing}
-              />
+              {/* Email Field — raw dark-glass input (theme-independent; the
+                  login card must look identical in light and dark mode) */}
+              <View style={styles.fieldSpacing}>
+                <Text style={styles.inputLabel}>EMAIL</Text>
+                <TextInput
+                  style={[
+                    GlassStyles.input,
+                    touched.email && formErrors.email
+                      ? GlassStyles.inputError
+                      : undefined,
+                  ]}
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  onChange={handleEmailNativeChange}
+                  onBlur={() => handleBlur('email')}
+                  placeholder="you@example.com"
+                  placeholderTextColor="rgba(255, 255, 255, 0.35)"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                  editable={!isLoading}
+                />
+                {touched.email && formErrors.email ? (
+                  <Text style={styles.fieldError}>{formErrors.email}</Text>
+                ) : null}
+              </View>
 
               {/* Password Field */}
               <View style={styles.fieldSpacing}>
@@ -248,6 +285,7 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
                     style={styles.passwordTextInput}
                     value={password}
                     onChangeText={handlePasswordChange}
+                    onChange={handlePasswordNativeChange}
                     onBlur={() => handleBlur('password')}
                     placeholder="Enter your password"
                     placeholderTextColor="rgba(255, 255, 255, 0.35)"

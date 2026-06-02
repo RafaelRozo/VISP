@@ -356,7 +356,11 @@ function MyJobsScreen(): React.JSX.Element {
   );
 
   const handleNewJob = useCallback(() => {
-    navigation.navigate('CustomerHome');
+    // Jump to the Home tab — the entry point to browse categories and start a
+    // new job (CustomerHome → Home tab → CategoryDetail → TaskSelection → Booking).
+    // Navigating to 'CustomerHome' alone is a no-op since we're already inside it,
+    // so we target the nested 'Home' tab explicitly.
+    navigation.navigate('CustomerHome', { screen: 'Home' } as never);
   }, [navigation]);
 
   // ── Active card renderer ──────────────────

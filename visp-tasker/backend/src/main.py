@@ -86,6 +86,28 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
+# Apple App Site Association (AASA) -- enables iOS Password AutoFill
+# ---------------------------------------------------------------------------
+# Served at the well-known path with Content-Type: application/json and NO
+# redirects, per Apple requirements. Associates iCloud Keychain credentials
+# for api.richieyanez.com with the iOS app (Team ID + bundle id).
+
+_AASA = {
+    "webcredentials": {
+        "apps": ["X3332DJG89.com.droz.vispapp"],
+    },
+}
+
+
+@app.get("/.well-known/apple-app-site-association", include_in_schema=False)
+async def apple_app_site_association():
+    """Return the AASA file for iOS webcredentials (Password AutoFill)."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(content=_AASA, media_type="application/json")
+
+
+# ---------------------------------------------------------------------------
 # Register API route modules
 # ---------------------------------------------------------------------------
 # Each router already defines its own prefix (e.g. /categories, /jobs) and

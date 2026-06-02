@@ -230,6 +230,21 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   // Track previous password length to detect autofill (jumps from 0/short to long)
   const prevPasswordLenRef = useRef(0);
 
+  // Autofill reconciliation: password managers / iOS AutoFill write to the
+  // native field and sometimes never fire onChangeText, so React state stays
+  // empty while the field visibly shows a value (button stuck disabled,
+  // "required" errors). We mirror every field's latest native text here via
+  // onChangeText + onChange + onEndEditing, then reconcile ref → state at
+  // submit time so validation sees the real values.
+  const fieldValuesRef = useRef<{
+    email: string;
+    password: string;
+    confirmPassword: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+  }>({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', phone: '' });
+
   const { register, isLoading, error, clearError, commitPendingRegistration } =
     useAuthStore();
 
@@ -281,6 +296,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     const wasAutoFilled = prevPasswordLenRef.current <= 1 && text.length >= 8;
     prevPasswordLenRef.current = text.length;
 
+    fieldValuesRef.current.password = text;
     setPassword(text);
     if (step1Errors.password) {
       setStep1Errors((prev) => ({ ...prev, password: undefined }));
@@ -289,6 +305,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     // If password was autofilled, auto-sync confirmPassword since iOS
     // may not reliably fill the confirmation field
     if (wasAutoFilled) {
+      fieldValuesRef.current.confirmPassword = text;
       setConfirmPassword(text);
       if (step1Errors.confirmPassword) {
         setStep1Errors((prev) => ({ ...prev, confirmPassword: undefined }));
@@ -304,6 +321,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   }, [password, handlePasswordChange]);
 
   const handleConfirmPasswordChange = useCallback((text: string) => {
+    fieldValuesRef.current.confirmPassword = text;
     setConfirmPassword(text);
     if (step1Errors.confirmPassword) {
       setStep1Errors((prev) => ({ ...prev, confirmPassword: undefined }));
@@ -317,6 +335,76 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     }
   }, [confirmPassword, handleConfirmPasswordChange]);
 
+  const handleEmailChange = useCallback((text: string) => {
+    fieldValuesRef.current.email = text;
+    setEmail(text);
+    if (step1Errors.email) {
+      setStep1Errors((prev) => ({ ...prev, email: undefined }));
+    }
+  }, [step1Errors.email]);
+
+  const handleFirstNameChange = useCallback((text: string) => {
+    fieldValuesRef.current.firstName = text;
+    setFirstName(text);
+    if (step2Errors.firstName) {
+      setStep2Errors((prev) => ({ ...prev, firstName: undefined }));
+    }
+  }, [step2Errors.firstName]);
+
+  const handleLastNameChange = useCallback((text: string) => {
+    fieldValuesRef.current.lastName = text;
+    setLastName(text);
+    if (step2Errors.lastName) {
+      setStep2Errors((prev) => ({ ...prev, lastName: undefined }));
+    }
+  }, [step2Errors.lastName]);
+
+  const handlePhoneChange = useCallback((text: string) => {
+    let digitsOnly = text.replace(/\D/g, '');
+    // iOS autofill may include the country code (e.g. "14165551234" for +1).
+    // Strip the dial prefix digits so only the local number remains.
+    const dialDigits = selectedCountry.dial.replace(/\D/g, '');
+    if (
+      digitsOnly.length > selectedCountry.maxDigits &&
+      digitsOnly.startsWith(dialDigits)
+    ) {
+      digitsOnly = digitsOnly.slice(dialDigits.length);
+    }
+    const limited = digitsOnly.slice(0, selectedCountry.maxDigits);
+    fieldValuesRef.current.phone = limited;
+    setPhone(limited);
+    if (step2Errors.phone) {
+      setStep2Errors((prev) => ({ ...prev, phone: undefined }));
+    }
+  }, [selectedCountry, step2Errors.phone]);
+
+  // Native-event fallback: catch autofill writes that bypass onChangeText.
+  // Wired to onChange + onEndEditing on every text field.
+  const captureNative = useCallback(
+    (
+      field: 'email' | 'firstName' | 'lastName' | 'phone',
+      e: { nativeEvent: { text?: string } },
+    ) => {
+      const text = e?.nativeEvent?.text;
+      if (typeof text !== 'string' || text.length === 0) return;
+      switch (field) {
+        case 'email':
+          if (text !== fieldValuesRef.current.email) handleEmailChange(text);
+          break;
+        case 'firstName':
+          if (text !== fieldValuesRef.current.firstName) handleFirstNameChange(text);
+          break;
+        case 'lastName':
+          if (text !== fieldValuesRef.current.lastName) handleLastNameChange(text);
+          break;
+        case 'phone':
+          if (text !== fieldValuesRef.current.phone) handlePhoneChange(text);
+          break;
+      }
+    },
+    [handleEmailChange, handleFirstNameChange, handleLastNameChange, handlePhoneChange],
+  );
+
   // ── Password Strength ────────────────────
   const passwordStrengthInfo = useMemo(
     () => (password.length > 0 ? getPasswordStrength(password) : null),
@@ -329,13 +417,30 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     Keyboard.dismiss();
     if (error) clearError();
 
+    // Reconcile native-autofilled values that may not have reached state.
+    const v = fieldValuesRef.current;
+
     if (currentStep === 1) {
-      const errors = validateStep1(email, password, confirmPassword);
+      const e = v.email || email;
+      const p = v.password || password;
+      const cp = v.confirmPassword || confirmPassword;
+      if (e !== email) setEmail(e);
+      if (p !== password) setPassword(p);
+      if (cp !== confirmPassword) setConfirmPassword(cp);
+
+      const errors = validateStep1(e, p, cp);
       setStep1Errors(errors);
       if (Object.keys(errors).length > 0) return;
       setCurrentStep(2);
     } else if (currentStep === 2) {
-      const errors = validateStep2(firstName, lastName, phone, selectedCountry);
+      const fn = v.firstName || firstName;
+      const ln = v.lastName || lastName;
+      const ph = v.phone || phone;
+      if (fn !== firstName) setFirstName(fn);
+      if (ln !== lastName) setLastName(ln);
+      if (ph !== phone) setPhone(ph);
+
+      const errors = validateStep2(fn, ln, ph, selectedCountry);
       setStep2Errors(errors);
       if (Object.keys(errors).length > 0) return;
       setCurrentStep(3);
@@ -393,13 +498,11 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   }, []);
 
   // ── Step Validity ────────────────────────
-
-  const isStep1Valid =
-    EMAIL_REGEX.test(email.trim()) &&
-    password.length >= Config.minPasswordLength &&
-    password === confirmPassword;
+  // Steps 1 & 2 are validated at submit time in handleNext (with autofill
+  // reconciliation), not via derived state, so the button isn't wrongly
+  // disabled when autofill leaves state out of sync. phoneDigits is still
+  // used by the live "N/M digits" counter below.
   const phoneDigits = phone.replace(/\D/g, '');
-  const isStep2Valid = firstName.trim().length >= 2 && lastName.trim().length >= 2 && phoneDigits.length === selectedCountry.maxDigits;
 
   const isStep3Valid = selectedRole !== null && acceptedTerms;
 
@@ -441,12 +544,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           ref={emailInputRef}
           label="EMAIL"
           value={email}
-          onChangeText={(text) => {
-            setEmail(text);
-            if (step1Errors.email) {
-              setStep1Errors((prev) => ({ ...prev, email: undefined }));
-            }
-          }}
+          onChangeText={handleEmailChange}
+          onChange={(e) => captureNative('email', e)}
+          onEndEditing={(e) => captureNative('email', e)}
           placeholder="you@example.com"
           keyboardType="email-address"
           autoCapitalize="none"
@@ -571,12 +671,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           ref={firstNameRef}
           label="FIRST NAME"
           value={firstName}
-          onChangeText={(text) => {
-            setFirstName(text);
-            if (step2Errors.firstName) {
-              setStep2Errors((prev) => ({ ...prev, firstName: undefined }));
-            }
-          }}
+          onChangeText={handleFirstNameChange}
+          onChange={(e) => captureNative('firstName', e)}
+          onEndEditing={(e) => captureNative('firstName', e)}
           placeholder="Jane"
           autoCapitalize="words"
           autoCorrect={false}
@@ -594,12 +691,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           ref={lastNameRef}
           label="LAST NAME"
           value={lastName}
-          onChangeText={(text) => {
-            setLastName(text);
-            if (step2Errors.lastName) {
-              setStep2Errors((prev) => ({ ...prev, lastName: undefined }));
-            }
-          }}
+          onChangeText={handleLastNameChange}
+          onChange={(e) => captureNative('lastName', e)}
+          onEndEditing={(e) => captureNative('lastName', e)}
           placeholder="Smith"
           autoCapitalize="words"
           autoCorrect={false}
@@ -636,23 +730,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
             <GlassInput
               ref={phoneRef}
               value={phone}
-              onChangeText={(text) => {
-                let digitsOnly = text.replace(/\D/g, '');
-                // iOS autofill may include the country code (e.g. "14165551234" for +1).
-                // Strip the dial prefix digits so only the local number remains.
-                const dialDigits = selectedCountry.dial.replace(/\D/g, '');
-                if (
-                  digitsOnly.length > selectedCountry.maxDigits &&
-                  digitsOnly.startsWith(dialDigits)
-                ) {
-                  digitsOnly = digitsOnly.slice(dialDigits.length);
-                }
-                const limited = digitsOnly.slice(0, selectedCountry.maxDigits);
-                setPhone(limited);
-                if (step2Errors.phone) {
-                  setStep2Errors((prev) => ({ ...prev, phone: undefined }));
-                }
-              }}
+              onChangeText={handlePhoneChange}
+              onChange={(e) => captureNative('phone', e)}
+              onEndEditing={(e) => captureNative('phone', e)}
               placeholder={`${'0'.repeat(selectedCountry.maxDigits)}`}
               keyboardType="phone-pad"
               autoCapitalize="none"
@@ -816,9 +896,14 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
 
   // ── Main Render ──────────────────────────
 
+  // Steps 1 & 2 don't hard-gate the button on derived state validity, because
+  // iOS/password-manager autofill can leave state out of sync with the visible
+  // (native) field, which would wrongly disable the button. handleNext
+  // reconciles autofilled values and surfaces inline errors if truly invalid.
+  // Step 3 (role + terms) stays gated since those are explicit user choices.
   const canProceed =
-    (currentStep === 1 && isStep1Valid) ||
-    (currentStep === 2 && isStep2Valid) ||
+    currentStep === 1 ||
+    currentStep === 2 ||
     (currentStep === 3 && isStep3Valid);
 
   return (
