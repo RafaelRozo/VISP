@@ -3,16 +3,42 @@ SQLAlchemy models for service_categories, service_tasks, and provider_task_quali
 Corresponds to migration 003_create_taxonomy.sql.
 """
 
+import enum
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from .provider import ProviderLevel
+
+
+class PricingUnit(str, enum.Enum):
+    """How a task is charged. Property of the TASK (closed catalog rule) —
+    the provider sets the rate, never the unit. DB labels are the UPPERCASE
+    member names (see migration 021)."""
+
+    HOURLY = "hourly"
+    PER_UNIT = "per_unit"
+    PER_AREA = "per_area"
+    PER_LINEAR_M = "per_linear_m"
+    PER_VISIT = "per_visit"
+    FLAT_PACKAGE = "flat_package"
+    CUSTOM_QUOTE = "custom_quote"
 
 
 class ServiceCategory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -80,8 +106,28 @@ class ServiceTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     base_price_max_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     estimated_duration_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # How this task is charged (PP1). The provider sets the rate against this
+    # unit; the unit itself is fixed by the catalog.
+    pricing_unit: Mapped[PricingUnit] = mapped_column(
+        Enum(PricingUnit, name="pricing_unit", create_type=False),
+        nullable=False,
+        server_default="HOURLY",
+    )
+    allows_quantity: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    min_quantity: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, server_default=text("1")
+    )
+
     # Auto-escalation keywords (JSON array of strings)
     escalation_keywords: Mapped[Any] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
+    )
+
+    # Curated search synonyms/aliases (JSON array of strings) — boosts
+    # natural-language matching in search_tasks. See migration 023.
+    search_aliases: Mapped[Any] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
 

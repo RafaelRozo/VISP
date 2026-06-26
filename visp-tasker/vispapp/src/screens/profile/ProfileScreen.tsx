@@ -451,6 +451,12 @@ export default function ProfileScreen(): React.JSX.Element {
                 onPress={() => navigation.navigate('ProviderOnboarding')}
               />
               <MenuItem
+                icon="money"
+                title={tr('myPricesScreen.title') || 'My Prices'}
+                accent
+                onPress={() => navigation.navigate('MyPrices')}
+              />
+              <MenuItem
                 icon="card"
                 title={tr('earningsScreen.payoutAccount') || 'Payouts & taxes'}
                 accent

@@ -44,6 +44,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentAdmin, DBSession
+from src.api.schemas.company import RejectIn
+from src.services import company_service
 from src.models.job import Job, JobAssignment, JobStatus
 from src.models.promotion import Promotion
 from src.models.provider import ProviderLevel, ProviderProfile
@@ -1349,3 +1351,77 @@ async def admin_delete_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found.")
     await db.delete(task)
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# VISP for Business — company validation (SP3 backend)
+# ---------------------------------------------------------------------------
+
+@router.get("/companies")
+async def admin_list_companies(db: DBSession, admin: CurrentAdmin, status: str | None = None):
+    companies = await company_service.list_companies_by_status(db, status)
+    return {"data": [
+        {"id": str(c.id), "legal_name": c.legal_name, "status": c.status.value,
+         "created_at": c.created_at.isoformat()}
+        for c in companies
+    ]}
+
+
+@router.get("/companies/{company_id}")
+async def admin_get_company(db: DBSession, admin: CurrentAdmin, company_id: str):
+    import uuid as _uuid
+    company = await company_service.get_company(db, _uuid.UUID(company_id))
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found.")
+    return {"data": {
+        "id": str(company.id), "legal_name": company.legal_name,
+        "trade_name": company.trade_name, "status": company.status.value,
+        "business_address": company.business_address, "phone": company.phone,
+        "email": company.email, "website": company.website,
+        "rejection_reason": company.rejection_reason,
+        "documents": [
+            {"id": str(d.id), "doc_type": d.doc_type.value, "status": d.status.value,
+             "document_url": d.document_url, "rejection_reason": d.rejection_reason}
+            for d in company.documents
+        ],
+    }}
+
+
+@router.post("/companies/documents/{doc_id}/approve")
+async def admin_approve_document(db: DBSession, admin: CurrentAdmin, doc_id: str):
+    import uuid as _uuid
+    try:
+        doc = await company_service.review_document(db, _uuid.UUID(doc_id), admin.id, approve=True, reason=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"data": {"id": str(doc.id), "status": doc.status.value}}
+
+
+@router.post("/companies/documents/{doc_id}/reject")
+async def admin_reject_document(db: DBSession, admin: CurrentAdmin, doc_id: str, payload: RejectIn):
+    import uuid as _uuid
+    try:
+        doc = await company_service.review_document(db, _uuid.UUID(doc_id), admin.id, approve=False, reason=payload.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"data": {"id": str(doc.id), "status": doc.status.value, "rejection_reason": doc.rejection_reason}}
+
+
+@router.post("/companies/{company_id}/validate")
+async def admin_validate_company(db: DBSession, admin: CurrentAdmin, company_id: str):
+    import uuid as _uuid
+    company = await company_service.get_company(db, _uuid.UUID(company_id))
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found.")
+    company = await company_service.set_company_validation(db, company, validated=True, reason=None)
+    return {"data": {"status": company.status.value}}
+
+
+@router.post("/companies/{company_id}/reject")
+async def admin_reject_company(db: DBSession, admin: CurrentAdmin, company_id: str, payload: RejectIn):
+    import uuid as _uuid
+    company = await company_service.get_company(db, _uuid.UUID(company_id))
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found.")
+    company = await company_service.set_company_validation(db, company, validated=False, reason=payload.reason)
+    return {"data": {"status": company.status.value, "rejection_reason": company.rejection_reason}}

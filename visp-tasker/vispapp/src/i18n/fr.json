@@ -1,4 +1,24 @@
 {
+  "companyJoin": {
+    "entryTitle": "VISP pour les entreprises",
+    "entryButton": "Rejoindre votre entreprise",
+    "entrySubtitle": "Inscrivez-vous avec un code fourni par votre employeur",
+    "step1Title": "Rejoindre votre entreprise",
+    "step1Subtitle": "Saisissez le code de 8 caractères que votre employeur vous a remis pour vous inscrire comme collaborateur.",
+    "codeLabel": "CODE ENTREPRISE",
+    "codePlaceholder": "ABCD1234",
+    "codeRequired": "Saisissez le code fourni par votre entreprise",
+    "codeLength": "Le code entreprise comporte 8 caractères",
+    "step2Title": "Créez votre compte",
+    "step2Subtitle": "Utilisez la même adresse e-mail que celle invitée par votre entreprise, puis créez un mot de passe sécurisé.",
+    "step3Title": "Quel est votre nom ?",
+    "step3Subtitle": "Cela sera visible par votre entreprise et les autres utilisateurs de la plateforme.",
+    "accountCreatedNote": "Votre compte a été créé. Saisissez votre code entreprise pour terminer votre adhésion.",
+    "primaryContinue": "Continuer",
+    "primaryJoin": "Rejoindre l'entreprise",
+    "primarySubmit": "Créer le compte et rejoindre",
+    "redeemGenericError": "Nous n'avons pas pu utiliser ce code. Veuillez réessayer."
+  },
   "nav": {
     "dashboard": "Tableau de bord",
     "jobs": "Travaux",
@@ -68,6 +88,32 @@
     "location": "Lieu",
     "distance": "Distance",
     "price": "Prix"
+  },
+  "myPricesScreen": {
+    "title": "Mes tarifs",
+    "subtitle": "§ Définissez votre tarif par service",
+    "allowed": "Plage autorisée",
+    "save": "Enregistrer",
+    "saved": "Enregistré ✓",
+    "saveError": "Échec de l'enregistrement. Réessayez.",
+    "loadError": "Impossible de charger vos services.",
+    "invalidAmount": "Saisissez un montant valide.",
+    "outOfRange": "Plage autorisée",
+    "outOfRangeServer": "Tarif hors de la plage autorisée.",
+    "notQualified": "Ce service n'est pas encore approuvé.",
+    "empty": "Aucun service pour l'instant",
+    "emptyBody": "Une fois vos services approuvés (sans documents en attente), ils apparaissent ici pour définir votre tarif.",
+    "customSection": "Sur devis",
+    "customBody": "Convenu avec le client avant le début du travail.",
+    "unit": {
+      "hourly": "heure",
+      "per_unit": "pièce",
+      "per_area": "m²",
+      "per_linear_m": "m linéaire",
+      "per_visit": "visite",
+      "flat_package": "forfait",
+      "custom_quote": "devis"
+    }
   },
   "earningsScreen": {
     "earnings": "Revenus",
@@ -306,7 +352,8 @@
     "stripeConnectStartButton": "Configurer les paiements",
     "stripeConnectContinueButton": "Continuer la configuration",
     "stripeConnectCheckButton": "Vérifier le statut",
-    "stripeConnectError": "Impossible de démarrer la configuration Stripe. Veuillez réessayer."
+    "stripeConnectError": "Impossible de démarrer la configuration Stripe. Veuillez réessayer.",
+    "companySection": "Entreprise"
   },
   "settings": {
     "notifications": "Notifications",
@@ -345,6 +392,8 @@
     "goodEvening": "Bonsoir",
     "needHelp": "Besoin d'aide?",
     "whatNeedsDoing": "Que faut-il faire?",
+    "searching": "Recherche…",
+    "noMatches": "Aucun résultat pour",
     "whatDoYouNeedHelp": "De quoi avez-vous besoin aujourd'hui?",
     "browseCategories": "Parcourir les catégories",
     "seeAll": "Voir tout",
@@ -405,6 +454,8 @@
     "failedReject": "Échec du refus du prestataire.",
     "yearsExperience": "ans d'expérience",
     "wantsToAccept": "Le prestataire veut accepter votre travail",
+    "offeredPrice": "Prix proposé",
+    "estimatedQty": "Estimé",
     "job": "Travail"
   },
   "credentials": {
@@ -522,5 +573,56 @@
     "emergencyActive": "URGENCE ACTIVE",
     "onCallProviders": "Prestataires de garde 24/7",
     "tapToViewStatus": "Appuyez pour voir le statut"
+  },
+  "companySupervisor": {
+    "entry": "Travaux de l'entreprise",
+    "title": "Travaux de l'entreprise",
+    "eyebrow": "§ Superviseur",
+    "claimable": "Travaux disponibles",
+    "claim": "Réclamer",
+    "assign": "Assigner",
+    "reassign": "Réassignation indisponible",
+    "statusClaimed": "RÉCLAMÉ",
+    "assignTitle": "Assigner un collaborateur",
+    "noEligible": "Aucun collaborateur éligible pour cette tâche. Seuls les collaborateurs actifs possédant le justificatif requis peuvent être assignés.",
+    "credentialOk": "JUSTIFICATIF VÉRIFIÉ",
+    "noCompany": "Vous ne faites pas encore partie d'une entreprise.",
+    "noCompanyTitle": "Aucune entreprise",
+    "loadError": "Impossible de charger les travaux.",
+    "claimFailedTitle": "Réclamation impossible",
+    "claimFailed": "Ce travail n'a pas pu être réclamé.",
+    "eligibleFailedTitle": "Impossible de charger les collaborateurs",
+    "eligibleFailed": "Veuillez réessayer.",
+    "assignFailedTitle": "Assignation impossible",
+    "assignFailed": "Veuillez réessayer.",
+    "errorTitle": "Une erreur est survenue",
+    "emptyTitle": "Aucun travail disponible",
+    "emptyBody": "Les nouveaux travaux que votre entreprise peut réclamer apparaîtront ici."
+  },
+  "companyAssignments": {
+    "entry": "Mes assignations",
+    "title": "Mes assignations",
+    "eyebrow": "§ De votre entreprise",
+    "assigned": "Assignées à vous",
+    "jobLabel": "Travail",
+    "assignedByCompany": "Assigné par votre entreprise",
+    "accept": "Accepter",
+    "decline": "Refuser",
+    "statusAssigned": "ASSIGNÉ",
+    "statusAccepted": "ACCEPTÉ",
+    "statusDeclined": "REFUSÉ",
+    "scheduled": "PLANIFIÉ",
+    "scheduledNote": "DANS VOTRE AGENDA",
+    "pending": "EN ATTENTE",
+    "declineConfirmTitle": "Refuser l'assignation ?",
+    "declineConfirmBody": "Votre superviseur pourra réassigner ce travail.",
+    "loadError": "Impossible de charger les assignations.",
+    "acceptFailedTitle": "Acceptation impossible",
+    "acceptFailed": "Veuillez réessayer.",
+    "declineFailedTitle": "Refus impossible",
+    "declineFailed": "Veuillez réessayer.",
+    "errorTitle": "Une erreur est survenue",
+    "emptyTitle": "Aucune assignation pour l'instant",
+    "emptyBody": "Les travaux que votre superviseur vous assigne apparaîtront ici."
   }
 }

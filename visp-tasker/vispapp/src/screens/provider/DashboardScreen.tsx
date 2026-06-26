@@ -28,11 +28,12 @@ import { GlassStyles } from '../../theme/glass';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
 import { GlassCard, GlassButton } from '../../components/glass';
-import { Screen, ScreenTitle, Chip } from '../../components/visp';
+import { Screen, ScreenTitle, Chip, Icon } from '../../components/visp';
 import { FontMono } from '../../theme/visp';
 import { AnimatedSpinner, MorphingBlob } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useCompanyStore } from '../../stores/companyStore';
 import JobCard from '../../components/JobCard';
 import OnCallToggle from '../../components/OnCallToggle';
 import RoleSwitcher from '../../components/RoleSwitcher';
@@ -146,6 +147,20 @@ export default function DashboardScreen(): React.JSX.Element {
 
   // 'both' users get a Customer/Provider toggle in the header
   const isBoth = user?.role === 'both';
+
+  // VISP for Business: company members log in as providers, so the dashboard
+  // surfaces a "Company" entry. admin/supervisor -> the supervisor (claim/
+  // assign) screen; collaborator -> their assignments screen. Non-members see
+  // nothing. The CompanySupervisor/CompanyAssignments screens live on the root
+  // stack, so we navigate via the parent navigator.
+  const companyMembership = useCompanyStore((s) => s.membership);
+  const isCompanySupervisor =
+    companyMembership?.role === 'admin' || companyMembership?.role === 'supervisor';
+  const handleCompanyPress = useCallback(() => {
+    navigation.navigate(
+      (isCompanySupervisor ? 'CompanySupervisor' : 'CompanyAssignments') as any,
+    );
+  }, [navigation, isCompanySupervisor]);
 
   const currentShift = useMemo(() => {
     if (!onCallShifts || onCallShifts.length === 0) return null;
@@ -434,6 +449,44 @@ export default function DashboardScreen(): React.JSX.Element {
   };
 
   // ------------------------------------------
+  // Company entry (VISP for Business) — only for company members
+  // ------------------------------------------
+
+  const renderCompanyEntry = () => {
+    if (!companyMembership) return null;
+    return (
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={handleCompanyPress}
+        accessibilityRole="button"
+        accessibilityLabel={isCompanySupervisor ? 'Company jobs' : 'My assignments'}
+      >
+        <GlassCard variant="standard" style={styles.companyCard}>
+          <View style={styles.companyRow}>
+            <View style={styles.companyIcon}>
+              <Icon name="briefcase" size={18} color={Colors.primary} />
+            </View>
+            <View style={styles.companyInfo}>
+              <Text style={[styles.companyTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                {isCompanySupervisor
+                  ? t('companySupervisor.entry') || 'Company jobs'
+                  : t('companyAssignments.entry') || 'My assignments'}
+              </Text>
+              <Text
+                style={[styles.companySubtext, { color: theme.textSecondary }]}
+                numberOfLines={1}
+              >
+                {String(companyMembership.companyName).toUpperCase()}
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={18} color={theme.textSecondary} />
+          </View>
+        </GlassCard>
+      </TouchableOpacity>
+    );
+  };
+
+  // ------------------------------------------
   // Main render
   // ------------------------------------------
 
@@ -521,6 +574,8 @@ export default function DashboardScreen(): React.JSX.Element {
             </View>
           )}
         </GlassCard>
+
+        {renderCompanyEntry()}
 
         {renderSetupServicesPrompt()}
 
@@ -674,6 +729,42 @@ const styles = StyleSheet.create({
   modeSwitcherWrap: {
     marginTop: 14,
     alignItems: 'center',
+  },
+  // --- Company entry (VISP for Business) ---
+  companyCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  companyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  companyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(120,80,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(120,80,255,0.40)',
+    marginRight: 12,
+  },
+  companyInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  companyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  companySubtext: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+    letterSpacing: 0.3,
   },
   // --- Level progress banner ---
   levelBanner: {

@@ -27,7 +27,7 @@ export default function Landing() {
             <a href="#faq">FAQ</a>
           </nav>
           <div className="header-cta">
-            <a href="#providers" className="btn btn-secondary">Become a Provider</a>
+            <a href="/business/register" className="btn btn-secondary">Register for Business</a>
             <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary">Request a Job</a>
             <div className="header-lang"><LangSwitcher /></div>
           </div>

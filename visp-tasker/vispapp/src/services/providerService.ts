@@ -1,4 +1,22 @@
-import { get, post, upload } from './apiClient';
+import { get, post, put, del, upload } from './apiClient';
+
+/** One priceable service for the provider, with the catalog guardrail and the
+ *  provider's current rate (null if unset). Mirrors the backend payload from
+ *  GET /provider/rates (snake_case preserved on purpose). */
+export interface ProviderRateItem {
+    task_id: string;
+    task_name: string;
+    task_slug: string;
+    level: string;
+    pricing_unit: 'hourly' | 'per_unit' | 'per_area' | 'per_linear_m' | 'per_visit' | 'flat_package' | 'custom_quote';
+    allows_quantity: boolean;
+    base_price_min_cents: number | null;
+    base_price_max_cents: number | null;
+    is_custom_quote: boolean;
+    rate_cents: number | null;
+    min_charge_cents: number | null;
+    is_active: boolean;
+}
 
 export interface PendingCredential {
     taskId: string;
@@ -84,5 +102,32 @@ export const providerService = {
      */
     getPayoutsStatus: async (): Promise<PayoutsStatus> => {
         return await get<PayoutsStatus>('/provider/payouts/status');
+    },
+
+    // ── Provider-set service rates (Provider-Set Pricing · PP2) ──
+
+    /** List the services the provider is qualified to price, each with its
+     *  guardrail range and current rate (null if unset). */
+    getProviderRates: async (): Promise<ProviderRateItem[]> => {
+        const res = await get<{ items: ProviderRateItem[] }>('/provider/rates');
+        return res?.items ?? [];
+    },
+
+    /** Set or update the provider's rate for one service. `rateCents` is
+     *  clamped server-side to the task guardrail (422 price_out_of_range). */
+    setProviderRate: async (
+        taskId: string,
+        rateCents: number,
+        minChargeCents?: number | null,
+    ): Promise<void> => {
+        await put(`/provider/rates/${taskId}`, {
+            rate_cents: rateCents,
+            min_charge_cents: minChargeCents ?? null,
+        });
+    },
+
+    /** Remove the provider's rate for one service. */
+    deleteProviderRate: async (taskId: string): Promise<void> => {
+        await del(`/provider/rates/${taskId}`);
     },
 };

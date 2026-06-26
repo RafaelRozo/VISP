@@ -432,6 +432,12 @@ async def accept_offer(
     job = (await db.execute(job_stmt)).scalar_one_or_none()
     if job and job.status in (JobStatus.MATCHED, JobStatus.PENDING_MATCH):
         job.status = JobStatus.PENDING_APPROVAL
+        # PP4: re-quote from THIS provider's own rate so the customer approves
+        # the provider's actual price (not the catalog midpoint). No-op when the
+        # provider has no fixed rate for the task.
+        from src.services import provider_rate_service
+
+        await provider_rate_service.reprice_job_to_provider_rate(db, job, provider_id)
 
     # Cancel all other OFFERED assignments for this job so other providers
     # no longer see it in their offers list.

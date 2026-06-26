@@ -904,6 +904,15 @@ async def get_pending_provider(
     _avg_raw = (await db.execute(_avg_stmt)).scalar()
     _prov_rating = round(float(_avg_raw), 2) if _avg_raw else None
 
+    # PP4: the provider's own price for this job (set when they accepted). The
+    # quote breakdown (rate + estimated quantity) lets the customer see exactly
+    # what this provider charges before approving.
+    from src.services import provider_rate_service
+
+    _quote = await provider_rate_service.get_provider_quote_for_job(
+        db, provider.id, job.task_id
+    )
+
     return {"data": {
         "providerId": str(provider.id),
         "displayName": (
@@ -916,6 +925,10 @@ async def get_pending_provider(
         "rating": _prov_rating,
         "profilePhotoUrl": user_record.avatar_url if user_record else None,
         "bio": provider.bio,
+        "quotedPriceCents": job.quoted_price_cents,
+        "rateCents": _quote["rate_cents"] if _quote else None,
+        "pricingUnit": _quote["unit"] if _quote else None,
+        "estimatedQuantity": _quote["quantity"] if _quote else None,
     }}
 
 

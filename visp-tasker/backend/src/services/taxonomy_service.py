@@ -18,6 +18,7 @@ Key responsibilities:
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
@@ -315,6 +316,28 @@ async def get_task_by_id(
     return result.scalar_one_or_none()
 
 
+# Filler words stripped from a search query before matching. Service verbs
+# (clean, fix, repair, install, mow, paint, mount, walk, ...) are intentionally
+# NOT here — they carry meaning.
+_SEARCH_STOPWORDS = {
+    "i", "im", "ive", "id", "a", "an", "the", "to", "my", "me", "mine", "of",
+    "and", "or", "for", "with", "in", "on", "at", "is", "are", "be", "it",
+    "that", "this", "need", "needs", "needed", "want", "wants", "wanna",
+    "would", "like", "please", "pls", "plz", "help", "some", "any", "can",
+    "could", "do", "does", "have", "has", "having", "get", "got", "there",
+    "got", "someone", "somebody", "looking", "look",
+}
+
+_TOKEN_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _tokenize(text: str | None) -> list[str]:
+    """Lowercase + split on non-alphanumerics into word tokens."""
+    if not text:
+        return []
+    return [tok for tok in _TOKEN_RE.split(text.lower()) if tok]
+
+
 async def search_tasks(
     db: AsyncSession,
     *,
@@ -325,54 +348,79 @@ async def search_tasks(
     page_size: int = 20,
     include_inactive: bool = False,
 ) -> PaginatedResult:
-    """Search tasks by keyword matching against name and description.
+    """Natural-language-ish keyword search over the CLOSED task catalog.
 
-    Uses case-insensitive ``ILIKE`` for portability.  For production at
-    scale this should be backed by Elasticsearch / ``pg_trgm``, but the
-    SQL approach is correct and sufficient for initial deployment.
-
-    The search term is split into individual words, and ALL words must
-    appear somewhere in the task name or description (AND semantics).
+    Tokenizes the query, drops filler words ("I need to", "my", ...), then
+    scores every active task by token overlap against its name (high), curated
+    ``search_aliases`` (high), ``escalation_keywords`` (medium) and description
+    (low). Returns the best matches ranked by score. The catalog is small
+    (~218 rows) so scoring in Python is cheap and far more flexible than the
+    old ALL-words-must-appear ``ILIKE``. Never returns free text — only
+    predefined tasks (closed-catalog rule preserved).
     """
-    words = query.strip().split()
-    if not words:
+    raw_tokens = _tokenize(query)
+    query_tokens = [t for t in raw_tokens if t not in _SEARCH_STOPWORDS and len(t) >= 2]
+    if not query_tokens:
+        # Query was only filler/very short — fall back to whatever has length.
+        query_tokens = [t for t in raw_tokens if len(t) >= 2]
+    if not query_tokens:
         return PaginatedResult(items=[], total_items=0, page=page, page_size=page_size)
 
     filters: list = []
     if not include_inactive:
         filters.append(ServiceTask.is_active.is_(True))
     if level is not None:
-        validated_level = validate_level(level)
-        filters.append(ServiceTask.level == validated_level)
+        filters.append(ServiceTask.level == validate_level(level))
     if category_id is not None:
         filters.append(ServiceTask.category_id == category_id)
 
-    # Each word must appear in name OR description
-    for word in words:
-        pattern = f"%{word}%"
-        filters.append(
-            or_(
-                ServiceTask.name.ilike(pattern),
-                ServiceTask.description.ilike(pattern),
-            )
-        )
+    candidates = (await db.execute(select(ServiceTask).where(*filters))).scalars().all()
+    query_join = " ".join(query_tokens)
 
-    # Count
-    count_stmt = select(func.count(ServiceTask.id)).where(*filters)
-    total_items: int = (await db.execute(count_stmt)).scalar_one()
+    scored: list[tuple[int, ServiceTask]] = []
+    for task in candidates:
+        name_toks = set(_tokenize(task.name))
+        desc_toks = set(_tokenize(task.description))
 
-    # Data
-    data_stmt = (
-        select(ServiceTask)
-        .where(*filters)
-        .order_by(ServiceTask.display_order, ServiceTask.name)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    tasks = (await db.execute(data_stmt)).scalars().all()
+        alias_list = task.search_aliases if isinstance(task.search_aliases, list) else []
+        alias_phrases = [str(a).lower().strip() for a in alias_list]
+        alias_toks: set[str] = set()
+        for phrase in alias_phrases:
+            alias_toks.update(_tokenize(phrase))
+
+        kw_list = task.escalation_keywords if isinstance(task.escalation_keywords, list) else []
+        kw_toks: set[str] = set()
+        for kw in kw_list:
+            kw_toks.update(_tokenize(str(kw)))
+
+        score = 0
+        for word in query_tokens:
+            if word in name_toks:
+                score += 3
+            elif len(word) >= 3 and any(word in nt for nt in name_toks):
+                score += 1  # partial (e.g. "ac" inside "hvac")
+            if word in alias_toks:
+                score += 3
+            if word in kw_toks:
+                score += 2
+            if word in desc_toks:
+                score += 1
+
+        # A full multi-word alias appearing in the query is a strong signal.
+        for phrase in alias_phrases:
+            if " " in phrase and phrase in query_join:
+                score += 4
+
+        if score > 0:
+            scored.append((score, task))
+
+    scored.sort(key=lambda pair: (-pair[0], pair[1].display_order, pair[1].name))
+    total_items = len(scored)
+    start = (page - 1) * page_size
+    page_items = [task for _, task in scored[start : start + page_size]]
 
     return PaginatedResult(
-        items=tasks,
+        items=page_items,
         total_items=total_items,
         page=page,
         page_size=page_size,

@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { useBusinessStore } from '@/stores/businessStore';
 import Landing from '@/pages/public/Landing';
+import BusinessRegister from '@/pages/business/BusinessRegister';
+import BusinessLogin from '@/pages/business/BusinessLogin';
+import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import StripeReturn from '@/pages/public/StripeReturn';
 import StripeRefresh from '@/pages/public/StripeRefresh';
 import Login from '@/pages/auth/Login';
@@ -10,6 +14,7 @@ import RedeemReset from '@/pages/auth/RedeemReset';
 import AdminLayout from '@/components/AdminLayout';
 import Dashboard from '@/pages/admin/Dashboard';
 import Documents from '@/pages/admin/Documents';
+import Businesses from '@/pages/admin/Businesses';
 import Services from '@/pages/admin/Services';
 import Users from '@/pages/admin/Users';
 import Promotions from '@/pages/admin/Promotions';
@@ -38,9 +43,11 @@ function SuperAdminRoute({ children }: { children: JSX.Element }) {
 
 export default function App() {
   const hydrate = useAuthStore((s) => s.hydrate);
+  const hydrateBusiness = useBusinessStore((s) => s.hydrate);
   useEffect(() => {
     void hydrate();
-  }, [hydrate]);
+    void hydrateBusiness();
+  }, [hydrate, hydrateBusiness]);
 
   return (
     <Routes>
@@ -48,6 +55,11 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/stripe/return" element={<StripeReturn />} />
       <Route path="/stripe/refresh" element={<StripeRefresh />} />
+
+      {/* VISP for Business — standard-user auth, separate from /console */}
+      <Route path="/business/register" element={<BusinessRegister />} />
+      <Route path="/business/login" element={<BusinessLogin />} />
+      <Route path="/business" element={<BusinessDashboard />} />
 
       {/* Hidden login at /console — not linked from anywhere */}
       <Route path="/console" element={<Login />} />
@@ -66,6 +78,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="services" element={<Services />} />
         <Route path="documents" element={<Documents />} />
+        <Route path="businesses" element={<Businesses />} />
         <Route
           path="users"
           element={

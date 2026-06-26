@@ -65,6 +65,7 @@ import {
   FontSans,
 } from '../../theme/visp';
 import RoleSwitcher from '../../components/RoleSwitcher';
+import { useCompanyStore } from '../../stores/companyStore';
 import { get } from '../../services/apiClient';
 import taskService from '../../services/taskService';
 import type {
@@ -72,6 +73,7 @@ import type {
   RootStackParamList,
   CustomerTabParamList,
   ServiceCategory,
+  ServiceTask,
 } from '../../types';
 import type { VispIconName } from '../../components/visp';
 
@@ -253,6 +255,18 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const setActiveMode = useAuthStore((s) => s.setActiveMode);
   const isBoth = user?.role === 'both';
 
+  // VISP for Business: a company member sees a "Company" entry on the dashboard.
+  // admin/supervisor -> the supervisor (claim/assign) screen; collaborator ->
+  // their assignments screen. Non-members see nothing.
+  const companyMembership = useCompanyStore((s) => s.membership);
+  const isCompanySupervisor =
+    companyMembership?.role === 'admin' || companyMembership?.role === 'supervisor';
+  const handleCompanyPress = useCallback(() => {
+    navigation.navigate(
+      isCompanySupervisor ? 'CompanySupervisor' : 'CompanyAssignments',
+    );
+  }, [navigation, isCompanySupervisor]);
+
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
   const [recentProviders, setRecentProviders] = useState<RecentProvider[]>([]);
@@ -262,6 +276,8 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [taskResults, setTaskResults] = useState<ServiceTask[]>([]);
+  const [searchingTasks, setSearchingTasks] = useState(false);
 
   const greetingKey = useMemo(() => getGreetingKey(), []);
   const greeting = tr(greetingKey);
@@ -357,6 +373,35 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
       categoryName: category.name,
     });
   }, [navigation]);
+
+  // Tapping a search result jumps straight into the booking flow for that task.
+  const handleTaskPress = useCallback((task: ServiceTask) => {
+    Keyboard.dismiss();
+    setSearchQuery('');
+    (navigation as any).navigate('TaskSelection', { taskId: task.id });
+  }, [navigation]);
+
+  // Debounced natural-language search across the closed catalog (backend).
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setTaskResults([]);
+      setSearchingTasks(false);
+      return;
+    }
+    setSearchingTasks(true);
+    const handle = setTimeout(async () => {
+      try {
+        const results = await taskService.searchAllTasks(q);
+        setTaskResults(results);
+      } catch {
+        setTaskResults([]);
+      } finally {
+        setSearchingTasks(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
 
   const handleJobPress = useCallback((job: Job) => {
     const pendingStatuses = ['pending_match', 'draft', 'pending'];
@@ -476,6 +521,38 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
           </MotionPressable>
         </View>
 
+        {/* — Company (VISP for Business) — only for company members — */}
+        {companyMembership ? (
+          <View style={styles.sectionGutter}>
+            <MotionPressable onPress={handleCompanyPress} pressScale={0.98}>
+              <View
+                style={[
+                  styles.companyBanner,
+                  { backgroundColor: t.violetDim, borderColor: t.violetLine },
+                ]}
+              >
+                <View style={[styles.companyIcon, { backgroundColor: t.violet }]}>
+                  <Icon name="briefcase" size={16} color={t.bg} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                    {isCompanySupervisor
+                      ? tr('companySupervisor.entry') || 'Company jobs'
+                      : tr('companyAssignments.entry') || 'My assignments'}
+                  </Text>
+                  <Text
+                    style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}
+                    numberOfLines={1}
+                  >
+                    {String(companyMembership.companyName).toUpperCase()}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={16} color={t.text3} />
+              </View>
+            </MotionPressable>
+          </View>
+        ) : null}
+
         {/* — Hero "What needs doing?" — */}
         <View style={styles.sectionGutter}>
           <Animated.View style={heroDimStyle}>
@@ -509,26 +586,30 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
                   ))}
                 </View>
               )}
-              {searchQuery.length > 0 && (
+              {searchQuery.trim().length > 0 && (
                 <View style={[styles.dropdown, { borderTopColor: t.border }]}>
-                  {filteredCategories.length === 0 ? (
+                  {searchingTasks && taskResults.length === 0 ? (
                     <Text style={[VispText.body, { color: t.text3, paddingVertical: 8 }]}>
-                      No matches for "{searchQuery}"
+                      {tr('homeScreen.searching') || 'Searching…'}
+                    </Text>
+                  ) : taskResults.length === 0 ? (
+                    <Text style={[VispText.body, { color: t.text3, paddingVertical: 8 }]}>
+                      {(tr('homeScreen.noMatches') || 'No matches for') + ` "${searchQuery.trim()}"`}
                     </Text>
                   ) : (
-                    filteredCategories.map((cat) => (
-                      <MotionPressable key={cat.id} onPress={() => handleCategoryPress(cat)} pressScale={0.97}>
+                    taskResults.map((task) => (
+                      <MotionPressable key={task.id} onPress={() => handleTaskPress(task)} pressScale={0.97}>
                         <View style={styles.dropdownRow}>
                           <View style={[styles.dropdownIcon, { backgroundColor: t.deep, borderColor: t.border }]}>
-                            <Icon name={iconForCategory(cat)} size={14} color={t.text2} />
+                            <Icon name="search" size={14} color={t.text2} />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 14 }]}>{cat.name}</Text>
-                            {cat.taskCount > 0 && (
-                              <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}>
-                                {cat.taskCount} {cat.taskCount === 1 ? tr('homeScreen.task') : tr('homeScreen.tasks')}
-                              </Text>
-                            )}
+                            <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 14 }]} numberOfLines={1}>
+                              {task.name}
+                            </Text>
+                            <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}>
+                              {`L${task.level}`}{task.basePrice > 0 ? ` · ~$${task.basePrice.toFixed(0)}` : ''}
+                            </Text>
                           </View>
                           <Icon name="chevron-right" size={14} color={t.text3} />
                         </View>
@@ -782,6 +863,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   emergencyIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  companyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+  },
+  companyIcon: {
     width: 32,
     height: 32,
     borderRadius: 8,

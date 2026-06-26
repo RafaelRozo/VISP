@@ -74,6 +74,13 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
   const passwordRef = useRef<TextInput>(null);
 
+  // Shadow refs hold the latest NATIVE value. iOS autofill writes to the native
+  // field and may fire onChange/onBlur before React state commits, so every
+  // validation reads from these refs (source of truth), never from possibly
+  // stale state/closures. See feedback_autofill memory (B+A pattern).
+  const emailShadow = useRef('');
+  const passwordShadow = useRef('');
+
   const { login, isLoading, error, clearError } = useAuthStore();
 
   // ── Entry Animation ────────────────────────
@@ -99,74 +106,78 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
   // ── Handlers ─────────────────────────────
 
+  // Always re-validate from the latest native values (shadow refs), so an
+  // autofilled-but-not-yet-flushed field never reads as empty. Errors are
+  // computed on every keystroke but only DISPLAYED once a field is touched.
   const handleEmailChange = useCallback(
     (text: string) => {
+      emailShadow.current = text;
       setEmail(text);
       if (error) clearError();
-      if (touched.email) {
-        const errors = validateForm(text, password);
-        setFormErrors((prev) => ({ ...prev, email: errors.email }));
-      }
+      const { email: emailErr } = validateForm(text, passwordShadow.current);
+      setFormErrors((prev) => ({ ...prev, email: emailErr }));
     },
-    [password, touched.email, error, clearError],
+    [error, clearError],
   );
 
-  // iOS autofill native-event fallback (same rationale as the password field).
+  // iOS autofill native-event fallback (onChangeText is unreliable on autofill).
   const handleEmailNativeChange = useCallback(
     (e: { nativeEvent: { text: string } }) => {
       const text = e.nativeEvent.text;
-      if (text !== email) {
+      if (text !== emailShadow.current) {
         handleEmailChange(text);
       }
     },
-    [email, handleEmailChange],
+    [handleEmailChange],
   );
 
   const handlePasswordChange = useCallback(
     (text: string) => {
+      passwordShadow.current = text;
       setPassword(text);
       if (error) clearError();
-      if (touched.password) {
-        const errors = validateForm(email, text);
-        setFormErrors((prev) => ({ ...prev, password: errors.password }));
-      }
+      const { password: pwErr } = validateForm(emailShadow.current, text);
+      setFormErrors((prev) => ({ ...prev, password: pwErr }));
     },
-    [email, touched.password, error, clearError],
+    [error, clearError],
   );
 
   // iOS password autofill (iCloud Keychain / generated passwords) may not
   // trigger onChangeText reliably on a controlled secureTextEntry input.
-  // We use onChange (native event) as a fallback. Same pattern as RegisterScreen
-  // and GlassInput — see feedback_stripe_onboarding_pattern memory.
   const handlePasswordNativeChange = useCallback(
     (e: { nativeEvent: { text: string } }) => {
       const text = e.nativeEvent.text;
-      if (text !== password) {
+      if (text !== passwordShadow.current) {
         handlePasswordChange(text);
       }
     },
-    [password, handlePasswordChange],
+    [handlePasswordChange],
   );
 
-  const handleBlur = useCallback(
-    (field: 'email' | 'password') => {
-      setTouched((prev) => ({ ...prev, [field]: true }));
-      const errors = validateForm(email, password);
-      setFormErrors((prev) => ({ ...prev, [field]: errors[field] }));
-    },
-    [email, password],
-  );
+  // Validate against the shadow refs (latest native values), not stale state —
+  // this is what kills the "Email is required" flash on an autofilled field.
+  const handleBlur = useCallback((field: 'email' | 'password') => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const errors = validateForm(emailShadow.current, passwordShadow.current);
+    setFormErrors((prev) => ({ ...prev, [field]: errors[field] }));
+  }, []);
 
   const handleLogin = useCallback(async () => {
     Keyboard.dismiss();
-    const errors = validateForm(email, password);
+    // Reconcile from the shadow refs in case autofill never flushed to state.
+    const emailVal = emailShadow.current || email;
+    const passwordVal = passwordShadow.current || password;
+    setEmail(emailVal);
+    setPassword(passwordVal);
+
+    const errors = validateForm(emailVal, passwordVal);
     setFormErrors(errors);
     setTouched({ email: true, password: true });
 
     if (Object.keys(errors).length > 0) return;
 
     try {
-      await login({ email: email.trim().toLowerCase(), password });
+      await login({ email: emailVal.trim().toLowerCase(), password: passwordVal });
     } catch {
       // Error is handled by the store
     }
@@ -178,6 +189,10 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
   const handleCreateAccount = useCallback(() => {
     navigation.navigate('Register');
+  }, [navigation]);
+
+  const handleJoinCompany = useCallback(() => {
+    navigation.navigate('CompanyJoin');
   }, [navigation]);
 
   // ── Derived State ────────────────────────
@@ -342,6 +357,24 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
                 <Text style={styles.createAccountLink}>Create Account</Text>
               </TouchableOpacity>
             </View>
+
+            {/* VISP for Business — collaborator registration via company code */}
+            <View style={styles.businessDividerRow}>
+              <View style={styles.businessDividerLine} />
+              <Text style={styles.businessDividerText}>VISP for Business</Text>
+              <View style={styles.businessDividerLine} />
+            </View>
+            <TouchableOpacity
+              onPress={handleJoinCompany}
+              disabled={isLoading}
+              activeOpacity={0.8}
+              style={styles.businessButton}
+            >
+              <Text style={styles.businessButtonText}>Join your company</Text>
+              <Text style={styles.businessButtonSubtext}>
+                Register with a code from your employer
+              </Text>
+            </TouchableOpacity>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -479,6 +512,45 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: 'rgba(120, 80, 255, 0.9)',
     fontWeight: '600',
+  },
+
+  // ── VISP for Business ──────────────────
+  businessDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xxl,
+    marginBottom: Spacing.lg,
+  },
+  businessDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  businessDividerText: {
+    ...Typography.caption,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginHorizontal: Spacing.md,
+  },
+  businessButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(120, 80, 255, 0.5)',
+    backgroundColor: 'rgba(120, 80, 255, 0.12)',
+    borderRadius: 14,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+  },
+  businessButtonText: {
+    ...Typography.body,
+    color: 'rgba(180, 160, 255, 1)',
+    fontWeight: '700',
+  },
+  businessButtonSubtext: {
+    ...Typography.caption,
+    color: 'rgba(255, 255, 255, 0.45)',
+    marginTop: 2,
   },
 });
 

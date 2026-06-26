@@ -183,6 +183,34 @@ export interface TaskUpsertBody {
   isActive?: boolean;
 }
 
+export interface CompanyListItem {
+  id: string;
+  legal_name: string;
+  status: string;
+  created_at: string | null;
+}
+
+export interface CompanyDocument {
+  id: string;
+  doc_type: string;
+  status: string;
+  document_url: string | null;
+  rejection_reason: string | null;
+}
+
+export interface CompanyDetail {
+  id: string;
+  legal_name: string;
+  trade_name: string | null;
+  status: string;
+  business_address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  rejection_reason: string | null;
+  documents: CompanyDocument[];
+}
+
 export interface Promotion {
   id: string;
   code: string;
@@ -237,6 +265,30 @@ export const adminService = {
 
   rejectCredential: (id: string, note: string) =>
     apiPost<{ id: string; status: string }>(`/admin/credentials/${id}/reject`, { note }),
+
+  // ── Businesses (VISP for Business) validation ──
+  listCompanies: (status?: string) =>
+    apiGet<CompanyListItem[]>('/admin/companies', status ? { status } : undefined),
+
+  getCompany: (id: string) => apiGet<CompanyDetail>(`/admin/companies/${id}`),
+
+  approveCompanyDocument: (docId: string) =>
+    apiPost<{ id: string; status: string }>(`/admin/companies/documents/${docId}/approve`),
+
+  rejectCompanyDocument: (docId: string, reason: string) =>
+    apiPost<{ id: string; status: string; rejection_reason: string }>(
+      `/admin/companies/documents/${docId}/reject`,
+      { reason },
+    ),
+
+  validateCompany: (id: string) =>
+    apiPost<{ status: string }>(`/admin/companies/${id}/validate`),
+
+  rejectCompany: (id: string, reason: string) =>
+    apiPost<{ status: string; rejection_reason: string }>(
+      `/admin/companies/${id}/reject`,
+      { reason },
+    ),
 
   listPromotions: () => apiGet<Promotion[]>('/admin/promotions'),
 

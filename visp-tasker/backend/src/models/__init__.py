@@ -27,7 +27,15 @@ from .provider import (
 )
 
 # -- 003: Taxonomy --
-from .taxonomy import ProviderTaskQualification, ServiceCategory, ServiceTask
+from .taxonomy import (
+    PricingUnit,
+    ProviderTaskQualification,
+    ServiceCategory,
+    ServiceTask,
+)
+
+# -- 022: Provider-set service rates --
+from .provider_rate import ProviderServiceRate
 
 # -- 004: Verification & Legal --
 from .verification import (
@@ -99,6 +107,28 @@ from .promotion import Promotion
 # -- 014: Admin access codes --
 from .admin_access_code import AdminAccessCode
 
+# -- 019: VISP for Business --
+from .company import (
+    Company,
+    CompanyDocument,
+    CompanyDocumentStatus,
+    CompanyDocumentType,
+    CompanyInvite,
+    CompanyInviteStatus,
+    CompanyMember,
+    CompanyMemberRole,
+    CompanyMemberStatus,
+    CompanyService,
+    CompanyStatus,
+)
+
+# -- 020: VISP for Business — company job assignments --
+from .company_job import (
+    CompanyJobAssignment,
+    CompanyJobStatus,
+    CompanyPayoutTarget,
+)
+
 __all__ = [
     # Base
     "Base",
@@ -119,6 +149,9 @@ __all__ = [
     "ServiceCategory",
     "ServiceTask",
     "ProviderTaskQualification",
+    "PricingUnit",
+    # Provider-set service rates
+    "ProviderServiceRate",
     # Verification
     "ProviderCredential",
     "CredentialStatus",
@@ -171,4 +204,20 @@ __all__ = [
     "Promotion",
     # Admin access codes
     "AdminAccessCode",
+    # VISP for Business
+    "Company",
+    "CompanyStatus",
+    "CompanyMember",
+    "CompanyMemberRole",
+    "CompanyMemberStatus",
+    "CompanyDocument",
+    "CompanyDocumentType",
+    "CompanyDocumentStatus",
+    "CompanyService",
+    "CompanyInvite",
+    "CompanyInviteStatus",
+    # VISP for Business — company job assignments
+    "CompanyJobAssignment",
+    "CompanyJobStatus",
+    "CompanyPayoutTarget",
 ]

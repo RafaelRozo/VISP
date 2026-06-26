@@ -361,6 +361,16 @@ async function searchTasks(
   return (raw ?? []).map(mapTask);
 }
 
+/**
+ * Natural-language-ish search across the WHOLE catalog (no category filter).
+ * Backend ranks tasks by token/alias overlap. Closed catalog — results are
+ * always predefined tasks. Used by the HomeScreen "What needs doing?" box.
+ */
+async function searchAllTasks(query: string): Promise<ServiceTask[]> {
+  const raw = await get<BackendTask[]>('/tasks/search', { q: query });
+  return (raw ?? []).map(mapTask);
+}
+
 // ──────────────────────────────────────────────
 // Active Jobs (Real Backend)
 // ──────────────────────────────────────────────
@@ -488,6 +498,12 @@ interface PendingProviderInfo {
   rating: number | null;
   profilePhotoUrl: string | null;
   bio: string | null;
+  // PP4 — the provider's own price for this job (null when they use catalog
+  // pricing or the task is custom-quote).
+  quotedPriceCents: number | null;
+  rateCents: number | null;
+  pricingUnit: string | null;
+  estimatedQuantity: number | null;
 }
 
 async function getPendingProvider(jobId: string): Promise<PendingProviderInfo | null> {
@@ -511,6 +527,7 @@ export const taskService = {
   calculatePriceEstimate,
   createBooking,
   searchTasks,
+  searchAllTasks,
   getActiveJobs,
   getJobDetail,
   getJobTracking,

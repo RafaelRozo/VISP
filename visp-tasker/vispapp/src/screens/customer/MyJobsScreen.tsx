@@ -448,6 +448,32 @@ function MyJobsScreen(): React.JSX.Element {
                     ) : null}
                   </View>
                 </View>
+
+                {/* PP4 — the provider's own offered price for this job */}
+                {providerInfo.rateCents != null ? (
+                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
+                    <Eyebrow color={t.text3}>{tr('myJobs.offeredPrice')}</Eyebrow>
+                    <Text style={{ fontFamily: FontMono, fontSize: 14, fontWeight: '700', color: t.text, marginTop: 4 }}>
+                      ${(providerInfo.rateCents / 100).toFixed(2)}/{tr(`myPricesScreen.unit.${providerInfo.pricingUnit}`) || providerInfo.pricingUnit}
+                      {providerInfo.quotedPriceCents != null
+                        ? `   →   $${(providerInfo.quotedPriceCents / 100).toFixed(2)}`
+                        : ''}
+                    </Text>
+                    {providerInfo.estimatedQuantity != null ? (
+                      <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 3 }]}>
+                        {tr('myJobs.estimatedQty')} · ~{providerInfo.estimatedQuantity} {tr(`myPricesScreen.unit.${providerInfo.pricingUnit}`) || ''}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : providerInfo.quotedPriceCents != null ? (
+                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
+                    <Eyebrow color={t.text3}>{tr('myJobs.offeredPrice')}</Eyebrow>
+                    <Text style={{ fontFamily: FontMono, fontSize: 15, fontWeight: '700', color: t.text, marginTop: 4 }}>
+                      ${(providerInfo.quotedPriceCents / 100).toFixed(2)}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <View style={styles.approvalButtons}>
                   <Pressable
                     onPress={() => handleRejectProvider(item.id)}

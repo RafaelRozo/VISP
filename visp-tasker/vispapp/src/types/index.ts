@@ -185,9 +185,13 @@ export type RootStackParamList = {
   Auth: undefined;
   Login: undefined;
   Register: undefined;
+  CompanyJoin: undefined;
   ForgotPassword: undefined;
   CustomerHome: undefined;
   ProviderHome: undefined;
+  // VISP for Business (SP4 Stage 2) — reachable from the customer dashboard
+  CompanySupervisor: undefined;
+  CompanyAssignments: undefined;
   CategoryDetail: { categoryId: string; categoryName: string };
   JobDetail: { jobId: string };
   JobTracking: { jobId: string };
@@ -497,6 +501,7 @@ export type ProfileStackParamList = {
   Verification: undefined;
   Settings: undefined;
   ProviderOnboarding: undefined;
+  MyPrices: undefined;
   PaymentMethods: undefined;
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
@@ -506,6 +511,7 @@ export type ProfileStackParamList = {
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
+  CompanyJoin: undefined;
   ForgotPassword: undefined;
   ProviderOnboarding: undefined;
 };

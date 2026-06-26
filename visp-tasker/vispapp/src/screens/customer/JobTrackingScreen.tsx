@@ -35,6 +35,7 @@ import { Shadows } from '../../theme/shadows';
 import LevelBadge from '../../components/LevelBadge';
 import { Config } from '../../services/config';
 import taskService from '../../services/taskService';
+import companyService from '../../services/companyService';
 import type {
   CustomerFlowParamList,
   Job,
@@ -125,6 +126,10 @@ function JobTrackingScreen(): React.JSX.Element {
   // Route line state (GeoJSON coordinates [lng, lat])
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
 
+  // Additive: name of the company collaborator assigned to this job (VISP for
+  // Business). Null when the job is not a company assignment / not yet assigned.
+  const [collaboratorName, setCollaboratorName] = useState<string | null>(null);
+
   // Set header title
   useEffect(() => {
     navigation.setOptions({ title: 'Job Status' });
@@ -157,6 +162,28 @@ function JobTrackingScreen(): React.JSX.Element {
     loadJob();
     return () => { cancelled = true; };
   }, [jobId]);
+
+  // ── Company assignment: who (collaborator) was assigned ──
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCollaborator() {
+      try {
+        const result = await companyService.getAssignedCollaborator(jobId);
+        if (!cancelled) {
+          setCollaboratorName(result?.collaboratorName ?? null);
+        }
+      } catch {
+        // Not a company assignment (or 403/404) — render nothing, no disruption.
+        if (!cancelled) {
+          setCollaboratorName(null);
+        }
+      }
+    }
+
+    loadCollaborator();
+    return () => { cancelled = true; };
+  }, [jobId, currentStatus]);
 
   // ── Polling for tracking data ────────────
   useEffect(() => {
@@ -434,6 +461,18 @@ function JobTrackingScreen(): React.JSX.Element {
                   )}
                 </View>
               </View>
+
+              {/* Assigned company collaborator (VISP for Business) — additive */}
+              {collaboratorName != null && (
+                <View style={styles.collaboratorRow}>
+                  <Text style={[styles.collaboratorLabel, { color: theme.textSecondary }]}>
+                    Assigned to
+                  </Text>
+                  <Text style={[styles.collaboratorName, { color: theme.textPrimary }]}>
+                    {collaboratorName}
+                  </Text>
+                </View>
+              )}
 
               {/* Contact Buttons */}
               {tracking?.providerName && (
@@ -746,6 +785,9 @@ const styles = StyleSheet.create({
   providerInfo: { flex: 1 },
   providerName: { ...Typography.title3, color: '#FFFFFF', marginBottom: Spacing.xxs },
   providerMeta: { ...Typography.footnote, color: 'rgba(255, 255, 255, 0.5)' },
+  collaboratorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.md, backgroundColor: 'rgba(255, 255, 255, 0.06)', borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)' },
+  collaboratorLabel: { ...Typography.footnote, color: 'rgba(255, 255, 255, 0.5)' },
+  collaboratorName: { ...Typography.footnote, fontWeight: FontWeight.semiBold as '600', color: '#FFFFFF' },
   contactButtons: { flexDirection: 'row', gap: Spacing.md },
   contactButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)', gap: Spacing.sm },
   contactButtonText: { ...Typography.footnote, color: Colors.primary, fontWeight: FontWeight.semiBold as '600' },

@@ -180,13 +180,38 @@ async def _handle_payment_intent_succeeded(
     job.commission_amount_cents = commission_cents
     job.provider_payout_cents = provider_amount_cents
 
-    # 6. Create transfer to provider's connected account
+    # 5b. VISP for Business (SP4): if this job was claimed by a company, the
+    # payout goes to the COMPANY's connected account instead of the individual
+    # provider's. This is an additive branch — when the job is NOT a company
+    # assignment, resolve_payout_account returns None and the destination stays
+    # exactly as the provider path computed it (behavior unchanged).
+    transfer_destination = provider.stripe_account_id
+    try:
+        from src.services import company_assignment_service
+
+        company_account = await company_assignment_service.resolve_payout_account(
+            db, job_uuid
+        )
+        if company_account:
+            transfer_destination = company_account
+            logger.info(
+                "Job %s is a company assignment — routing payout to company account %s",
+                job_id_str,
+                company_account,
+            )
+    except Exception:  # noqa: BLE001 — never let the company branch break provider payouts
+        logger.exception(
+            "Company payout resolution failed for job %s — falling back to provider account",
+            job_id_str,
+        )
+
+    # 6. Create transfer to the resolved connected account
     if provider_amount_cents > 0:
         try:
             transfer = stripe.Transfer.create(
                 amount=provider_amount_cents,
                 currency=currency,
-                destination=provider.stripe_account_id,
+                destination=transfer_destination,
                 transfer_group=f"job_{job_id_str}",
                 metadata={
                     "job_id": job_id_str,

@@ -32,6 +32,7 @@ import type {
 } from '../types';
 
 import { useAuthStore } from '../stores/authStore';
+import { useCompanyStore } from '../stores/companyStore';
 
 // Navigators - Customer & Emergency Flows
 import CustomerNavigator from './CustomerNavigator';
@@ -40,6 +41,7 @@ import EmergencyNavigator from './EmergencyNavigator';
 // Screens - Auth
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
+import CompanyJoinScreen from '../screens/auth/CompanyJoinScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 
 // Screens - Customer
@@ -55,6 +57,7 @@ import EarningsScreen from '../screens/provider/EarningsScreen';
 import ScheduleScreen from '../screens/provider/ScheduleScreen';
 import ProviderOnboardingScreen from '../screens/provider/ProviderOnboardingScreen';
 import ServiceCatalogScreen from '../screens/provider/ServiceCatalogScreen';
+import MyPricesScreen from '../screens/provider/MyPricesScreen';
 import PayoutsOnboardingScreen from '../screens/provider/payouts/PayoutsOnboardingScreen';
 import PayoutsPersonalInfoStep from '../screens/provider/payouts/PersonalInfoStep';
 import PayoutsTaxStep from '../screens/provider/payouts/TaxStep';
@@ -71,6 +74,10 @@ import PaymentMethodsScreen from '../screens/profile/PaymentMethodsScreen';
 import AddressEditScreen from '../screens/profile/AddressEditScreen';
 import PrivacyPolicyScreen from '../screens/profile/PrivacyPolicyScreen';
 import TermsScreen from '../screens/profile/TermsScreen';
+
+// Screens - Company (VISP for Business, SP4 Stage 2)
+import CompanySupervisorScreen from '../screens/company/CompanySupervisorScreen';
+import CompanyAssignmentsScreen from '../screens/company/CompanyAssignmentsScreen';
 
 // Screens - Shared
 import ChatScreen from '../screens/shared/ChatScreen';
@@ -380,6 +387,11 @@ function ProfileStackNavigator(): React.JSX.Element {
         options={{ title: 'My Services' }}
       />
       <ProfileStack.Screen
+        name="MyPrices"
+        component={MyPricesScreen}
+        options={{ title: 'My Prices' }}
+      />
+      <ProfileStack.Screen
         name="PaymentMethods"
         component={PaymentMethodsScreen}
         options={{ title: 'Payment Methods', headerBackTitle: 'Back' }}
@@ -477,6 +489,7 @@ function AuthNavigator(): React.JSX.Element {
     >
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen name="CompanyJoin" component={CompanyJoinScreen} />
       <AuthStack.Screen
         name="ForgotPassword"
         component={ForgotPasswordScreen}
@@ -625,6 +638,18 @@ export default function AppNavigator(): React.JSX.Element {
     }
   }, [isAuthenticated]);
 
+  // Refresh VISP-for-Business company membership once authenticated so the
+  // Profile "Company" entry can surface the supervisor/collaborator screens.
+  // Best-effort: the store swallows errors and leaves membership null.
+  useEffect(() => {
+    const { refreshMembership, clearMembership } = useCompanyStore.getState();
+    if (isAuthenticated) {
+      refreshMembership();
+    } else {
+      clearMembership();
+    }
+  }, [isAuthenticated]);
+
   if (isRestoring) {
     return (
       <View style={loadingStyles.container}>
@@ -684,6 +709,27 @@ export default function AppNavigator(): React.JSX.Element {
                 headerBackTitle: 'Back',
               }}
             />
+            {/* VISP for Business — reachable from the dashboard "Company" card */}
+            <RootStack.Screen
+              name="CompanySupervisor"
+              component={CompanySupervisorScreen}
+              options={{
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: 'Company jobs',
+                headerBackTitle: 'Back',
+              }}
+            />
+            <RootStack.Screen
+              name="CompanyAssignments"
+              component={CompanyAssignmentsScreen}
+              options={{
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: 'My assignments',
+                headerBackTitle: 'Back',
+              }}
+            />
           </>
         ) : (
           <>
@@ -706,6 +752,29 @@ export default function AppNavigator(): React.JSX.Element {
             <RootStack.Screen name="PayoutsBank" component={PayoutsBankStep} />
             <RootStack.Screen name="PayoutsIdentityDoc" component={PayoutsIdentityDocStep} />
             <RootStack.Screen name="PayoutsTos" component={PayoutsTosStep} />
+            {/* VISP for Business — company members log in as providers, so the
+                supervisor/collaborator screens must also be reachable from the
+                provider dashboard "Company" card. */}
+            <RootStack.Screen
+              name="CompanySupervisor"
+              component={CompanySupervisorScreen}
+              options={{
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: 'Company jobs',
+                headerBackTitle: 'Back',
+              }}
+            />
+            <RootStack.Screen
+              name="CompanyAssignments"
+              component={CompanyAssignmentsScreen}
+              options={{
+                headerShown: true,
+                ...SCREEN_OPTIONS,
+                title: 'My assignments',
+                headerBackTitle: 'Back',
+              }}
+            />
           </>
         )}
         {__DEV__ && isAuthenticated && (

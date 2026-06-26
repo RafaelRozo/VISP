@@ -120,6 +120,8 @@ from src.api.routes import (  # noqa: E402
     auth,
     categories,
     chat,
+    companies,
+    company_assignments,
     consents,
     escalations,
     geolocation,
@@ -129,6 +131,7 @@ from src.api.routes import (  # noqa: E402
     payments,
     pricing,
     proposals,
+    provider_rates,
     providers,
     scoring,
     stripe_redirect,
@@ -147,6 +150,7 @@ app.include_router(consents.router, prefix=_prefix)
 app.include_router(verification.router, prefix=_prefix)
 app.include_router(jobs.router, prefix=_prefix)
 app.include_router(providers.router, prefix=_prefix)
+app.include_router(provider_rates.router, prefix=_prefix)
 app.include_router(matching.router, prefix=_prefix)
 app.include_router(scoring.router, prefix=_prefix)
 app.include_router(pricing.router, prefix=_prefix)
@@ -155,6 +159,8 @@ app.include_router(payments.router, prefix=_prefix)
 app.include_router(proposals.router, prefix=_prefix)
 app.include_router(tips.router, prefix=_prefix)
 app.include_router(chat.router, prefix=_prefix)
+app.include_router(companies.router, prefix=_prefix)
+app.include_router(company_assignments.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
 app.include_router(geolocation.router, prefix=_prefix)
 app.include_router(users.router, prefix=_prefix)

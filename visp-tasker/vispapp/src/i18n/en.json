@@ -1,4 +1,24 @@
 {
+  "companyJoin": {
+    "entryTitle": "VISP for Business",
+    "entryButton": "Join your company",
+    "entrySubtitle": "Register with a code from your employer",
+    "step1Title": "Join your company",
+    "step1Subtitle": "Enter the 8-character code your employer gave you to register as a collaborator.",
+    "codeLabel": "COMPANY CODE",
+    "codePlaceholder": "ABCD1234",
+    "codeRequired": "Enter the code your company gave you",
+    "codeLength": "The company code is 8 characters",
+    "step2Title": "Create your account",
+    "step2Subtitle": "Use the same email your company invited, then create a secure password.",
+    "step3Title": "What is your name?",
+    "step3Subtitle": "This will be visible to your company and other users on the platform.",
+    "accountCreatedNote": "Your account was created. Enter your company code to finish joining.",
+    "primaryContinue": "Continue",
+    "primaryJoin": "Join company",
+    "primarySubmit": "Create account & join",
+    "redeemGenericError": "We could not redeem that code. Please try again."
+  },
   "nav": {
     "dashboard": "Dashboard",
     "jobs": "Jobs",
@@ -68,6 +88,32 @@
     "location": "Location",
     "distance": "Distance",
     "price": "Price"
+  },
+  "myPricesScreen": {
+    "title": "My Prices",
+    "subtitle": "§ Set your rate per service",
+    "allowed": "Allowed range",
+    "save": "Save",
+    "saved": "Saved ✓",
+    "saveError": "Could not save. Try again.",
+    "loadError": "Could not load your services.",
+    "invalidAmount": "Enter a valid amount.",
+    "outOfRange": "Allowed range",
+    "outOfRangeServer": "Price outside the allowed range.",
+    "notQualified": "This service is not approved yet.",
+    "empty": "No services yet",
+    "emptyBody": "Once your services are approved (no pending documents), they appear here so you can set your price.",
+    "customSection": "Quoted per job",
+    "customBody": "Agreed with the customer before the job starts.",
+    "unit": {
+      "hourly": "hour",
+      "per_unit": "piece",
+      "per_area": "m²",
+      "per_linear_m": "linear m",
+      "per_visit": "visit",
+      "flat_package": "package",
+      "custom_quote": "quote"
+    }
   },
   "earningsScreen": {
     "earnings": "Earnings",
@@ -306,7 +352,8 @@
     "stripeConnectStartButton": "Set Up Payouts",
     "stripeConnectContinueButton": "Continue Setup",
     "stripeConnectCheckButton": "Check Status",
-    "stripeConnectError": "Could not start Stripe setup. Please try again."
+    "stripeConnectError": "Could not start Stripe setup. Please try again.",
+    "companySection": "Company"
   },
   "settings": {
     "notifications": "Notifications",
@@ -345,6 +392,8 @@
     "goodEvening": "Good evening",
     "needHelp": "Need help with anything?",
     "whatNeedsDoing": "What needs doing?",
+    "searching": "Searching…",
+    "noMatches": "No matches for",
     "whatDoYouNeedHelp": "What do you need help with today?",
     "browseCategories": "Browse categories",
     "seeAll": "See all",
@@ -405,6 +454,8 @@
     "failedReject": "Failed to reject provider.",
     "yearsExperience": "yrs experience",
     "wantsToAccept": "Provider wants to accept your job",
+    "offeredPrice": "Offered price",
+    "estimatedQty": "Estimated",
     "job": "Job"
   },
   "credentials": {
@@ -522,5 +573,56 @@
     "emergencyActive": "EMERGENCY ACTIVE",
     "onCallProviders": "24/7 on-call providers",
     "tapToViewStatus": "Tap to view status"
+  },
+  "companySupervisor": {
+    "entry": "Company jobs",
+    "title": "Company jobs",
+    "eyebrow": "§ Supervisor",
+    "claimable": "Claimable jobs",
+    "claim": "Claim",
+    "assign": "Assign",
+    "reassign": "Reassign unavailable",
+    "statusClaimed": "CLAIMED",
+    "assignTitle": "Assign collaborator",
+    "noEligible": "No eligible collaborators for this task. Only active collaborators with the required credential can be assigned.",
+    "credentialOk": "CREDENTIAL VERIFIED",
+    "noCompany": "You are not part of a company yet.",
+    "noCompanyTitle": "No company",
+    "loadError": "Could not load jobs.",
+    "claimFailedTitle": "Could not claim",
+    "claimFailed": "This job could not be claimed.",
+    "eligibleFailedTitle": "Could not load collaborators",
+    "eligibleFailed": "Please try again.",
+    "assignFailedTitle": "Could not assign",
+    "assignFailed": "Please try again.",
+    "errorTitle": "Something went wrong",
+    "emptyTitle": "No claimable jobs",
+    "emptyBody": "New jobs your company can claim will appear here."
+  },
+  "companyAssignments": {
+    "entry": "My assignments",
+    "title": "My assignments",
+    "eyebrow": "§ From your company",
+    "assigned": "Assigned to you",
+    "jobLabel": "Job",
+    "assignedByCompany": "Assigned by your company",
+    "accept": "Accept",
+    "decline": "Decline",
+    "statusAssigned": "ASSIGNED",
+    "statusAccepted": "ACCEPTED",
+    "statusDeclined": "DECLINED",
+    "scheduled": "SCHEDULED",
+    "scheduledNote": "ON YOUR SCHEDULE",
+    "pending": "PENDING",
+    "declineConfirmTitle": "Decline assignment?",
+    "declineConfirmBody": "Your supervisor will be able to reassign this job.",
+    "loadError": "Could not load assignments.",
+    "acceptFailedTitle": "Could not accept",
+    "acceptFailed": "Please try again.",
+    "declineFailedTitle": "Could not decline",
+    "declineFailed": "Please try again.",
+    "errorTitle": "Something went wrong",
+    "emptyTitle": "No assignments yet",
+    "emptyBody": "Jobs your supervisor assigns to you will appear here."
   }
 }

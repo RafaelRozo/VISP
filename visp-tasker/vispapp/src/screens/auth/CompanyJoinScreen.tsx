@@ -1,13 +1,26 @@
 /**
- * VISP - Registration Screen
+ * VISP for Business - Company Join Screen
  *
- * Multi-step registration flow:
- *   Step 1: Email / Phone + Password
- *   Step 2: First Name / Last Name
- *   Step 3: Role Selection (Customer / Provider) + Terms Acceptance
+ * "Register with a company code" flow for collaborators invited by their
+ * employer. Modeled on RegisterScreen (multi-step glass wizard, autofill-safe
+ * handlers, recovery-code reveal), but it STARTS by entering the company invite
+ * code, then collects the standard account fields.
  *
- * Includes a progress indicator, inline validation, and password strength meter.
- * Dark glassmorphism design with animated transitions.
+ *   Step 1: Company code (8-character invite from the employer)
+ *   Step 2: Email + Password
+ *   Step 3: First Name / Last Name + Phone
+ *
+ * On submit:
+ *   a. register the user via the auth store (role 'provider'),
+ *   b. POST /companies/redeem-invite with the entered code (Bearer = the
+ *      just-obtained JWT, attached automatically by the API client),
+ *   c. on success, reveal the recovery code then proceed into the app;
+ *      on redeem error, surface the backend `detail` inline and keep the user
+ *      on the screen so they can retry the code (the account already exists).
+ *
+ * SCOPE: this only handles registration + invite redemption. It does NOT touch
+ * the provider job/offers/matching screens, service selection, or assignment —
+ * those are a separate sub-task.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -28,32 +41,37 @@ import {
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { Colors, Spacing, Typography } from '../../theme';
+import { Spacing, Typography } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { GlassStyles } from '../../theme/glass';
 import { useAuthStore } from '../../stores/authStore';
+import { useCompanyStore } from '../../stores/companyStore';
+import { companyService } from '../../services/companyService';
 import { Config } from '../../services/config';
 import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import { Screen } from '../../components/visp';
-import type { RootStackParamList, UserRole } from '../../types';
-import TermsScreen from '../profile/TermsScreen';
-import PrivacyPolicyScreen from '../profile/PrivacyPolicyScreen';
+import type { RootStackParamList } from '../../types';
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'CompanyJoin'>;
 
 const TOTAL_STEPS = 3;
+const INVITE_CODE_LENGTH = 8;
 
 interface Step1Errors {
+  code?: string;
+}
+
+interface Step2Errors {
   email?: string;
   password?: string;
   confirmPassword?: string;
 }
 
-interface Step2Errors {
+interface Step3Errors {
   firstName?: string;
   lastName?: string;
   phone?: string;
@@ -91,12 +109,28 @@ const COUNTRY_CODES: CountryCode[] = [
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validateStep1(
+function normalizeCode(raw: string): string {
+  // Codes are short alphanumeric tokens; uppercase + strip whitespace.
+  return raw.replace(/\s/g, '').toUpperCase();
+}
+
+function validateStep1(code: string): Step1Errors {
+  const errors: Step1Errors = {};
+  const c = normalizeCode(code);
+  if (!c) {
+    errors.code = 'Enter the code your company gave you';
+  } else if (c.length !== INVITE_CODE_LENGTH) {
+    errors.code = `The company code is ${INVITE_CODE_LENGTH} characters`;
+  }
+  return errors;
+}
+
+function validateStep2(
   email: string,
   password: string,
   confirmPassword: string,
-): Step1Errors {
-  const errors: Step1Errors = {};
+): Step2Errors {
+  const errors: Step2Errors = {};
   if (!email.trim()) {
     errors.email = 'Email is required';
   } else if (!EMAIL_REGEX.test(email.trim())) {
@@ -115,8 +149,13 @@ function validateStep1(
   return errors;
 }
 
-function validateStep2(firstName: string, lastName: string, phone: string, country: CountryCode): Step2Errors {
-  const errors: Step2Errors = {};
+function validateStep3(
+  firstName: string,
+  lastName: string,
+  phone: string,
+  country: CountryCode,
+): Step3Errors {
+  const errors: Step3Errors = {};
   if (!firstName.trim()) {
     errors.firstName = 'First name is required';
   } else if (firstName.trim().length < 2) {
@@ -165,61 +204,35 @@ function getPasswordStrength(password: string): {
 }
 
 // ──────────────────────────────────────────────
-// Role Option Data
-// ──────────────────────────────────────────────
-
-interface RoleOption {
-  value: UserRole;
-  title: string;
-  description: string;
-}
-
-const ROLE_OPTIONS: RoleOption[] = [
-  {
-    value: 'customer',
-    title: 'Customer',
-    description: 'I need help with tasks around my home',
-  },
-  {
-    value: 'provider',
-    title: 'Service Provider',
-    description: 'I want to earn money providing services',
-  },
-  {
-    value: 'both',
-    title: 'Both',
-    description: 'I want to request services and also provide them',
-  },
-];
-
-// ──────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────
 
-function RegisterScreen({ navigation }: Props): React.JSX.Element {
+function CompanyJoinScreen({ navigation }: Props): React.JSX.Element {
   const theme = useTheme();
+
   // ── Form State ───────────────────────────
   const [currentStep, setCurrentStep] = useState(1);
 
   // Step 1
+  const [code, setCode] = useState('');
+  const [step1Errors, setStep1Errors] = useState<Step1Errors>({});
+
+  // Step 2
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [step1Errors, setStep1Errors] = useState<Step1Errors>({});
+  const [step2Errors, setStep2Errors] = useState<Step2Errors>({});
 
-  // Step 2
+  // Step 3
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<CountryCode>(COUNTRY_CODES[0]);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [step2Errors, setStep2Errors] = useState<Step2Errors>({});
+  const [step3Errors, setStep3Errors] = useState<Step3Errors>({});
 
-  // Step 3
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-
+  const codeInputRef = useRef<TextInput>(null);
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
   const confirmPasswordRef = useRef<TextInput>(null);
@@ -227,142 +240,144 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   const lastNameRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
 
-  // Track previous password length to detect autofill (jumps from 0/short to long)
   const prevPasswordLenRef = useRef(0);
 
-  // Autofill reconciliation: password managers / iOS AutoFill write to the
-  // native field and sometimes never fire onChangeText, so React state stays
-  // empty while the field visibly shows a value (button stuck disabled,
-  // "required" errors). We mirror every field's latest native text here via
-  // onChangeText + onChange + onEndEditing, then reconcile ref → state at
-  // submit time so validation sees the real values.
+  // Autofill reconciliation: see RegisterScreen for the rationale. Password
+  // managers / iOS AutoFill write to the native field and sometimes never fire
+  // onChangeText, so we mirror every field here and reconcile ref -> state at
+  // submit time.
   const fieldValuesRef = useRef<{
+    code: string;
     email: string;
     password: string;
     confirmPassword: string;
     firstName: string;
     lastName: string;
     phone: string;
-  }>({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', phone: '' });
+  }>({ code: '', email: '', password: '', confirmPassword: '', firstName: '', lastName: '', phone: '' });
 
   const { register, isLoading, error, clearError, commitPendingRegistration } =
     useAuthStore();
+  const { refreshMembership } = useCompanyStore();
 
-  // Modal state for inline legal docs
-  const [showTermsModal, setShowTermsModal] = useState(false);
-  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  // Local (non-store) error for the redeem step shown inline on the code step.
+  const [redeemError, setRedeemError] = useState<string | null>(null);
+  // True once the user's account exists (register succeeded) so we can show a
+  // "retry the company code" affordance instead of re-registering.
+  const [accountCreated, setAccountCreated] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
 
-  // Recovery code shown after successful registration
+  // Recovery code shown after a successful register+redeem.
   const [recoveryCodeToShow, setRecoveryCodeToShow] = useState<string | null>(null);
 
-  // ── Entry Animation ────────────────────────
+  // ── Entry Animation ──────────────────────
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
     const entryAnim = Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
     ]);
     entryAnim.start();
     return () => entryAnim.stop();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   // ── Auto-focus on step change to trigger iOS AutoFill bar ──
   useEffect(() => {
     const timer = setTimeout(() => {
       if (currentStep === 1) {
-        emailInputRef.current?.focus();
+        codeInputRef.current?.focus();
       } else if (currentStep === 2) {
+        emailInputRef.current?.focus();
+      } else if (currentStep === 3) {
         firstNameRef.current?.focus();
       }
     }, 350);
     return () => clearTimeout(timer);
   }, [currentStep]);
 
-  // ── Autofill-safe password handler ─────
-  // iOS password autofill (Apple generated passwords, authenticators) may not
-  // trigger onChangeText reliably. We use onChange (native event) as fallback
-  // and auto-sync confirmPassword when an autofill is detected.
+  // ── Field Handlers ───────────────────────
+
+  const handleCodeChange = useCallback((text: string) => {
+    const next = normalizeCode(text).slice(0, INVITE_CODE_LENGTH);
+    fieldValuesRef.current.code = next;
+    setCode(next);
+    if (step1Errors.code) {
+      setStep1Errors((prev) => ({ ...prev, code: undefined }));
+    }
+    if (redeemError) setRedeemError(null);
+  }, [step1Errors.code, redeemError]);
+
+  const handleCodeNativeChange = useCallback((e: { nativeEvent: { text?: string } }) => {
+    const text = e?.nativeEvent?.text;
+    if (typeof text !== 'string') return;
+    const next = normalizeCode(text).slice(0, INVITE_CODE_LENGTH);
+    if (next !== fieldValuesRef.current.code) handleCodeChange(next);
+  }, [handleCodeChange]);
+
   const handlePasswordChange = useCallback((text: string) => {
     const wasAutoFilled = prevPasswordLenRef.current <= 1 && text.length >= 8;
     prevPasswordLenRef.current = text.length;
 
     fieldValuesRef.current.password = text;
     setPassword(text);
-    if (step1Errors.password) {
-      setStep1Errors((prev) => ({ ...prev, password: undefined }));
+    if (step2Errors.password) {
+      setStep2Errors((prev) => ({ ...prev, password: undefined }));
     }
-
-    // If password was autofilled, auto-sync confirmPassword since iOS
-    // may not reliably fill the confirmation field
     if (wasAutoFilled) {
       fieldValuesRef.current.confirmPassword = text;
       setConfirmPassword(text);
-      if (step1Errors.confirmPassword) {
-        setStep1Errors((prev) => ({ ...prev, confirmPassword: undefined }));
+      if (step2Errors.confirmPassword) {
+        setStep2Errors((prev) => ({ ...prev, confirmPassword: undefined }));
       }
     }
-  }, [step1Errors.password, step1Errors.confirmPassword]);
+  }, [step2Errors.password, step2Errors.confirmPassword]);
 
   const handlePasswordNativeChange = useCallback((e: { nativeEvent: { text: string } }) => {
     const text = e.nativeEvent.text;
-    if (text !== password) {
-      handlePasswordChange(text);
-    }
+    if (text !== password) handlePasswordChange(text);
   }, [password, handlePasswordChange]);
 
   const handleConfirmPasswordChange = useCallback((text: string) => {
     fieldValuesRef.current.confirmPassword = text;
     setConfirmPassword(text);
-    if (step1Errors.confirmPassword) {
-      setStep1Errors((prev) => ({ ...prev, confirmPassword: undefined }));
+    if (step2Errors.confirmPassword) {
+      setStep2Errors((prev) => ({ ...prev, confirmPassword: undefined }));
     }
-  }, [step1Errors.confirmPassword]);
+  }, [step2Errors.confirmPassword]);
 
   const handleConfirmPasswordNativeChange = useCallback((e: { nativeEvent: { text: string } }) => {
     const text = e.nativeEvent.text;
-    if (text !== confirmPassword) {
-      handleConfirmPasswordChange(text);
-    }
+    if (text !== confirmPassword) handleConfirmPasswordChange(text);
   }, [confirmPassword, handleConfirmPasswordChange]);
 
   const handleEmailChange = useCallback((text: string) => {
     fieldValuesRef.current.email = text;
     setEmail(text);
-    if (step1Errors.email) {
-      setStep1Errors((prev) => ({ ...prev, email: undefined }));
+    if (step2Errors.email) {
+      setStep2Errors((prev) => ({ ...prev, email: undefined }));
     }
-  }, [step1Errors.email]);
+  }, [step2Errors.email]);
 
   const handleFirstNameChange = useCallback((text: string) => {
     fieldValuesRef.current.firstName = text;
     setFirstName(text);
-    if (step2Errors.firstName) {
-      setStep2Errors((prev) => ({ ...prev, firstName: undefined }));
+    if (step3Errors.firstName) {
+      setStep3Errors((prev) => ({ ...prev, firstName: undefined }));
     }
-  }, [step2Errors.firstName]);
+  }, [step3Errors.firstName]);
 
   const handleLastNameChange = useCallback((text: string) => {
     fieldValuesRef.current.lastName = text;
     setLastName(text);
-    if (step2Errors.lastName) {
-      setStep2Errors((prev) => ({ ...prev, lastName: undefined }));
+    if (step3Errors.lastName) {
+      setStep3Errors((prev) => ({ ...prev, lastName: undefined }));
     }
-  }, [step2Errors.lastName]);
+  }, [step3Errors.lastName]);
 
   const handlePhoneChange = useCallback((text: string) => {
     let digitsOnly = text.replace(/\D/g, '');
-    // iOS autofill may include the country code (e.g. "14165551234" for +1).
-    // Strip the dial prefix digits so only the local number remains.
     const dialDigits = selectedCountry.dial.replace(/\D/g, '');
     if (
       digitsOnly.length > selectedCountry.maxDigits &&
@@ -373,13 +388,12 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     const limited = digitsOnly.slice(0, selectedCountry.maxDigits);
     fieldValuesRef.current.phone = limited;
     setPhone(limited);
-    if (step2Errors.phone) {
-      setStep2Errors((prev) => ({ ...prev, phone: undefined }));
+    if (step3Errors.phone) {
+      setStep3Errors((prev) => ({ ...prev, phone: undefined }));
     }
-  }, [selectedCountry, step2Errors.phone]);
+  }, [selectedCountry, step3Errors.phone]);
 
-  // Native-event fallback: catch autofill writes that bypass onChangeText.
-  // Wired to onChange + onEndEditing on every text field.
+  // Native-event fallback for autofill writes that bypass onChangeText.
   const captureNative = useCallback(
     (
       field: 'email' | 'firstName' | 'lastName' | 'phone',
@@ -411,55 +425,45 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     [password],
   );
 
+  // ── Redeem helper (shared by submit + retry) ──
+  const redeemCode = useCallback(
+    async (rawCode: string): Promise<boolean> => {
+      setIsRedeeming(true);
+      setRedeemError(null);
+      try {
+        await companyService.redeemInvite(rawCode);
+        // Best-effort membership detection so the app knows the company.
+        await refreshMembership();
+        setIsRedeeming(false);
+        return true;
+      } catch (err) {
+        const message =
+          err && typeof err === 'object' && 'message' in err
+            ? (err as { message: string }).message
+            : 'We could not redeem that code. Please try again.';
+        setRedeemError(message);
+        setIsRedeeming(false);
+        return false;
+      }
+    },
+    [refreshMembership],
+  );
+
   // ── Step Navigation ──────────────────────
 
-  // Validate Step 2 from the reconciled (autofill-aware) values and advance.
-  const advanceFromStep2 = useCallback(() => {
-    const v = fieldValuesRef.current;
-    const fn = v.firstName || firstName;
-    const ln = v.lastName || lastName;
-    const ph = v.phone || phone;
-    if (fn !== firstName) setFirstName(fn);
-    if (ln !== lastName) setLastName(ln);
-    if (ph !== phone) setPhone(ph);
-
-    const errors = validateStep2(fn, ln, ph, selectedCountry);
-    setStep2Errors(errors);
-    if (Object.keys(errors).length > 0) return;
-    setCurrentStep(3);
-  }, [firstName, lastName, phone, selectedCountry]);
-
-  // iOS "AutoFill from Contacts" fills sibling (non-focused) fields without
-  // firing onChangeText/onChange/onEndEditing in React Native, so their text
-  // never reaches JS — the field shows the value (yellow) but state stays
-  // empty and validation says "required". Sweep first responder across the
-  // Step 2 fields: focusing the next field blurs the previous one, which DOES
-  // emit onEndEditing with the native (autofilled) text; captureNative then
-  // writes it into fieldValuesRef. Staggered so each field holds focus long
-  // enough to flush before we dismiss the keyboard and validate.
-  const flushAndAdvanceStep2 = useCallback(() => {
-    // Generous, staggered timings: each field must hold first-responder long
-    // enough for its onEndEditing (carrying the autofilled native text) to land
-    // in fieldValuesRef before the next focus move. Too-tight gaps were letting
-    // validation run on a still-empty ref → "required" flash on a filled field.
-    firstNameRef.current?.focus();
-    setTimeout(() => lastNameRef.current?.focus(), 60); // blurs firstName → onEndEditing(firstName)
-    setTimeout(() => phoneRef.current?.focus(), 120); // blurs lastName → onEndEditing(lastName)
-    setTimeout(() => phoneRef.current?.blur(), 180); // emits onEndEditing(phone)
-    setTimeout(() => {
-      Keyboard.dismiss();
-      advanceFromStep2(); // reads fieldValuesRef after all events have landed
-    }, 260);
-  }, [advanceFromStep2]);
-
   const handleNext = useCallback(() => {
+    Keyboard.dismiss();
     if (error) clearError();
-
-    // Reconcile native-autofilled values that may not have reached state.
     const v = fieldValuesRef.current;
 
     if (currentStep === 1) {
-      Keyboard.dismiss();
+      const c = v.code || code;
+      if (c !== code) setCode(c);
+      const errors = validateStep1(c);
+      setStep1Errors(errors);
+      if (Object.keys(errors).length > 0) return;
+      setCurrentStep(2);
+    } else if (currentStep === 2) {
       const e = v.email || email;
       const p = v.password || password;
       const cp = v.confirmPassword || confirmPassword;
@@ -467,22 +471,12 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
       if (p !== password) setPassword(p);
       if (cp !== confirmPassword) setConfirmPassword(cp);
 
-      const errors = validateStep1(e, p, cp);
-      setStep1Errors(errors);
+      const errors = validateStep2(e, p, cp);
+      setStep2Errors(errors);
       if (Object.keys(errors).length > 0) return;
-      setCurrentStep(2);
-    } else if (currentStep === 2) {
-      // All three already captured (manual typing or focused autofill) →
-      // advance immediately, no focus sweep / no flicker. If any is missing it
-      // may be un-emitted contact-autofill → flush it out before validating.
-      if (v.firstName && v.lastName && v.phone) {
-        Keyboard.dismiss();
-        advanceFromStep2();
-      } else {
-        flushAndAdvanceStep2();
-      }
+      setCurrentStep(3);
     }
-  }, [currentStep, email, password, confirmPassword, error, clearError, advanceFromStep2, flushAndAdvanceStep2]);
+  }, [currentStep, code, email, password, confirmPassword, error, clearError]);
 
   const handleBack = useCallback(() => {
     if (error) clearError();
@@ -493,55 +487,98 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     }
   }, [currentStep, navigation, error, clearError]);
 
-  // ── Submit ───────────────────────────────
+  // ── Submit (register provider, then redeem invite) ──
 
-  const handleRegister = useCallback(async () => {
-    if (!selectedRole || !acceptedTerms) return;
+  const handleSubmit = useCallback(async () => {
     Keyboard.dismiss();
+    if (error) clearError();
 
+    const v = fieldValuesRef.current;
+    const fn = v.firstName || firstName;
+    const ln = v.lastName || lastName;
+    const ph = v.phone || phone;
+    if (fn !== firstName) setFirstName(fn);
+    if (ln !== lastName) setLastName(ln);
+    if (ph !== phone) setPhone(ph);
+
+    const step3 = validateStep3(fn, ln, ph, selectedCountry);
+    setStep3Errors(step3);
+    if (Object.keys(step3).length > 0) return;
+
+    const inviteCode = normalizeCode(v.code || code);
+
+    let code3: string | null = null;
     try {
-      const code = await register({
+      // The auth store defers applying the auth response (pendingRegistration),
+      // but authService.register() sets the API client's Bearer token
+      // synchronously, so the redeem call below is authenticated.
+      code3 = await register({
         email: email.trim().toLowerCase(),
-        phone: `${selectedCountry.dial}${phone.replace(/\D/g, '')}`,
+        phone: `${selectedCountry.dial}${ph.replace(/\D/g, '')}`,
         password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        role: selectedRole,
+        firstName: fn.trim(),
+        lastName: ln.trim(),
+        role: 'provider',
         acceptedTermsVersion: Config.termsVersion,
       });
-      // Show recovery code modal first. The auth store deferred applying
-      // the auth response into `pendingRegistration`, so the navigator
-      // stays here until the user acknowledges the code.
-      if (code) {
-        setRecoveryCodeToShow(code);
-      } else {
-        // No code returned (shouldn't happen for a real register, but
-        // don't strand the user on the form).
-        commitPendingRegistration();
-      }
+      setAccountCreated(true);
     } catch {
-      // Error is displayed by the store
+      // Registration error is surfaced by the auth store (error banner).
+      return;
     }
-  }, [email, password, phone, selectedCountry, firstName, lastName, selectedRole, acceptedTerms, register]);
 
-  // ── Legal Links ──────────────────────────
+    // Account now exists. Try to redeem the invite. If it fails, we keep the
+    // user here with an inline message + retry affordance instead of stranding
+    // them; their account is already created.
+    const ok = await redeemCode(inviteCode);
+    if (!ok) {
+      // Bounce back to the code step so they can fix it.
+      setCurrentStep(1);
+      return;
+    }
 
-  const handleOpenTerms = useCallback(() => {
-    setShowTermsModal(true);
-  }, []);
+    // Success: reveal the recovery code, then commit the deferred auth so the
+    // navigator switches into the app.
+    if (code3) {
+      setRecoveryCodeToShow(code3);
+    } else {
+      commitPendingRegistration();
+    }
+  }, [
+    error,
+    clearError,
+    firstName,
+    lastName,
+    phone,
+    selectedCountry,
+    code,
+    email,
+    password,
+    register,
+    redeemCode,
+    commitPendingRegistration,
+  ]);
 
-  const handleOpenPrivacy = useCallback(() => {
-    setShowPrivacyModal(true);
-  }, []);
+  // Retry redeeming the code after the account already exists (registration
+  // succeeded but the first redeem failed, e.g. wrong/expired code).
+  const handleRetryRedeem = useCallback(async () => {
+    Keyboard.dismiss();
+    const v = fieldValuesRef.current;
+    const c = normalizeCode(v.code || code);
+    const errors = validateStep1(c);
+    setStep1Errors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const ok = await redeemCode(c);
+    if (ok) {
+      // We can't re-read the recovery code (the register call already
+      // consumed it), so just enter the app.
+      commitPendingRegistration();
+    }
+  }, [code, redeemCode, commitPendingRegistration]);
 
   // ── Step Validity ────────────────────────
-  // Steps 1 & 2 are validated at submit time in handleNext (with autofill
-  // reconciliation), not via derived state, so the button isn't wrongly
-  // disabled when autofill leaves state out of sync. phoneDigits is still
-  // used by the live "N/M digits" counter below.
   const phoneDigits = phone.replace(/\D/g, '');
-
-  const isStep3Valid = selectedRole !== null && acceptedTerms;
 
   // ── Render Helpers ───────────────────────
 
@@ -571,9 +608,53 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
   function renderStep1(): React.JSX.Element {
     return (
       <GlassCard variant="dark" padding={24} style={styles.stepCard}>
+        <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>Join your company</Text>
+        <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
+          Enter the {INVITE_CODE_LENGTH}-character code your employer gave you to
+          register as a collaborator.
+        </Text>
+
+        <GlassInput
+          ref={codeInputRef}
+          label="COMPANY CODE"
+          value={code}
+          onChangeText={handleCodeChange}
+          onChange={handleCodeNativeChange}
+          onEndEditing={handleCodeNativeChange}
+          placeholder="ABCD1234"
+          autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="off"
+          maxLength={INVITE_CODE_LENGTH}
+          returnKeyType={accountCreated ? 'done' : 'next'}
+          onSubmitEditing={accountCreated ? handleRetryRedeem : handleNext}
+          editable={!isLoading && !isRedeeming}
+          error={step1Errors.code}
+          containerStyle={styles.fieldSpacing}
+        />
+
+        {/* Redeem error (e.g. wrong/expired code, or email mismatch). */}
+        {redeemError ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{redeemError}</Text>
+          </View>
+        ) : null}
+
+        {accountCreated ? (
+          <Text style={[styles.helperNote, { color: theme.textTertiary }]}>
+            Your account was created. Enter your company code to finish joining.
+          </Text>
+        ) : null}
+      </GlassCard>
+    );
+  }
+
+  function renderStep2(): React.JSX.Element {
+    return (
+      <GlassCard variant="dark" padding={24} style={styles.stepCard}>
         <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>Create your account</Text>
         <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
-          Enter your email and create a secure password
+          Use the same email your company invited, then create a secure password.
         </Text>
 
         {/* Email */}
@@ -584,7 +665,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           onChangeText={handleEmailChange}
           onChange={(e) => captureNative('email', e)}
           onEndEditing={(e) => captureNative('email', e)}
-          placeholder="you@example.com"
+          placeholder="you@company.com"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -593,7 +674,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           returnKeyType="next"
           onSubmitEditing={() => passwordInputRef.current?.focus()}
           editable={!isLoading}
-          error={step1Errors.email}
+          error={step2Errors.email}
           containerStyle={styles.fieldSpacing}
         />
 
@@ -604,7 +685,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
             style={[
               GlassStyles.input,
               styles.passwordRow,
-              step1Errors.password ? GlassStyles.inputError : undefined,
+              step2Errors.password ? GlassStyles.inputError : undefined,
             ]}
           >
             <TextInput
@@ -635,11 +716,10 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               </Text>
             </Pressable>
           </View>
-          {step1Errors.password ? (
-            <Text style={styles.fieldError}>{step1Errors.password}</Text>
+          {step2Errors.password ? (
+            <Text style={styles.fieldError}>{step2Errors.password}</Text>
           ) : null}
 
-          {/* Password Strength Indicator */}
           {passwordStrengthInfo ? (
             <View style={styles.strengthContainer}>
               <View style={styles.strengthBarTrack}>
@@ -660,10 +740,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                 ]}
               >
                 <Text
-                  style={[
-                    styles.strengthLabel,
-                    { color: passwordStrengthInfo.color },
-                  ]}
+                  style={[styles.strengthLabel, { color: passwordStrengthInfo.color }]}
                 >
                   {passwordStrengthInfo.label}
                 </Text>
@@ -688,26 +765,26 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           returnKeyType="done"
           onSubmitEditing={handleNext}
           editable={!isLoading}
-          error={step1Errors.confirmPassword}
+          error={step2Errors.confirmPassword}
           containerStyle={styles.fieldSpacing}
         />
       </GlassCard>
     );
   }
 
-  function renderStep2(): React.JSX.Element {
+  function renderStep3(): React.JSX.Element {
     return (
       <GlassCard variant="dark" padding={24} style={styles.stepCard}>
         <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>What is your name?</Text>
         <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
-          This will be visible to other users on the platform
+          This will be visible to your company and other users on the platform.
         </Text>
 
         {/* First Name */}
         <GlassInput
           ref={firstNameRef}
           label="FIRST NAME"
-          defaultValue={firstName}
+          value={firstName}
           onChangeText={handleFirstNameChange}
           onChange={(e) => captureNative('firstName', e)}
           onEndEditing={(e) => captureNative('firstName', e)}
@@ -719,7 +796,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           returnKeyType="next"
           onSubmitEditing={() => lastNameRef.current?.focus()}
           editable={!isLoading}
-          error={step2Errors.firstName}
+          error={step3Errors.firstName}
           containerStyle={styles.fieldSpacing}
         />
 
@@ -727,7 +804,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
         <GlassInput
           ref={lastNameRef}
           label="LAST NAME"
-          defaultValue={lastName}
+          value={lastName}
           onChangeText={handleLastNameChange}
           onChange={(e) => captureNative('lastName', e)}
           onEndEditing={(e) => captureNative('lastName', e)}
@@ -739,7 +816,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           returnKeyType="next"
           onSubmitEditing={() => phoneRef.current?.focus()}
           editable={!isLoading}
-          error={step2Errors.lastName}
+          error={step3Errors.lastName}
           containerStyle={styles.fieldSpacing}
         />
 
@@ -747,12 +824,11 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
         <View style={styles.fieldSpacing}>
           <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>PHONE NUMBER</Text>
           <View style={styles.phoneRow}>
-            {/* Country code selector */}
             <TouchableOpacity
               style={[
                 GlassStyles.input,
                 styles.countryCodeButton,
-                step2Errors.phone ? GlassStyles.inputError : undefined,
+                step3Errors.phone ? GlassStyles.inputError : undefined,
               ]}
               onPress={() => setShowCountryPicker(true)}
               activeOpacity={0.7}
@@ -763,10 +839,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               <Text style={[styles.countryArrow, { color: theme.textTertiary }]}>{'>'}</Text>
             </TouchableOpacity>
 
-            {/* Phone input */}
             <GlassInput
               ref={phoneRef}
-              defaultValue={phone}
+              value={phone}
               onChangeText={handlePhoneChange}
               onChange={(e) => captureNative('phone', e)}
               onEndEditing={(e) => captureNative('phone', e)}
@@ -778,9 +853,9 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
               textContentType="telephoneNumber"
               maxLength={selectedCountry.maxDigits + 5}
               returnKeyType="done"
-              onSubmitEditing={handleNext}
+              onSubmitEditing={handleSubmit}
               editable={!isLoading}
-              error={step2Errors.phone}
+              error={step3Errors.phone}
               containerStyle={styles.phoneInputContainer}
             />
           </View>
@@ -842,106 +917,21 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
     );
   }
 
-  function renderStep3(): React.JSX.Element {
-    return (
-      <GlassCard variant="dark" padding={24} style={styles.stepCard}>
-        <Text style={[styles.stepTitle, { color: theme.textPrimary }]}>How will you use VISP?</Text>
-        <Text style={[styles.stepSubtitle, { color: theme.textSecondary }]}>
-          You can change this later in your profile settings
-        </Text>
-
-        {/* Role Selection */}
-        <View style={styles.roleContainer}>
-          {ROLE_OPTIONS.map((option) => {
-            const isSelected = selectedRole === option.value;
-            return (
-              <TouchableOpacity
-                key={option.value}
-                onPress={() => setSelectedRole(option.value)}
-                activeOpacity={0.7}
-                disabled={isLoading}
-              >
-                <GlassCard
-                  variant="standard"
-                  padding={Spacing.lg}
-                  style={StyleSheet.flatten([
-                    styles.roleCard,
-                    isSelected && styles.roleCardSelected,
-                  ])}
-                >
-                  <View style={styles.roleCardHeader}>
-                    <Text
-                      style={[
-                        styles.roleCardTitle,
-                        { color: theme.textPrimary },
-                        isSelected && styles.roleCardTitleSelected,
-                      ]}
-                    >
-                      {option.title}
-                    </Text>
-                    <View
-                      style={[
-                        styles.radioOuter,
-                        isSelected && styles.radioOuterSelected,
-                      ]}
-                    >
-                      {isSelected ? (
-                        <View style={styles.radioInner} />
-                      ) : null}
-                    </View>
-                  </View>
-                  <Text style={[styles.roleCardDescription, { color: theme.textSecondary }]}>
-                    {option.description}
-                  </Text>
-                </GlassCard>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Terms Checkbox */}
-        <TouchableOpacity
-          style={styles.termsRow}
-          onPress={() => setAcceptedTerms((prev) => !prev)}
-          activeOpacity={0.7}
-          disabled={isLoading}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              acceptedTerms && styles.checkboxChecked,
-            ]}
-          >
-            {acceptedTerms ? (
-              <Text style={styles.checkmark}>{'  '}</Text>
-            ) : null}
-          </View>
-          <Text style={[styles.termsText, { color: theme.textSecondary }]}>
-            {'I agree to the '}
-            <Text style={styles.termsLink} onPress={handleOpenTerms}>
-              Terms of Service
-            </Text>
-            {' and '}
-            <Text style={styles.termsLink} onPress={handleOpenPrivacy}>
-              Privacy Policy
-            </Text>
-          </Text>
-        </TouchableOpacity>
-      </GlassCard>
-    );
-  }
-
   // ── Main Render ──────────────────────────
 
-  // Steps 1 & 2 don't hard-gate the button on derived state validity, because
-  // iOS/password-manager autofill can leave state out of sync with the visible
-  // (native) field, which would wrongly disable the button. handleNext
-  // reconciles autofilled values and surfaces inline errors if truly invalid.
-  // Step 3 (role + terms) stays gated since those are explicit user choices.
-  const canProceed =
-    currentStep === 1 ||
-    currentStep === 2 ||
-    (currentStep === 3 && isStep3Valid);
+  const busy = isLoading || isRedeeming;
+
+  // Primary action label + handler depend on the step and whether the account
+  // already exists (post-register redeem retry).
+  let primaryTitle = 'Continue';
+  let primaryAction: () => void = handleNext;
+  if (currentStep === 1 && accountCreated) {
+    primaryTitle = 'Join company';
+    primaryAction = handleRetryRedeem;
+  } else if (currentStep === TOTAL_STEPS) {
+    primaryTitle = 'Create account & join';
+    primaryAction = handleSubmit;
+  }
 
   return (
     <Screen>
@@ -956,24 +946,21 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
           showsVerticalScrollIndicator={false}
         >
           <Animated.View
-            style={{
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            }}
+            style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
           >
             {/* Back Button */}
             <GlassButton
               title="Back"
               variant="outline"
               onPress={handleBack}
-              disabled={isLoading}
+              disabled={busy}
               style={styles.backButton}
             />
 
             {/* Progress Bar */}
             {renderProgressBar()}
 
-            {/* Server Error */}
+            {/* Server Error (registration) */}
             {error ? (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorBannerText}>{error}</Text>
@@ -995,16 +982,16 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                   title="Back"
                   variant="outline"
                   onPress={handleBack}
-                  disabled={isLoading}
+                  disabled={busy}
                   style={styles.backActionButton}
                 />
               )}
               <GlassButton
-                title={currentStep === TOTAL_STEPS ? 'Create Account' : 'Continue'}
+                title={primaryTitle}
                 variant="glow"
-                onPress={currentStep === TOTAL_STEPS ? handleRegister : handleNext}
-                disabled={!canProceed || isLoading}
-                loading={isLoading}
+                onPress={primaryAction}
+                disabled={busy}
+                loading={busy}
                 style={StyleSheet.flatten([
                   styles.continueButton,
                   currentStep === 1 && styles.continueButtonFull,
@@ -1015,10 +1002,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
             {/* Login Link */}
             <View style={styles.loginRow}>
               <Text style={[styles.loginLabel, { color: theme.textSecondary }]}>Already have an account? </Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Login')}
-                disabled={isLoading}
-              >
+              <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={busy}>
                 <Text style={styles.loginLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
@@ -1026,36 +1010,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Local legal docs (no external browser) */}
-      <Modal
-        visible={showTermsModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowTermsModal(false)}
-      >
-        <View style={legalModalStyles.header}>
-          <TouchableOpacity onPress={() => setShowTermsModal(false)}>
-            <Text style={legalModalStyles.closeText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-        <TermsScreen />
-      </Modal>
-
-      <Modal
-        visible={showPrivacyModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowPrivacyModal(false)}
-      >
-        <View style={legalModalStyles.header}>
-          <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
-            <Text style={legalModalStyles.closeText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-        <PrivacyPolicyScreen />
-      </Modal>
-
-      {/* Recovery code reveal after successful registration */}
+      {/* Recovery code reveal after a successful register + redeem */}
       <Modal
         visible={recoveryCodeToShow !== null}
         transparent
@@ -1078,9 +1033,7 @@ function RegisterScreen({ navigation }: Props): React.JSX.Element {
                 {recoveryCodeToShow}
               </Text>
             </View>
-            <Text style={recoveryModalStyles.hint}>
-              Long-press the code to copy.
-            </Text>
+            <Text style={recoveryModalStyles.hint}>Long-press the code to copy.</Text>
             <TouchableOpacity
               onPress={() => {
                 setRecoveryCodeToShow(null);
@@ -1148,24 +1101,8 @@ const recoveryModalStyles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 
-const legalModalStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    backgroundColor: Colors.background,
-  },
-  closeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-});
-
 // ──────────────────────────────────────────────
-// Styles
+// Styles (mirrors RegisterScreen)
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -1226,8 +1163,6 @@ const styles = StyleSheet.create({
   stepCard: {
     marginBottom: Spacing.xxl,
   },
-
-  // ── Step Header ───────────────────────
   stepTitle: {
     fontSize: 24,
     fontWeight: '700',
@@ -1253,6 +1188,11 @@ const styles = StyleSheet.create({
     ...Typography.footnote,
     color: '#E74C3C',
     textAlign: 'center',
+  },
+  helperNote: {
+    ...Typography.caption,
+    color: 'rgba(255, 255, 255, 0.45)',
+    marginTop: Spacing.sm,
   },
 
   // ── Fields ────────────────────────────
@@ -1318,100 +1258,6 @@ const styles = StyleSheet.create({
   strengthLabel: {
     ...Typography.caption,
     fontWeight: '600',
-  },
-
-  // ── Role Selection ────────────────────
-  roleContainer: {
-    gap: Spacing.md,
-    marginBottom: Spacing.xxl,
-  },
-  roleCard: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  roleCardSelected: {
-    borderColor: 'rgba(120, 80, 255, 0.6)',
-    backgroundColor: 'rgba(120, 80, 255, 0.1)',
-    ...Platform.select({
-      ios: {
-        shadowColor: 'rgba(120, 80, 255, 0.4)',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 12,
-      },
-      android: { elevation: 4 },
-    }),
-  },
-  roleCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  roleCardTitle: {
-    ...Typography.headline,
-    color: '#FFFFFF',
-  },
-  roleCardTitleSelected: {
-    color: 'rgba(160, 130, 255, 1)',
-  },
-  roleCardDescription: {
-    ...Typography.footnote,
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-  radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOuterSelected: {
-    borderColor: 'rgba(120, 80, 255, 0.8)',
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: 'rgba(120, 80, 255, 0.8)',
-  },
-
-  // ── Terms ─────────────────────────────
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  checkboxChecked: {
-    backgroundColor: 'rgba(120, 80, 255, 0.8)',
-    borderColor: 'rgba(120, 80, 255, 0.8)',
-  },
-  checkmark: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  termsText: {
-    ...Typography.footnote,
-    color: 'rgba(255, 255, 255, 0.5)',
-    flex: 1,
-    lineHeight: 20,
-  },
-  termsLink: {
-    color: 'rgba(120, 80, 255, 0.9)',
-    fontWeight: '500',
   },
 
   // ── Spacer ────────────────────────────
@@ -1557,4 +1403,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default RegisterScreen;
+export default CompanyJoinScreen;
