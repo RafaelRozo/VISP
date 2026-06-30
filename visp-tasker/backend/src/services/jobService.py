@@ -43,9 +43,15 @@ from src.events.jobEvents import (
     emit_sla_snapshot_captured,
 )
 from src.models.job import Job, JobPriority, JobStatus
+from src.models.provider import ProviderLevel
 from src.models.sla import SLAProfile
 from src.models.taxonomy import ServiceTask
 from src.services.jobStateManager import ActorType, validate_transition
+from src.services.pricingEngine import (
+    HOURLY_RATES,
+    LEVEL_PRICING_MODEL,
+    finalize_time_based_price,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +237,7 @@ async def create_job(
     priority: str = "standard",
     is_emergency: bool = False,
     customer_notes_json: list[str] | None = None,
+    quantity: Decimal | None = None,
 ) -> Job:
     """Create a new job with SLA snapshot from sla_profiles.
 
@@ -317,6 +324,15 @@ async def create_job(
         job.requested_time_end = schedule.get("requested_time_end")
         job.flexible_schedule = schedule.get("flexible_schedule", False)
 
+    # 5b. Customer-confirmed quantity (PP4a). Only honoured for tasks that allow
+    # it; clamped to the task's min_quantity. Ignored otherwise (reprice then
+    # falls back to the catalog estimate).
+    if quantity is not None and task.allows_quantity:
+        q = Decimal(str(quantity))
+        if q > 0:
+            min_q = task.min_quantity or Decimal(1)
+            job.quantity = max(q, min_q)
+
     db.add(job)
     await db.flush()
 
@@ -392,11 +408,52 @@ async def update_job_status(
     job.status = target_status
     now = datetime.now(timezone.utc)
 
+    # Fetch the task to determine level for pricing logic
+    task_stmt = select(ServiceTask).where(ServiceTask.id == job.task_id)
+    task_result = await db.execute(task_stmt)
+    task = task_result.scalar_one_or_none()
+    task_level = task.level if task else None
+
     # Set lifecycle timestamps based on the new status
     if target_status == JobStatus.IN_PROGRESS:
         job.started_at = now
+
+        # For L1/L2 time-based jobs: set pricing_model and hourly_rate
+        if task_level in (ProviderLevel.LEVEL_1, ProviderLevel.LEVEL_2):
+            job.pricing_model = LEVEL_PRICING_MODEL[task_level]
+            hourly_rates = HOURLY_RATES.get(task_level)
+            if hourly_rates and job.hourly_rate_cents is None:
+                job.hourly_rate_cents = hourly_rates["default"]
+
+        # For L3/L4: set pricing model if not already set
+        elif task_level in (ProviderLevel.LEVEL_3, ProviderLevel.LEVEL_4):
+            if job.pricing_model is None:
+                job.pricing_model = LEVEL_PRICING_MODEL[task_level]
+
     elif target_status == JobStatus.COMPLETED:
         job.completed_at = now
+
+        # For L1/L2 time-based jobs: finalize the price
+        if job.pricing_model == "TIME_BASED":
+            await finalize_time_based_price(db, job.id)
+
+        # PP4b — auto-capture the held authorization (only jobs that went through
+        # the destination-charge hold). An overage above the ceiling is surfaced
+        # for customer approval rather than failing completion; Stripe errors are
+        # logged and don't block completion.
+        if job.authorized_amount_cents and job.stripe_payment_intent_id:
+            from src.services import job_payment_service as jp
+
+            try:
+                await jp.capture_job(db, job)
+            except jp.OverageApprovalRequiredError:
+                logger.info(
+                    "Job %s completed; actual exceeds authorized ceiling — "
+                    "awaiting customer overage approval before capture.",
+                    job.id,
+                )
+            except Exception:  # noqa: BLE001 — never block completion on capture
+                logger.exception("Auto-capture failed for job %s at completion", job.id)
 
     await db.flush()
 
@@ -564,55 +621,99 @@ async def get_jobs_by_customer(
     )
 
 
-async def get_jobs_by_provider(
-    db: AsyncSession,
-    provider_id: uuid.UUID,
-    *,
-    status_filter: str | None = None,
-    page: int = 1,
-    page_size: int = 20,
-) -> PaginatedResult:
-    """Return a paginated list of jobs assigned to a specific provider.
-
-    Joins through job_assignments to find jobs where the provider has
-    an active (non-declined/expired) assignment.
-    """
-    from src.models.job import AssignmentStatus, JobAssignment
-
-    # Subquery: job IDs assigned to this provider
-    assignment_subq = (
-        select(JobAssignment.job_id)
-        .where(
-            JobAssignment.provider_id == provider_id,
-            JobAssignment.status.not_in([
-                AssignmentStatus.DECLINED,
-                AssignmentStatus.EXPIRED,
-            ]),
-        )
-        .scalar_subquery()
-    )
-
-    filters = [Job.id.in_(assignment_subq)]
-    if status_filter:
-        filters.append(Job.status == JobStatus(status_filter))
-
-    # Count
-    count_stmt = select(func.count(Job.id)).where(*filters)
-    total_items: int = (await db.execute(count_stmt)).scalar_one()
-
-    # Data
-    data_stmt = (
-        select(Job)
-        .where(*filters)
-        .order_by(Job.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    jobs = (await db.execute(data_stmt)).scalars().all()
-
     return PaginatedResult(
         items=jobs,
         total_items=total_items,
         page=page,
         page_size=page_size,
     )
+
+
+async def queue_job(
+    db: AsyncSession,
+    job_id: uuid.UUID,
+) -> Job:
+    """Transition a job to PENDING and broadcast it to nearby qualified providers.
+
+    1. Update status to PENDING (if not already).
+    2. Find active providers who are qualified for this task.
+    3. Filter by distance (job location vs provider home + radius).
+    4. Create JobAssignment (OFFERED) for each match.
+    """
+    from src.models.provider import (
+        ProviderProfile,
+        ProviderProfileStatus,
+    )
+    from src.models.taxonomy import ProviderTaskQualification
+    from src.models.job import JobAssignment, AssignmentStatus
+    from src.services.geoService import haversine_distance
+
+    # 1. Fetch job
+    job = await get_job(db, job_id)
+    if not job:
+        raise JobNotFoundError(job_id)
+
+    # 1b. Update status to PENDING if currently DRAFT or PENDING_MATCH
+    # If already PENDING, we just re-broadcast
+    if job.status in [JobStatus.DRAFT, JobStatus.PENDING_MATCH]:
+        job = await update_job_status(db, job.id, JobStatus.PENDING, actor_type="system")
+
+    # 2. Find qualified providers
+    # query: Active profiles + Qualified for task
+    stmt = (
+        select(ProviderProfile)
+        .join(ProviderTaskQualification)
+        .where(
+            ProviderProfile.status == ProviderProfileStatus.ACTIVE,
+            ProviderTaskQualification.task_id == job.task_id,
+            ProviderTaskQualification.qualified.is_(True),
+        )
+    )
+    result = await db.execute(stmt)
+    candidates = result.scalars().all()
+
+    # 3. Filter by location & Create Assignments
+    assignments_created = 0
+    
+    # We might want to check if assignment already exists to avoid duplicates
+    existing_assign_stmt = (
+        select(JobAssignment.provider_id)
+        .where(JobAssignment.job_id == job.id)
+    )
+    existing_provider_ids = (await db.execute(existing_assign_stmt)).scalars().all()
+    existing_set = set(existing_provider_ids)
+
+    for provider in candidates:
+        if provider.id in existing_set:
+            continue
+            
+        # Location check
+        # If provider has no location, skip (or default to allow? skip for now)
+        if provider.home_latitude is None or provider.home_longitude is None:
+            continue
+
+        dist_km = haversine_distance(
+            float(job.service_latitude),
+            float(job.service_longitude),
+            float(provider.home_latitude),
+            float(provider.home_longitude),
+        )
+
+        # check if job is within provider's radius
+        if dist_km <= float(provider.service_radius_km):
+            # Create assignment
+            assignment = JobAssignment(
+                job_id=job.id,
+                provider_id=provider.id,
+                status=AssignmentStatus.OFFERED,
+                offered_at=datetime.now(timezone.utc),
+                # Expires in 30 mins or custom time?
+                offer_expires_at=datetime.now(timezone.utc) + timedelta(minutes=30), 
+            )
+            db.add(assignment)
+            assignments_created += 1
+
+    await db.commit()
+    logger.info(f"Queued job {job.id}: Broadcasted to {assignments_created} providers.")
+    
+    return job

@@ -1,10 +1,9 @@
 /**
- * VISP/Tasker - Chat Screen
+ * VISP - Chat Screen
  *
  * Full chat interface shared between customer and provider flows.
  * Displays message history with sent/received bubbles, text input,
- * typing indicator, and auto-scroll to newest message. Falls back
- * to local state when the API is not available in development.
+ * typing indicator, and auto-scroll to newest message.
  *
  * Navigation params: { jobId: string, otherUserName: string }
  */
@@ -22,6 +21,7 @@ import { RouteProp, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { get, post } from '../../services/apiClient';
+import { GlassBackground } from '../../components/glass';
 import ChatBubble from '../../components/ChatBubble';
 import ChatInput from '../../components/ChatInput';
 import type { ChatMessage, RootStackParamList } from '../../types';
@@ -32,46 +32,6 @@ import type { ChatMessage, RootStackParamList } from '../../types';
 
 type ChatRoute = RouteProp<RootStackParamList, 'Chat'>;
 
-// ---------------------------------------------------------------------------
-// Mock data for __DEV__ fallback
-// ---------------------------------------------------------------------------
-
-function createMockMessages(
-  jobId: string,
-  currentUserId: string,
-  otherUserName: string,
-): ChatMessage[] {
-  const now = Date.now();
-  return [
-    {
-      id: 'msg-001',
-      jobId,
-      senderId: 'other-user-001',
-      senderName: otherUserName,
-      message: `Hi, I am heading to your location for the service.`,
-      createdAt: new Date(now - 30 * 60 * 1000).toISOString(),
-      isOwnMessage: false,
-    },
-    {
-      id: 'msg-002',
-      jobId,
-      senderId: currentUserId,
-      senderName: 'You',
-      message: 'Great, I will be home. The door code is 1234.',
-      createdAt: new Date(now - 28 * 60 * 1000).toISOString(),
-      isOwnMessage: true,
-    },
-    {
-      id: 'msg-003',
-      jobId,
-      senderId: 'other-user-001',
-      senderName: otherUserName,
-      message: 'Got it, thanks! I should arrive in about 15 minutes.',
-      createdAt: new Date(now - 25 * 60 * 1000).toISOString(),
-      isOwnMessage: false,
-    },
-  ];
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -98,10 +58,7 @@ export default function ChatScreen(): React.JSX.Element {
       const data = await get<ChatMessage[]>(`/jobs/${jobId}/messages`);
       setMessages(data);
     } catch {
-      if (__DEV__) {
-        console.warn('DEV: Using mock data for chat messages');
-        setMessages(createMockMessages(jobId, currentUserId, otherUserName));
-      }
+      console.error('[ChatScreen] Failed to fetch messages');
     } finally {
       setIsLoading(false);
     }
@@ -138,14 +95,7 @@ export default function ChatScreen(): React.JSX.Element {
           prev.map((m) => (m.id === optimisticMessage.id ? sent : m)),
         );
       } catch {
-        if (__DEV__) {
-          console.warn('DEV: Message stored locally (API not available)');
-          // Simulate typing indicator from the other user
-          setIsTyping(true);
-          setTimeout(() => {
-            setIsTyping(false);
-          }, 2000);
-        }
+        console.error('[ChatScreen] Failed to send message');
         // Keep the optimistic message in the list regardless
       } finally {
         setIsSending(false);
@@ -203,24 +153,26 @@ export default function ChatScreen(): React.JSX.Element {
   // ---- Main render ----
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmpty}
-        ListFooterComponent={renderTypingIndicator}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={scrollToBottom}
-      />
-      <ChatInput onSend={handleSend} isSending={isSending} />
-    </KeyboardAvoidingView>
+    <GlassBackground>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderTypingIndicator}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={scrollToBottom}
+        />
+        <ChatInput onSend={handleSend} isSending={isSending} />
+      </KeyboardAvoidingView>
+    </GlassBackground>
   );
 }
 
@@ -231,7 +183,7 @@ export default function ChatScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
   },
   listContent: {
     paddingVertical: 16,
@@ -247,12 +199,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -263,14 +215,16 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   typingBubble: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   typingText: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     fontStyle: 'italic',
   },
 });

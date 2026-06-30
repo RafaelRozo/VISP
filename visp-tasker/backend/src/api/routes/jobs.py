@@ -111,124 +111,179 @@ async def book_job(
     user: CurrentUser,
     body: MobileJobCreateRequest,
 ) -> dict[str, Any]:
-    # Determine priority from emergency flag
-    priority = "emergency" if body.is_emergency else "standard"
-
-    # Build schedule from scheduledAt if provided
-    schedule = None
-    if body.scheduled_at:
-        schedule = {
-            "requested_date": body.scheduled_at.date(),
-            "requested_time_start": body.scheduled_at.time(),
-            "requested_time_end": None,
-            "flexible_schedule": False,
-        }
-
+    import traceback as tb_mod
     try:
-        job = await jobService.create_job(
-            db,
-            customer_id=user.id,
-            task_id=body.service_task_id,
-            location={
-                "latitude": body.location_lat,
-                "longitude": body.location_lng,
-                "address": body.location_address,
-                "city": body.city,
-                "province_state": body.province_state,
-                "postal_zip": body.postal_zip,
-                "country": body.country,
-                "unit": body.unit,
-            },
-            schedule=schedule,
-            priority=priority,
-            is_emergency=body.is_emergency,
-            customer_notes_json=body.notes or [],
-        )
-    except jobService.TaskNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        )
+        # Determine priority from emergency flag
+        priority = "emergency" if body.is_emergency else "standard"
 
-    # Transition from DRAFT to PENDING_MATCH to kick off matching
-    try:
-        job = await jobService.update_job_status(
-            db,
-            job.id,
-            "pending_match",
-            actor_type="system",
-        )
-    except (jobService.JobNotFoundError, jobService.InvalidTransitionError):
-        pass  # Stay in DRAFT if transition fails
+        # Build schedule from scheduledAt if provided
+        schedule = None
+        if body.scheduled_at:
+            schedule = {
+                "requested_date": body.scheduled_at.date(),
+                "requested_time_start": body.scheduled_at.time(),
+                "requested_time_end": None,
+                "flexible_schedule": False,
+            }
 
-    # Attempt price estimation
-    estimated_price = EstimatedPriceOut(
-        min_cents=job.quoted_price_cents or 0,
-        max_cents=job.quoted_price_cents or 0,
-        currency=job.currency,
-        is_emergency=job.is_emergency,
-        dynamic_multiplier=None,
-    )
+        try:
+            job = await jobService.create_job(
+                db,
+                customer_id=user.id,
+                task_id=body.service_task_id,
+                location={
+                    "latitude": body.location_lat,
+                    "longitude": body.location_lng,
+                    "address": body.location_address,
+                    "city": body.city,
+                    "province_state": body.province_state,
+                    "postal_zip": body.postal_zip,
+                    "country": body.country,
+                    "unit": body.unit,
+                },
+                schedule=schedule,
+                priority=priority,
+                is_emergency=body.is_emergency,
+                customer_notes_json=body.notes or [],
+                quantity=body.quantity,
+            )
+        except jobService.TaskNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+            )
 
-    # Try to calculate from the pricing engine
-    try:
-        from src.services.pricingEngine import calculate_price as calc_price
-
-        estimate = await calc_price(
-            db,
-            task_id=job.task_id,
-            latitude=job.service_latitude,
-            longitude=job.service_longitude,
-            requested_date=job.requested_date,
-            is_emergency=job.is_emergency,
-            country=job.service_country,
-        )
-        estimated_price = EstimatedPriceOut(
-            min_cents=estimate.final_price_min_cents,
-            max_cents=estimate.final_price_max_cents,
-            currency=estimate.currency,
-            is_emergency=estimate.is_emergency,
-            dynamic_multiplier=estimate.dynamic_multiplier,
-        )
-
-        # Update the job with the quoted price
-        job.quoted_price_cents = estimate.final_price_min_cents
-        job.commission_rate = estimate.commission_rate_default
-        job.commission_amount_cents = int(
-            Decimal(str(estimate.final_price_min_cents))
-            * estimate.commission_rate_default
-        )
-        job.provider_payout_cents = (
-            estimate.final_price_min_cents - job.commission_amount_cents
-        )
-        await db.flush()
-    except Exception as exc:
-        logger.warning("Price estimation failed for job %s: %s", job.id, exc)
-
-    # Start matching (best-effort for MVP)
-    try:
-        from src.services.matchingEngine import assign_provider, find_matching_providers
-
-        match_result = await find_matching_providers(db, job, max_results=1)
-        if match_result["matches"]:
-            best = match_result["matches"][0]
-            await assign_provider(
+        # Transition from DRAFT to PENDING_MATCH to kick off matching
+        try:
+            job = await jobService.update_job_status(
                 db,
                 job.id,
-                best["provider_id"],
-                match_score=float(best["composite_score"]),
+                "pending_match",
+                actor_type="system",
             )
+        except (jobService.JobNotFoundError, jobService.InvalidTransitionError):
+            pass  # Stay in DRAFT if transition fails
+
+        # Attempt price estimation
+        estimated_price = EstimatedPriceOut(
+            min_cents=job.quoted_price_cents or 0,
+            max_cents=job.quoted_price_cents or 0,
+            currency=job.currency,
+            is_emergency=job.is_emergency,
+            dynamic_multiplier=None,
+        )
+
+        # Try to calculate from the pricing engine
+        try:
+            from src.services.pricingEngine import calculate_price as calc_price
+
+            estimate = await calc_price(
+                db,
+                task_id=job.task_id,
+                latitude=job.service_latitude,
+                longitude=job.service_longitude,
+                requested_date=job.requested_date,
+                is_emergency=job.is_emergency,
+                country=job.service_country,
+            )
+            estimated_price = EstimatedPriceOut(
+                min_cents=estimate.final_price_min_cents,
+                max_cents=estimate.final_price_max_cents,
+                currency=estimate.currency,
+                is_emergency=estimate.is_emergency,
+                dynamic_multiplier=estimate.dynamic_multiplier,
+            )
+
+            # Update the job with the quoted price (midpoint of range = same as customer estimate)
+            midpoint_cents = (estimate.final_price_min_cents + estimate.final_price_max_cents) // 2
+            job.quoted_price_cents = midpoint_cents
+            job.commission_rate = estimate.commission_rate_default
+            job.commission_amount_cents = int(
+                Decimal(str(midpoint_cents))
+                * estimate.commission_rate_default
+            )
+            job.provider_payout_cents = (
+                midpoint_cents - job.commission_amount_cents
+            )
+            await db.flush()
+        except Exception as exc:
+            logger.warning("Price estimation failed for job %s: %s", job.id, exc)
+
+        # Broadcast OFFERED assignments to ALL qualified providers.
+        # The job stays in PENDING_MATCH — it only transitions when a
+        # provider manually accepts the offer.
+        try:
+            from src.services.matchingEngine import find_matching_providers
+            from src.models.job import JobAssignment, AssignmentStatus
+            from datetime import timedelta
+
+            match_result = await find_matching_providers(db, job, max_results=20)
+            now_utc = datetime.now(timezone.utc)
+            for m in match_result.get("matches", []):
+                # Create OFFERED assignment for each qualified provider
+                sla_response_deadline = None
+                if job.sla_response_time_min:
+                    sla_response_deadline = now_utc + timedelta(
+                        minutes=job.sla_response_time_min
+                    )
+                offer = JobAssignment(
+                    job_id=job.id,
+                    provider_id=m["provider_id"],
+                    status=AssignmentStatus.OFFERED,
+                    offered_at=now_utc,
+                    match_score=Decimal(str(m["composite_score"])),
+                    sla_response_deadline=sla_response_deadline,
+                )
+                db.add(offer)
+            await db.flush()
+            logger.info(
+                "Broadcast %d offers for job %s",
+                len(match_result.get("matches", [])),
+                job.id,
+            )
+        except Exception as exc:
+            logger.warning("Offer broadcast failed for job %s: %s", job.id, exc)
+
+        # Build mobile-friendly response
+        try:
+            job_out = MobileJobOut.model_validate(job)
+            response = JobCreateResponse(
+                job=job_out,
+                estimated_price=estimated_price,
+            )
+            return {"data": response.model_dump(by_alias=True)}
+        except Exception as exc:
+            logger.error(
+                "Failed to serialise job %s for mobile response: %s",
+                job.id,
+                exc,
+                exc_info=True,
+            )
+            # Return a minimal success response so the mobile client can navigate
+            return {
+                "data": {
+                    "job": {"id": str(job.id)},
+                    "estimatedPrice": {
+                        "minCents": estimated_price.min_cents,
+                        "maxCents": estimated_price.max_cents,
+                        "currency": "CAD",
+                        "isEmergency": body.is_emergency,
+                        "dynamicMultiplier": None,
+                    },
+                }
+            }
+
+    except HTTPException:
+        raise  # Let FastAPI handle HTTP exceptions normally
+
     except Exception as exc:
-        logger.warning("Auto-matching failed for job %s: %s", job.id, exc)
-
-    # Build mobile-friendly response
-    job_out = MobileJobOut.model_validate(job)
-    response = JobCreateResponse(
-        job=job_out,
-        estimated_price=estimated_price,
-    )
-
-    return {"data": response.model_dump(by_alias=True)}
+        # Catch-all: return the Python error in the response detail
+        error_tb = tb_mod.format_exc()
+        logger.error("book_job UNHANDLED ERROR: %s\n%s", exc, error_tb)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"book_job crashed: {type(exc).__name__}: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +306,7 @@ async def get_active_jobs(
     from sqlalchemy.orm import selectinload
 
     from src.models.job import Job, JobStatus
+    from src.models.taxonomy import ServiceTask
 
     terminal_statuses = {
         JobStatus.COMPLETED,
@@ -273,7 +329,33 @@ async def get_active_jobs(
     result = await db.execute(stmt)
     jobs = result.scalars().all()
 
-    items = [MobileJobOut.model_validate(j).model_dump(by_alias=True) for j in jobs]
+    # Build task name cache
+    task_ids = {j.task_id for j in jobs if j.task_id}
+    task_map: dict = {}
+    if task_ids:
+        task_stmt = (
+            select(ServiceTask)
+            .options(selectinload(ServiceTask.category))
+            .where(ServiceTask.id.in_(task_ids))
+        )
+        tasks = (await db.execute(task_stmt)).scalars().all()
+        for t in tasks:
+            task_map[t.id] = {
+                "name": t.name,
+                "categoryName": t.category.name if t.category else None,
+            }
+
+    from src.api.routes.providers import _mobile_status
+
+    items = []
+    for j in jobs:
+        item = MobileJobOut.model_validate(j).model_dump(by_alias=True)
+        # Convert backend enum (UPPERCASE) to mobile-friendly lowercase
+        item["status"] = _mobile_status(j.status.value)
+        task_info = task_map.get(j.task_id, {})
+        item["taskName"] = task_info.get("name", j.reference_number)
+        item["categoryName"] = task_info.get("categoryName")
+        items.append(item)
 
     return {
         "data": {
@@ -402,7 +484,6 @@ async def list_jobs_by_provider(
 
 @router.get(
     "/{job_id}",
-    response_model=JobOut,
     summary="Get job detail",
     description=(
         "Returns the full detail for a single job, including SLA snapshot, "
@@ -412,7 +493,7 @@ async def list_jobs_by_provider(
 async def get_job(
     db: DBSession,
     job_id: uuid.UUID,
-) -> JobOut:
+) -> dict[str, Any]:
     job = await jobService.get_job(db, job_id)
     if job is None:
         raise HTTPException(
@@ -421,7 +502,47 @@ async def get_job(
         )
 
     # Build enriched response with assignment and provider info
-    job_data = JobOut.model_validate(job).model_dump()
+    from src.api.routes.providers import _mobile_status
+
+    try:
+        job_data = JobOut.model_validate(job).model_dump()
+        # Convert UPPERCASE enum to mobile-friendly lowercase
+        job_data["status"] = _mobile_status(job.status.value)
+    except Exception:
+        # Fallback: manually construct the dict if Pydantic validation fails
+        job_data = {
+            "id": str(job.id),
+            "reference_number": job.reference_number,
+            "customer_id": str(job.customer_id),
+            "task_id": str(job.task_id),
+            "status": _mobile_status(
+                job.status.value if hasattr(job.status, 'value') else str(job.status)
+            ),
+            "priority": job.priority.value if hasattr(job.priority, 'value') else str(job.priority),
+            "is_emergency": job.is_emergency,
+            "service_latitude": str(job.service_latitude),
+            "service_longitude": str(job.service_longitude),
+            "service_address": job.service_address,
+            "service_unit": job.service_unit,
+            "service_city": job.service_city,
+            "service_province_state": job.service_province_state,
+            "service_postal_zip": job.service_postal_zip,
+            "service_country": job.service_country,
+            "requested_date": str(job.requested_date) if job.requested_date else None,
+            "requested_time_start": str(job.requested_time_start) if job.requested_time_start else None,
+            "requested_time_end": str(job.requested_time_end) if job.requested_time_end else None,
+            "flexible_schedule": job.flexible_schedule,
+            "quoted_price_cents": job.quoted_price_cents,
+            "final_price_cents": job.final_price_cents,
+            "currency": job.currency,
+            "customer_notes_json": job.customer_notes_json or [],
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "cancelled_at": job.cancelled_at.isoformat() if job.cancelled_at else None,
+            "cancellation_reason": job.cancellation_reason,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        }
 
     # Attach assignment and provider info for the mobile app
     assignment_data = None
@@ -486,6 +607,9 @@ async def get_job(
                         ),
                         "level": provider.current_level.value,
                         "avatarUrl": provider.user.avatar_url,
+                        "phone": provider.user.phone,
+                        "rating": float(provider.average_rating) if provider.average_rating else None,
+                        "completedJobs": provider.total_completed_jobs or 0,
                     }
             except Exception:
                 pass
@@ -536,6 +660,9 @@ async def update_job_status(
             detail=str(exc),
         )
 
+    # Reload server-side columns (e.g. updated_at onupdate) that the flush left
+    # expired, so the sync JobOut serialization doesn't trigger lazy async IO.
+    await db.refresh(job)
     return JobOut.model_validate(job)
 
 
@@ -669,8 +796,616 @@ async def get_job_tracking(
     db: DBSession,
     job_id: uuid.UUID,
 ) -> dict[str, Any]:
+    from src.api.routes.providers import _mobile_status
     from src.services import providerService
 
     tracking = await providerService.get_job_tracking(db, job_id)
+    tracking["status"] = _mobile_status(tracking["status"])
     result = JobTrackingOut(**tracking)
     return {"data": result.model_dump(by_alias=True)}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/provider-location -- Update provider location
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/provider-location",
+    summary="Update provider location",
+    description=(
+        "Called by the partner app to update the provider's current GPS "
+        "coordinates. This data is consumed by the customer tracking screen."
+    ),
+)
+async def update_provider_location(
+    db: DBSession,
+    user: CurrentUser,
+    body: dict[str, Any],
+) -> dict[str, Any]:
+    from src.services import providerService
+
+    lat = body.get("latitude")
+    lng = body.get("longitude")
+    if lat is None or lng is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="latitude and longitude are required",
+        )
+
+    await providerService.update_provider_location(
+        db, user.id, float(lat), float(lng)
+    )
+    await db.commit()
+    return {"data": {"ok": True}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/approve-provider -- Customer approves provider
+# ---------------------------------------------------------------------------
+# (approve-provider and reject-provider endpoints defined below after
+#  get_pending_provider)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/jobs/{job_id}/pending-provider  -- Provider info for approval
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{job_id}/pending-provider",
+    summary="Get provider info for customer approval",
+    description=(
+        "Returns the provider's public info for the customer to review "
+        "before approving or rejecting."
+    ),
+)
+async def get_pending_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+    from src.models.provider import ProviderProfile
+    from src.models.user import User
+
+    # Load job (must be owned by customer)
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        return {"data": None}
+
+    # Find accepted assignment
+    asgn_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.ACCEPTED,
+    )
+    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
+    if assignment is None:
+        return {"data": None}
+
+    # Load provider profile + user
+    prov_stmt = (
+        select(ProviderProfile)
+        .options(selectinload(ProviderProfile.user))
+        .where(ProviderProfile.id == assignment.provider_id)
+    )
+    provider = (await db.execute(prov_stmt)).scalar_one_or_none()
+    if provider is None:
+        return {"data": None}
+
+    user_record = provider.user
+
+    # Compute avg rating from reviews
+    from src.models.review import Review as _Review
+    from sqlalchemy import func as _func
+    _avg_stmt = select(_func.avg(_Review.overall_rating)).where(
+        _Review.reviewee_id == provider.user_id
+    )
+    _avg_raw = (await db.execute(_avg_stmt)).scalar()
+    _prov_rating = round(float(_avg_raw), 2) if _avg_raw else None
+
+    # PP4: the provider's own price for this job (set when they accepted). The
+    # quote breakdown (rate + estimated quantity) lets the customer see exactly
+    # what this provider charges before approving.
+    from src.services import provider_rate_service
+
+    _quote = await provider_rate_service.get_provider_quote_for_job(
+        db, provider.id, job.task_id, job_quantity=job.quantity
+    )
+
+    return {"data": {
+        "providerId": str(provider.id),
+        "displayName": (
+            user_record.display_name
+            or f"{user_record.first_name} {user_record.last_name}"
+            if user_record else "Unknown"
+        ),
+        "level": int(provider.current_level.value) if provider.current_level else 1,
+        "yearsExperience": provider.years_experience,
+        "rating": _prov_rating,
+        "profilePhotoUrl": user_record.avatar_url if user_record else None,
+        "bio": provider.bio,
+        "quotedPriceCents": job.quoted_price_cents,
+        "rateCents": _quote["rate_cents"] if _quote else None,
+        "pricingUnit": _quote["unit"] if _quote else None,
+        "estimatedQuantity": _quote["quantity"] if _quote else None,
+        # PP3 tax line + PP4c service fee (snapshotted when the provider accepted).
+        "serviceTaxCents": job.service_tax_cents,
+        "taxJurisdiction": job.tax_jurisdiction,
+        "serviceFeeCents": job.service_fee_cents,
+        "totalChargedCents": job.total_charged_cents,
+    }}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/approve-provider  -- Customer approves provider
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{job_id}/approve-provider",
+    summary="Approve the matched provider",
+    description=(
+        "Customer approves the provider. Transitions job to PROVIDER_ACCEPTED "
+        "so the provider can begin traveling to the service location."
+    ),
+)
+async def approve_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    # Must be owned by this customer
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not pending approval (current: {job.status.value})",
+        )
+
+    # Transition job to PROVIDER_ACCEPTED
+    job.status = JobStatus.PROVIDER_ACCEPTED
+
+    await db.commit()
+    logger.info("Customer %s approved provider for job %s", user.id, job_id)
+
+    return {"data": {"ok": True, "status": job.status.value}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/reject-provider  -- Customer rejects provider
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{job_id}/reject-provider",
+    summary="Reject the matched provider",
+    description=(
+        "Customer rejects the provider. The job goes back to PENDING_MATCH "
+        "and the assignment is marked DECLINED so matching can retry."
+    ),
+)
+async def reject_provider(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+
+    # Must be owned by this customer
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not pending approval (current: {job.status.value})",
+        )
+
+    # Mark the accepted assignment as DECLINED
+    asgn_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.ACCEPTED,
+    )
+    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
+    if assignment:
+        assignment.status = AssignmentStatus.DECLINED
+
+    # Send job back to PENDING_MATCH for re-matching
+    job.status = JobStatus.PENDING_MATCH
+
+    await db.commit()
+    logger.info("Customer %s rejected provider for job %s", user.id, job_id)
+
+    return {"data": {"ok": True, "status": job.status.value}}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/{job_id}/rating  -- Customer submits job rating
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BaseModel, Field as _Field
+
+class RatingSubmitRequest(_BaseModel):
+    rating: int = _Field(ge=1, le=5, description="Star rating 1-5")
+    tags: list[str] = _Field(default_factory=list, description="Feedback tag IDs")
+    feedback: Optional[str] = _Field(default=None, description="Optional text feedback")
+
+
+@router.post(
+    "/{job_id}/rating",
+    summary="Submit a job rating",
+    description=(
+        "Customer submits a star rating, optional feedback tags, and optional "
+        "text feedback for a completed job. Creates a Review record with the "
+        "customer as reviewer and the assigned provider as reviewee."
+    ),
+)
+async def submit_job_rating(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: RatingSubmitRequest,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
+    from src.models.review import Review, ReviewStatus, ReviewerRole
+    from src.models.provider import ProviderProfile
+
+    # 1. Load job -- must belong to this customer and be completed
+    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
+    job = (await db.execute(job_stmt)).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is not completed (current: {job.status.value})",
+        )
+
+    # 2. Check for duplicate review
+    existing_review_stmt = select(Review).where(
+        Review.job_id == job_id,
+        Review.reviewer_id == user.id,
+    )
+    existing = (await db.execute(existing_review_stmt)).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="You have already rated this job",
+        )
+
+    # 3. Find the assigned provider's user_id
+    assignment_stmt = select(JobAssignment).where(
+        JobAssignment.job_id == job_id,
+        JobAssignment.status == AssignmentStatus.COMPLETED,
+    )
+    assignment = (await db.execute(assignment_stmt)).scalar_one_or_none()
+    if assignment is None:
+        # Fallback: try accepted assignment
+        assignment_stmt2 = select(JobAssignment).where(
+            JobAssignment.job_id == job_id,
+            JobAssignment.status == AssignmentStatus.ACCEPTED,
+        )
+        assignment = (await db.execute(assignment_stmt2)).scalar_one_or_none()
+
+    if assignment is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No provider assignment found for this job",
+        )
+
+    # Get provider's user_id from ProviderProfile
+    provider_stmt = select(ProviderProfile).where(
+        ProviderProfile.id == assignment.provider_id,
+    )
+    provider = (await db.execute(provider_stmt)).scalar_one_or_none()
+    if provider is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Provider profile not found",
+        )
+
+    reviewee_user_id = provider.user_id
+
+    # 4. Build tags as comma-separated comment prefix
+    tags_text = ", ".join(body.tags) if body.tags else ""
+    comment_parts = []
+    if tags_text:
+        comment_parts.append(f"[Tags: {tags_text}]")
+    if body.feedback:
+        comment_parts.append(body.feedback)
+    comment = " ".join(comment_parts) if comment_parts else None
+
+    # 5. Create the Review
+    review = Review(
+        job_id=job_id,
+        reviewer_id=user.id,
+        reviewee_id=reviewee_user_id,
+        reviewer_role=ReviewerRole.CUSTOMER,
+        overall_rating=Decimal(str(body.rating)),
+        comment=comment,
+        status=ReviewStatus.PUBLISHED,
+    )
+    db.add(review)
+    await db.flush()
+
+    logger.info(
+        "Customer %s rated job %s with %d stars",
+        user.id, job_id, body.rating,
+    )
+
+    await db.commit()
+
+    return {"data": {
+        "reviewId": str(review.id),
+        "rating": body.rating,
+        "tags": body.tags,
+        "feedback": body.feedback,
+        "message": "Rating submitted successfully",
+    }}
+
+
+# ---------------------------------------------------------------------------
+# PP4b — payment authorize / capture (destination charge, manual capture)
+# ---------------------------------------------------------------------------
+
+from pydantic import ConfigDict as _ConfigDict  # noqa: E402
+
+
+class AuthorizePaymentRequest(_BaseModel):
+    """Optional body for authorize-payment. A test/server-side flow may pass a
+    PaymentMethod to confirm immediately; the mobile app instead confirms the
+    returned clientSecret on-device."""
+    model_config = _ConfigDict(populate_by_name=True)
+    payment_method: Optional[str] = _Field(default=None, alias="paymentMethod")
+
+
+class CapturePaymentRequest(_BaseModel):
+    """Optional body for capture-payment: the reconciled actual total and, for a
+    server-side test, a PaymentMethod to collect an approved overage delta."""
+    model_config = _ConfigDict(populate_by_name=True)
+    final_total_cents: Optional[int] = _Field(default=None, alias="finalTotalCents", gt=0)
+    payment_method: Optional[str] = _Field(default=None, alias="paymentMethod")
+
+
+@router.post(
+    "/{job_id}/authorize-payment",
+    summary="Authorize (hold) payment for a job",
+    description=(
+        "Places a manual-capture destination-charge hold of total_charged × 1.30 "
+        "on the customer's card. The provider/company is merchant of record; "
+        "VISP keeps the commission as the application fee. Returns the "
+        "PaymentIntent clientSecret for on-device confirmation."
+    ),
+)
+async def authorize_payment(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: Optional[AuthorizePaymentRequest] = None,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.integrations.stripe import PaymentError
+    from src.models.job import Job
+    from src.services import job_payment_service as jp
+
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    pm = body.payment_method if body else None
+    try:
+        result = await jp.authorize_job(
+            db,
+            job,
+            customer_stripe_id=getattr(user, "stripe_customer_id", None),
+            payment_method=pm,
+            confirm=bool(pm),
+        )
+    except jp.JobNotPriceableError:
+        raise HTTPException(status_code=409, detail="Job has no agreed total to charge yet")
+    except jp.ProviderNotPayableError:
+        raise HTTPException(status_code=409, detail="Provider has no payout account configured")
+    except PaymentError as exc:
+        raise HTTPException(status_code=400, detail=f"Payment authorization failed: {exc}")
+
+    await db.commit()
+    return {"data": {
+        "paymentIntentId": result.id,
+        "clientSecret": result.client_secret,
+        "status": result.status,
+        "authorizedCents": result.amount_cents,
+        "amountCapturableCents": result.amount_capturable_cents,
+        "applicationFeeCents": result.application_fee_cents,
+    }}
+
+
+@router.post(
+    "/{job_id}/capture-payment",
+    summary="Capture the held payment at completion",
+    description=(
+        "Captures the actual amount (≤ the held ceiling) for a completed job; "
+        "the unused hold is released. Restricted to the job's customer or its "
+        "accepted provider."
+    ),
+)
+async def capture_payment(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: Optional[CapturePaymentRequest] = None,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.integrations.stripe import PaymentError
+    from src.models.job import AssignmentStatus, Job, JobAssignment
+    from src.models.provider import ProviderProfile
+    from src.models.user import User
+    from src.services import job_payment_service as jp
+
+    job = await db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Authz: customer who owns the job, or the accepted provider's user.
+    allowed = job.customer_id == user.id
+    if not allowed:
+        assignment = (
+            await db.execute(
+                select(JobAssignment).where(
+                    JobAssignment.job_id == job_id,
+                    JobAssignment.status == AssignmentStatus.ACCEPTED,
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if assignment is not None:
+            provider = await db.get(ProviderProfile, assignment.provider_id)
+            allowed = bool(provider and provider.user_id == user.id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not allowed to capture this job")
+
+    # The customer's Stripe id (for collecting an approved overage delta).
+    customer = await db.get(User, job.customer_id)
+    pm = body.payment_method if body else None
+    try:
+        result = await jp.capture_job(
+            db,
+            job,
+            final_total_cents=(body.final_total_cents if body else None),
+            customer_stripe_id=getattr(customer, "stripe_customer_id", None),
+            payment_method=pm,
+            confirm=bool(pm),
+        )
+    except jp.PaymentNotAuthorizedError:
+        raise HTTPException(status_code=409, detail="No held authorization to capture")
+    except jp.OverageApprovalRequiredError as exc:
+        raise HTTPException(status_code=409, detail={
+            "error": "overage_approval_required",
+            "actualCents": exc.actual_cents,
+            "authorizedCents": exc.authorized_cents,
+            "overageCents": exc.overage_cents,
+        })
+    except PaymentError as exc:
+        raise HTTPException(status_code=400, detail=f"Payment capture failed: {exc}")
+
+    await db.commit()
+    return {"data": {
+        "status": result.status,
+        "capturedCents": result.amount_captured_cents,
+        "applicationFeeCents": result.application_fee_cents,
+        "actualTotalCents": job.actual_total_cents,
+        "finalPriceCents": job.final_price_cents,
+    }}
+
+
+@router.post(
+    "/{job_id}/approve-overage",
+    summary="Customer approves charging above the authorized ceiling",
+    description=(
+        "Sets overage approval on a job whose actual cost exceeds the held "
+        "ceiling, so a subsequent capture-payment can collect the delta."
+    ),
+)
+async def approve_overage(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job
+
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job.overage_approved_at = datetime.now(timezone.utc)
+    await db.commit()
+    logger.info("Customer %s approved overage for job %s", user.id, job_id)
+    return {"data": {"ok": True, "overageApprovedAt": job.overage_approved_at.isoformat()}}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/jobs/{job_id}/available-providers
+#   Provider-set-pricing model: after booking, show the customer which qualified
+#   providers are available in their zone and EACH provider's own price for this
+#   task (level-agnostic). Empty list => no one available now → the job stays in
+#   the queue and providers send offers (the existing accept/reject flow).
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{job_id}/available-providers",
+    summary="Available providers in the customer's zone with their prices",
+    description=(
+        "Runs matching for the job and returns each qualified provider with "
+        "their own rate for this task (or null if they price per-job). Drives "
+        "the post-booking map; an empty list means fall back to the offer queue."
+    ),
+)
+async def available_providers(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job
+    from src.models.taxonomy import ServiceTask
+    from src.services import provider_rate_service
+    from src.services.matchingEngine import find_matching_providers
+
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    task = (
+        await db.execute(select(ServiceTask).where(ServiceTask.id == job.task_id))
+    ).scalar_one_or_none()
+
+    try:
+        match = await find_matching_providers(db, job, max_results=20)
+        matches = match.get("matches", [])
+    except Exception as exc:  # noqa: BLE001 — never 500 the map; fall back to empty
+        logger.warning("available_providers matching failed for job %s: %s", job_id, exc)
+        matches = []
+
+    providers: list[dict[str, Any]] = []
+    for m in matches:
+        quote = await provider_rate_service.get_provider_quote_for_job(
+            db, m["provider_id"], job.task_id, job_quantity=job.quantity
+        )
+        providers.append({
+            "providerId": str(m["provider_id"]),
+            "displayName": m.get("display_name") or "Provider",
+            "level": int(m["current_level"]) if m.get("current_level") else None,
+            "distanceKm": round(float(m["distance_km"]), 1) if m.get("distance_km") is not None else None,
+            "rateCents": quote["rate_cents"] if quote else None,
+            "pricingUnit": quote["unit"] if quote else (task.pricing_unit.value if task else None),
+            "quotedPriceCents": quote["subtotal_cents"] if quote else None,
+        })
+
+    return {"data": {
+        "providers": providers,
+        "count": len(providers),
+        # The catalog range the customer sees up front (level guardrail).
+        "catalogMinCents": task.base_price_min_cents if task else None,
+        "catalogMaxCents": task.base_price_max_cents if task else None,
+        "pricingUnit": task.pricing_unit.value if task else None,
+    }}

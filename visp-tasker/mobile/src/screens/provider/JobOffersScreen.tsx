@@ -1,32 +1,53 @@
 /**
- * VISP/Tasker - Job Offers Screen
+ * VISP - Job Offers Screen
  *
  * List of available job offers for the provider. Each offer shows:
  * task name, customer location (distance), price, SLA deadline,
  * accept/decline buttons, timer showing offer expiry, and map preview.
+ *
+ * Enhancements:
+ * - Filter bar: category, distance, sort
+ * - Level badge with rate range on each card
+ * - L3/L4 negotiated pricing: "Propose Price" flow
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors, getLevelColor } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
-import { JobOffer, ProviderTabParamList } from '../../types';
+import { JobOffer } from '../../types';
+import MapboxGL from '@rnmapbox/maps';
+import { Config } from '../../services/config';
+
+MapboxGL.setAccessToken(Config.mapboxAccessToken);
 
 // ---------------------------------------------------------------------------
-// Types
+// Constants
 // ---------------------------------------------------------------------------
 
-type OffersNav = NativeStackNavigationProp<ProviderTabParamList, 'JobOffers'>;
+const DISTANCE_OPTIONS = [
+  { label: '< 5km', value: 5 },
+  { label: '< 10km', value: 10 },
+  { label: '< 25km', value: 25 },
+  { label: 'All', value: null },
+] as const;
+
+const SORT_OPTIONS = [
+  { label: 'Expiring Soon', value: 'expiry' as const },
+  { label: 'Nearest', value: 'distance' as const },
+  { label: 'Highest Pay', value: 'price' as const },
+] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,14 +58,8 @@ function getTimeRemaining(expiresAt: string): {
   seconds: number;
   isExpired: boolean;
 } {
-  const now = Date.now();
-  const expiry = new Date(expiresAt).getTime();
-  const diff = expiry - now;
-
-  if (diff <= 0) {
-    return { minutes: 0, seconds: 0, isExpired: true };
-  }
-
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return { minutes: 0, seconds: 0, isExpired: true };
   return {
     minutes: Math.floor(diff / 60000),
     seconds: Math.floor((diff % 60000) / 1000),
@@ -52,42 +67,188 @@ function getTimeRemaining(expiresAt: string): {
   };
 }
 
-function formatDistance(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  return `${km.toFixed(1)} km`;
+function formatDistance(km: number | undefined): string {
+  if (km === undefined || km === null) return '\u2014';
+  return km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`;
 }
 
-function formatSLA(deadline: string | null): string {
-  if (!deadline) return 'No SLA';
-  const date = new Date(deadline);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatPrice(cents: number | undefined): string {
+  if (cents === undefined || cents === null) return '\u2014';
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function getLevelNum(level: string): number {
+  return parseInt(level.replace(/\D/g, ''), 10) || 1;
+}
+
+function isNegotiatedLevel(level: string): boolean {
+  const num = getLevelNum(level);
+  return num >= 3;
+}
+
+function getRateBadgeText(level: string): string {
+  const num = getLevelNum(level);
+  switch (num) {
+    case 1:
+      return '$45-70/hr';
+    case 2:
+      return '$80-120/hr';
+    case 3:
+    case 4:
+      return 'Negotiate Price';
+    default:
+      return '';
+  }
+}
+
+function getLevelLabel(level: string): string {
+  const num = getLevelNum(level);
+  switch (num) {
+    case 1:
+      return 'L1';
+    case 2:
+      return 'L2';
+    case 3:
+      return 'L3';
+    case 4:
+      return 'L4';
+    default:
+      return level;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Offer Timer Hook
 // ---------------------------------------------------------------------------
 
-function useOfferTimer(expiresAt: string) {
-  const [remaining, setRemaining] = useState(() => getTimeRemaining(expiresAt));
+function useOfferTimer(expiresAt: string | undefined) {
+  const fallback = { minutes: 99, seconds: 0, isExpired: false };
+  const [time, setTime] = useState(() =>
+    expiresAt ? getTimeRemaining(expiresAt) : fallback,
+  );
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (!expiresAt) return;
     intervalRef.current = setInterval(() => {
-      const updated = getTimeRemaining(expiresAt);
-      setRemaining(updated);
-      if (updated.isExpired && intervalRef.current) {
+      const next = getTimeRemaining(expiresAt);
+      setTime(next);
+      if (next.isExpired && intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     }, 1000);
-
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [expiresAt]);
 
-  return remaining;
+  return time;
+}
+
+// ---------------------------------------------------------------------------
+// Price Proposal Modal
+// ---------------------------------------------------------------------------
+
+interface ProposalModalProps {
+  visible: boolean;
+  offer: JobOffer | null;
+  onClose: () => void;
+  onSubmit: (priceCents: number, description: string) => void;
+  isSubmitting: boolean;
+}
+
+function ProposalModal({
+  visible,
+  offer,
+  onClose,
+  onSubmit,
+  isSubmitting,
+}: ProposalModalProps): React.JSX.Element {
+  const [priceText, setPriceText] = useState('');
+  const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setPriceText('');
+      setDescription('');
+    }
+  }, [visible]);
+
+  const guidePrice = offer?.pricing.quotedPriceCents
+    ? formatPrice(offer.pricing.quotedPriceCents)
+    : null;
+
+  const handleSubmit = () => {
+    const dollars = parseFloat(priceText);
+    if (isNaN(dollars) || dollars <= 0) {
+      Alert.alert('Invalid Price', 'Please enter a valid dollar amount.');
+      return;
+    }
+    onSubmit(Math.round(dollars * 100), description);
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={modalStyles.overlay}>
+        <View style={[GlassStyles.modal, modalStyles.content]}>
+          <Text style={modalStyles.title}>Propose Your Price</Text>
+          {offer && (
+            <Text style={modalStyles.taskName}>{offer.task.name}</Text>
+          )}
+          {guidePrice && (
+            <View style={modalStyles.guideContainer}>
+              <Text style={modalStyles.guideText}>
+                Guide range: {guidePrice}
+              </Text>
+            </View>
+          )}
+
+          <GlassInput
+            label="Your Proposed Price ($)"
+            value={priceText}
+            onChangeText={setPriceText}
+            placeholder="e.g. 250.00"
+            keyboardType="decimal-pad"
+            autoFocus
+            containerStyle={modalStyles.inputSpacing}
+          />
+
+          <GlassInput
+            label="Description (optional)"
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Explain your pricing..."
+            multiline
+            numberOfLines={3}
+            containerStyle={modalStyles.inputSpacing}
+          />
+
+          <View style={modalStyles.actions}>
+            <GlassButton
+              title="Cancel"
+              variant="outline"
+              onPress={onClose}
+              disabled={isSubmitting}
+              style={modalStyles.actionBtn}
+            />
+            <GlassButton
+              title="Submit Proposal"
+              variant="glow"
+              onPress={handleSubmit}
+              loading={isSubmitting}
+              disabled={isSubmitting}
+              style={modalStyles.actionBtn}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +257,9 @@ function useOfferTimer(expiresAt: string) {
 
 interface OfferCardProps {
   offer: JobOffer;
-  onAccept: (offerId: string) => void;
-  onDecline: (offerId: string) => void;
+  onAccept: (jobId: string) => void;
+  onDecline: (jobId: string) => void;
+  onPropose: (offer: JobOffer) => void;
   isProcessing: boolean;
 }
 
@@ -105,10 +267,13 @@ function OfferCard({
   offer,
   onAccept,
   onDecline,
+  onPropose,
   isProcessing,
 }: OfferCardProps): React.JSX.Element {
-  const timer = useOfferTimer(offer.expiresAt);
-  const levelColor = getLevelColor(offer.level);
+  const timer = useOfferTimer(offer.offerExpiresAt);
+  const levelNum = getLevelNum(offer.task.level) as 1 | 2 | 3 | 4;
+  const levelColor = getLevelColor(levelNum);
+  const negotiated = isNegotiatedLevel(offer.task.level);
 
   const timerColor = timer.isExpired
     ? Colors.textTertiary
@@ -121,14 +286,16 @@ function OfferCard({
     : `${String(timer.minutes).padStart(2, '0')}:${String(timer.seconds).padStart(2, '0')}`;
 
   const handleAccept = useCallback(() => {
+    const totalPrice = formatPrice(offer.pricing.quotedPriceCents);
+    const yourPay = formatPrice(offer.pricing.estimatedPayoutCents);
     Alert.alert(
       'Accept Offer',
-      `Accept the "${offer.taskName}" job for $${offer.estimatedPrice.toFixed(2)}?`,
+      `Accept "${offer.task.name}"?\n\nTotal: ${totalPrice}\nYour Pay: ${yourPay}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Accept',
-          onPress: () => onAccept(offer.id),
+          onPress: () => onAccept(offer.jobId),
         },
       ],
     );
@@ -143,14 +310,14 @@ function OfferCard({
         {
           text: 'Decline',
           style: 'destructive',
-          onPress: () => onDecline(offer.id),
+          onPress: () => onDecline(offer.jobId),
         },
       ],
     );
-  }, [offer.id, onDecline]);
+  }, [offer.jobId, onDecline]);
 
   return (
-    <View style={styles.offerCard}>
+    <GlassCard variant="dark" padding={0} style={styles.offerCard}>
       {/* Level strip */}
       <View style={[styles.offerLevelStrip, { backgroundColor: levelColor }]} />
 
@@ -159,15 +326,48 @@ function OfferCard({
         <View style={styles.offerHeader}>
           <View style={styles.offerHeaderLeft}>
             <Text style={styles.offerTaskName} numberOfLines={1}>
-              {offer.taskName}
+              {offer.task.name}
             </Text>
-            <Text style={styles.offerCategory} numberOfLines={1}>
-              {offer.categoryName}
-            </Text>
+            <View style={styles.offerSubHeader}>
+              <Text style={styles.offerCategory} numberOfLines={1}>
+                {offer.task.categoryName ?? 'Service'} {'\u2022'} {offer.referenceNumber}
+              </Text>
+            </View>
           </View>
           <View style={[styles.timerBadge, { borderColor: timerColor }]}>
             <Text style={[styles.timerText, { color: timerColor }]}>
               {timerText}
+            </Text>
+          </View>
+        </View>
+
+        {/* Level + Rate badge row */}
+        <View style={styles.badgeRow}>
+          <View
+            style={[
+              styles.levelBadge,
+              { backgroundColor: levelColor + '20', borderColor: levelColor },
+            ]}
+          >
+            <Text style={[styles.levelBadgeText, { color: levelColor }]}>
+              {getLevelLabel(offer.task.level)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.rateBadge,
+              negotiated
+                ? { backgroundColor: Colors.level3 + '20', borderColor: Colors.level3 }
+                : { backgroundColor: Colors.success + '20', borderColor: Colors.success },
+            ]}
+          >
+            <Text
+              style={[
+                styles.rateBadgeText,
+                { color: negotiated ? Colors.level3 : Colors.success },
+              ]}
+            >
+              {getRateBadgeText(offer.task.level)}
             </Text>
           </View>
         </View>
@@ -177,7 +377,7 @@ function OfferCard({
           <View style={styles.offerDetailItem}>
             <Text style={styles.offerDetailLabel}>Location</Text>
             <Text style={styles.offerDetailValue} numberOfLines={1}>
-              {offer.customerArea}
+              {offer.serviceCity ?? offer.serviceAddress}
             </Text>
           </View>
           <View style={styles.offerDetailItem}>
@@ -186,72 +386,117 @@ function OfferCard({
               {formatDistance(offer.distanceKm)}
             </Text>
           </View>
-          <View style={styles.offerDetailItem}>
-            <Text style={styles.offerDetailLabel}>Pay</Text>
-            <Text style={styles.offerPriceValue}>
-              ${offer.estimatedPrice.toFixed(2)}
-            </Text>
-          </View>
+          {!negotiated ? (
+            <>
+              <View style={styles.offerDetailItem}>
+                <Text style={styles.offerDetailLabel}>Total</Text>
+                <Text style={styles.offerDetailValue}>
+                  {formatPrice(offer.pricing.quotedPriceCents)}
+                </Text>
+              </View>
+              <View style={styles.offerDetailItem}>
+                <Text style={styles.offerDetailLabel}>Your Pay</Text>
+                <Text style={styles.offerPriceValue}>
+                  {formatPrice(offer.pricing.estimatedPayoutCents)}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.offerDetailItem}>
+              <Text style={styles.offerDetailLabel}>Estimate</Text>
+              <Text style={styles.offerDetailValue}>
+                {offer.pricing.quotedPriceCents
+                  ? formatPrice(offer.pricing.quotedPriceCents)
+                  : 'TBD'}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* SLA deadline */}
-        {offer.slaDeadline && (
-          <View style={styles.slaRow}>
-            <Text style={styles.slaLabel}>SLA Deadline:</Text>
-            <Text style={styles.slaValue}>{formatSLA(offer.slaDeadline)}</Text>
+        {/* Customer info */}
+        {offer.customer.displayName && (
+          <View style={styles.customerRow}>
+            <Text style={styles.customerLabel}>Customer:</Text>
+            <Text style={styles.customerValue}>
+              {offer.customer.displayName}
+              {offer.customer.rating ? ` \u2605${offer.customer.rating}` : ''}
+            </Text>
           </View>
         )}
 
-        {/* Map preview placeholder */}
-        <View style={styles.mapPreview}>
-          <Text style={styles.mapPreviewText}>
-            {offer.address.city}, {offer.address.province}
-          </Text>
-          <Text style={styles.mapPreviewCoords}>
-            {offer.address.latitude.toFixed(4)},{' '}
-            {offer.address.longitude.toFixed(4)}
-          </Text>
+        {/* Emergency badge */}
+        {offer.isEmergency && (
+          <View style={styles.emergencyRow}>
+            <Text style={styles.emergencyLabel}>EMERGENCY</Text>
+          </View>
+        )}
+
+        {/* Map preview */}
+        <View style={styles.mapContainer}>
+          <MapboxGL.MapView
+            style={styles.map}
+            styleURL={MapboxGL.StyleURL.Street}
+            scrollEnabled={false}
+            zoomEnabled={false}
+            rotateEnabled={false}
+            pitchEnabled={false}
+            attributionEnabled={false}
+            logoEnabled={false}
+          >
+            <MapboxGL.Camera
+              zoomLevel={13}
+              centerCoordinate={[
+                Number(offer.serviceLongitude),
+                Number(offer.serviceLatitude),
+              ]}
+              animationMode="none"
+            />
+            <MapboxGL.MarkerView
+              id={`offer-loc-${offer.assignmentId}`}
+              coordinate={[
+                Number(offer.serviceLongitude),
+                Number(offer.serviceLatitude),
+              ]}
+            >
+              <View style={styles.mapMarker} />
+            </MapboxGL.MarkerView>
+          </MapboxGL.MapView>
+          {/* Glass overlay on map */}
+          <View style={styles.mapGlassOverlay} />
         </View>
 
         {/* Action buttons */}
         <View style={styles.offerActions}>
-          <TouchableOpacity
-            style={styles.declineButton}
+          <GlassButton
+            title={isProcessing ? '' : 'Decline'}
+            variant="outline"
             onPress={handleDecline}
             disabled={isProcessing || timer.isExpired}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Decline offer"
-          >
-            {isProcessing ? (
-              <ActivityIndicator size="small" color={Colors.textSecondary} />
-            ) : (
-              <Text style={styles.declineButtonText}>Decline</Text>
-            )}
-          </TouchableOpacity>
+            loading={isProcessing}
+            style={styles.actionBtnHalf}
+          />
 
-          <TouchableOpacity
-            style={[
-              styles.acceptButton,
-              (isProcessing || timer.isExpired) && styles.buttonDisabled,
-            ]}
-            onPress={handleAccept}
-            disabled={isProcessing || timer.isExpired}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Accept offer"
-          >
-            {isProcessing ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Text style={styles.acceptButtonText}>
-                {timer.isExpired ? 'Expired' : 'Accept'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          {negotiated ? (
+            <GlassButton
+              title={timer.isExpired ? 'Expired' : 'Propose Price'}
+              variant="glow"
+              onPress={() => onPropose(offer)}
+              disabled={isProcessing || timer.isExpired}
+              style={styles.actionBtnHalf}
+            />
+          ) : (
+            <GlassButton
+              title={timer.isExpired ? 'Expired' : 'Accept'}
+              variant="glow"
+              onPress={handleAccept}
+              disabled={isProcessing || timer.isExpired}
+              loading={isProcessing}
+              style={styles.actionBtnHalf}
+            />
+          )}
         </View>
       </View>
-    </View>
+    </GlassCard>
   );
 }
 
@@ -260,26 +505,51 @@ function OfferCard({
 // ---------------------------------------------------------------------------
 
 export default function JobOffersScreen(): React.JSX.Element {
-  const navigation = useNavigation<OffersNav>();
   const {
-    pendingOffers,
     isLoadingOffers,
     fetchOffers,
     acceptOffer,
     declineOffer,
+    getFilteredOffers,
+    setOfferFilter,
+    setOfferSort,
+    offerFilterCategory,
+    offerFilterMaxDistance,
+    offerSortBy,
+    pendingOffers,
+    submitPriceProposal,
   } = useProviderStore();
 
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [proposalOffer, setProposalOffer] = useState<JobOffer | null>(null);
+  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
+
+  // Derive unique categories from offers
+  const categories = useMemo(() => {
+    const catSet = new Set<string>();
+    for (const offer of pendingOffers) {
+      if (offer.task.categoryName) catSet.add(offer.task.categoryName);
+    }
+    return Array.from(catSet).sort();
+  }, [pendingOffers]);
 
   useEffect(() => {
     fetchOffers();
   }, [fetchOffers]);
 
+  const filteredOffers = useMemo(() => getFilteredOffers(), [
+    pendingOffers,
+    offerFilterCategory,
+    offerFilterMaxDistance,
+    offerSortBy,
+    getFilteredOffers,
+  ]);
+
   const handleAccept = useCallback(
-    async (offerId: string) => {
-      setProcessingId(offerId);
+    async (jobId: string) => {
+      setProcessingId(jobId);
       try {
-        await acceptOffer(offerId);
+        await acceptOffer(jobId);
       } finally {
         setProcessingId(null);
       }
@@ -288,15 +558,50 @@ export default function JobOffersScreen(): React.JSX.Element {
   );
 
   const handleDecline = useCallback(
-    async (offerId: string) => {
-      setProcessingId(offerId);
+    async (jobId: string) => {
+      setProcessingId(jobId);
       try {
-        await declineOffer(offerId);
+        await declineOffer(jobId);
       } finally {
         setProcessingId(null);
       }
     },
     [declineOffer],
+  );
+
+  const handlePropose = useCallback((offer: JobOffer) => {
+    setProposalOffer(offer);
+  }, []);
+
+  const handleSubmitProposal = useCallback(
+    async (priceCents: number, description: string) => {
+      if (!proposalOffer) return;
+      setIsSubmittingProposal(true);
+      try {
+        await submitPriceProposal(proposalOffer.jobId, priceCents, description);
+        Alert.alert('Proposal Submitted', 'Your price proposal has been sent.');
+        setProposalOffer(null);
+      } catch {
+        Alert.alert('Error', 'Failed to submit proposal. Please try again.');
+      } finally {
+        setIsSubmittingProposal(false);
+      }
+    },
+    [proposalOffer, submitPriceProposal],
+  );
+
+  const handleDistanceFilter = useCallback(
+    (value: number | null) => {
+      setOfferFilter(offerFilterCategory, value);
+    },
+    [offerFilterCategory, setOfferFilter],
+  );
+
+  const handleCategoryFilter = useCallback(
+    (category: string | null) => {
+      setOfferFilter(category, offerFilterMaxDistance);
+    },
+    [offerFilterMaxDistance, setOfferFilter],
   );
 
   const renderOffer = useCallback(
@@ -305,13 +610,14 @@ export default function JobOffersScreen(): React.JSX.Element {
         offer={item}
         onAccept={handleAccept}
         onDecline={handleDecline}
-        isProcessing={processingId === item.id}
+        onPropose={handlePropose}
+        isProcessing={processingId === item.jobId}
       />
     ),
-    [handleAccept, handleDecline, processingId],
+    [handleAccept, handleDecline, handlePropose, processingId],
   );
 
-  const keyExtractor = useCallback((item: JobOffer) => item.id, []);
+  const keyExtractor = useCallback((item: JobOffer) => item.assignmentId, []);
 
   const renderEmpty = useCallback(() => {
     if (isLoadingOffers) return null;
@@ -327,9 +633,107 @@ export default function JobOffersScreen(): React.JSX.Element {
   }, [isLoadingOffers]);
 
   return (
-    <View style={styles.container}>
+    <GlassBackground>
+      {/* Filter bar */}
+      <View style={styles.filterSection}>
+        {/* Category pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              !offerFilterCategory && styles.filterPillActive,
+            ]}
+            onPress={() => handleCategoryFilter(null)}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                !offerFilterCategory && styles.filterPillTextActive,
+              ]}
+            >
+              All Types
+            </Text>
+          </TouchableOpacity>
+          {categories.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              style={[
+                styles.filterPill,
+                offerFilterCategory === cat && styles.filterPillActive,
+              ]}
+              onPress={() => handleCategoryFilter(cat)}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  offerFilterCategory === cat && styles.filterPillTextActive,
+                ]}
+              >
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Distance + Sort row */}
+        <View style={styles.filterSecondRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {DISTANCE_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={[
+                  styles.filterChip,
+                  offerFilterMaxDistance === opt.value && styles.filterChipActive,
+                ]}
+                onPress={() => handleDistanceFilter(opt.value)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    offerFilterMaxDistance === opt.value &&
+                      styles.filterChipTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={styles.filterDivider} />
+
+            {SORT_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.filterChip,
+                  offerSortBy === opt.value && styles.filterChipActive,
+                ]}
+                onPress={() => setOfferSort(opt.value)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    offerSortBy === opt.value && styles.filterChipTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+
       <FlatList
-        data={pendingOffers}
+        data={filteredOffers}
         renderItem={renderOffer}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.listContent}
@@ -338,7 +742,15 @@ export default function JobOffersScreen(): React.JSX.Element {
         onRefresh={fetchOffers}
         showsVerticalScrollIndicator={false}
       />
-    </View>
+
+      <ProposalModal
+        visible={proposalOffer !== null}
+        offer={proposalOffer}
+        onClose={() => setProposalOffer(null)}
+        onSubmit={handleSubmitProposal}
+        isSubmitting={isSubmittingProposal}
+      />
+    </GlassBackground>
   );
 }
 
@@ -347,9 +759,68 @@ export default function JobOffersScreen(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  filterSection: {
+    backgroundColor: Colors.glass.dark,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.glassBorder.subtle,
+    paddingTop: 8,
+  },
+  filterRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterSecondRow: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.glassBorder.subtle,
+  },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.light,
+    backgroundColor: Colors.glass.white,
+  },
+  filterPillActive: {
+    backgroundColor: Colors.primary + '25',
+    borderColor: Colors.primary,
+  },
+  filterPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  filterPillTextActive: {
+    color: Colors.primary,
+  },
+  filterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.light,
+    backgroundColor: Colors.glass.white,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary + '25',
+    borderColor: Colors.primary,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  filterChipTextActive: {
+    color: Colors.primary,
+  },
+  filterDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: Colors.glassBorder.subtle,
+    marginHorizontal: 4,
   },
   listContent: {
     paddingVertical: 16,
@@ -357,16 +828,10 @@ const styles = StyleSheet.create({
   },
   offerCard: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
     marginHorizontal: 16,
     marginBottom: 12,
     overflow: 'hidden',
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 0,
   },
   offerLevelStrip: {
     width: 4,
@@ -379,11 +844,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   offerHeaderLeft: {
     flex: 1,
     marginRight: 8,
+  },
+  offerSubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   offerTaskName: {
     fontSize: 16,
@@ -393,18 +862,44 @@ const styles = StyleSheet.create({
   },
   offerCategory: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   timerBadge: {
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
+    backgroundColor: Colors.glass.white,
   },
   timerText: {
     fontSize: 14,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  levelBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  levelBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  rateBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  rateBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   offerDetails: {
     flexDirection: 'row',
@@ -416,7 +911,7 @@ const styles = StyleSheet.create({
   },
   offerDetailLabel: {
     fontSize: 11,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginBottom: 2,
   },
   offerDetailValue: {
@@ -428,76 +923,78 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.success,
   },
-  slaRow: {
+  customerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
     padding: 8,
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 6,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.subtle,
   },
-  slaLabel: {
+  customerLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.emergencyRed,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginRight: 6,
   },
-  slaValue: {
+  customerValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  emergencyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    padding: 8,
+    backgroundColor: Colors.emergencyRed + '15',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.emergencyRed + '40',
+  },
+  emergencyLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.emergencyRed,
   },
-  mapPreview: {
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 8,
-    padding: 12,
+  mapContainer: {
+    height: 120,
+    borderRadius: 12,
     marginBottom: 12,
-    alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: Colors.glass.dark,
+    position: 'relative',
   },
-  mapPreviewText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
-    marginBottom: 4,
+  map: {
+    flex: 1,
   },
-  mapPreviewCoords: {
-    fontSize: 11,
-    color: Colors.textTertiary,
+  mapGlassOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(10, 10, 30, 0.15)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.subtle,
+  },
+  mapMarker: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   offerActions: {
     flexDirection: 'row',
     gap: 10,
   },
-  declineButton: {
+  actionBtnHalf: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  declineButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  acceptButton: {
-    flex: 1,
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  acceptButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  buttonDisabled: {
-    backgroundColor: Colors.border,
-    opacity: 0.6,
   },
   emptyContainer: {
     flex: 1,
@@ -514,8 +1011,62 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
     lineHeight: 20,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Modal Styles
+// ---------------------------------------------------------------------------
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  content: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  taskName: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.55)',
+    marginBottom: 12,
+  },
+  guideContainer: {
+    backgroundColor: Colors.primary + '15',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  guideText: {
+    fontSize: 13,
+    color: Colors.primary,
+  },
+  inputSpacing: {
+    marginBottom: 16,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  actionBtn: {
+    flex: 1,
   },
 });

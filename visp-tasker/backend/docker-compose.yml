@@ -1,5 +1,5 @@
 # =============================================================================
-# VISP Tasker Backend - Docker Compose
+# VISP Backend - Docker Compose
 # =============================================================================
 # Services: FastAPI Backend, PostgreSQL, Redis
 # Run with: docker-compose up -d
@@ -30,6 +30,7 @@ services:
       - WS_CORS_ALLOWED_ORIGINS=${WS_CORS_ALLOWED_ORIGINS:-*}
     volumes:
       - ./src:/app/src
+      - ./uploads:/app/uploads
     depends_on:
       redis:
         condition: service_healthy

@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - CategoryScreen
+ * VISP - CategoryScreen
  *
  * Shows tasks within a selected category.
  * Features:
@@ -9,6 +9,8 @@
  *   - Each task shows: name, level badge, estimated price range, brief description
  *
  * CRITICAL: Closed task catalog. No free-text task creation.
+ *
+ * Styled with dark glassmorphism design system.
  */
 
 import React, { useEffect, useCallback, useMemo } from 'react';
@@ -17,18 +19,18 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
+import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton, GlassInput } from '../../components/glass';
 import { useTaskStore } from '../../stores/taskStore';
 import TaskCard from '../../components/TaskCard';
 import LevelBadge from '../../components/LevelBadge';
@@ -65,7 +67,7 @@ const LEVEL_TABS: LevelTab[] = [
 function CategoryScreen(): React.JSX.Element {
   const route = useRoute<CategoryScreenRouteProp>();
   const navigation = useNavigation<CategoryScreenNavProp>();
-  const { categoryId, categoryName } = route.params;
+  const { categoryId, categoryName } = route.params ?? { categoryId: '', categoryName: '' };
 
   const {
     filteredTasks,
@@ -78,15 +80,33 @@ function CategoryScreen(): React.JSX.Element {
     setSearchQuery,
   } = useTaskStore();
 
-  // Set header title
+  // Set header title and close button
   useEffect(() => {
-    navigation.setOptions({ title: categoryName });
+    navigation.setOptions({
+      title: categoryName,
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => navigation.getParent()?.goBack()}
+          style={{ paddingRight: Spacing.md, paddingVertical: Spacing.sm }}
+        >
+          <Text style={{ color: 'rgba(120, 80, 255, 0.9)', ...Typography.body, fontWeight: '600' }}>
+            Close
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
   }, [navigation, categoryName]);
 
   // Load tasks on mount
   useEffect(() => {
-    fetchCategoryTasks(categoryId);
-  }, [categoryId, fetchCategoryTasks]);
+    // Reset filters to ensure we see all tasks for this category
+    setSearchQuery('');
+    setLevelFilter(null);
+
+    if (categoryId) {
+      fetchCategoryTasks(categoryId);
+    }
+  }, [categoryId, fetchCategoryTasks, setSearchQuery, setLevelFilter]);
 
   // Handlers
   const handleLevelFilter = useCallback(
@@ -202,50 +222,47 @@ function CategoryScreen(): React.JSX.Element {
 
   // Empty state
   const renderEmpty = useCallback(() => {
-    if (isLoadingTasks) {
+    if (isLoadingTasks || error) {
       return null;
     }
     return (
-      <View style={styles.emptyContainer}>
+      <GlassCard variant="dark" padding={32} style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>No tasks found</Text>
         <Text style={styles.emptyDescription}>
           {searchQuery
             ? 'Try adjusting your search or filter criteria.'
             : 'No tasks are available in this category at the moment.'}
         </Text>
-      </View>
+      </GlassCard>
     );
-  }, [isLoadingTasks, searchQuery]);
+  }, [isLoadingTasks, searchQuery, error]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         {/* Search bar */}
         <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <Text style={styles.searchIcon}>S</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search tasks..."
-              placeholderTextColor={Colors.inputPlaceholder}
-              value={searchQuery}
-              onChangeText={handleSearchChange}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              accessibilityLabel="Search tasks"
-              accessibilityHint="Type to filter tasks within this category"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity
-                onPress={() => handleSearchChange('')}
-                style={styles.clearButton}
-                accessibilityLabel="Clear search"
-              >
-                <Text style={styles.clearButtonText}>X</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <GlassInput
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search tasks"
+            accessibilityHint="Type to filter tasks within this category"
+            icon={<Text style={styles.searchIcon}>S</Text>}
+            containerStyle={styles.searchInputWrapper}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => handleSearchChange('')}
+              style={styles.clearButton}
+              accessibilityLabel="Clear search"
+            >
+              <Text style={styles.clearButtonText}>X</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Level filter tabs */}
@@ -263,19 +280,19 @@ function CategoryScreen(): React.JSX.Element {
         {error && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity
+            <GlassButton
+              title="Retry"
+              variant="outline"
               onPress={() => fetchCategoryTasks(categoryId)}
               style={styles.retryButton}
-            >
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
+            />
           </View>
         )}
 
         {/* Loading */}
         {isLoadingTasks && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+            <AnimatedSpinner size={48} color="rgba(120, 80, 255, 0.9)" />
             <Text style={styles.loadingText}>Loading tasks...</Text>
           </View>
         )}
@@ -310,7 +327,7 @@ function CategoryScreen(): React.JSX.Element {
           </ScrollView>
         )}
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -319,13 +336,8 @@ function CategoryScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
 
   // Search
@@ -333,43 +345,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
-  },
-  searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: Spacing.md,
-    height: 44,
+  },
+  searchInputWrapper: {
+    flex: 1,
   },
   searchIcon: {
     fontSize: 16,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     fontWeight: FontWeight.bold,
-    marginRight: Spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    ...Typography.body,
-    color: Colors.inputText,
-    paddingVertical: 0,
   },
   clearButton: {
-    padding: Spacing.xs,
+    padding: Spacing.sm,
     marginLeft: Spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   clearButtonText: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     fontWeight: FontWeight.bold,
   },
 
   // Tabs
   tabContainer: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   tabScrollContent: {
     paddingHorizontal: Spacing.lg,
@@ -380,20 +384,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.xxl,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   tabActive: {
-    backgroundColor: `${Colors.primary}20`,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.25)',
+    borderColor: 'rgba(120, 80, 255, 0.6)',
   },
   tabText: {
     ...Typography.buttonSmall,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   tabTextActive: {
-    color: Colors.primary,
+    color: '#FFFFFF',
   },
 
   // Task list
@@ -415,27 +419,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: Spacing.md,
+    ...GlassStyles.sectionHeader,
   },
   taskCount: {
     ...Typography.footnote,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
 
   // Empty state
-  emptyContainer: {
+  emptyCard: {
     alignItems: 'center',
-    paddingVertical: Spacing.giant,
-    paddingHorizontal: Spacing.xxl,
+    marginTop: Spacing.xxl,
   },
   emptyTitle: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.sm,
     textAlign: 'center',
   },
   emptyDescription: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
   },
 
@@ -447,7 +451,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
     marginTop: Spacing.md,
   },
 
@@ -455,10 +459,10 @@ const styles = StyleSheet.create({
   errorContainer: {
     margin: Spacing.lg,
     padding: Spacing.lg,
-    backgroundColor: `${Colors.error}15`,
-    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(231, 76, 60, 0.12)',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: `${Colors.error}30`,
+    borderColor: 'rgba(231, 76, 60, 0.30)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -469,15 +473,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   retryButton: {
+    marginLeft: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
-    backgroundColor: Colors.error,
-    borderRadius: BorderRadius.xs,
-    marginLeft: Spacing.sm,
-  },
-  retryText: {
-    ...Typography.buttonSmall,
-    color: Colors.white,
+    minHeight: 36,
   },
 });
 

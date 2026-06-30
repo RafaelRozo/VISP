@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply h-full;
+  }
+  body {
+    @apply antialiased;
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    background: #0A0A0A;
+    color: #FFFFFF;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-glass border border-glassBorder rounded-2xl backdrop-blur-md;
+  }
+  .glow-button {
+    @apply rounded-xl bg-primary text-white font-semibold px-5 py-3 shadow-lg shadow-primary/30 hover:bg-primaryDark transition;
+  }
+  .ghost-button {
+    @apply rounded-xl border border-glassBorder text-textPrimary px-5 py-3 hover:bg-glass transition;
+  }
+  .input {
+    @apply w-full bg-glass border border-glassBorder rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary text-textPrimary placeholder:text-textTertiary;
+  }
+  .label {
+    @apply text-sm font-semibold text-textSecondary mb-1;
+  }
+  .stat-card {
+    @apply glass p-5 flex flex-col gap-2;
+  }
+}

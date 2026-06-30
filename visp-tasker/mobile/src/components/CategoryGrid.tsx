@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Category Grid Component
+ * VISP - Category Grid Component
  *
  * Displays service categories in a 2-column grid layout.
  * Each tile shows an icon, name, and task count.
@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../theme';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, GlassStyles } from '../theme';
 import type { ServiceCategory } from '../types';
 
 // ──────────────────────────────────────────────
@@ -221,13 +221,9 @@ const styles = StyleSheet.create({
   // ── Tile ──────────────────────────────
   tile: {
     width: TILE_WIDTH,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    ...GlassStyles.card,
     padding: Spacing.lg,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.sm,
   },
   tileEmergency: {
     borderColor: 'rgba(231, 76, 60, 0.3)',
@@ -238,10 +234,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: BorderRadius.md,
-    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+    backgroundColor: 'rgba(74, 144, 226, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(74, 144, 226, 0.25)',
   },
   iconContainerEmergency: {
     backgroundColor: 'rgba(231, 76, 60, 0.12)',

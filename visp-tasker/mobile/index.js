@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - React Native entry point
+ * VISP - React Native entry point
  * @format
  */
 

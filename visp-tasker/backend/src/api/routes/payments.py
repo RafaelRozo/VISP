@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from src.api.schemas.payment import (
     AccountLinkOut,
@@ -72,7 +72,9 @@ from src.integrations.stripe.payoutService import (
     get_balance,
     list_payouts,
 )
+from src.integrations.stripe.paymentService import STRIPE_PUBLISHABLE_KEY
 from src.integrations.stripe.webhookHandler import handle_webhook
+from src.api.deps import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +331,7 @@ async def attach_payment_method_endpoint(
 )
 async def stripe_webhook_endpoint(
     request: Request,
+    db=Depends(get_db),
 ) -> WebhookResultOut:
     # Read raw body for signature verification
     payload = await request.body()
@@ -341,7 +344,7 @@ async def stripe_webhook_endpoint(
         )
 
     try:
-        result = await handle_webhook(payload=payload, sig_header=sig_header)
+        result = await handle_webhook(payload=payload, sig_header=sig_header, db=db)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -522,3 +525,16 @@ async def list_payouts_endpoint(
         payouts=payouts_out,
         count=len(payouts_out),
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /payments/config -- Public Stripe config
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/config",
+    summary="Get Stripe publishable key",
+    description="Returns the Stripe publishable key for client-side initialization.",
+)
+async def get_stripe_config() -> dict:
+    return {"publishable_key": STRIPE_PUBLISHABLE_KEY}

@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# VISP Tasker Backend - Docker Entrypoint
+# VISP Backend - Docker Entrypoint
 # =============================================================================
 # Runs migrations/seeds on startup, then starts the server
 # =============================================================================
@@ -8,7 +8,7 @@
 set -e
 
 echo "============================================================"
-echo "VISP Tasker Backend - Starting up..."
+echo "VISP Backend - Starting up..."
 echo "============================================================"
 
 # Wait for database to be ready

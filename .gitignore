@@ -18,3 +18,21 @@ DerivedData/
 
 # OS
 .DS_Store
+
+# Secrets / local data
+.env
+.env.*
+*.env
+recovery-codes-*.json
+
+# Build artifacts
+dist/
+
+# Local tooling
+.claude/
+.agents/
+.continue/
+skills-lock.json
+
+# Work-in-progress / scratch
+newdesign/

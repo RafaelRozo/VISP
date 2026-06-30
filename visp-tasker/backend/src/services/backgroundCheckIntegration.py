@@ -1,5 +1,5 @@
 """
-Background Check Integration Service for VISP/Tasker.
+Background Check Integration Service for VISP.
 
 Provides a unified interface for submitting and tracking background checks
 through multiple Canadian CRC (Criminal Record Check) providers:

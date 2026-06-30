@@ -45,6 +45,21 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def _user_to_out(user, role_str: str) -> UserOut:
     """Convert a User ORM object to a UserOut schema with the role string."""
+    from src.api.schemas.auth import UserDefaultAddressOut
+    
+    address = None
+    if user.default_address_street:
+        address = UserDefaultAddressOut(
+            street=user.default_address_street,
+            city=user.default_address_city or "",
+            province=user.default_address_province or "",
+            postal_code=user.default_address_postal_code or "",
+            country=user.default_address_country or "CA",
+            latitude=float(user.default_address_latitude) if user.default_address_latitude else None,
+            longitude=float(user.default_address_longitude) if user.default_address_longitude else None,
+            formatted_address=user.default_address_formatted
+        )
+
     return UserOut(
         id=user.id,
         email=user.email,
@@ -53,6 +68,8 @@ def _user_to_out(user, role_str: str) -> UserOut:
         last_name=user.last_name,
         role=role_str,
         avatar_url=user.avatar_url,
+        default_address=address,
+        stripe_customer_id=user.stripe_customer_id,
         is_verified=user.email_verified,
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -109,6 +126,7 @@ async def register(
         data=AuthData(
             user=_user_to_out(user, role_str),
             tokens=_tokens_to_out(tokens),
+            recovery_code=user.recovery_code,
         ),
         message="Account created successfully.",
     )
@@ -273,4 +291,64 @@ async def forgot_password(
 
     return MessageResponse(
         message="If an account exists with this email, a password reset link has been sent.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/recover-password (offline reset using recovery code)
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+def _camel(s: str) -> str:
+    parts = s.split("_")
+    return parts[0] + "".join(w.capitalize() for w in parts[1:])
+
+
+class RecoverPasswordRequest(BaseModel):
+    model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
+    email: EmailStr
+    recovery_code: str = Field(min_length=8, max_length=20)
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+class RecoverPasswordResponseData(BaseModel):
+    model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
+    recovery_code: str
+
+
+class RecoverPasswordResponse(BaseModel):
+    model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
+    data: RecoverPasswordResponseData
+
+
+@router.post(
+    "/recover-password",
+    response_model=RecoverPasswordResponse,
+    response_model_by_alias=True,
+    summary="Reset password using recovery code",
+    description=(
+        "Resets the user's password using their offline recovery code. "
+        "Generates and returns a new recovery code (old one is invalidated)."
+    ),
+)
+async def recover_password(
+    body: RecoverPasswordRequest,
+    db: DBSession,
+) -> RecoverPasswordResponse:
+    try:
+        _user, new_code = await auth_service.reset_password_with_code(
+            db,
+            email=body.email,
+            recovery_code=body.recovery_code,
+            new_password=body.new_password,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+    return RecoverPasswordResponse(
+        data=RecoverPasswordResponseData(recovery_code=new_code),
     )

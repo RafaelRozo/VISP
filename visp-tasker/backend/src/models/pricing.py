@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -49,6 +50,10 @@ class PricingEventType(str, enum.Enum):
     DISCOUNT_APPLIED = "discount_applied"
     SURCHARGE_APPLIED = "surcharge_applied"
     REFUND_CALCULATED = "refund_calculated"
+    PRICE_PROPOSED = "price_proposed"
+    PRICE_ACCEPTED = "price_accepted"
+    TIP_ADDED = "tip_added"
+    TIME_BASED_CALCULATED = "time_based_calculated"
 
 
 class PricingRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -90,7 +95,7 @@ class PricingRule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Conditions (JSON: time ranges, demand thresholds, etc.)
     conditions_json: Mapped[Any] = mapped_column(
-        JSONB, server_default="'{}'::jsonb", nullable=False
+        JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
 
     # Priority (higher wins on conflict)
@@ -154,7 +159,7 @@ class PricingEvent(Base):
 
     # Which rules were applied (array of rule IDs + their values)
     rules_applied_json: Mapped[Any] = mapped_column(
-        JSONB, server_default="'[]'::jsonb", nullable=False
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
 
     # Commission calculated
@@ -166,6 +171,19 @@ class PricingEvent(Base):
         BigInteger, nullable=True
     )
     currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="CAD")
+
+    # Tax/tip snapshot (PP3) — full receipt waterfall, immutable.
+    subtotal_cents: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    service_tax_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    tax_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 5), nullable=True)
+    tip_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    service_fee_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
 
     # Context at calculation time
     demand_factor: Mapped[Optional[Decimal]] = mapped_column(

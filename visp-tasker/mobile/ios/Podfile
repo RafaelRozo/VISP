@@ -22,21 +22,14 @@ target 'VISPTasker' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  # Google Maps for react-native-maps
-  pod 'react-native-maps', path: '../node_modules/react-native-maps'
-  pod 'react-native-google-maps', path: '../node_modules/react-native-maps'
-  pod 'GoogleMaps'
-
-  # Firebase (modular_headers needed for Swift interop)
-  pod 'Firebase/Messaging', :modular_headers => true
-  pod 'FirebaseCore', :modular_headers => true
-  pod 'FirebaseCoreInternal', :modular_headers => true
-  pod 'GoogleUtilities', :modular_headers => true
-  pod 'FirebaseInstallations', :modular_headers => true
-
   target 'VISPTaskerTests' do
     inherit! :complete
     # Pods for testing
+  end
+
+  # Mapbox Maps requires certain pods to be dynamic frameworks
+  pre_install do |installer|
+    $RNMapboxMaps.pre_install(installer)
   end
 
   post_install do |installer|
@@ -45,6 +38,8 @@ target 'VISPTasker' do
       config[:reactNativePath],
       :mac_catalyst_enabled => false
     )
+
+    $RNMapboxMaps.post_install(installer)
 
     # Force minimum deployment target across all pods
     installer.pods_project.targets.each do |target|

@@ -155,10 +155,11 @@ async def _request_with_retry(
 
 def _ensure_access_token() -> str:
     """Return the access token or raise if not configured."""
-    token = MAPBOX_ACCESS_TOKEN
+    from src.core.config import settings
+    token = settings.mapbox_access_token
     if not token:
         raise MapboxError(
-            "MAPBOX_ACCESS_TOKEN environment variable is not set"
+            "MAPBOX_ACCESS_TOKEN environment variable is not set (in .env)"
         )
     return token
 
@@ -168,13 +169,14 @@ def _ensure_access_token() -> str:
 # ---------------------------------------------------------------------------
 
 
-async def geocode_address(address: str) -> dict[str, Any]:
+async def geocode_address(address: str, *, country: str = "") -> dict[str, Any]:
     """Forward-geocode a human-readable address to coordinates.
 
     Uses the Mapbox Geocoding API v5.
 
     Args:
         address: Full or partial street address string.
+        country: ISO 3166-1 alpha-2 country code to bias results (e.g. "MX", "CA").
 
     Returns:
         Dict with keys: lat, lng, formatted_address, place_id, location_type,
@@ -186,16 +188,21 @@ async def geocode_address(address: str) -> dict[str, Any]:
     token = _ensure_access_token()
     encoded_address = address.replace("#", "")
 
+    params: dict[str, Any] = {
+        "access_token": token,
+        "limit": 5,
+        "types": "address,place,locality,neighborhood,postcode",
+    }
+    # Bias results to specific country if provided
+    if country:
+        params["country"] = country.lower()
+
     async with httpx.AsyncClient() as client:
         data = await _request_with_retry(
             client,
             "GET",
             f"{_BASE_URL}/geocoding/v5/mapbox.places/{encoded_address}.json",
-            params={
-                "access_token": token,
-                "limit": 5,
-                "types": "address,place,locality,neighborhood,postcode",
-            },
+            params=params,
         )
 
     features = data.get("features", []) if isinstance(data, dict) else []

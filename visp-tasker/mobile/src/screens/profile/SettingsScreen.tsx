@@ -1,9 +1,11 @@
 /**
- * VISP/Tasker - Settings Screen
+ * VISP - Settings Screen
  *
  * Notification preferences, payment methods management, language selection,
  * app theme (dark/light), privacy settings, terms of service links, and
  * about/version info.
+ *
+ * Dark glassmorphism redesign.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -20,6 +22,8 @@ import {
   View,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import {
   NotificationPreferences,
   PaymentMethod,
@@ -38,8 +42,8 @@ const LANGUAGES = [
   { code: 'fr', label: 'French' },
 ];
 
-const TERMS_URL = 'https://taskerapp.com/terms';
-const PRIVACY_URL = 'https://taskerapp.com/privacy';
+const TERMS_URL = 'https://vispapp.com/terms';
+const PRIVACY_URL = 'https://vispapp.com/privacy';
 
 // ---------------------------------------------------------------------------
 // SettingsRow sub-component
@@ -62,9 +66,9 @@ function SettingsToggle({
       <Switch
         value={value}
         onValueChange={onToggle}
-        trackColor={{ false: Colors.border, true: Colors.primary }}
+        trackColor={{ false: 'rgba(255, 255, 255, 0.12)', true: 'rgba(120, 80, 255, 0.6)' }}
         thumbColor={Colors.white}
-        ios_backgroundColor={Colors.border}
+        ios_backgroundColor="rgba(255, 255, 255, 0.12)"
         accessibilityLabel={`Toggle ${label}`}
         accessibilityRole="switch"
       />
@@ -119,11 +123,11 @@ const rowStyles = StyleSheet.create({
   },
   value: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   arrow: {
     fontSize: 20,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.25)',
   },
 });
 
@@ -196,11 +200,11 @@ const paymentStyles = StyleSheet.create({
   },
   last4: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   expiry: {
     fontSize: 11,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.35)',
     marginTop: 2,
   },
   right: {
@@ -208,6 +212,8 @@ const paymentStyles = StyleSheet.create({
   },
   defaultBadge: {
     backgroundColor: `${Colors.success}20`,
+    borderWidth: 1,
+    borderColor: `${Colors.success}40`,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -262,7 +268,6 @@ export default function SettingsScreen(): React.JSX.Element {
       try {
         await patch('/users/me/notifications', updated);
       } catch {
-        // Revert on failure
         setNotifications(notifications);
       }
     },
@@ -301,7 +306,6 @@ export default function SettingsScreen(): React.JSX.Element {
   // Theme toggle
   const handleThemeToggle = useCallback((value: boolean) => {
     setDarkMode(value);
-    // In production, this updates the theme context
   }, []);
 
   // Payment method removal
@@ -345,139 +349,141 @@ export default function SettingsScreen(): React.JSX.Element {
     LANGUAGES.find((l) => l.code === language)?.label ?? 'English';
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* Notifications Section */}
-      <Text style={styles.sectionHeader}>Notifications</Text>
-      <View style={styles.sectionCard}>
-        <SettingsToggle
-          label="Push Notifications"
-          value={notifications.pushEnabled}
-          onToggle={(v) => handleNotificationToggle('pushEnabled', v)}
-        />
-        <View style={styles.divider} />
-        <SettingsToggle
-          label="Job Offers"
-          value={notifications.jobOffers}
-          onToggle={(v) => handleNotificationToggle('jobOffers', v)}
-        />
-        <View style={styles.divider} />
-        <SettingsToggle
-          label="Job Updates"
-          value={notifications.jobUpdates}
-          onToggle={(v) => handleNotificationToggle('jobUpdates', v)}
-        />
-        <View style={styles.divider} />
-        <SettingsToggle
-          label="Promotions"
-          value={notifications.promotions}
-          onToggle={(v) => handleNotificationToggle('promotions', v)}
-        />
-        <View style={styles.divider} />
-        <SettingsToggle
-          label="Emergency Alerts"
-          value={notifications.emergencyAlerts}
-          onToggle={(v) => handleNotificationToggle('emergencyAlerts', v)}
-        />
-      </View>
+    <GlassBackground>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Notifications Section */}
+        <Text style={styles.sectionHeader}>Notifications</Text>
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          <SettingsToggle
+            label="Push Notifications"
+            value={notifications.pushEnabled}
+            onToggle={(v) => handleNotificationToggle('pushEnabled', v)}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsToggle
+            label="Job Offers"
+            value={notifications.jobOffers}
+            onToggle={(v) => handleNotificationToggle('jobOffers', v)}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsToggle
+            label="Job Updates"
+            value={notifications.jobUpdates}
+            onToggle={(v) => handleNotificationToggle('jobUpdates', v)}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsToggle
+            label="Promotions"
+            value={notifications.promotions}
+            onToggle={(v) => handleNotificationToggle('promotions', v)}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsToggle
+            label="Emergency Alerts"
+            value={notifications.emergencyAlerts}
+            onToggle={(v) => handleNotificationToggle('emergencyAlerts', v)}
+          />
+        </GlassCard>
 
-      {/* Payment Methods Section */}
-      <Text style={styles.sectionHeader}>Payment Methods</Text>
-      <View style={styles.sectionCard}>
-        {paymentMethods.map((method, index) => (
-          <React.Fragment key={method.id}>
-            <PaymentMethodCard
-              method={method}
-              onRemove={handleRemovePaymentMethod}
-            />
-            {index < paymentMethods.length - 1 && (
-              <View style={styles.divider} />
-            )}
-          </React.Fragment>
-        ))}
-        <View style={styles.divider} />
-        <TouchableOpacity
-          style={styles.addPaymentButton}
-          onPress={handleAddPaymentMethod}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Add payment method"
-        >
-          <Text style={styles.addPaymentText}>+ Add Payment Method</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Payment Methods Section */}
+        <Text style={styles.sectionHeader}>Payment Methods</Text>
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          {paymentMethods.map((method, index) => (
+            <React.Fragment key={method.id}>
+              <PaymentMethodCard
+                method={method}
+                onRemove={handleRemovePaymentMethod}
+              />
+              {index < paymentMethods.length - 1 && (
+                <View style={styles.glassDivider} />
+              )}
+            </React.Fragment>
+          ))}
+          <View style={styles.glassDivider} />
+          <TouchableOpacity
+            style={styles.addPaymentButton}
+            onPress={handleAddPaymentMethod}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add payment method"
+          >
+            <Text style={styles.addPaymentText}>+ Add Payment Method</Text>
+          </TouchableOpacity>
+        </GlassCard>
 
-      {/* App Settings Section */}
-      <Text style={styles.sectionHeader}>App Settings</Text>
-      <View style={styles.sectionCard}>
-        <SettingsLink
-          label="Language"
-          value={currentLanguageLabel}
-          onPress={handleLanguagePicker}
-        />
-        <View style={styles.divider} />
-        <SettingsToggle
-          label="Dark Mode"
-          value={darkMode}
-          onToggle={handleThemeToggle}
-        />
-      </View>
+        {/* App Settings Section */}
+        <Text style={styles.sectionHeader}>App Settings</Text>
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          <SettingsLink
+            label="Language"
+            value={currentLanguageLabel}
+            onPress={handleLanguagePicker}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsToggle
+            label="Dark Mode"
+            value={darkMode}
+            onToggle={handleThemeToggle}
+          />
+        </GlassCard>
 
-      {/* Privacy & Legal Section */}
-      <Text style={styles.sectionHeader}>Privacy & Legal</Text>
-      <View style={styles.sectionCard}>
-        <SettingsLink
-          label="Privacy Settings"
-          onPress={() => {
-            Alert.alert(
-              'Privacy Settings',
-              'Manage your data sharing and privacy preferences.',
-              [{ text: 'OK' }],
-            );
-          }}
-        />
-        <View style={styles.divider} />
-        <SettingsLink
-          label="Terms of Service"
-          onPress={() => openURL(TERMS_URL)}
-        />
-        <View style={styles.divider} />
-        <SettingsLink
-          label="Privacy Policy"
-          onPress={() => openURL(PRIVACY_URL)}
-        />
-      </View>
+        {/* Privacy & Legal Section */}
+        <Text style={styles.sectionHeader}>Privacy & Legal</Text>
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          <SettingsLink
+            label="Privacy Settings"
+            onPress={() => {
+              Alert.alert(
+                'Privacy Settings',
+                'Manage your data sharing and privacy preferences.',
+                [{ text: 'OK' }],
+              );
+            }}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsLink
+            label="Terms of Service"
+            onPress={() => openURL(TERMS_URL)}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsLink
+            label="Privacy Policy"
+            onPress={() => openURL(PRIVACY_URL)}
+          />
+        </GlassCard>
 
-      {/* About Section */}
-      <Text style={styles.sectionHeader}>About</Text>
-      <View style={styles.sectionCard}>
-        <View style={styles.aboutRow}>
-          <Text style={styles.aboutLabel}>App Version</Text>
-          <Text style={styles.aboutValue}>
-            {APP_VERSION} ({BUILD_NUMBER})
-          </Text>
-        </View>
-        <View style={styles.divider} />
-        <SettingsLink
-          label="Rate the App"
-          onPress={() => {
-            // In production, this opens the App Store rating dialog
-            Alert.alert('Thank you!', 'We appreciate your feedback.');
-          }}
-        />
-        <View style={styles.divider} />
-        <SettingsLink
-          label="Contact Support"
-          onPress={() => {
-            Linking.openURL('mailto:support@taskerapp.com');
-          }}
-        />
-      </View>
+        {/* About Section */}
+        <Text style={styles.sectionHeader}>About</Text>
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutLabel}>App Version</Text>
+            <Text style={styles.aboutValue}>
+              {APP_VERSION} ({BUILD_NUMBER})
+            </Text>
+          </View>
+          <View style={styles.glassDivider} />
+          <SettingsLink
+            label="Rate the App"
+            onPress={() => {
+              Alert.alert('Thank you!', 'We appreciate your feedback.');
+            }}
+          />
+          <View style={styles.glassDivider} />
+          <SettingsLink
+            label="Contact Support"
+            onPress={() => {
+              Linking.openURL('mailto:support@vispapp.com');
+            }}
+          />
+        </GlassCard>
 
-      <View style={styles.bottomSpacer} />
-    </ScrollView>
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+    </GlassBackground>
   );
 }
 
@@ -486,33 +492,29 @@ export default function SettingsScreen(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   contentContainer: {
     paddingTop: 16,
   },
+  glassCardMargin: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
   sectionHeader: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.35)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     paddingHorizontal: 16,
     marginBottom: 8,
     marginTop: 8,
   },
-  sectionCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  divider: {
+  glassDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     marginHorizontal: 16,
   },
   addPaymentButton: {
@@ -537,7 +539,7 @@ const styles = StyleSheet.create({
   },
   aboutValue: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   bottomSpacer: {
     height: 32,

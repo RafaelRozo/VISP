@@ -1,29 +1,31 @@
 /**
- * VISP/Tasker - BookingScreen
+ * VISP - BookingScreen (Confirm Booking)
  *
- * Booking confirmation screen with:
- *   - Selected task summary with level badge
- *   - Location input (device location or manual)
- *   - Schedule picker (Now or date/time)
- *   - Mandatory legal acknowledgment checkboxes
- *   - Confirm Booking button
+ * Confirmation / review screen for a booking.
+ * All data (address, date, time, priority, notes) comes pre-populated
+ * from the TaskSelectionScreen. Each section has an "Edit" link that
+ * navigates back so the user can modify their choices.
+ *
+ * The only interactive elements here are:
+ *   - Legal acknowledgment checkboxes (mandatory)
+ *   - "Confirm Booking" button
+ *   - "Edit" links to go back
  *
  * On confirm: POST /api/v1/jobs, then navigate to MatchingScreen.
- * For MVP: if API fails, create a mock job and proceed.
  *
  * CRITICAL: Legal checkboxes are MANDATORY before booking.
  * CRITICAL: No free-text task descriptions. Closed catalog only.
+ *
+ * Glass redesign: GlassBackground + GlassCard (dark) + GlassButton (glow)
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  SafeAreaView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -33,10 +35,14 @@ import { Colors, getLevelColor } from '../../theme/colors';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { BorderRadius } from '../../theme/borders';
-import { Shadows } from '../../theme/shadows';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
 import LevelBadge from '../../components/LevelBadge';
-import { post } from '../../services/apiClient';
-import type { CustomerFlowParamList } from '../../types';
+import { taskService, PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
+import { paymentService } from '../../services/paymentService';
+import { patch } from '../../services/apiClient';
+import { useAuthStore } from '../../stores/authStore';
+import type { CustomerFlowParamList, UserDefaultAddress } from '../../types';
 
 // ──────────────────────────────────────────────
 // Types
@@ -45,49 +51,46 @@ import type { CustomerFlowParamList } from '../../types';
 type BookingRouteProp = RouteProp<CustomerFlowParamList, 'Booking'>;
 type BookingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'Booking'>;
 
-type ScheduleMode = 'now' | 'scheduled';
-
-interface CalendarDate {
-  dateString: string;
-  dayOfWeek: string;
-  dayOfMonth: number;
-  month: string;
-  isToday: boolean;
-}
-
-// ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
-
-function generateCalendarDates(count: number): CalendarDate[] {
-  const dates: CalendarDate[] = [];
-  const now = new Date();
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
-  for (let i = 1; i <= count; i++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + i);
-    dates.push({
-      dateString: date.toISOString().split('T')[0],
-      dayOfWeek: dayNames[date.getDay()],
-      dayOfMonth: date.getDate(),
-      month: monthNames[date.getMonth()],
-      isToday: false,
-    });
-  }
-  return dates;
-}
-
 const LEVEL_LABELS: Record<number, string> = {
   1: 'General Help',
   2: 'Experienced',
   3: 'Certified Pro',
   4: 'Emergency',
 };
+
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+
+/** Format "2026-02-15" to "Sat, Feb 15, 2026" */
+function formatDisplayDate(dateString?: string): string {
+  if (!dateString) return 'Flexible';
+  const date = new Date(dateString + 'T00:00:00');
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${dayNames[date.getDay()]}, ${monthNames[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+/** Format "14:00" to "2:00 PM" */
+function formatDisplayTime(time?: string): string {
+  if (!time) return 'Flexible';
+  const [h, m] = time.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayHour}:${(m ?? 0).toString().padStart(2, '0')} ${ampm}`;
+}
+
+/** Format minutes to "2h" or "1h 30m" */
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (rem === 0) return `${hours}h`;
+  return `${hours}h ${rem}m`;
+}
 
 // ──────────────────────────────────────────────
 // Component
@@ -98,12 +101,6 @@ function BookingScreen(): React.JSX.Element {
   const navigation = useNavigation<BookingNavProp>();
   const { task } = route.params;
 
-  // Form state
-  const [locationAddress, setLocationAddress] = useState('');
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now');
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
-
   // Legal consent state
   const [consentIndependent, setConsentIndependent] = useState(false);
   const [consentScope, setConsentScope] = useState(false);
@@ -113,31 +110,34 @@ function BookingScreen(): React.JSX.Element {
   const isEmergency = task.level === 4;
   const [consentSLA, setConsentSLA] = useState(false);
 
+  // Payment state
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'succeeded' | 'failed'>('idle');
+  const stripeCustomerId = useAuthStore((s) => s.user?.stripeCustomerId);
+
   // Loading
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const calendarDates = useMemo(() => generateCalendarDates(14), []);
-
   const levelColor = getLevelColor(task.level);
+
+  // Get priority label and color
+  const priorityOption = useMemo(
+    () => PRIORITY_OPTIONS.find(p => p.value === (task.priority ?? 'standard')),
+    [task.priority],
+  );
+
+  // Get selected note labels
+  const selectedNoteLabels = useMemo(() => {
+    if (!task.selectedNotes || task.selectedNotes.length === 0) return [];
+    return task.selectedNotes
+      .map(noteId => PREDEFINED_NOTES.find(n => n.id === noteId))
+      .filter(Boolean)
+      .map(n => n!.label);
+  }, [task.selectedNotes]);
 
   // Set header title
   useEffect(() => {
     navigation.setOptions({ title: 'Confirm Booking' });
   }, [navigation]);
-
-  // Time slot options
-  const timeSlots = useMemo(() => [
-    { id: '08:00', label: '8:00 AM' },
-    { id: '09:00', label: '9:00 AM' },
-    { id: '10:00', label: '10:00 AM' },
-    { id: '11:00', label: '11:00 AM' },
-    { id: '12:00', label: '12:00 PM' },
-    { id: '13:00', label: '1:00 PM' },
-    { id: '14:00', label: '2:00 PM' },
-    { id: '15:00', label: '3:00 PM' },
-    { id: '16:00', label: '4:00 PM' },
-    { id: '17:00', label: '5:00 PM' },
-  ], []);
 
   // Form validation
   const allConsentsAccepted = useMemo(() => {
@@ -148,21 +148,12 @@ function BookingScreen(): React.JSX.Element {
     return baseConsents;
   }, [consentIndependent, consentScope, consentPricing, consentSLA, isEmergency]);
 
-  const hasLocation = locationAddress.trim().length > 0;
+  const isFormValid = allConsentsAccepted;
 
-  const hasSchedule = useMemo(() => {
-    if (scheduleMode === 'now') return true;
-    return selectedDate !== '' && selectedTime !== '';
-  }, [scheduleMode, selectedDate, selectedTime]);
-
-  const isFormValid = allConsentsAccepted && hasLocation && hasSchedule;
-
-  // Build scheduledAt ISO string
-  const buildScheduledAt = useCallback((): string | null => {
-    if (scheduleMode === 'now') return null;
-    if (!selectedDate || !selectedTime) return null;
-    return `${selectedDate}T${selectedTime}:00.000Z`;
-  }, [scheduleMode, selectedDate, selectedTime]);
+  // Navigate back to edit
+  const handleEdit = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
 
   // Submit booking
   const handleConfirmBooking = useCallback(async () => {
@@ -170,68 +161,158 @@ function BookingScreen(): React.JSX.Element {
 
     setIsSubmitting(true);
 
-    const scheduledAt = buildScheduledAt();
-
-    const payload = {
-      serviceTaskId: task.taskId,
-      locationAddress,
-      locationLat: 43.6532,
-      locationLng: -79.3832,
-      scheduledAt,
-    };
-
     try {
-      const result = await post<{ id: string }>('/jobs', payload);
+      const result = await taskService.createBooking({
+        taskId: task.taskId,
+        address: task.address ?? {
+          formattedAddress: '',
+          latitude: 0,
+          longitude: 0,
+          street: '',
+          city: '',
+          province: '',
+          postalCode: '',
+          country: 'CA',
+          placeId: '',
+          streetNumber: '',
+        },
+        scheduledDate: task.scheduledDate ?? '',
+        scheduledTimeSlot: task.scheduledTimeSlot ?? '',
+        isFlexibleSchedule: task.isFlexibleSchedule ?? false,
+        priority: task.priority ?? 'standard',
+        selectedNotes: task.selectedNotes ?? [],
+        estimatedPrice: task.estimatedPrice,
+      });
+
+      // Level-aware payment intent creation:
+      // L1/L2 (TIME_BASED): create intent now with estimated amount
+      // L3/L4 (NEGOTIATED): defer -- intent created after proposal acceptance
+      const isTimeBased = task.level <= 2;
+
+      if (isTimeBased) {
+        const quotedAmountCents = result.estimatedPrice > 0
+          ? Math.round(result.estimatedPrice * 100)
+          : Math.round(((task.priceRangeMin + task.priceRangeMax) / 2) * 100);
+
+        if (quotedAmountCents > 0) {
+          try {
+            setPaymentStatus('processing');
+
+            // Auto-create Stripe customer if the user doesn't have one yet
+            let customerIdForPayment = stripeCustomerId ?? null;
+            if (!customerIdForPayment) {
+              try {
+                customerIdForPayment = await paymentService.ensureStripeCustomer();
+                // Persist the new stripeCustomerId back to auth store
+                const currentUser = useAuthStore.getState().user;
+                if (currentUser && customerIdForPayment) {
+                  useAuthStore.getState().setUser({
+                    ...currentUser,
+                    stripeCustomerId: customerIdForPayment,
+                  });
+                }
+              } catch (custErr) {
+                console.warn('[BookingScreen] Auto-create Stripe customer failed:', custErr);
+                // Non-blocking -- proceed without customer association
+              }
+            }
+
+            const paymentIntent = await paymentService.createPaymentIntent(
+              result.bookingId,
+              quotedAmountCents,
+              'cad',
+              customerIdForPayment,
+            );
+            console.log('[BookingScreen] PaymentIntent created:', paymentIntent.id, paymentIntent.status);
+            setPaymentStatus('succeeded');
+          } catch (paymentError: any) {
+            console.warn('[BookingScreen] Payment intent creation failed:', paymentError?.message);
+            setPaymentStatus('failed');
+            // Payment failure is non-blocking -- the job is created and
+            // payment can be retried later. Continue to matching.
+          }
+        }
+      } else {
+        // L3/L4 NEGOTIATED: payment intent is created after provider
+        // proposal is accepted (handled by a separate flow).
+        console.log('[BookingScreen] L3/L4 negotiated pricing -- deferring payment intent to proposal acceptance');
+      }
+
+      // Auto-save address as default if user doesn't have one yet
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser && !currentUser.defaultAddress && task.address) {
+        const addressPayload: UserDefaultAddress = {
+          street: task.address.street || task.address.formattedAddress,
+          city: task.address.city || '',
+          province: task.address.province || '',
+          postalCode: task.address.postalCode || '',
+          country: task.address.country || 'CA',
+          latitude: task.address.latitude,
+          longitude: task.address.longitude,
+          formattedAddress: task.address.formattedAddress,
+        };
+        // Fire-and-forget — don't block the booking flow
+        patch('/users/me', { defaultAddress: addressPayload })
+          .then(() => {
+            useAuthStore.getState().setUser({
+              ...currentUser,
+              defaultAddress: addressPayload,
+            });
+          })
+          .catch((err) => {
+            console.warn('[BookingScreen] Auto-save address failed:', err);
+          });
+      }
+
       navigation.navigate('Matching', {
-        jobId: result.id,
+        jobId: result.bookingId,
         taskName: task.taskName,
       });
-    } catch {
-      // MVP fallback: create mock job and proceed
-      if (__DEV__) {
-        console.warn('[BookingScreen] API failed, using mock job for MVP');
-        const mockJobId = `job-${Date.now()}`;
-        navigation.navigate('Matching', {
-          jobId: mockJobId,
-          taskName: task.taskName,
-        });
+    } catch (error: any) {
+      console.error('[BookingScreen] Booking failed:', JSON.stringify(error));
+      // apiClient interceptor normalizes errors to ApiError: { message, statusCode, code }
+      const statusCode = error?.statusCode ?? error?.response?.status ?? 0;
+      const detail = error?.message ?? error?.response?.data?.detail ?? 'Unknown error';
+      console.error('[BookingScreen] Status:', statusCode, 'Detail:', detail);
+      if (statusCode === 401) {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please log in again to complete your booking.',
+        );
       } else {
         Alert.alert(
           'Booking Failed',
-          'Unable to create your booking. Please try again.',
+          `Unable to create your booking. ${detail}`,
         );
       }
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, buildScheduledAt, task, locationAddress, navigation]);
-
-  // Format duration
-  const formatDuration = (minutes: number): string => {
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const rem = minutes % 60;
-    if (rem === 0) return `${hours}h`;
-    return `${hours}h ${rem}m`;
-  };
+  }, [isFormValid, task, navigation]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <GlassBackground>
       <View style={styles.container}>
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
         >
-          {/* Task Summary Card */}
+          {/* ── Header ────────────────── */}
+          <View style={styles.headerSection}>
+            <Text style={styles.headerTitle}>Review Your Booking</Text>
+            <Text style={styles.headerSubtitle}>
+              Please review all details below before confirming.
+            </Text>
+          </View>
+
+          {/* ── Task Summary ────────────────── */}
           <View style={styles.section}>
-            <View style={styles.taskCard}>
+            <GlassCard variant="dark">
               <View style={styles.taskCardHeader}>
                 <Text style={styles.taskCardName}>{task.taskName}</Text>
                 <LevelBadge level={task.level} size="small" />
               </View>
-              <Text style={styles.taskCardCategory}>{task.categoryName}</Text>
               <Text style={styles.taskCardDescription} numberOfLines={2}>
                 {task.description}
               </Text>
@@ -255,174 +336,123 @@ function BookingScreen(): React.JSX.Element {
                   </Text>
                 </View>
               </View>
-            </View>
+            </GlassCard>
           </View>
 
-          {/* Location Input */}
+          {/* ── Service Location ────────────────── */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Service Location</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputIcon}>L</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter your address..."
-                placeholderTextColor={Colors.inputPlaceholder}
-                value={locationAddress}
-                onChangeText={setLocationAddress}
-                autoCapitalize="words"
-                returnKeyType="done"
-                accessibilityLabel="Service address"
-                accessibilityHint="Enter the address where you need the service"
-              />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Service Location</Text>
+              <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                <Text style={styles.editLink}>Edit</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.useLocationButton}
-              onPress={() => {
-                setLocationAddress('123 King Street West, Toronto, ON M5V 1A1');
-              }}
-              activeOpacity={0.7}
-              accessibilityLabel="Use current location"
-            >
-              <Text style={styles.useLocationIcon}>*</Text>
-              <Text style={styles.useLocationText}>Use current location</Text>
-            </TouchableOpacity>
+            <GlassCard variant="standard">
+              <View style={styles.reviewCardRow}>
+                <Text style={styles.reviewCardIcon}>P</Text>
+                <View style={styles.reviewCardContent}>
+                  <Text style={styles.reviewCardPrimary}>
+                    {task.address?.formattedAddress ?? 'No address provided'}
+                  </Text>
+                  {task.address?.city ? (
+                    <Text style={styles.reviewCardSecondary}>
+                      {task.address.city}
+                      {task.address.province ? `, ${task.address.province}` : ''}
+                      {task.address.postalCode ? ` ${task.address.postalCode}` : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </GlassCard>
           </View>
 
-          {/* Schedule */}
+          {/* ── Schedule ────────────────── */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>When do you need this?</Text>
-
-            {/* Now / Scheduled toggle */}
-            <View style={styles.scheduleToggle}>
-              <TouchableOpacity
-                style={[
-                  styles.scheduleToggleBtn,
-                  scheduleMode === 'now' && styles.scheduleToggleBtnActive,
-                ]}
-                onPress={() => setScheduleMode('now')}
-                activeOpacity={0.7}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: scheduleMode === 'now' }}
-              >
-                <Text
-                  style={[
-                    styles.scheduleToggleBtnText,
-                    scheduleMode === 'now' && styles.scheduleToggleBtnTextActive,
-                  ]}
-                >
-                  As Soon As Possible
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.scheduleToggleBtn,
-                  scheduleMode === 'scheduled' && styles.scheduleToggleBtnActive,
-                ]}
-                onPress={() => setScheduleMode('scheduled')}
-                activeOpacity={0.7}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: scheduleMode === 'scheduled' }}
-              >
-                <Text
-                  style={[
-                    styles.scheduleToggleBtnText,
-                    scheduleMode === 'scheduled' && styles.scheduleToggleBtnTextActive,
-                  ]}
-                >
-                  Pick Date & Time
-                </Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Schedule</Text>
+              <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                <Text style={styles.editLink}>Edit</Text>
               </TouchableOpacity>
             </View>
+            <GlassCard variant="standard">
+              <View style={styles.reviewCardRow}>
+                <Text style={styles.reviewCardIcon}>C</Text>
+                <View style={styles.reviewCardContent}>
+                  {task.isFlexibleSchedule ? (
+                    <>
+                      <Text style={styles.reviewCardPrimary}>Flexible Schedule</Text>
+                      <Text style={styles.reviewCardSecondary}>
+                        We'll find the best available time for you
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.reviewCardPrimary}>
+                        {formatDisplayDate(task.scheduledDate)}
+                      </Text>
+                      <Text style={styles.reviewCardSecondary}>
+                        {formatDisplayTime(task.scheduledTimeSlot)}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </View>
+            </GlassCard>
+          </View>
 
-            {/* Date/Time picker */}
-            {scheduleMode === 'scheduled' && (
-              <>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.dateScrollContent}
-                  style={styles.dateScrollView}
-                >
-                  {calendarDates.map((date) => {
-                    const isSelected = selectedDate === date.dateString;
-                    return (
-                      <TouchableOpacity
-                        key={date.dateString}
-                        style={[
-                          styles.dateCard,
-                          isSelected && styles.dateCardSelected,
-                        ]}
-                        onPress={() => setSelectedDate(date.dateString)}
-                        activeOpacity={0.7}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                      >
-                        <Text
-                          style={[
-                            styles.dateDayOfWeek,
-                            isSelected && styles.dateTextSelected,
-                          ]}
-                        >
-                          {date.dayOfWeek}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.dateDayOfMonth,
-                            isSelected && styles.dateTextSelected,
-                          ]}
-                        >
-                          {date.dayOfMonth}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.dateMonth,
-                            isSelected && styles.dateTextSelected,
-                          ]}
-                        >
-                          {date.month}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+          {/* ── Priority ────────────────── */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Priority</Text>
+              <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                <Text style={styles.editLink}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <GlassCard variant="standard">
+              <View style={styles.reviewCardRow}>
+                <View
+                  style={[
+                    styles.priorityDot,
+                    { backgroundColor: priorityOption?.color ?? Colors.success },
+                  ]}
+                />
+                <View style={styles.reviewCardContent}>
+                  <Text style={styles.reviewCardPrimary}>
+                    {priorityOption?.label ?? 'Standard'}
+                  </Text>
+                  <Text style={styles.reviewCardSecondary}>
+                    {priorityOption?.description ?? ''}
+                  </Text>
+                  {(priorityOption?.multiplier ?? 1) > 1 && (
+                    <Text style={[styles.multiplierBadge, { color: priorityOption?.color }]}>
+                      {priorityOption?.multiplier}x rate
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </GlassCard>
+          </View>
 
-                {selectedDate !== '' && (
-                  <View style={styles.timeSlotsContainer}>
-                    <Text style={styles.subsectionTitle}>Select Time</Text>
-                    <View style={styles.timeSlotsGrid}>
-                      {timeSlots.map((slot) => {
-                        const isSelected = selectedTime === slot.id;
-                        return (
-                          <TouchableOpacity
-                            key={slot.id}
-                            style={[
-                              styles.timeSlot,
-                              isSelected && styles.timeSlotSelected,
-                            ]}
-                            onPress={() => setSelectedTime(slot.id)}
-                            activeOpacity={0.7}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: isSelected }}
-                          >
-                            <Text
-                              style={[
-                                styles.timeSlotText,
-                                isSelected && styles.timeSlotTextSelected,
-                              ]}
-                            >
-                              {slot.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+          {/* ── Additional Notes ────────────────── */}
+          {selectedNoteLabels.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Additional Info</Text>
+                <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
+                  <Text style={styles.editLink}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.notesContainer}>
+                {selectedNoteLabels.map((label, idx) => (
+                  <View key={idx} style={styles.noteTag}>
+                    <Text style={styles.noteTagText}>  {label}</Text>
                   </View>
-                )}
-              </>
-            )}
-          </View>
+                ))}
+              </View>
+            </View>
+          )}
 
-          {/* Emergency SLA Notice */}
+          {/* ── Emergency SLA Notice ────────────────── */}
           {isEmergency && (
             <View style={styles.section}>
               <View style={styles.slaCard}>
@@ -438,7 +468,7 @@ function BookingScreen(): React.JSX.Element {
             </View>
           )}
 
-          {/* Legal Acknowledgments */}
+          {/* ── Legal Acknowledgments ────────────────── */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Legal Acknowledgments</Text>
             <Text style={styles.legalSubtitle}>
@@ -460,12 +490,12 @@ function BookingScreen(): React.JSX.Element {
                 ]}
               >
                 {consentIndependent && (
-                  <Text style={styles.checkmark}>V</Text>
+                  <Text style={styles.checkmark}>✓</Text>
                 )}
               </View>
               <Text style={styles.checkboxLabel}>
-                I understand Tasker connects me with independent service
-                providers. Tasker is a platform intermediary and does not
+                I understand VISP connects me with independent service
+                providers. VISP is a platform intermediary and does not
                 directly provide the services.
               </Text>
             </TouchableOpacity>
@@ -484,7 +514,7 @@ function BookingScreen(): React.JSX.Element {
                   consentScope && styles.checkboxChecked,
                 ]}
               >
-                {consentScope && <Text style={styles.checkmark}>V</Text>}
+                {consentScope && <Text style={styles.checkmark}>✓</Text>}
               </View>
               <Text style={styles.checkboxLabel}>
                 I understand the service is limited to "{task.taskName}" only.
@@ -507,7 +537,7 @@ function BookingScreen(): React.JSX.Element {
                   consentPricing && styles.checkboxChecked,
                 ]}
               >
-                {consentPricing && <Text style={styles.checkmark}>V</Text>}
+                {consentPricing && <Text style={styles.checkmark}>✓</Text>}
               </View>
               <Text style={styles.checkboxLabel}>
                 I accept the estimated pricing of ${task.priceRangeMin} - $
@@ -533,7 +563,7 @@ function BookingScreen(): React.JSX.Element {
                     consentSLA && styles.checkboxCheckedEmergency,
                   ]}
                 >
-                  {consentSLA && <Text style={styles.checkmark}>V</Text>}
+                  {consentSLA && <Text style={styles.checkmark}>✓</Text>}
                 </View>
                 <Text style={styles.checkboxLabel}>
                   I understand emergency pricing applies ($150+ base) and
@@ -544,54 +574,94 @@ function BookingScreen(): React.JSX.Element {
             )}
           </View>
 
-          {/* Price Estimate */}
+          {/* ── Pricing Model Info ────────────────── */}
           <View style={styles.section}>
-            <View style={styles.estimateCard}>
-              <Text style={styles.estimateLabel}>Estimated Total</Text>
-              <Text style={styles.estimatePrice}>
-                ${task.estimatedPrice > 0
-                  ? task.estimatedPrice.toFixed(2)
-                  : `${task.priceRangeMin} - ${task.priceRangeMax}`}
-              </Text>
-              <Text style={styles.estimateNote}>
-                Final price depends on actual scope of work and provider
-                availability. You will be notified of any changes.
-              </Text>
-            </View>
+            <GlassCard variant="elevated" style={styles.estimateCardBorder}>
+              {task.level <= 2 ? (
+                <View style={styles.estimateContent}>
+                  <Text style={styles.estimateLabel}>Time-Based Pricing</Text>
+                  <Text style={styles.estimatePrice}>
+                    ${task.priceRangeMin} - ${task.priceRangeMax}/hr
+                  </Text>
+                  <View style={styles.estimateDetailRow}>
+                    <Text style={styles.estimateDetailLabel}>Est. Duration</Text>
+                    <Text style={styles.estimateDetailValue}>
+                      {formatDuration(task.estimatedDurationMinutes)}
+                    </Text>
+                  </View>
+                  <View style={styles.estimateDetailRow}>
+                    <Text style={styles.estimateDetailLabel}>Est. Total</Text>
+                    <Text style={styles.estimateDetailValue}>
+                      ${task.estimatedPrice > 0
+                        ? task.estimatedPrice.toFixed(2)
+                        : `${task.priceRangeMin} - ${task.priceRangeMax}`}
+                    </Text>
+                  </View>
+                  <Text style={styles.estimateNote}>
+                    You are billed based on actual time worked at the provider's
+                    hourly rate. Final amount may differ from the estimate.
+                  </Text>
+                </View>
+              ) : task.level === 3 ? (
+                <View style={styles.estimateContent}>
+                  <Text style={styles.estimateLabel}>Negotiated Pricing</Text>
+                  <Text style={styles.estimatePrice}>
+                    ${task.priceRangeMin} - ${task.priceRangeMax}
+                  </Text>
+                  <Text style={styles.estimateNote}>
+                    This service requires a price agreement with your provider.
+                    The guide range above is for reference. Your provider will
+                    submit a proposal after reviewing the job details.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.estimateContent}>
+                  <Text style={[styles.estimateLabel, { color: Colors.emergencyRed }]}>
+                    Emergency Pricing
+                  </Text>
+                  <Text style={[styles.estimatePrice, { color: Colors.emergencyRed }]}>
+                    ${task.priceRangeMin} - ${task.priceRangeMax}
+                  </Text>
+                  <Text style={styles.estimateNote}>
+                    Emergency service. Guide range shown above. Additional
+                    emergency surcharges, after-hours fees, and minimum charges
+                    may apply. Your provider will submit a proposal.
+                  </Text>
+                </View>
+              )}
+            </GlassCard>
           </View>
 
           {/* Bottom spacing for CTA */}
           <View style={styles.bottomPadding} />
         </ScrollView>
 
-        {/* Confirm Booking CTA */}
+        {/* ── Confirm Booking CTA ────────────────── */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={styles.ctaPriceLabel}>From</Text>
-            <Text style={styles.ctaPriceValue}>${task.priceRangeMin}</Text>
+            <Text style={styles.ctaPriceLabel}>
+              {task.estimatedPrice > 0 ? 'Estimated' : 'Range'}
+            </Text>
+            <Text style={styles.ctaPriceValue}>
+              {task.estimatedPrice > 0
+                ? `$${task.estimatedPrice.toFixed(2)}`
+                : `$${task.priceRangeMin} - $${task.priceRangeMax}`}
+            </Text>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.confirmButton,
-              isEmergency && styles.confirmButtonEmergency,
-              (!isFormValid || isSubmitting) && styles.confirmButtonDisabled,
-            ]}
+          <GlassButton
+            title="Confirm Booking"
+            variant={isEmergency ? 'glass' : 'glow'}
             onPress={handleConfirmBooking}
             disabled={!isFormValid || isSubmitting}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Confirm booking"
-            accessibilityState={{ disabled: !isFormValid || isSubmitting }}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Text style={styles.confirmButtonText}>Confirm Booking</Text>
-            )}
-          </TouchableOpacity>
+            loading={isSubmitting}
+            style={isEmergency
+              ? { ...styles.confirmButtonStyle, ...styles.confirmButtonEmergency }
+              : styles.confirmButtonStyle
+            }
+          />
         </View>
       </View>
-    </SafeAreaView>
+    </GlassBackground>
   );
 }
 
@@ -600,13 +670,8 @@ function BookingScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -615,61 +680,72 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.lg,
   },
 
+  // Header
+  headerSection: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.xl,
+  },
+  headerTitle: {
+    fontSize: FontSize.title2,
+    fontWeight: FontWeight.bold as '700',
+    color: '#FFFFFF',
+    marginBottom: Spacing.xs,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
+  },
+  headerSubtitle: {
+    ...Typography.footnote,
+    color: 'rgba(255, 255, 255, 0.55)',
+  },
+
   // Sections
   section: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.xl,
   },
-  sectionTitle: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  subsectionTitle: {
+  sectionTitle: {
+    ...Typography.headline,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  editLink: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(120, 80, 255, 0.9)',
     fontWeight: FontWeight.semiBold as '600',
-    marginBottom: Spacing.sm,
-    marginTop: Spacing.md,
   },
 
   // Task Card
-  taskCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
   taskCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
   taskCardName: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     flex: 1,
     marginRight: Spacing.sm,
   },
-  taskCardCategory: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.sm,
-  },
   taskCardDescription: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     marginBottom: Spacing.lg,
   },
   taskCardMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
     paddingTop: Spacing.md,
   },
   metaItem: {
@@ -677,161 +753,79 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginBottom: Spacing.xxs,
   },
   metaValue: {
     ...Typography.footnote,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.semiBold as '600',
   },
 
-  // Location Input
-  inputContainer: {
+  // Review Cards (address, schedule, priority)
+  reviewCardRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: Spacing.md,
-    height: 48,
+    alignItems: 'flex-start',
   },
-  inputIcon: {
+  reviewCardIcon: {
     fontSize: 16,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.45)',
     fontWeight: FontWeight.bold as '700',
-    marginRight: Spacing.sm,
+    marginRight: Spacing.md,
+    marginTop: 2,
   },
-  textInput: {
+  reviewCardContent: {
     flex: 1,
+  },
+  reviewCardPrimary: {
     ...Typography.body,
-    color: Colors.inputText,
-    paddingVertical: 0,
-  },
-  useLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  useLocationIcon: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: FontWeight.bold as '700',
-    marginRight: Spacing.xs,
-  },
-  useLocationText: {
-    ...Typography.footnote,
-    color: Colors.primary,
+    color: '#FFFFFF',
     fontWeight: FontWeight.medium as '500',
+    marginBottom: Spacing.xxs,
+  },
+  reviewCardSecondary: {
+    ...Typography.footnote,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
 
-  // Schedule Toggle
-  scheduleToggle: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
+  // Priority dot
+  priorityDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: Spacing.md,
+    marginTop: 6,
   },
-  scheduleToggleBtn: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  scheduleToggleBtnActive: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
-  },
-  scheduleToggleBtnText: {
-    ...Typography.footnote,
-    color: Colors.textSecondary,
-    fontWeight: FontWeight.medium as '500',
-  },
-  scheduleToggleBtnTextActive: {
-    color: Colors.primary,
+  multiplierBadge: {
+    ...Typography.caption,
     fontWeight: FontWeight.semiBold as '600',
+    marginTop: Spacing.xs,
   },
 
-  // Date Picker
-  dateScrollView: {
-    marginBottom: Spacing.sm,
-  },
-  dateScrollContent: {
+  // Notes
+  notesContainer: {
     gap: Spacing.sm,
   },
-  dateCard: {
-    width: 72,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  dateCardSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
-  },
-  dateDayOfWeek: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xxs,
-  },
-  dateDayOfMonth: {
-    fontSize: FontSize.title3,
-    fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xxs,
-  },
-  dateMonth: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-  },
-  dateTextSelected: {
-    color: Colors.primary,
-  },
-
-  // Time Slots
-  timeSlotsContainer: {
-    marginTop: Spacing.sm,
-  },
-  timeSlotsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  timeSlot: {
-    paddingHorizontal: Spacing.lg,
+  noteTag: {
+    backgroundColor: 'rgba(120, 80, 255, 0.12)',
+    borderRadius: 12,
+    paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(120, 80, 255, 0.25)',
   },
-  timeSlotSelected: {
-    backgroundColor: `${Colors.primary}15`,
-    borderColor: Colors.primary,
-  },
-  timeSlotText: {
+  noteTagText: {
     ...Typography.footnote,
-    color: Colors.textPrimary,
-    fontWeight: FontWeight.medium as '500',
-  },
-  timeSlotTextSelected: {
-    color: Colors.primary,
+    color: '#FFFFFF',
   },
 
   // SLA Card
   slaCard: {
-    backgroundColor: `${Colors.emergencyRed}10`,
-    borderRadius: BorderRadius.md,
+    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+    borderRadius: 16,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: `${Colors.emergencyRed}30`,
+    borderColor: 'rgba(231, 76, 60, 0.25)',
   },
   slaTitle: {
     ...Typography.headline,
@@ -840,15 +834,16 @@ const styles = StyleSheet.create({
   },
   slaText: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     lineHeight: 20,
   },
 
   // Legal Acknowledgments
   legalSubtitle: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     marginBottom: Spacing.lg,
+    marginTop: Spacing.xs,
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -858,50 +853,49 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: BorderRadius.xs,
+    borderRadius: 8,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
     marginTop: 2,
     flexShrink: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   checkboxChecked: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: 'rgba(120, 80, 255, 0.8)',
+    borderColor: 'rgba(120, 80, 255, 0.9)',
   },
   checkboxEmergency: {
-    borderColor: Colors.emergencyRed,
+    borderColor: 'rgba(231, 76, 60, 0.6)',
   },
   checkboxCheckedEmergency: {
-    backgroundColor: Colors.emergencyRed,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
     borderColor: Colors.emergencyRed,
   },
   checkmark: {
-    color: Colors.white,
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: FontWeight.bold as '700',
   },
   checkboxLabel: {
     ...Typography.footnote,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.6)',
     flex: 1,
     lineHeight: 20,
   },
 
   // Estimate Card
-  estimateCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+  estimateCardBorder: {
+    borderColor: 'rgba(120, 80, 255, 0.4)',
+  },
+  estimateContent: {
     alignItems: 'center',
   },
   estimateLabel: {
     ...Typography.label,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.xs,
   },
   estimatePrice: {
@@ -910,11 +904,28 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     marginBottom: Spacing.sm,
   },
+  estimateDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    paddingVertical: Spacing.xs,
+  },
+  estimateDetailLabel: {
+    ...Typography.footnote,
+    color: 'rgba(255, 255, 255, 0.55)',
+  },
+  estimateDetailValue: {
+    ...Typography.footnote,
+    color: '#FFFFFF',
+    fontWeight: FontWeight.semiBold as '600',
+  },
   estimateNote: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     textAlign: 'center',
     lineHeight: 16,
+    marginTop: Spacing.sm,
   },
 
   // Bottom padding
@@ -929,43 +940,46 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(10, 10, 30, 0.85)',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    ...Shadows.lg,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 20,
+      },
+      android: { elevation: 12 },
+    }),
   },
   ctaPriceInfo: {
     flexDirection: 'column',
   },
   ctaPriceLabel: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   ctaPriceValue: {
     fontSize: FontSize.title2,
     fontWeight: FontWeight.bold as '700',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
-  confirmButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.md,
+  confirmButtonStyle: {
     minWidth: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.sm,
   },
   confirmButtonEmergency: {
-    backgroundColor: Colors.emergencyRed,
-  },
-  confirmButtonDisabled: {
-    backgroundColor: Colors.textDisabled,
-    ...Shadows.none,
-  },
-  confirmButtonText: {
-    ...Typography.buttonLarge,
-    color: Colors.white,
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    borderColor: 'rgba(231, 76, 60, 0.5)',
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(231, 76, 60, 0.6)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+    }),
   },
 });
 

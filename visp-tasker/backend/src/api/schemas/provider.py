@@ -61,9 +61,11 @@ class PaginatedResponse(BaseModel):
 
 class ProviderStatusUpdateRequest(BaseModel):
     """Request body for updating provider availability status."""
-    status: str = Field(
+    isOnline: Optional[bool] = None
+    status: Optional[str] = Field(
+        default=None,
         pattern=r"^(ONLINE|OFFLINE|ON_CALL|BUSY)$",
-        description="Provider availability status",
+        description="Provider availability status (legacy)",
     )
 
 
@@ -119,6 +121,8 @@ class ProviderDashboardOut(BaseModel):
 
 class OfferTaskInfo(BaseModel):
     """Task metadata within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     id: uuid.UUID
     name: str
     level: str
@@ -127,6 +131,8 @@ class OfferTaskInfo(BaseModel):
 
 class OfferCustomerInfo(BaseModel):
     """Minimal customer info within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     id: uuid.UUID
     display_name: Optional[str] = Field(default=None, alias="displayName")
     rating: Optional[Decimal] = None
@@ -134,6 +140,8 @@ class OfferCustomerInfo(BaseModel):
 
 class OfferPricingInfo(BaseModel):
     """Pricing details within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     quoted_price_cents: Optional[int] = Field(default=None, alias="quotedPriceCents")
     commission_rate: Optional[Decimal] = Field(default=None, alias="commissionRate")
     estimated_payout_cents: Optional[int] = Field(default=None, alias="estimatedPayoutCents")
@@ -142,6 +150,8 @@ class OfferPricingInfo(BaseModel):
 
 class OfferSLAInfo(BaseModel):
     """SLA targets within a job offer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     response_time_min: Optional[int] = Field(default=None, alias="responseTimeMin")
     arrival_time_min: Optional[int] = Field(default=None, alias="arrivalTimeMin")
     completion_time_min: Optional[int] = Field(default=None, alias="completionTimeMin")
@@ -149,7 +159,7 @@ class OfferSLAInfo(BaseModel):
 
 class JobOfferOut(BaseModel):
     """A pending job offer for a provider."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     assignment_id: uuid.UUID = Field(alias="assignmentId")
     job_id: uuid.UUID = Field(alias="jobId")
@@ -188,7 +198,7 @@ class OfferRejectRequest(BaseModel):
 
 class AssignmentOut(BaseModel):
     """Assignment record after accepting an offer."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     job_id: uuid.UUID = Field(alias="jobId")
@@ -222,6 +232,8 @@ class EarningsJobSummary(BaseModel):
 
 class EarningsSummaryOut(BaseModel):
     """Provider earnings summary for a time period."""
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    
     period: str
     total_cents: int = Field(alias="totalCents")
     commission_cents: int = Field(alias="commissionCents")
@@ -237,7 +249,7 @@ class EarningsSummaryOut(BaseModel):
 
 class UpcomingJobOut(BaseModel):
     """An upcoming scheduled job."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     job_id: uuid.UUID = Field(alias="jobId")
     reference_number: str = Field(alias="referenceNumber")
@@ -253,7 +265,7 @@ class UpcomingJobOut(BaseModel):
 
 class OnCallShiftOut(BaseModel):
     """An on-call shift."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     shift_start: datetime = Field(alias="shiftStart")
@@ -275,7 +287,7 @@ class ScheduleOut(BaseModel):
 
 class CredentialOut(BaseModel):
     """A provider credential record."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     credential_type: str = Field(alias="credentialType")
@@ -313,6 +325,8 @@ class BackgroundCheckOut(BaseModel):
 
 class CredentialsSummaryOut(BaseModel):
     """All provider credentials, insurance, and background check info."""
+    model_config = ConfigDict(populate_by_name=True)
+
     credentials: list[CredentialOut] = Field(default_factory=list)
     insurances: list[InsurancePolicyOut] = Field(default_factory=list)
     background_check: BackgroundCheckOut = Field(alias="backgroundCheck")
@@ -324,11 +338,14 @@ class CredentialsSummaryOut(BaseModel):
 
 class JobTrackingOut(BaseModel):
     """Real-time job tracking information."""
+    model_config = ConfigDict(populate_by_name=True)
     provider_lat: Optional[Decimal] = Field(default=None, alias="providerLat")
     provider_lng: Optional[Decimal] = Field(default=None, alias="providerLng")
     eta_minutes: Optional[int] = Field(default=None, alias="etaMinutes")
     status: str
     provider_name: Optional[str] = Field(default=None, alias="providerName")
+    provider_phone: Optional[str] = Field(default=None, alias="providerPhone")
+    provider_level: Optional[str] = Field(default=None, alias="providerLevel")
     updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
 
@@ -345,6 +362,9 @@ class MobileJobCreateRequest(BaseModel):
     scheduled_at: Optional[datetime] = Field(default=None, alias="scheduledAt")
     is_emergency: bool = Field(default=False, alias="isEmergency")
     notes: Optional[list[str]] = None
+    # Customer-confirmed quantity for per-unit/per-area tasks (PP4a). Ignored for
+    # tasks that don't allow quantity (HOURLY/PER_VISIT/FLAT).
+    quantity: Optional[Decimal] = Field(default=None, gt=0)
 
     # Optional address components
     city: Optional[str] = None
@@ -360,7 +380,7 @@ class MobileJobCreateRequest(BaseModel):
 
 class MobileJobOut(BaseModel):
     """Job detail in camelCase format for mobile clients."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     reference_number: str = Field(alias="referenceNumber")
@@ -402,6 +422,7 @@ class MobileJobStatusUpdateRequest(BaseModel):
 
 class EstimatedPriceOut(BaseModel):
     """Estimated price returned with job creation."""
+    model_config = ConfigDict(populate_by_name=True)
     min_cents: int = Field(alias="minCents")
     max_cents: int = Field(alias="maxCents")
     currency: str = "CAD"
@@ -411,5 +432,43 @@ class EstimatedPriceOut(BaseModel):
 
 class JobCreateResponse(BaseModel):
     """Response from job creation containing the job and estimated price."""
+    model_config = ConfigDict(populate_by_name=True)
     job: MobileJobOut
     estimated_price: EstimatedPriceOut = Field(alias="estimatedPrice")
+
+
+# ---------------------------------------------------------------------------
+# Taxonomy / Onboarding
+# ---------------------------------------------------------------------------
+
+
+class ProviderTaskOut(BaseModel):
+    """Task detail for provider onboarding."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    
+    id: uuid.UUID
+    slug: str
+    name: str
+    description: str
+    level: str
+    category_id: uuid.UUID = Field(alias="categoryId")
+    regulated: bool
+    license_required: bool = Field(alias="licenseRequired")
+    certification_required: bool = Field(alias="certificationRequired")
+    hazardous: bool
+    structural: bool
+    is_active: bool = Field(alias="isActive")
+
+
+class ProviderCategoryOut(BaseModel):
+    """Category with tasks for provider onboarding."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: uuid.UUID
+    slug: str
+    name: str
+    icon_url: Optional[str] = Field(default=None, alias="iconUrl")
+    display_order: int = Field(alias="displayOrder")
+    active_tasks_list: list[ProviderTaskOut] = Field(alias="activeTasksList")
+
+

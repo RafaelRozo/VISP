@@ -63,6 +63,13 @@ class ProviderCredential(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Enum(CredentialType, name="credential_type", create_type=False),
         nullable=False,
     )
+    # Task this credential unlocks (NULL for general credentials like
+    # criminal_record_check, portfolio, or generic trade_license).
+    task_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("service_tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Credential details
     name: Mapped[str] = mapped_column(String(300), nullable=False)

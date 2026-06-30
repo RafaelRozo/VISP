@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Customer Home Screen
+ * VISP - Customer Home Screen
  *
  * Main landing screen for customers with:
  * - Personalized greeting header
@@ -8,10 +8,13 @@
  * - Active jobs horizontal scroll
  * - Recent activity section
  * - Pull-to-refresh
+ *
+ * Glass redesign: GlassBackground + GlassCard surfaces
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -20,18 +23,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import type { CompositeScreenProps } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../theme';
+import { Colors, Spacing, Typography, BorderRadius } from '../../theme';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard } from '../../components/glass';
+import { MorphingBlob } from '../../components/animations';
 import { useAuthStore } from '../../stores/authStore';
 import EmergencyButton from '../../components/EmergencyButton';
 import CategoryGrid from '../../components/CategoryGrid';
 import ActiveJobCard from '../../components/ActiveJobCard';
 import { get } from '../../services/apiClient';
+import taskService from '../../services/taskService';
 import type {
   Job,
   PaginatedResponse,
   RootStackParamList,
+  CustomerTabParamList,
   ServiceCategory,
 } from '../../types';
 
@@ -39,7 +49,10 @@ import type {
 // Types
 // ──────────────────────────────────────────────
 
-type Props = NativeStackScreenProps<RootStackParamList, 'CustomerHome'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<CustomerTabParamList, 'Home'>,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 interface RecentActivity {
   id: string;
@@ -112,10 +125,31 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const fetchCategories = useCallback(async () => {
     try {
       setIsLoadingCategories(true);
-      const data = await get<ServiceCategory[]>('/categories');
-      setCategories(data);
+      // get() already unwraps response.data.data, so we receive the array directly
+      const rawCategories = await get<Array<{
+        id: string;
+        slug: string;
+        name: string;
+        icon_url?: string | null;
+        task_count?: number;
+        is_active?: boolean;
+        display_order?: number;
+      }>>('/categories');
+      // Map backend snake_case fields to mobile ServiceCategory type
+      const mapped: ServiceCategory[] = (rawCategories ?? []).map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        icon: cat.icon_url ?? '',
+        taskCount: cat.task_count ?? 0,
+        isEmergency: false,
+        sortOrder: cat.display_order ?? 0,
+      }));
+      setCategories(mapped);
     } catch {
-      // Silently fail; the grid will show empty state
+      // If we fail to fetch, we show error state (controlled by TaskStore)
+      // No fallback to mock data in production alignment
+
     } finally {
       setIsLoadingCategories(false);
     }
@@ -124,8 +158,8 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const fetchActiveJobs = useCallback(async () => {
     try {
       setIsLoadingJobs(true);
-      const data = await get<PaginatedResponse<Job>>('/jobs/active');
-      setActiveJobs(data.items);
+      const jobs = await taskService.getActiveJobs();
+      setActiveJobs(jobs);
     } catch {
       // Silently fail
     } finally {
@@ -183,7 +217,28 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 
   const handleJobPress = useCallback(
     (job: Job) => {
-      navigation.navigate('JobDetail', { jobId: job.id });
+      const pendingStatuses = ['pending_match', 'draft', 'pending'];
+      if (pendingStatuses.includes(job.status)) {
+        Alert.alert(
+          'Searching for a Provider',
+          'We\'re still looking for the best available provider in your area. You\'ll be notified as soon as one is assigned. Hang tight!',
+        );
+        return;
+      }
+      if (job.status === 'matched') {
+        Alert.alert(
+          'Waiting for Provider',
+          'Your job has been sent to a provider. Waiting for them to review and accept.',
+        );
+        return;
+      }
+      if (job.status === 'pending_approval') {
+        // Navigate to MyJobs tab where the inline Approve/Reject card is shown
+        navigation.navigate('MyJobs');
+        return;
+      }
+      // Only provider_accepted and later statuses go to tracking
+      navigation.navigate('JobTracking', { jobId: job.id });
     },
     [navigation],
   );
@@ -205,6 +260,12 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   function renderHeader(): React.JSX.Element {
     return (
       <View style={styles.header}>
+        <MorphingBlob
+          size={220}
+          color="#7850FF"
+          opacity={0.1}
+          style={styles.headerBlob}
+        />
         <View style={styles.greetingRow}>
           <View>
             <Text style={styles.greeting}>
@@ -217,7 +278,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
           {/* Profile Avatar */}
           <TouchableOpacity
             style={styles.profileButton}
-            onPress={() => navigation.navigate('Profile')}
+            onPress={() => navigation.navigate('CustomerProfile')}
             accessibilityLabel="Open profile"
           >
             <Text style={styles.profileInitials}>
@@ -259,7 +320,9 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Active Jobs</Text>
-          <Text style={styles.sectionCount}>{activeJobs.length}</Text>
+          <View style={styles.sectionCountBadge}>
+            <Text style={styles.sectionCount}>{activeJobs.length}</Text>
+          </View>
         </View>
         <FlatList
           data={activeJobs}
@@ -301,43 +364,52 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {recentActivity.map((activity) => {
-          const typeColor = ACTIVITY_TYPE_COLORS[activity.type];
-          const typeLabel = ACTIVITY_TYPE_LABELS[activity.type];
+        <GlassCard variant="dark" padding={0}>
+          {recentActivity.map((activity, index) => {
+            const typeColor = ACTIVITY_TYPE_COLORS[activity.type];
+            const typeLabel = ACTIVITY_TYPE_LABELS[activity.type];
+            const isLast = index === recentActivity.length - 1;
 
-          return (
-            <View key={activity.id} style={styles.activityRow}>
+            return (
               <View
-                style={[styles.activityDot, { backgroundColor: typeColor }]}
-              />
-              <View style={styles.activityContent}>
-                <View style={styles.activityTop}>
-                  <Text style={styles.activityTitle} numberOfLines={1}>
-                    {activity.title}
-                  </Text>
-                  <Text style={styles.activityTime}>
-                    {formatRelativeTime(activity.timestamp)}
-                  </Text>
-                </View>
-                <Text style={styles.activityDescription} numberOfLines={1}>
-                  {activity.description}
-                </Text>
+                key={activity.id}
+                style={[
+                  styles.activityRow,
+                  !isLast && styles.activityRowBorder,
+                ]}
+              >
                 <View
-                  style={[
-                    styles.activityBadge,
-                    { backgroundColor: `${typeColor}20` },
-                  ]}
-                >
-                  <Text
-                    style={[styles.activityBadgeText, { color: typeColor }]}
-                  >
-                    {typeLabel}
+                  style={[styles.activityDot, { backgroundColor: typeColor }]}
+                />
+                <View style={styles.activityContent}>
+                  <View style={styles.activityTop}>
+                    <Text style={styles.activityTitle} numberOfLines={1}>
+                      {activity.title}
+                    </Text>
+                    <Text style={styles.activityTime}>
+                      {formatRelativeTime(activity.timestamp)}
+                    </Text>
+                  </View>
+                  <Text style={styles.activityDescription} numberOfLines={1}>
+                    {activity.description}
                   </Text>
+                  <View
+                    style={[
+                      styles.activityBadge,
+                      { backgroundColor: `${typeColor}20` },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.activityBadgeText, { color: typeColor }]}
+                    >
+                      {typeLabel}
+                    </Text>
+                  </View>
                 </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })}
+        </GlassCard>
       </View>
     );
   }
@@ -345,7 +417,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   // ── Main Render ──────────────────────────
 
   return (
-    <View style={styles.container}>
+    <GlassBackground>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -388,7 +460,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
         {/* Bottom Spacer */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
-    </View>
+    </GlassBackground>
   );
 }
 
@@ -397,10 +469,6 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
   scrollContent: {
     paddingBottom: Spacing.massive,
   },
@@ -410,6 +478,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xxl,
     paddingTop: Spacing.giant,
     paddingBottom: Spacing.lg,
+    overflow: 'visible',
+  },
+  headerBlob: {
+    position: 'absolute',
+    top: -40,
+    right: -60,
+    zIndex: -1,
   },
   greetingRow: {
     flexDirection: 'row',
@@ -418,25 +493,29 @@ const styles = StyleSheet.create({
   },
   greeting: {
     ...Typography.title2,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginBottom: Spacing.xxs,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
   greetingSub: {
     ...Typography.body,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   profileButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primaryDark,
+    backgroundColor: Colors.glass.white,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.light,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Shadows.sm,
   },
   profileInitials: {
     ...Typography.footnote,
-    color: Colors.white,
+    color: '#FFFFFF',
     fontWeight: '700',
   },
 
@@ -459,19 +538,20 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.title3,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
+    marginBottom: Spacing.lg,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  sectionCountBadge: {
+    ...GlassStyles.badge,
     marginBottom: Spacing.lg,
   },
   sectionCount: {
     ...Typography.footnote,
     color: Colors.primary,
     fontWeight: '700',
-    backgroundColor: 'rgba(74, 144, 226, 0.12)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xxs,
-    borderRadius: BorderRadius.full,
-    overflow: 'hidden',
-    marginBottom: Spacing.lg,
   },
 
   // ── Active Jobs List ──────────────────
@@ -489,15 +569,15 @@ const styles = StyleSheet.create({
   },
   jobSkeletonCard: {
     width: 280,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.light,
     overflow: 'hidden',
   },
   jobSkeletonStrip: {
     height: 3,
-    backgroundColor: Colors.skeleton,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   jobSkeletonBody: {
     padding: Spacing.lg,
@@ -505,13 +585,13 @@ const styles = StyleSheet.create({
   },
   jobSkeletonLine: {
     height: 14,
-    backgroundColor: Colors.skeleton,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 7,
     width: '80%',
   },
   jobSkeletonLineShort: {
     height: 10,
-    backgroundColor: Colors.skeleton,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: 5,
     width: '55%',
   },
@@ -521,8 +601,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  activityRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   activityDot: {
     width: 8,
@@ -542,18 +625,18 @@ const styles = StyleSheet.create({
   },
   activityTitle: {
     ...Typography.footnote,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: '600',
     flex: 1,
     marginRight: Spacing.sm,
   },
   activityTime: {
     ...Typography.caption,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
   },
   activityDescription: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: Spacing.sm,
   },
   activityBadge: {
@@ -577,7 +660,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.skeleton,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     marginTop: 6,
     marginRight: Spacing.md,
   },
@@ -587,13 +670,13 @@ const styles = StyleSheet.create({
   },
   activitySkeletonLine: {
     height: 12,
-    backgroundColor: Colors.skeleton,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 6,
     width: '70%',
   },
   activitySkeletonLineShort: {
     height: 10,
-    backgroundColor: Colors.skeleton,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: 5,
     width: '45%',
   },

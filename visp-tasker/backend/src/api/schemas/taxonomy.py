@@ -119,6 +119,11 @@ class TaskDetail(BaseModel):
     base_price_max_cents: Optional[int] = None
     estimated_duration_min: Optional[int] = None
 
+    # Charge unit + quantity (PP4a/PP5 — drives the booking quantity picker)
+    pricing_unit: Optional[str] = None
+    allows_quantity: bool = False
+    min_quantity: Optional[float] = None
+
     # Auto-escalation
     escalation_keywords: list[str] = Field(default_factory=list)
 

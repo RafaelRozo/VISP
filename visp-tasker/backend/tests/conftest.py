@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for VISP/Tasker backend unit tests.
+Shared pytest fixtures for VISP backend unit tests.
 
 Provides mock database sessions and sample domain objects that mirror
 production ORM models without requiring a live database connection.

@@ -1,5 +1,5 @@
 """
-VISP/Tasker SQLAlchemy Models
+VISP SQLAlchemy Models
 =============================
 
 Central import point for all ORM models. Import ``Base`` from here for
@@ -27,7 +27,18 @@ from .provider import (
 )
 
 # -- 003: Taxonomy --
-from .taxonomy import ProviderTaskQualification, ServiceCategory, ServiceTask
+from .taxonomy import (
+    PricingUnit,
+    ProviderTaskQualification,
+    ServiceCategory,
+    ServiceTask,
+)
+
+# -- 022: Provider-set service rates --
+from .provider_rate import ProviderServiceRate
+
+# -- 024: Tax engine --
+from .tax import ProvinceTaxRate
 
 # -- 004: Verification & Legal --
 from .verification import (
@@ -63,6 +74,12 @@ from .pricing import (
     PricingRuleType,
 )
 
+# -- 011: Price Proposals --
+from .price_proposal import PriceProposal
+
+# -- 011: Tips --
+from .tip import Tip
+
 # -- 008: Reviews --
 from .review import (
     Review,
@@ -82,6 +99,37 @@ from .notification import (
     Notification,
     NotificationPreference,
     NotificationType,
+)
+
+# -- 012: Admin / Superusers --
+from .superuser import SuperUser
+
+# -- 013: Promotions --
+from .promotion import Promotion
+
+# -- 014: Admin access codes --
+from .admin_access_code import AdminAccessCode
+
+# -- 019: VISP for Business --
+from .company import (
+    Company,
+    CompanyDocument,
+    CompanyDocumentStatus,
+    CompanyDocumentType,
+    CompanyInvite,
+    CompanyInviteStatus,
+    CompanyMember,
+    CompanyMemberRole,
+    CompanyMemberStatus,
+    CompanyService,
+    CompanyStatus,
+)
+
+# -- 020: VISP for Business — company job assignments --
+from .company_job import (
+    CompanyJobAssignment,
+    CompanyJobStatus,
+    CompanyPayoutTarget,
 )
 
 __all__ = [
@@ -104,6 +152,11 @@ __all__ = [
     "ServiceCategory",
     "ServiceTask",
     "ProviderTaskQualification",
+    "PricingUnit",
+    # Provider-set service rates
+    "ProviderServiceRate",
+    # Tax engine
+    "ProvinceTaxRate",
     # Verification
     "ProviderCredential",
     "CredentialStatus",
@@ -131,6 +184,10 @@ __all__ = [
     "PricingEvent",
     "PricingEventType",
     "CommissionSchedule",
+    # Price Proposals
+    "PriceProposal",
+    # Tips
+    "Tip",
     # Reviews
     "Review",
     "ReviewStatus",
@@ -146,4 +203,26 @@ __all__ = [
     "Notification",
     "NotificationType",
     "NotificationPreference",
+    # Admin
+    "SuperUser",
+    # Promotions
+    "Promotion",
+    # Admin access codes
+    "AdminAccessCode",
+    # VISP for Business
+    "Company",
+    "CompanyStatus",
+    "CompanyMember",
+    "CompanyMemberRole",
+    "CompanyMemberStatus",
+    "CompanyDocument",
+    "CompanyDocumentType",
+    "CompanyDocumentStatus",
+    "CompanyService",
+    "CompanyInvite",
+    "CompanyInviteStatus",
+    # VISP for Business — company job assignments
+    "CompanyJobAssignment",
+    "CompanyJobStatus",
+    "CompanyPayoutTarget",
 ]

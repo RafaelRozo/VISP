@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Central configuration for the VISP/Tasker backend."""
+    """Central configuration for the VISP backend."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # -- Application --
-    app_name: str = "VISP Tasker API"
+    app_name: str = "VISP API"
     app_version: str = "0.1.0"
     debug: bool = False
 
@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""
+    # Stripe AccountLink requires HTTPS URLs (deep links rejected). The backend
+    # serves landing pages at these URLs that auto-trigger the mobile deep link.
+    stripe_connect_return_url: str = "https://api.richieyanez.com/stripe/connect/return"
+    stripe_connect_refresh_url: str = "https://api.richieyanez.com/stripe/connect/refresh"
 
     # -- Mapbox --
     mapbox_access_token: str = ""
@@ -54,6 +58,11 @@ class Settings(BaseSettings):
     # -- JWT / Auth --
     jwt_secret: str = "visp-dev-secret-change-me"
     jwt_algorithm: str = "HS256"
+
+    # -- Admin dashboard JWT (separate from end-user JWT) --
+    admin_jwt_secret: str = "visp-admin-dev-secret-change-me"
+    admin_access_token_minutes: int = 60
+    admin_refresh_token_days: int = 7
 
     # -- WebSocket --
     ws_cors_allowed_origins: str = "*"

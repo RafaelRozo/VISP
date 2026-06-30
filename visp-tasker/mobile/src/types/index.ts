@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Shared TypeScript type definitions
+ * VISP - Shared TypeScript type definitions
  */
 
 // ──────────────────────────────────────────────
@@ -7,6 +7,17 @@
 // ──────────────────────────────────────────────
 
 export type UserRole = 'customer' | 'provider' | 'both';
+
+export interface UserDefaultAddress {
+  street: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  country: string;
+  latitude: number | null;
+  longitude: number | null;
+  formattedAddress?: string;
+}
 
 export interface User {
   id: string;
@@ -19,6 +30,17 @@ export interface User {
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  defaultAddress?: UserDefaultAddress | null;
+  stripeCustomerId?: string | null;
+}
+
+export interface PaymentMethodInfo {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
 }
 
 export interface AuthTokens {
@@ -34,7 +56,7 @@ export interface LoginCredentials {
 
 export interface RegisterData {
   email: string;
-  phone?: string;
+  phone: string;
   password: string;
   firstName: string;
   lastName: string;
@@ -92,13 +114,24 @@ export interface ServiceTask {
 
 export type JobStatus =
   | 'pending'
+  | 'draft'
+  | 'pending_match'
   | 'matched'
+  | 'pending_approval'
+  | 'pending_price_agreement'
+  | 'scheduled'
   | 'accepted'
+  | 'provider_accepted'
   | 'en_route'
+  | 'provider_en_route'
   | 'in_progress'
   | 'completed'
   | 'cancelled'
-  | 'disputed';
+  | 'cancelled_by_customer'
+  | 'cancelled_by_provider'
+  | 'cancelled_by_system'
+  | 'disputed'
+  | 'refunded';
 
 export interface Job {
   id: string;
@@ -117,6 +150,10 @@ export interface Job {
   provider: JobProvider | null;
   address: JobAddress;
   slaDeadline: string | null;
+  pricingModel: PricingModel | null;
+  hourlyRateCents: number | null;
+  actualDurationMinutes: number | null;
+  estimatedDurationMinutes: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -152,8 +189,8 @@ export type RootStackParamList = {
   ProviderHome: undefined;
   CategoryDetail: { categoryId: string; categoryName: string };
   JobDetail: { jobId: string };
+  JobTracking: { jobId: string };
   EmergencyFlow: undefined;
-  Profile: undefined;
   Chat: { jobId: string; otherUserName: string };
 };
 
@@ -180,19 +217,69 @@ export interface PaginatedResponse<T> {
 // Job Offers (Provider)
 // ──────────────────────────────────────────────
 
-export interface JobOffer {
+export interface OfferTaskInfo {
   id: string;
+  name: string;
+  level: string;
+  categoryName?: string;
+}
+
+export interface OfferCustomerInfo {
+  id: string;
+  displayName?: string;
+  rating?: number;
+}
+
+export interface OfferPricingInfo {
+  quotedPriceCents?: number;
+  commissionRate?: number;
+  estimatedPayoutCents?: number;
+  currency: string;
+}
+
+export interface OfferSLAInfo {
+  responseTimeMin?: number;
+  arrivalTimeMin?: number;
+  completionTimeMin?: number;
+}
+
+export type PricingModel = 'TIME_BASED' | 'NEGOTIATED' | 'EMERGENCY_NEGOTIATED';
+
+export interface JobOffer {
+  assignmentId: string;
   jobId: string;
-  taskName: string;
+  referenceNumber: string;
+  status: string;
+  isEmergency: boolean;
+  serviceAddress: string;
+  serviceCity?: string;
+  serviceLatitude: number;
+  serviceLongitude: number;
+  requestedDate?: string;
+  requestedTimeStart?: string;
+  task: OfferTaskInfo;
+  customer: OfferCustomerInfo;
+  pricing: OfferPricingInfo;
+  sla: OfferSLAInfo;
+  distanceKm?: number;
+  offeredAt: string;
+  offerExpiresAt?: string;
+  pricingModel?: PricingModel;
+}
+
+// ──────────────────────────────────────────────
+// Service Catalog (Provider)
+// ──────────────────────────────────────────────
+
+export interface ServiceCatalogItem {
+  id: string;
+  name: string;
+  categoryId: string;
   categoryName: string;
-  level: ServiceLevel;
-  customerArea: string;
-  distanceKm: number;
-  estimatedPrice: number;
-  slaDeadline: string | null;
-  expiresAt: string;
-  address: JobAddress;
-  createdAt: string;
+  level: string;
+  estimatedDurationMin: number;
+  rateDescription: string;
+  isAvailable: boolean;
 }
 
 // ──────────────────────────────────────────────
@@ -229,7 +316,7 @@ export interface WeeklyEarnings {
 // Provider Profile & Credentials
 // ──────────────────────────────────────────────
 
-export type CredentialStatus = 'pending' | 'approved' | 'expired' | 'rejected';
+export type CredentialStatus = 'awaiting_upload' | 'pending' | 'approved' | 'expired' | 'rejected';
 
 export type CredentialType =
   | 'criminal_record_check'
@@ -261,6 +348,7 @@ export interface ProviderProfile {
   completedJobs: number;
   rating: number;
   stripeConnectStatus: 'not_connected' | 'pending' | 'active' | 'restricted';
+  stripeAccountId?: string | null;
   credentials: Credential[];
 }
 
@@ -343,12 +431,45 @@ export interface ChatMessage {
 }
 
 // ──────────────────────────────────────────────
+// Tips
+// ──────────────────────────────────────────────
+
+export type TipStatus = 'pending' | 'paid' | 'failed';
+
+export interface Tip {
+  id: string;
+  jobId: string;
+  amountCents: number;
+  status: TipStatus;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+// ──────────────────────────────────────────────
+// Price Proposals
+// ──────────────────────────────────────────────
+
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+
+export interface PriceProposal {
+  id: string;
+  jobId: string;
+  proposedById: string;
+  proposedByRole: 'provider' | 'customer';
+  proposedPriceCents: number;
+  description: string;
+  status: ProposalStatus;
+  respondedAt: string | null;
+  createdAt: string;
+}
+
+// ──────────────────────────────────────────────
 // Extended Navigation
 // ──────────────────────────────────────────────
 
 export type ProviderTabParamList = {
   Dashboard: undefined;
-  JobOffers: undefined;
+  JobsTab: undefined;
   ActiveJob: { jobId: string };
   Earnings: undefined;
   Schedule: undefined;
@@ -367,12 +488,15 @@ export type ProfileStackParamList = {
   Credentials: undefined;
   Verification: undefined;
   Settings: undefined;
+  ProviderOnboarding: undefined;
+  PaymentMethods: undefined;
 };
 
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
+  ProviderOnboarding: undefined;
 };
 
 // ──────────────────────────────────────────────
@@ -562,6 +686,17 @@ export interface JobAssignment {
   eta: number | null;
 }
 
+export interface JobTrackingData {
+  providerLat: number | null;
+  providerLng: number | null;
+  etaMinutes: number | null;
+  status: string;
+  providerName: string | null;
+  providerPhone: string | null;
+  providerLevel: string | null;
+  updatedAt: string | null;
+}
+
 // ──────────────────────────────────────────────
 // Booking Flow Data (passed between screens)
 // ──────────────────────────────────────────────
@@ -576,6 +711,13 @@ export interface BookingTaskSummary {
   priceRangeMax: number;
   estimatedPrice: number;
   description: string;
+  // Booking details from TaskSelectionScreen
+  address?: AddressInfo;
+  scheduledDate?: string;
+  scheduledTimeSlot?: string;
+  isFlexibleSchedule?: boolean;
+  priority?: PriorityLevel;
+  selectedNotes?: string[];
 }
 
 export type CustomerFlowParamList = {
@@ -587,6 +729,8 @@ export type CustomerFlowParamList = {
   Matching: { jobId: string; taskName: string };
   JobTracking: { jobId: string };
   Rating: { jobId: string; taskName: string; finalPrice: number };
+  Tip: { jobId: string; taskName: string; finalPrice: number; providerName?: string };
+  PriceProposal: { jobId: string; taskName: string; level: ServiceLevel; guideMin?: number; guideMax?: number };
   Chat: { jobId: string; otherUserName: string };
 };
 

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Tasker</string>
+	<string>VISP</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -18,8 +18,17 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.0</string>
-	<key>CFBundleSignature</key>
-	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.visp.tasker</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>visptasker</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -32,45 +41,32 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Tasker needs access to your camera to take photos of credentials, licenses, and job documentation.</string>
+	<string>VISP needs access to your camera to take photos of credentials, licenses, and job documentation.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Tasker uses your location in the background to track provider routes during active jobs and for emergency dispatch.</string>
+	<string>VISP uses your location in the background to track provider routes during active jobs and for emergency dispatch.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Tasker needs your location to find nearby service providers and show them on the map.</string>
+	<string>VISP needs your location to find nearby service providers and show them on the map.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Tasker needs access to your photos to upload credential documents, profile pictures, and job photos.</string>
+	<string>VISP needs access to your photos to upload credential documents, profile pictures, and job photos.</string>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>fetch</string>
-		<string>location</string>
 		<string>remote-notification</string>
+		<string>location</string>
+		<string>fetch</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>UIStatusBarStyle</key>
-	<string>UIStatusBarStyleLightContent</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>visptasker</string>
-			</array>
-			<key>CFBundleURLName</key>
-			<string>com.visp.tasker</string>
-		</dict>
-	</array>
-	<key>FirebaseMessagingAutoInitEnabled</key>
-	<true/>
 </dict>
 </plist>

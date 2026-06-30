@@ -90,6 +90,23 @@ class ForgotPasswordRequest(BaseModel):
 # Response schemas
 # ---------------------------------------------------------------------------
 
+class UserDefaultAddressOut(BaseModel):
+    """User default address returned in their profile."""
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+    )
+    street: str
+    city: str
+    province: str
+    postal_code: str
+    country: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    formatted_address: Optional[str] = None
+
+
 class UserOut(BaseModel):
     """Public user representation returned to clients.
 
@@ -109,6 +126,8 @@ class UserOut(BaseModel):
     last_name: str
     role: str = Field(description="customer, provider, or both")
     avatar_url: Optional[str] = None
+    default_address: Optional[UserDefaultAddressOut] = None
+    stripe_customer_id: Optional[str] = None
     is_verified: bool = False
     created_at: datetime
     updated_at: datetime
@@ -149,6 +168,7 @@ class AuthData(BaseModel):
 
     user: UserOut
     tokens: TokensOut
+    recovery_code: Optional[str] = None
 
 
 class TokenRefreshResponse(BaseModel):

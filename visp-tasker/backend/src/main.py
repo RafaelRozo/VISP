@@ -1,4 +1,4 @@
-"""VISP/Tasker API -- Main Application Entry Point
+"""VISP API -- Main Application Entry Point
 
 Creates the FastAPI application, configures CORS middleware, registers
 all API route modules under the /api/v1 prefix, and mounts the Socket.IO
@@ -13,8 +13,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.core.config import settings
 
@@ -83,6 +86,28 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
+# Apple App Site Association (AASA) -- enables iOS Password AutoFill
+# ---------------------------------------------------------------------------
+# Served at the well-known path with Content-Type: application/json and NO
+# redirects, per Apple requirements. Associates iCloud Keychain credentials
+# for api.richieyanez.com with the iOS app (Team ID + bundle id).
+
+_AASA = {
+    "webcredentials": {
+        "apps": ["X3332DJG89.com.droz.vispapp"],
+    },
+}
+
+
+@app.get("/.well-known/apple-app-site-association", include_in_schema=False)
+async def apple_app_site_association():
+    """Return the AASA file for iOS webcredentials (Password AutoFill)."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(content=_AASA, media_type="application/json")
+
+
+# ---------------------------------------------------------------------------
 # Register API route modules
 # ---------------------------------------------------------------------------
 # Each router already defines its own prefix (e.g. /categories, /jobs) and
@@ -91,9 +116,12 @@ async def health():
 # ---------------------------------------------------------------------------
 
 from src.api.routes import (  # noqa: E402
+    admin,
     auth,
     categories,
     chat,
+    companies,
+    company_assignments,
     consents,
     escalations,
     geolocation,
@@ -102,9 +130,14 @@ from src.api.routes import (  # noqa: E402
     notifications,
     payments,
     pricing,
+    proposals,
+    provider_rates,
     providers,
     scoring,
+    stripe_redirect,
     tasks,
+    tips,
+    users,
     verification,
 )
 
@@ -117,14 +150,36 @@ app.include_router(consents.router, prefix=_prefix)
 app.include_router(verification.router, prefix=_prefix)
 app.include_router(jobs.router, prefix=_prefix)
 app.include_router(providers.router, prefix=_prefix)
+app.include_router(provider_rates.router, prefix=_prefix)
 app.include_router(matching.router, prefix=_prefix)
 app.include_router(scoring.router, prefix=_prefix)
 app.include_router(pricing.router, prefix=_prefix)
 app.include_router(escalations.router, prefix=_prefix)
 app.include_router(payments.router, prefix=_prefix)
+app.include_router(proposals.router, prefix=_prefix)
+app.include_router(tips.router, prefix=_prefix)
 app.include_router(chat.router, prefix=_prefix)
+app.include_router(companies.router, prefix=_prefix)
+app.include_router(company_assignments.router, prefix=_prefix)
 app.include_router(notifications.router, prefix=_prefix)
 app.include_router(geolocation.router, prefix=_prefix)
+app.include_router(users.router, prefix=_prefix)
+app.include_router(admin.router, prefix=_prefix)
+
+# Public HTML redirect pages (no /api/v1 prefix — Stripe redirects users here)
+app.include_router(stripe_redirect.router)
+
+
+# ---------------------------------------------------------------------------
+# Mount static uploads directory (avatars, etc.)
+# ---------------------------------------------------------------------------
+# Served at /uploads/<path>. Files are written by upload endpoints under
+# backend/uploads/. The directory is created on demand.
+# ---------------------------------------------------------------------------
+
+_uploads_dir = Path(__file__).resolve().parent.parent / "uploads"
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
 # ---------------------------------------------------------------------------

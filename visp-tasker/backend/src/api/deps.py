@@ -1,5 +1,5 @@
 """
-Shared FastAPI dependencies for the VISP/Tasker backend.
+Shared FastAPI dependencies for the VISP backend.
 
 Provides the async database session dependency used by all route handlers,
 and authentication dependencies for extracting the current user from JWT
@@ -152,3 +152,31 @@ from src.models.user import User as _UserModel  # noqa: E402
 
 CurrentUser = Annotated[_UserModel, Depends(get_current_user)]
 OptionalUser = Annotated[Optional[_UserModel], Depends(get_optional_user)]
+
+
+# ---------------------------------------------------------------------------
+# Admin (superuser) authentication
+# ---------------------------------------------------------------------------
+
+async def get_current_admin(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer_scheme)],
+    db: DBSession,
+):
+    """Extract a Bearer token signed with ADMIN_JWT_SECRET and return the
+    matching ``SuperUser``. Raises 401 otherwise.
+    """
+    from src.services import admin_service
+
+    try:
+        return await admin_service.get_current_admin(db, credentials.credentials)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+from src.models.superuser import SuperUser as _SuperUserModel  # noqa: E402
+
+CurrentAdmin = Annotated[_SuperUserModel, Depends(get_current_admin)]

@@ -44,6 +44,7 @@ from src.models.job import (
     JobStatus,
 )
 from src.services.jobStateManager import ActorType, validate_transition
+from src.services import notificationService
 
 from ..socketServer import (
     broadcast_to_job,
@@ -392,7 +393,7 @@ async def handle_accept_offer(sid: str, data: dict[str, Any]) -> dict[str, Any]:
 
         await db.commit()
 
-    # Broadcast to job room
+    # Broadcast to job room (real-time WebSocket)
     provider_user_id = _extract_user_id(sid) or ""
     await emit_status_changed(job_id, old_status=old_status, new_status="provider_accepted")
     await emit_job_accepted(
@@ -401,6 +402,20 @@ async def handle_accept_offer(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         provider_photo=None,
         eta_minutes=assignment.estimated_arrival_min,
     )
+
+    # Push notification to customer
+    try:
+        async with async_session_factory() as notify_db:
+            await notificationService.notify_job_accepted(
+                job_id=uuid.UUID(job_id),
+                customer_id=job.customer_id,
+                provider_name=provider_user_id,
+                eta_minutes=assignment.estimated_arrival_min or 15,
+                db=notify_db,
+            )
+            await notify_db.commit()
+    except Exception:
+        logger.exception("Failed to send push for job acceptance: %s", job_id)
 
     logger.info("Job %s accepted by provider sid=%s", job_id, sid)
     return {"ok": True, "status": "provider_accepted"}
@@ -525,6 +540,19 @@ async def handle_mark_en_route(sid: str, data: dict[str, Any]) -> dict[str, Any]
         eta_minutes=assignment.estimated_arrival_min,
     )
 
+    # Push notification to customer
+    try:
+        async with async_session_factory() as notify_db:
+            await notificationService.notify_provider_en_route(
+                job_id=uuid.UUID(job_id),
+                customer_id=job.customer_id,
+                eta_minutes=assignment.estimated_arrival_min or 15,
+                db=notify_db,
+            )
+            await notify_db.commit()
+    except Exception:
+        logger.exception("Failed to send push for en route: %s", job_id)
+
     logger.info("Job %s provider en route sid=%s", job_id, sid)
     return {"ok": True, "status": "provider_en_route"}
 
@@ -570,6 +598,18 @@ async def handle_mark_arrived(sid: str, data: dict[str, Any]) -> dict[str, Any]:
         await db.commit()
 
     await emit_provider_arrived(job_id)
+
+    # Push notification to customer
+    try:
+        async with async_session_factory() as notify_db:
+            await notificationService.notify_provider_arrived(
+                job_id=uuid.UUID(job_id),
+                customer_id=job.customer_id,
+                db=notify_db,
+            )
+            await notify_db.commit()
+    except Exception:
+        logger.exception("Failed to send push for provider arrived: %s", job_id)
 
     logger.info("Job %s provider arrived sid=%s", job_id, sid)
     return {"ok": True, "arrived_at": now.isoformat()}
@@ -628,6 +668,18 @@ async def handle_mark_started(sid: str, data: dict[str, Any]) -> dict[str, Any]:
     started_at_iso = now.isoformat()
     await emit_status_changed(job_id, old_status=old_status, new_status="in_progress")
     await emit_job_in_progress(job_id, started_at=started_at_iso)
+
+    # Push notification to customer
+    try:
+        async with async_session_factory() as notify_db:
+            await notificationService.notify_job_started(
+                job_id=uuid.UUID(job_id),
+                customer_id=job.customer_id,
+                db=notify_db,
+            )
+            await notify_db.commit()
+    except Exception:
+        logger.exception("Failed to send push for job started: %s", job_id)
 
     logger.info("Job %s work started sid=%s", job_id, sid)
     return {"ok": True, "status": "in_progress", "started_at": started_at_iso}
@@ -694,6 +746,19 @@ async def handle_mark_completed(sid: str, data: dict[str, Any]) -> dict[str, Any
         final_price_cents=job.final_price_cents or job.quoted_price_cents,
         completion_time=completion_time,
     )
+
+    # Push notification to customer
+    try:
+        async with async_session_factory() as notify_db:
+            await notificationService.notify_job_completed(
+                job_id=uuid.UUID(job_id),
+                customer_id=job.customer_id,
+                final_price_cents=job.final_price_cents or job.quoted_price_cents or 0,
+                db=notify_db,
+            )
+            await notify_db.commit()
+    except Exception:
+        logger.exception("Failed to send push for job completed: %s", job_id)
 
     logger.info("Job %s completed sid=%s", job_id, sid)
     return {"ok": True, "status": "completed", "completed_at": completion_time}

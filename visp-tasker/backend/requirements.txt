@@ -1,5 +1,5 @@
 # =============================================================================
-# VISP/Tasker Backend -- Python Dependencies
+# VISP Backend -- Python Dependencies
 # =============================================================================
 # Install: pip install -r requirements.txt
 # =============================================================================
@@ -7,8 +7,9 @@
 # -- Core Framework --
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
-pydantic>=2.5.0
+pydantic[email]>=2.5.0
 pydantic-settings>=2.1.0
+email-validator>=2.1.0
 
 # -- Database --
 sqlalchemy[asyncio]>=2.0.25
@@ -31,7 +32,9 @@ python-socketio>=5.10.0
 httpx>=0.26.0
 
 # -- Payments --
-stripe>=7.0.0
+# Accounts v2 API surface (stripe.v2.core.accounts) requires SDK >=9.0;
+# pin 11+ for current stability.
+stripe>=11.0.0
 
 # -- Firebase Cloud Messaging --
 firebase-admin>=6.2.0

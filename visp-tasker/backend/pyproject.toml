@@ -1,7 +1,7 @@
 [project]
 name = "visp-tasker-backend"
 version = "0.1.0"
-description = "VISP/Tasker home services marketplace backend"
+description = "VISP home services marketplace backend"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]

@@ -1,5 +1,5 @@
 """
-VISP/Tasker Database Seed Script (VISP-DB-SEED-002)
+VISP Database Seed Script (VISP-DB-SEED-002)
 =====================================================
 
 Loads seed data from JSON files in the seeds/ directory and inserts them
@@ -450,7 +450,7 @@ async def seed_test_users(session: AsyncSession) -> int:
 async def run_seed() -> None:
     """Execute all seed operations in dependency order."""
     print("=" * 60)
-    print("VISP/Tasker Seed Script (VISP-DB-SEED-002)")
+    print("VISP Seed Script (VISP-DB-SEED-002)")
     print("=" * 60)
     print(f"Database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
     print()

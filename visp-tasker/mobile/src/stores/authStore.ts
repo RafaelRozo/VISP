@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Auth Zustand Store
+ * VISP - Auth Zustand Store
  *
  * Global authentication state: user session, tokens, loading flags.
  * Hydrates from secure keychain on app launch via loadStoredAuth().
@@ -8,6 +8,7 @@
 import { create } from 'zustand';
 import { setOnTokenRefreshFailed } from '../services/apiClient';
 import { authService } from '../services/authService';
+import { notificationService } from '../services/notificationService';
 import type {
   AuthResponse,
   LoginCredentials,
@@ -108,6 +109,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.login(credentials);
         applyAuthResponse(set, response);
+        // Initialize push notifications after successful login
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
         set({
           isLoading: false,
@@ -123,38 +126,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.register(data);
         applyAuthResponse(set, response);
+        // Initialize push notifications after successful registration
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
-        // DEV FALLBACK: When backend auth endpoints are not yet available,
-        // fall back to a mock registration using the user's actual form data.
-        // This allows the full registration flow to work for MVP testing.
-        // TODO: Remove this fallback once VISP-BE-* auth endpoints are live.
-        if (__DEV__) {
-          console.warn(
-            '[AuthStore] register API failed, using dev fallback:',
-            extractErrorMessage(err),
-          );
-          const mockUser: User = {
-            id: `user-${Date.now()}`,
-            email: data.email,
-            phone: null,
-            firstName: data.firstName,
-            lastName: data.lastName,
-            role: data.role,
-            avatarUrl: null,
-            isVerified: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          set({
-            user: mockUser,
-            token: 'dev-register-token',
-            isAuthenticated: true,
-            isLoading: false,
-            isRestoring: false,
-            error: null,
-          });
-          return;
-        }
         set({
           isLoading: false,
           error: extractErrorMessage(err),
@@ -169,6 +143,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.loginWithApple(identityToken);
         applyAuthResponse(set, response);
+        // Initialize push notifications after Apple sign-in
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
         set({
           isLoading: false,
@@ -184,6 +160,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       try {
         const response = await authService.loginWithGoogle(serverAuthCode);
         applyAuthResponse(set, response);
+        // Initialize push notifications after Google sign-in
+        notificationService.initialize().catch(console.warn);
       } catch (err) {
         set({
           isLoading: false,
@@ -212,6 +190,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
     logout: async () => {
       set({ isLoading: true });
       try {
+        // Clean up push notifications before logging out
+        await notificationService.cleanup();
         await authService.logout();
       } finally {
         set({
@@ -237,6 +217,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
             isRestoring: false,
             error: null,
           });
+          // Re-initialize push notifications on session restore
+          notificationService.initialize().catch(console.warn);
         } else {
           set({
             user: null,

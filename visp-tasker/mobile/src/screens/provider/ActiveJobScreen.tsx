@@ -1,5 +1,5 @@
 /**
- * VISP/Tasker - Active Job Screen
+ * VISP - Active Job Screen
  *
  * Current active job details with status progression bar, navigation to
  * customer location, status transition buttons, before/after photo capture,
@@ -9,10 +9,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Linking,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,9 +18,23 @@ import {
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import MapboxGL from '@rnmapbox/maps';
+
+import { Config } from '../../services/config';
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
+import { GlassStyles } from '../../theme/glass';
+import { GlassBackground, GlassCard, GlassButton } from '../../components/glass';
+import { AnimatedSpinner } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
-import { JobStatus, ProviderTabParamList } from '../../types';
+import { JobStatus, PricingModel, ProviderTabParamList } from '../../types';
+import { watchPosition, clearWatch, getCurrentPosition } from '../../services/geolocationService';
+import { post } from '../../services/apiClient';
+import RunningCostTimer from '../../components/RunningCostTimer';
+
+// ---------------------------------------------------------------------------
+// Mapbox initialization
+// ---------------------------------------------------------------------------
+MapboxGL.setAccessToken(Config.mapboxAccessToken);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,7 +68,7 @@ const NEXT_STATUS_ACTIONS: Record<string, { label: string; next: JobStatus }> = 
 };
 
 // ---------------------------------------------------------------------------
-// Status Progress Bar
+// Status Progress Bar (Glass)
 // ---------------------------------------------------------------------------
 
 interface StatusProgressProps {
@@ -130,10 +141,11 @@ const progressStyles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.light,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
+    backgroundColor: Colors.glass.white,
   },
   circleActive: {
     borderColor: Colors.primary,
@@ -141,7 +153,7 @@ const progressStyles = StyleSheet.create({
   },
   circleCurrent: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primaryLight,
+    backgroundColor: 'rgba(74, 144, 226, 0.35)',
   },
   checkmark: {
     fontSize: 12,
@@ -150,7 +162,7 @@ const progressStyles = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    color: Colors.textTertiary,
+    color: 'rgba(255, 255, 255, 0.4)',
     textAlign: 'center',
   },
   labelActive: {
@@ -160,7 +172,7 @@ const progressStyles = StyleSheet.create({
   connector: {
     flex: 1,
     height: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.glassBorder.subtle,
     marginBottom: 22,
   },
   connectorActive: {
@@ -169,7 +181,7 @@ const progressStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
-// Photo Section
+// Photo Section (Glass)
 // ---------------------------------------------------------------------------
 
 interface PhotoSectionProps {
@@ -225,25 +237,28 @@ const photoStyles = StyleSheet.create({
   photoPlaceholder: {
     width: 72,
     height: 72,
-    borderRadius: 8,
-    backgroundColor: Colors.surfaceLight,
+    borderRadius: 10,
+    backgroundColor: Colors.glass.white,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.subtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   photoIndex: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   addButton: {
     width: 72,
     height: 72,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.glassBorder.light,
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.glass.white,
   },
   addIcon: {
     fontSize: 20,
@@ -304,13 +319,24 @@ function useJobTimer(startedAt: string | null): string {
 export default function ActiveJobScreen(): React.JSX.Element {
   const route = useRoute<ActiveJobRoute>();
   const navigation = useNavigation<ActiveJobNav>();
-  const { activeJob, updateJobStatus, fetchActiveJob, error } =
+  const { activeJob, startNavigation, arriveAtJob, completeJob, fetchActiveJob, error } =
     useProviderStore();
 
   const [isUpdating, setIsUpdating] = useState(false);
   const [beforePhotos, setBeforePhotos] = useState<string[]>([]);
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [legalAcknowledged, setLegalAcknowledged] = useState(false);
+
+  // GPS tracking state
+  const [providerLat, setProviderLat] = useState<number | null>(null);
+  const [providerLng, setProviderLng] = useState<number | null>(null);
+  const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const broadcastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastBroadcastRef = useRef<{ lat: number; lng: number } | null>(null);
+  const cameraRef = useRef<MapboxGL.Camera>(null);
 
   const { jobId } = route.params;
 
@@ -324,27 +350,138 @@ export default function ActiveJobScreen(): React.JSX.Element {
     }
   }, [activeJob, jobId, fetchActiveJob]);
 
-  // Navigate to customer location
-  const openNavigation = useCallback(() => {
+  // --- Haversine distance in metres ---
+  const haversineMetres = useCallback(
+    (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6371000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    },
+    [],
+  );
+
+  // --- Fetch route from Mapbox Directions API ---
+  const fetchRoute = useCallback(
+    async (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
+      try {
+        const url =
+          `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+          `${fromLng},${fromLat};${toLng},${toLat}` +
+          `?geometries=geojson&overview=full&access_token=${Config.mapboxAccessToken}`;
+        const resp = await fetch(url);
+        const json = await resp.json();
+        if (json.routes && json.routes.length > 0) {
+          const r = json.routes[0];
+          setRouteCoords(r.geometry.coordinates as [number, number][]);
+          setDistanceKm(r.distance / 1000);
+          setEtaMinutes(Math.ceil(r.duration / 60));
+        }
+      } catch (err) {
+        console.warn('[ActiveJob] Failed to fetch route:', err);
+      }
+    },
+    [],
+  );
+
+  // --- Start GPS tracking when en_route ---
+  useEffect(() => {
     if (!activeJob) return;
-    const { latitude, longitude } = activeJob.address;
-    const label = encodeURIComponent(
-      `${activeJob.address.street}, ${activeJob.address.city}`,
-    );
+    const isEnRoute = activeJob.status === 'en_route';
 
-    const url = Platform.select({
-      ios: `maps:0,0?q=${label}&ll=${latitude},${longitude}`,
-      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`,
-    });
+    if (isEnRoute) {
+      // Get initial position
+      getCurrentPosition()
+        .then((pos) => {
+          setProviderLat(pos.latitude);
+          setProviderLng(pos.longitude);
+          // Fetch route from current pos to customer
+          if (activeJob.address) {
+            fetchRoute(
+              pos.latitude,
+              pos.longitude,
+              activeJob.address.latitude,
+              activeJob.address.longitude,
+            );
+          }
+        })
+        .catch((err) => console.warn('[ActiveJob] Initial position error:', err));
 
-    if (url) {
-      Linking.openURL(url).catch(() => {
-        Linking.openURL(
-          `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
-        );
+      // Watch continuous position updates
+      watchIdRef.current = watchPosition((pos) => {
+        setProviderLat(pos.latitude);
+        setProviderLng(pos.longitude);
       });
+
+      // Broadcast location to backend every 5 seconds
+      broadcastTimerRef.current = setInterval(async () => {
+        const lat = providerLat;
+        const lng = providerLng;
+        if (lat == null || lng == null) return;
+
+        // Skip if position hasn't changed significantly
+        const last = lastBroadcastRef.current;
+        if (last && haversineMetres(last.lat, last.lng, lat, lng) < 5) return;
+
+        try {
+          await post('/jobs/provider-location', {
+            latitude: lat,
+            longitude: lng,
+          });
+          lastBroadcastRef.current = { lat, lng };
+        } catch (err) {
+          console.warn('[ActiveJob] Location broadcast error:', err);
+        }
+      }, 5000);
     }
-  }, [activeJob]);
+
+    return () => {
+      if (watchIdRef.current != null) {
+        clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (broadcastTimerRef.current) {
+        clearInterval(broadcastTimerRef.current);
+        broadcastTimerRef.current = null;
+      }
+    };
+  }, [activeJob?.status, activeJob?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Re-fetch route when position changes significantly ---
+  useEffect(() => {
+    if (
+      activeJob?.status !== 'en_route' ||
+      providerLat == null ||
+      providerLng == null ||
+      !activeJob?.address
+    )
+      return;
+
+    const dist = haversineMetres(
+      providerLat,
+      providerLng,
+      activeJob.address.latitude,
+      activeJob.address.longitude,
+    );
+    setDistanceKm(dist / 1000);
+    // Rough ETA: average 30 km/h in city
+    setEtaMinutes(Math.ceil((dist / 1000 / 30) * 60));
+  }, [providerLat, providerLng, activeJob?.address, activeJob?.status, haversineMetres]);
+
+  // --- Proximity: within 100m of customer? ---
+  const isNearCustomer = !!(activeJob?.address &&
+    providerLat != null &&
+    providerLng != null &&
+    haversineMetres(
+      providerLat,
+      providerLng,
+      activeJob.address.latitude,
+      activeJob.address.longitude,
+    ) < 100);
 
   // Handle status update with legal acknowledgment for start job
   const handleStatusUpdate = useCallback(async () => {
@@ -358,9 +495,9 @@ export default function ActiveJobScreen(): React.JSX.Element {
       Alert.alert(
         'Legal Acknowledgment Required',
         `Before starting work, please confirm:\n\n` +
-          `1. I understand this task is limited to "${activeJob.taskName}" only.\n\n` +
-          `2. I am acting as an independent contractor.\n\n` +
-          `Additional services cannot be performed without a new job request.`,
+        `1. I understand this task is limited to "${activeJob.taskName}" only.\n\n` +
+        `2. I am acting as an independent contractor.\n\n` +
+        `Additional services cannot be performed without a new job request.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -369,7 +506,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
               setLegalAcknowledged(true);
               setIsUpdating(true);
               try {
-                await updateJobStatus(jobId, action.next);
+                await arriveAtJob(jobId);
               } finally {
                 setIsUpdating(false);
               }
@@ -392,8 +529,12 @@ export default function ActiveJobScreen(): React.JSX.Element {
         onPress: async () => {
           setIsUpdating(true);
           try {
-            await updateJobStatus(jobId, action.next);
-            if (action.next === 'completed') {
+            if (action.next === 'en_route') {
+              await startNavigation(jobId);
+            } else if (action.next === 'in_progress') {
+              await arriveAtJob(jobId);
+            } else if (action.next === 'completed') {
+              await completeJob(jobId);
               navigation.goBack();
             }
           } finally {
@@ -402,7 +543,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
         },
       },
     ]);
-  }, [activeJob, jobId, updateJobStatus, navigation, legalAcknowledged]);
+  }, [activeJob, jobId, startNavigation, arriveAtJob, completeJob, navigation, legalAcknowledged]);
 
   // Photo capture handlers
   const handleCaptureBeforePhoto = useCallback(() => {
@@ -442,10 +583,12 @@ export default function ActiveJobScreen(): React.JSX.Element {
 
   if (!activeJob) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading job details...</Text>
-      </View>
+      <GlassBackground>
+        <View style={styles.loadingContainer}>
+          <AnimatedSpinner size={48} color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading job details...</Text>
+        </View>
+      </GlassBackground>
     );
   }
 
@@ -458,201 +601,289 @@ export default function ActiveJobScreen(): React.JSX.Element {
   const isInProgress = activeJob.status === 'in_progress';
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* Status progress bar */}
-      <View style={styles.progressCard}>
-        <StatusProgress currentStatus={activeJob.status} />
-      </View>
+    <GlassBackground>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+      >
+        {/* Status progress bar */}
+        <GlassCard variant="dark" padding={0} style={styles.cardSpacing}>
+          <StatusProgress currentStatus={activeJob.status} />
+        </GlassCard>
 
-      {/* Timer display when in_progress */}
-      {isInProgress && (
-        <View style={styles.timerCard}>
-          <Text style={styles.timerLabel}>Job Timer</Text>
-          <Text style={styles.timerValue}>{timerDisplay}</Text>
-        </View>
-      )}
+        {/* Timer / pricing display when in_progress */}
+        {isInProgress && activeJob.pricingModel === 'TIME_BASED' && activeJob.hourlyRateCents && (
+          <RunningCostTimer
+            startedAt={activeJob.startedAt!}
+            hourlyRateCents={activeJob.hourlyRateCents}
+            estimatedDurationMin={activeJob.estimatedDurationMinutes ?? 60}
+          />
+        )}
+        {isInProgress && activeJob.pricingModel !== 'TIME_BASED' && (
+          <GlassCard variant="standard" style={styles.timerCard}>
+            <Text style={styles.timerLabel}>Job Timer</Text>
+            <Text style={styles.timerValue}>{timerDisplay}</Text>
+            <View style={styles.agreedPriceRow}>
+              <Text style={styles.agreedPriceLabel}>Agreed Price</Text>
+              <Text style={styles.agreedPriceValue}>
+                ${activeJob.estimatedPrice.toFixed(2)}
+              </Text>
+            </View>
+          </GlassCard>
+        )}
+        {isInProgress && !activeJob.pricingModel && (
+          <GlassCard variant="standard" style={styles.timerCard}>
+            <Text style={styles.timerLabel}>Job Timer</Text>
+            <Text style={styles.timerValue}>{timerDisplay}</Text>
+          </GlassCard>
+        )}
 
-      {/* Job details card */}
-      <View style={styles.detailsCard}>
-        <View style={styles.detailsHeader}>
-          <View style={[styles.levelBadge, { backgroundColor: levelColor }]}>
-            <Text style={styles.levelBadgeText}>L{activeJob.level}</Text>
+        {/* Job details card */}
+        <GlassCard variant="dark" style={styles.cardSpacing}>
+          <View style={styles.detailsHeader}>
+            <View style={[styles.levelBadge, { backgroundColor: levelColor }]}>
+              <Text style={styles.levelBadgeText}>L{activeJob.level}</Text>
+            </View>
+            <View style={styles.detailsHeaderText}>
+              <Text style={styles.taskName}>{activeJob.taskName}</Text>
+              <Text style={styles.categoryName}>{activeJob.categoryName}</Text>
+            </View>
+            <View
+              style={[styles.statusBadge, { backgroundColor: statusColor }]}
+            >
+              <Text style={styles.statusBadgeText}>
+                {STATUS_FLOW_LABELS[activeJob.status] ?? activeJob.status}
+              </Text>
+            </View>
           </View>
-          <View style={styles.detailsHeaderText}>
-            <Text style={styles.taskName}>{activeJob.taskName}</Text>
-            <Text style={styles.categoryName}>{activeJob.categoryName}</Text>
-          </View>
-          <View
-            style={[styles.statusBadge, { backgroundColor: statusColor }]}
-          >
-            <Text style={styles.statusBadgeText}>
-              {STATUS_FLOW_LABELS[activeJob.status] ?? activeJob.status}
+
+          {/* Price info */}
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Estimated Pay</Text>
+            <Text style={styles.priceValue}>
+              ${activeJob.estimatedPrice.toFixed(2)}
             </Text>
           </View>
-        </View>
 
-        {/* Price info */}
-        <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>Estimated Pay</Text>
-          <Text style={styles.priceValue}>
-            ${activeJob.estimatedPrice.toFixed(2)}
+          {/* SLA deadline */}
+          {activeJob.slaDeadline && (
+            <View style={styles.slaRow}>
+              <Text style={styles.slaLabel}>SLA Deadline</Text>
+              <Text style={styles.slaValue}>
+                {new Date(activeJob.slaDeadline).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+            </View>
+          )}
+        </GlassCard>
+
+        {/* Customer info card */}
+        <GlassCard variant="dark" style={styles.cardSpacing}>
+          <Text style={styles.sectionTitle}>Customer</Text>
+          <View style={styles.customerRow}>
+            <View style={styles.customerAvatar}>
+              <Text style={styles.customerAvatarText}>C</Text>
+            </View>
+            <View style={styles.customerInfo}>
+              <Text style={styles.customerName}>Customer</Text>
+              <Text style={styles.customerSubtext}>
+                {activeJob.address.city}, {activeJob.address.province}
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* Live Navigation Map */}
+        <GlassCard variant="dark" style={styles.cardSpacing}>
+          <Text style={styles.sectionTitle}>Navigation</Text>
+          <Text style={styles.addressText}>
+            {activeJob.address.street}
           </Text>
+          <Text style={styles.addressSubtext}>
+            {activeJob.address.city}, {activeJob.address.province}{' '}
+            {activeJob.address.postalCode}
+          </Text>
+
+          {/* ETA / Distance Overlay */}
+          {activeJob.status === 'en_route' && distanceKm != null && (
+            <View style={styles.etaOverlay}>
+              <Text style={styles.etaText}>
+                {distanceKm < 1
+                  ? `${Math.round(distanceKm * 1000)} m`
+                  : `${distanceKm.toFixed(1)} km`}
+              </Text>
+              <Text style={styles.etaSeparator}>-</Text>
+              <Text style={styles.etaText}>
+                {etaMinutes != null ? `${etaMinutes} min` : '...'}
+              </Text>
+              {isNearCustomer && (
+                <View style={styles.nearBadge}>
+                  <Text style={styles.nearBadgeText}>Nearby!</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Mapbox Map View */}
+          <View style={styles.mapContainer}>
+            <MapboxGL.MapView
+              style={styles.map}
+              styleURL={MapboxGL.StyleURL.Street}
+              scrollEnabled={true}
+              zoomEnabled={true}
+              rotateEnabled={false}
+              pitchEnabled={false}
+              attributionEnabled={false}
+              logoEnabled={false}
+            >
+              <MapboxGL.Camera
+                ref={cameraRef}
+                zoomLevel={13}
+                centerCoordinate={
+                  providerLat != null && providerLng != null
+                    ? [providerLng, providerLat]
+                    : [activeJob.address.longitude, activeJob.address.latitude]
+                }
+                animationMode="flyTo"
+                animationDuration={1000}
+              />
+
+              {/* Route line */}
+              {routeCoords && routeCoords.length > 0 && (
+                <MapboxGL.ShapeSource
+                  id="route-source"
+                  shape={{
+                    type: 'Feature',
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: routeCoords,
+                    },
+                    properties: {},
+                  }}
+                >
+                  <MapboxGL.LineLayer
+                    id="route-line"
+                    style={{
+                      lineColor: Colors.primary,
+                      lineWidth: 4,
+                      lineOpacity: 0.8,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                    }}
+                  />
+                </MapboxGL.ShapeSource>
+              )}
+
+              {/* Provider position marker */}
+              {providerLat != null && providerLng != null && (
+                <MapboxGL.MarkerView
+                  id="provider-location"
+                  coordinate={[providerLng, providerLat]}
+                >
+                  <View style={styles.providerMarker}>
+                    <View style={styles.providerMarkerInner} />
+                  </View>
+                </MapboxGL.MarkerView>
+              )}
+
+              {/* Customer destination marker */}
+              <MapboxGL.MarkerView
+                id="customer-location"
+                coordinate={[
+                  activeJob.address.longitude,
+                  activeJob.address.latitude,
+                ]}
+              >
+                <View style={styles.customerMarker} />
+              </MapboxGL.MarkerView>
+            </MapboxGL.MapView>
+            {/* Glass overlay */}
+            <View style={styles.mapGlassOverlay} />
+          </View>
+        </GlassCard>
+
+        {/* Before/after photos */}
+        {(showBeforePhotos || showAfterPhotos) && (
+          <GlassCard variant="dark" style={styles.cardSpacing}>
+            {showBeforePhotos && (
+              <PhotoSection
+                title="Before Photos"
+                photos={beforePhotos}
+                onCapture={handleCaptureBeforePhoto}
+              />
+            )}
+            {showAfterPhotos && (
+              <PhotoSection
+                title="After Photos"
+                photos={afterPhotos}
+                onCapture={handleCaptureAfterPhoto}
+              />
+            )}
+          </GlassCard>
+        )}
+
+        {/* Legal acknowledgment notice (shown before starting) */}
+        {activeJob.status === 'en_route' && !legalAcknowledged && (
+          <GlassCard variant="dark" style={{...styles.cardSpacing, ...styles.legalBorder}}>
+            <Text style={styles.legalTitle}>Before You Start</Text>
+            <Text style={styles.legalText}>
+              By starting this job, you acknowledge:
+            </Text>
+            <Text style={styles.legalItem}>
+              - This task is limited to "{activeJob.taskName}" only
+            </Text>
+            <Text style={styles.legalItem}>
+              - You are acting as an independent contractor
+            </Text>
+            <Text style={styles.legalItem}>
+              - Additional services require a new job request
+            </Text>
+          </GlassCard>
+        )}
+
+        {/* Business rule notice */}
+        <GlassCard variant="dark" style={{...styles.cardSpacing, ...styles.noticeBorder}}>
+          <Text style={styles.noticeTitle}>Scope Policy</Text>
+          <Text style={styles.noticeText}>
+            Additional services cannot be added to this job. If the customer
+            requires extra work, a new job must be created through the app.
+          </Text>
+        </GlassCard>
+
+        {/* Chat button */}
+        <View style={styles.buttonSpacing}>
+          <GlassButton
+            title="Message Customer"
+            variant="outline"
+            onPress={handleOpenChat}
+          />
         </View>
 
-        {/* SLA deadline */}
-        {activeJob.slaDeadline && (
-          <View style={styles.slaRow}>
-            <Text style={styles.slaLabel}>SLA Deadline</Text>
-            <Text style={styles.slaValue}>
-              {new Date(activeJob.slaDeadline).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Text>
+        {/* Status action button */}
+        {nextAction && (
+          <View style={styles.buttonSpacing}>
+            <GlassButton
+              title={nextAction.label}
+              variant="glow"
+              onPress={handleStatusUpdate}
+              loading={isUpdating}
+              disabled={isUpdating}
+            />
           </View>
         )}
-      </View>
 
-      {/* Customer info card */}
-      <View style={styles.customerCard}>
-        <Text style={styles.sectionTitle}>Customer</Text>
-        <View style={styles.customerRow}>
-          <View style={styles.customerAvatar}>
-            <Text style={styles.customerAvatarText}>C</Text>
+        {/* Error display */}
+        {error && (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
-          <View style={styles.customerInfo}>
-            <Text style={styles.customerName}>Customer</Text>
-            <Text style={styles.customerSubtext}>
-              {activeJob.address.city}, {activeJob.address.province}
-            </Text>
-          </View>
-        </View>
-      </View>
+        )}
 
-      {/* Customer location card */}
-      <View style={styles.locationCard}>
-        <Text style={styles.sectionTitle}>Customer Location</Text>
-        <Text style={styles.addressText}>
-          {activeJob.address.street}
-        </Text>
-        <Text style={styles.addressSubtext}>
-          {activeJob.address.city}, {activeJob.address.province}{' '}
-          {activeJob.address.postalCode}
-        </Text>
-
-        {/* Map placeholder */}
-        <View style={styles.mapPlaceholder}>
-          <Text style={styles.mapPlaceholderText}>
-            {activeJob.address.latitude.toFixed(4)},{' '}
-            {activeJob.address.longitude.toFixed(4)}
-          </Text>
-          <Text style={styles.mapPlaceholderLabel}>Map View</Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.navigateButton}
-          onPress={openNavigation}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Open navigation to customer location"
-        >
-          <Text style={styles.navigateButtonText}>Open Navigation</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Before/after photos */}
-      {(showBeforePhotos || showAfterPhotos) && (
-        <View style={styles.photosCard}>
-          {showBeforePhotos && (
-            <PhotoSection
-              title="Before Photos"
-              photos={beforePhotos}
-              onCapture={handleCaptureBeforePhoto}
-            />
-          )}
-          {showAfterPhotos && (
-            <PhotoSection
-              title="After Photos"
-              photos={afterPhotos}
-              onCapture={handleCaptureAfterPhoto}
-            />
-          )}
-        </View>
-      )}
-
-      {/* Legal acknowledgment notice (shown before starting) */}
-      {activeJob.status === 'en_route' && !legalAcknowledged && (
-        <View style={styles.legalCard}>
-          <Text style={styles.legalTitle}>Before You Start</Text>
-          <Text style={styles.legalText}>
-            By starting this job, you acknowledge:
-          </Text>
-          <Text style={styles.legalItem}>
-            - This task is limited to "{activeJob.taskName}" only
-          </Text>
-          <Text style={styles.legalItem}>
-            - You are acting as an independent contractor
-          </Text>
-          <Text style={styles.legalItem}>
-            - Additional services require a new job request
-          </Text>
-        </View>
-      )}
-
-      {/* Business rule notice */}
-      <View style={styles.noticeCard}>
-        <Text style={styles.noticeTitle}>Scope Policy</Text>
-        <Text style={styles.noticeText}>
-          Additional services cannot be added to this job. If the customer
-          requires extra work, a new job must be created through the app.
-        </Text>
-      </View>
-
-      {/* Chat button */}
-      <TouchableOpacity
-        style={styles.chatButton}
-        onPress={handleOpenChat}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel="Chat with customer"
-      >
-        <Text style={styles.chatButtonText}>Message Customer</Text>
-      </TouchableOpacity>
-
-      {/* Status action button */}
-      {nextAction && (
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            nextAction.next === 'completed' && styles.completeButton,
-            isUpdating && styles.buttonDisabled,
-          ]}
-          onPress={handleStatusUpdate}
-          disabled={isUpdating}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={nextAction.label}
-        >
-          {isUpdating ? (
-            <ActivityIndicator size="small" color={Colors.white} />
-          ) : (
-            <Text style={styles.actionButtonText}>{nextAction.label}</Text>
-          )}
-        </TouchableOpacity>
-      )}
-
-      {/* Error display */}
-      {error && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
-      <View style={styles.bottomSpacer} />
-    </ScrollView>
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+    </GlassBackground>
   );
 }
 
@@ -663,43 +894,34 @@ export default function ActiveJobScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   contentContainer: {
     paddingTop: 16,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
-  progressCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+  cardSpacing: {
     marginHorizontal: 16,
     marginBottom: 12,
-    overflow: 'hidden',
   },
   timerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
     marginHorizontal: 16,
     marginBottom: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.primary + '60',
   },
   timerLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -710,12 +932,24 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontVariant: ['tabular-nums'],
   },
-  detailsCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
+  agreedPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.glassBorder.subtle,
+  },
+  agreedPriceLabel: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.55)',
+  },
+  agreedPriceValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.success,
   },
   detailsHeader: {
     flexDirection: 'row',
@@ -745,13 +979,13 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginTop: 2,
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   statusBadgeText: {
     fontSize: 11,
@@ -765,12 +999,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: Colors.glassBorder.subtle,
     marginBottom: 8,
   },
   priceLabel: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
   },
   priceValue: {
     fontSize: 20,
@@ -781,9 +1015,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 6,
+    backgroundColor: Colors.emergencyRed + '15',
+    borderRadius: 8,
     padding: 8,
+    borderWidth: 1,
+    borderColor: Colors.emergencyRed + '30',
   },
   slaLabel: {
     fontSize: 13,
@@ -795,12 +1031,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.emergencyRed,
   },
-  customerCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 8,
   },
   customerRow: {
     flexDirection: 'row',
@@ -811,7 +1046,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.surfaceLight,
+    backgroundColor: Colors.glass.white,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.light,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -831,21 +1068,8 @@ const styles = StyleSheet.create({
   },
   customerSubtext: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginTop: 2,
-  },
-  locationCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
   },
   addressText: {
     fontSize: 15,
@@ -854,52 +1078,92 @@ const styles = StyleSheet.create({
   },
   addressSubtext: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: 12,
   },
-  mapPlaceholder: {
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 8,
-    padding: 24,
+  etaOverlay: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  mapPlaceholderText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.textPrimary,
+    backgroundColor: Colors.glass.white,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginTop: 8,
     marginBottom: 4,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder.subtle,
   },
-  mapPlaceholderLabel: {
-    fontSize: 11,
-    color: Colors.textTertiary,
-  },
-  navigateButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  navigateButtonText: {
+  etaText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  etaSeparator: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.4)',
+    marginHorizontal: 8,
+  },
+  nearBadge: {
+    marginLeft: 8,
+    backgroundColor: Colors.success,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  nearBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.white,
   },
-  photosCard: {
-    backgroundColor: Colors.surface,
+  mapContainer: {
+    height: 180,
+    marginTop: 12,
+    marginBottom: 8,
     borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    overflow: 'hidden',
+    backgroundColor: Colors.glass.dark,
+    position: 'relative',
   },
-  legalCard: {
-    backgroundColor: Colors.surfaceLight,
+  map: {
+    flex: 1,
+  },
+  mapGlassOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(10, 10, 30, 0.15)',
     borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
     borderWidth: 1,
-    borderColor: Colors.warning,
+    borderColor: Colors.glassBorder.subtle,
+  },
+  customerMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  providerMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(33,150,243,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  providerMarkerInner: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#2196F3',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  legalBorder: {
+    borderColor: Colors.warning + '60',
   },
   legalTitle: {
     fontSize: 14,
@@ -909,24 +1173,18 @@ const styles = StyleSheet.create({
   },
   legalText: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     marginBottom: 8,
     lineHeight: 18,
   },
   legalItem: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 20,
     marginLeft: 4,
   },
-  noticeCard: {
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  noticeBorder: {
+    borderColor: Colors.glassBorder.subtle,
   },
   noticeTitle: {
     fontSize: 13,
@@ -936,50 +1194,21 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: 'rgba(255, 255, 255, 0.55)',
     lineHeight: 18,
   },
-  chatButton: {
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 14,
+  buttonSpacing: {
     marginHorizontal: 16,
     marginBottom: 12,
-    alignItems: 'center',
-  },
-  chatButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  actionButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  completeButton: {
-    backgroundColor: Colors.success,
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
   errorCard: {
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 8,
+    backgroundColor: Colors.glass.white,
+    borderRadius: 12,
     padding: 12,
     marginHorizontal: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: Colors.emergencyRed,
+    borderColor: Colors.emergencyRed + '60',
   },
   errorText: {
     fontSize: 13,

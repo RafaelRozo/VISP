@@ -1,4 +1,4 @@
-VISP/TASKER LEVEL 4 — EMERGENCY SERVICE LEVEL AGREEMENT
+VISP LEVEL 4 — EMERGENCY SERVICE LEVEL AGREEMENT
 Version 1.0 — Effective Date: January 1, 2026
 
 THIS SERVICE LEVEL AGREEMENT ("SLA") SUPPLEMENTS THE INDEPENDENT
@@ -95,7 +95,7 @@ TOLERANCE ENFORCEMENT.
 7.1. You must maintain a fully stocked emergency response kit
      appropriate to your trade at all times during on-call hours.
 7.2. Minimum equipment requirements by trade are specified in the
-     Tasker Emergency Provider Handbook and may be updated periodically.
+     VISP Emergency Provider Handbook and may be updated periodically.
 7.3. VISP reserves the right to conduct random equipment audits.
 
 8. COMMUNICATION REQUIREMENTS

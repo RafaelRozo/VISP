@@ -1,5 +1,5 @@
 """
-Authentication service for the VISP/Tasker platform.
+Authentication service for the VISP platform.
 
 Handles user registration, login, JWT token management, and password
 reset flows. Uses bcrypt for password hashing and PyJWT for token
@@ -8,6 +8,7 @@ generation/verification.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -15,10 +16,45 @@ from typing import Optional
 import bcrypt
 import jwt
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.models.provider import ProviderLevel, ProviderProfile, ProviderProfileStatus
 from src.models.user import AuthProvider, User, UserStatus
+
+
+RECOVERY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0,O,1,I,L
+RECOVERY_CODE_LEN = 12
+
+
+def generate_recovery_code() -> str:
+    return "".join(secrets.choice(RECOVERY_CODE_ALPHABET) for _ in range(RECOVERY_CODE_LEN))
+
+
+async def reset_password_with_code(
+    db: AsyncSession,
+    *,
+    email: str,
+    recovery_code: str,
+    new_password: str,
+) -> tuple[User, str]:
+    """Reset a user's password using their recovery code.
+
+    Returns the user and a freshly-rotated recovery code (the old one is
+    invalidated by the rotation).
+    """
+    email_norm = email.lower().strip()
+    code_norm = recovery_code.strip().upper()
+    user = await get_user_by_email(db, email_norm)
+    if user is None or user.recovery_code is None or user.recovery_code != code_norm:
+        raise ValueError("Invalid email or recovery code.")
+
+    user.password_hash = hash_password(new_password)
+    user.recovery_code = generate_recovery_code()
+    await db.commit()
+    await db.refresh(user)
+    return user, user.recovery_code
 
 # ---------------------------------------------------------------------------
 # Password hashing (bcrypt 5.x direct usage — passlib is incompatible)
@@ -165,6 +201,13 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]
     return result.scalars().first()
 
 
+async def get_user_by_phone(db: AsyncSession, phone: str) -> Optional[User]:
+    """Look up a user by phone number (already normalized to E.164)."""
+    stmt = select(User).where(User.phone == phone)
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
 async def register(
     db: AsyncSession,
     email: str,
@@ -189,15 +232,24 @@ async def register(
         Tuple of (user_object, tokens_dict).
 
     Raises:
-        ValueError: If email is already registered or role is invalid.
+        ValueError: If email or phone is already registered, or role is invalid.
     """
     # Normalize email
     email = email.lower().strip()
 
-    # Check for existing user
+    # Check for existing email
     existing = await get_user_by_email(db, email)
     if existing is not None:
         raise ValueError("A user with this email address already exists.")
+
+    # Check for existing phone (column has UNIQUE constraint)
+    if phone:
+        phone_normalized = phone.strip()
+        existing_phone = await get_user_by_phone(db, phone_normalized)
+        if existing_phone is not None:
+            raise ValueError("A user with this phone number already exists.")
+    else:
+        phone_normalized = None
 
     # Parse role
     role_customer, role_provider = _parse_role(role)
@@ -208,7 +260,7 @@ async def register(
         password_hash=hash_password(password),
         first_name=first_name,
         last_name=last_name,
-        phone=phone,
+        phone=phone_normalized,
         auth_provider=AuthProvider.EMAIL,
         role_customer=role_customer,
         role_provider=role_provider,
@@ -216,10 +268,33 @@ async def register(
         status=UserStatus.PENDING_VERIFICATION,
         email_verified=False,
         phone_verified=False,
+        recovery_code=generate_recovery_code(),
     )
 
     db.add(user)
-    await db.flush()  # Flush to generate ID without committing
+    try:
+        await db.flush()  # Flush to generate ID without committing
+    except IntegrityError as exc:
+        # Race condition guard: another request inserted the same email/phone
+        # between our check and the flush. Translate to a clean ValueError so
+        # the route returns 409 instead of a 500.
+        await db.rollback()
+        msg = str(exc.orig).lower() if exc.orig else str(exc).lower()
+        if "phone" in msg:
+            raise ValueError("A user with this phone number already exists.") from exc
+        if "email" in msg:
+            raise ValueError("A user with this email address already exists.") from exc
+        raise ValueError("Could not create the user (constraint violation).") from exc
+
+    # Create Provider Profile if applicable
+    if role_provider:
+        profile = ProviderProfile(
+            user_id=user.id,
+            current_level=ProviderLevel.LEVEL_1,
+            status=ProviderProfileStatus.ONBOARDING,
+        )
+        db.add(profile)
+        await db.flush()
 
     # Generate tokens
     tokens = create_tokens(user.id)

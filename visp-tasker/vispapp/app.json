@@ -1,0 +1,81 @@
+{
+  "expo": {
+    "name": "VISP",
+    "slug": "vispapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "visptasker",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#1A1A2E",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A1A2E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "VISP needs your location to find nearby service providers.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "VISP uses your location to track provider arrival and dispatch emergency services.",
+        "NSCameraUsageDescription": "VISP needs camera access to capture job photos and credential documents.",
+        "NSPhotoLibraryUsageDescription": "VISP needs photo library access to upload credential documents."
+      },
+      "bundleIdentifier": "com.droz.vispapp"
+    },
+    "android": {
+      "package": "com.visp.tasker",
+      "adaptiveIcon": {
+        "backgroundColor": "#1A1A2E",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "VISP needs your location to find nearby service providers."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "VISP needs photo library access to upload credential documents.",
+          "cameraPermission": "VISP needs camera access to capture job photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#4A90E2"
+        }
+      ],
+      "@rnmapbox/maps",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.visp.tasker",
+          "enableGooglePay": false
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ]
+  }
+}

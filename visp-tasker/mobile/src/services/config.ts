@@ -8,7 +8,7 @@
 interface AppConfig {
   apiBaseUrl: string;
   wsBaseUrl: string;
-  googleMapsApiKey: string;
+  mapboxAccessToken: string;
   stripePublishableKey: string;
   termsVersion: string;
   privacyVersion: string;
@@ -19,10 +19,12 @@ interface AppConfig {
 }
 
 const DEV_CONFIG: AppConfig = {
-  apiBaseUrl: 'http://localhost:305/api/v1',
-  wsBaseUrl: 'ws://localhost:305',
-  googleMapsApiKey: '',
-  stripePublishableKey: '',
+  // apiBaseUrl: 'https://api.richieyanez.com/api/v1',
+  apiBaseUrl: 'http://192.168.1.65:305/api/v1',
+  // wsBaseUrl: 'wss://api.richieyanez.com',
+  wsBaseUrl: 'ws://192.168.1.65:305',
+  mapboxAccessToken: 'MAPBOX_ACCESS_TOKEN_HERE',
+  stripePublishableKey: 'pk_test_51TMUEvI9nmjXITB8M1kWgFas5MW8AQJfqVwHQcpaThfS6tesyfbTVgIp74FdE61DzSFBpbABlZi1S1kd6kT6YEsa00O8FAMvlW',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
   appStoreUrl: 'https://apps.apple.com/app/tasker/id000000000',
@@ -33,14 +35,14 @@ const DEV_CONFIG: AppConfig = {
 
 const STAGING_CONFIG: AppConfig = {
   ...DEV_CONFIG,
-  apiBaseUrl: 'https://api-staging.taskerapp.com/api/v1',
-  wsBaseUrl: 'wss://api-staging.taskerapp.com',
+  apiBaseUrl: 'https://api.richieyanez.com/api/v1',
+  wsBaseUrl: 'wss://api.richieyanez.com',
 };
 
 const PROD_CONFIG: AppConfig = {
   ...DEV_CONFIG,
-  apiBaseUrl: 'https://api.taskerapp.com/api/v1',
-  wsBaseUrl: 'wss://api.taskerapp.com',
+  apiBaseUrl: 'https://api.richieyanez.com/api/v1',
+  wsBaseUrl: 'wss://api.richieyanez.com',
 };
 
 function getConfig(): AppConfig {

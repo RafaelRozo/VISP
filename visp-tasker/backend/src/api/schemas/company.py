@@ -1,0 +1,135 @@
+"""Pydantic schemas — VISP for Business (SP1)."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr, Field
+
+
+class CompanyCreateIn(BaseModel):
+    legal_name: str = Field(min_length=1, max_length=300)
+    trade_name: Optional[str] = Field(default=None, max_length=300)
+    business_address: Optional[str] = None
+    phone: Optional[str] = Field(default=None, max_length=40)
+    email: Optional[EmailStr] = None
+    website: Optional[str] = Field(default=None, max_length=500)
+    # Fiscal (registered) address — jurisdiction + protection.
+    fiscal_address_line1: Optional[str] = Field(default=None, max_length=300)
+    fiscal_address_line2: Optional[str] = Field(default=None, max_length=300)
+    fiscal_city: Optional[str] = Field(default=None, max_length=120)
+    fiscal_province: Optional[str] = Field(default=None, max_length=2)
+    fiscal_postal_code: Optional[str] = Field(default=None, max_length=20)
+    fiscal_country: Optional[str] = Field(default="CA", max_length=2)
+    # Tax registration (the company remits its own tax; VISP only records this).
+    tax_registered: bool = False
+    tax_number: Optional[str] = Field(default=None, max_length=30)
+
+
+class CompanyMemberOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+    status: str
+
+
+class CompanyDocumentOut(BaseModel):
+    id: uuid.UUID
+    doc_type: str
+    status: str
+    document_url: Optional[str] = None
+    rejection_reason: Optional[str] = None
+
+
+class CompanyOut(BaseModel):
+    id: uuid.UUID
+    legal_name: str
+    trade_name: Optional[str] = None
+    status: str
+    stripe_account_id: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    members: list[CompanyMemberOut] = []
+    documents: list[CompanyDocumentOut] = []
+    enabled_task_ids: list[uuid.UUID] = []
+
+
+class CompanyServiceRateIn(BaseModel):
+    """One enabled service + the company's own price for it (B2B pricing).
+    ``rate_cents`` null = enabled but not priced yet."""
+    task_id: uuid.UUID
+    rate_cents: Optional[int] = None
+
+
+class CompanyServicesIn(BaseModel):
+    """Set enabled services. If ``all`` is true, every catalog task is enabled.
+    When ``services`` is provided it takes precedence (enable + per-task price);
+    otherwise ``task_ids`` enables without prices (back-compat)."""
+    all: bool = False
+    task_ids: list[uuid.UUID] = []
+    services: Optional[list[CompanyServiceRateIn]] = None
+
+
+class CompanyInviteIn(BaseModel):
+    email: EmailStr
+    role: str = Field(default="collaborator", pattern="^(admin|supervisor|collaborator)$")
+
+
+class CompanyInviteOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: str
+    code: str
+    status: str
+    expires_at: datetime
+
+
+class RedeemInviteIn(BaseModel):
+    code: str = Field(min_length=4, max_length=16)
+
+
+class RejectIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+# ---------------------------------------------------------------------------
+# Company job assignments (SP4 Stage 1)
+# ---------------------------------------------------------------------------
+
+
+class ClaimableJobOut(BaseModel):
+    """A job the company is eligible to claim."""
+    job_id: uuid.UUID
+    reference_number: str
+    task_id: uuid.UUID
+    task_name: Optional[str] = None
+    status: str
+    service_city: Optional[str] = None
+    requested_date: Optional[str] = None
+
+
+class AssignToCollaboratorIn(BaseModel):
+    collaborator_user_id: uuid.UUID
+
+
+class EligibleCollaboratorOut(BaseModel):
+    user_id: uuid.UUID
+    email: Optional[str] = None
+    provider_id: uuid.UUID
+    has_required_credential: bool
+
+
+class CompanyJobAssignmentOut(BaseModel):
+    id: uuid.UUID
+    job_id: uuid.UUID
+    company_id: uuid.UUID
+    claimed_by: uuid.UUID
+    assigned_collaborator_id: Optional[uuid.UUID] = None
+    status: str
+    payout_target: str
+    decline_reason: Optional[str] = None
+
+
+class DeclineAssignmentIn(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=2000)
