@@ -35,6 +35,9 @@ interface TaskFormState {
   basePriceMinCents: string;
   basePriceMaxCents: string;
   estimatedDurationMin: string;
+  pricingUnit: string;
+  allowsQuantity: boolean;
+  minQuantity: string;
   displayOrder: number;
   isActive: boolean;
 }
@@ -62,6 +65,9 @@ const emptyTask = (categoryId: string): TaskFormState => ({
   basePriceMinCents: '',
   basePriceMaxCents: '',
   estimatedDurationMin: '',
+  pricingUnit: 'hourly',
+  allowsQuantity: true,
+  minQuantity: '1',
   displayOrder: 0,
   isActive: true,
 });
@@ -325,6 +331,9 @@ export default function Services() {
                               basePriceMinCents: tk.basePriceMinCents != null ? String(tk.basePriceMinCents) : '',
                               basePriceMaxCents: tk.basePriceMaxCents != null ? String(tk.basePriceMaxCents) : '',
                               estimatedDurationMin: tk.estimatedDurationMin != null ? String(tk.estimatedDurationMin) : '',
+                              pricingUnit: tk.pricingUnit ?? 'hourly',
+                              allowsQuantity: tk.allowsQuantity ?? true,
+                              minQuantity: tk.minQuantity != null ? String(tk.minQuantity) : '1',
                               displayOrder: tk.displayOrder,
                               isActive: tk.isActive,
                             })}
@@ -509,6 +518,9 @@ function TaskModal({
       basePriceMinCents: state.basePriceMinCents.trim() === '' ? null : parseInt(state.basePriceMinCents, 10),
       basePriceMaxCents: state.basePriceMaxCents.trim() === '' ? null : parseInt(state.basePriceMaxCents, 10),
       estimatedDurationMin: state.estimatedDurationMin.trim() === '' ? null : parseInt(state.estimatedDurationMin, 10),
+      pricingUnit: state.pricingUnit,
+      allowsQuantity: state.allowsQuantity,
+      minQuantity: state.minQuantity.trim() === '' ? null : parseFloat(state.minQuantity),
       displayOrder: state.displayOrder,
       isActive: state.isActive,
     });
@@ -580,6 +592,46 @@ function TaskModal({
               <input type="number" className="t-input" value={state.estimatedDurationMin} onChange={(e) => setState({ ...state, estimatedDurationMin: e.target.value })} />
             </div>
           </div>
+
+          {/* Charge unit + quantity (provider-set pricing) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 10 }}>
+            <div>
+              <label className="t-label">{t('services.chargeUnit') || 'Charge unit'}</label>
+              <select
+                className="t-select"
+                style={{ width: '100%' }}
+                value={state.pricingUnit}
+                onChange={(e) => setState({ ...state, pricingUnit: e.target.value })}
+              >
+                <option value="hourly">Hourly (per hour)</option>
+                <option value="per_unit">Per unit / item</option>
+                <option value="per_area">Per area (m²)</option>
+                <option value="per_linear_m">Per linear meter (ml)</option>
+                <option value="per_visit">Per visit (flat)</option>
+                <option value="flat_package">Flat package</option>
+                <option value="custom_quote">Custom quote</option>
+              </select>
+            </div>
+            <div>
+              <label className="t-label">{t('services.minQuantity') || 'Min quantity'}</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="t-input"
+                value={state.minQuantity}
+                onChange={(e) => setState({ ...state, minQuantity: e.target.value })}
+              />
+            </div>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--t-text-2)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={state.allowsQuantity}
+              onChange={(e) => setState({ ...state, allowsQuantity: e.target.checked })}
+            />
+            {t('services.allowsQuantity') || 'Customer can choose quantity (e.g. 3 items, 25 m²)'}
+          </label>
 
           {/* Flags */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '14px', border: '1px solid var(--t-border)', borderRadius: 8, background: 'var(--t-deep)' }}>

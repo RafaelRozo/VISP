@@ -1074,6 +1074,11 @@ class TaskAdminCreate(_CamelModel):
     base_price_min_cents: Optional[int] = None
     base_price_max_cents: Optional[int] = None
     estimated_duration_min: Optional[int] = None
+    # Charge unit + quantity (provider-set pricing). pricing_unit defaults to
+    # HOURLY when omitted.
+    pricing_unit: Optional[str] = None
+    allows_quantity: bool = True
+    min_quantity: Optional[float] = None
     escalation_keywords: list[str] = Field(default_factory=list)
     icon_url: Optional[str] = None
     display_order: int = 0
@@ -1095,6 +1100,9 @@ class TaskAdminUpdate(_CamelModel):
     base_price_min_cents: Optional[int] = None
     base_price_max_cents: Optional[int] = None
     estimated_duration_min: Optional[int] = None
+    pricing_unit: Optional[str] = None
+    allows_quantity: Optional[bool] = None
+    min_quantity: Optional[float] = None
     escalation_keywords: Optional[list[str]] = None
     icon_url: Optional[str] = None
     display_order: Optional[int] = None
@@ -1108,6 +1116,17 @@ def _level_value(level: Any) -> str:
     return str(level)
 
 
+def _parse_pricing_unit(value: Any) -> "PricingUnit":
+    """Accept a member name ('PER_AREA') or value ('per_area')."""
+    from src.models.taxonomy import PricingUnit
+
+    v = str(value or "").strip()
+    try:
+        return PricingUnit[v.upper()]
+    except KeyError:
+        return PricingUnit(v.lower())
+
+
 def _task_to_out(t: ServiceTask) -> dict[str, Any]:
     return {
         "id": str(t.id),
@@ -1116,6 +1135,9 @@ def _task_to_out(t: ServiceTask) -> dict[str, Any]:
         "name": t.name,
         "description": t.description,
         "level": _level_value(t.level),
+        "pricingUnit": t.pricing_unit.value if t.pricing_unit else None,
+        "allowsQuantity": t.allows_quantity,
+        "minQuantity": float(t.min_quantity) if t.min_quantity is not None else None,
         "regulated": t.regulated,
         "licenseRequired": t.license_required,
         "certificationRequired": t.certification_required,
@@ -1282,6 +1304,9 @@ async def admin_create_task(
         base_price_min_cents=body.base_price_min_cents,
         base_price_max_cents=body.base_price_max_cents,
         estimated_duration_min=body.estimated_duration_min,
+        pricing_unit=_parse_pricing_unit(body.pricing_unit or "hourly"),
+        allows_quantity=body.allows_quantity,
+        min_quantity=body.min_quantity if body.min_quantity is not None else 1,
         escalation_keywords=body.escalation_keywords,
         icon_url=body.icon_url,
         display_order=body.display_order,
@@ -1317,6 +1342,9 @@ async def admin_update_task(
 
     if "level" in payload and payload["level"] is not None:
         payload["level"] = _parse_level(payload["level"])
+
+    if "pricing_unit" in payload and payload["pricing_unit"] is not None:
+        payload["pricing_unit"] = _parse_pricing_unit(payload["pricing_unit"])
 
     # Verify new category id if changing
     if "category_id" in payload and payload["category_id"] is not None:

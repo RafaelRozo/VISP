@@ -129,6 +129,9 @@ export interface TaxonomyTask {
   basePriceMinCents: number | null;
   basePriceMaxCents: number | null;
   estimatedDurationMin: number | null;
+  pricingUnit: string | null;
+  allowsQuantity: boolean;
+  minQuantity: number | null;
   escalationKeywords: string[];
   iconUrl: string | null;
   displayOrder: number;
@@ -177,6 +180,9 @@ export interface TaskUpsertBody {
   basePriceMinCents?: number | null;
   basePriceMaxCents?: number | null;
   estimatedDurationMin?: number | null;
+  pricingUnit?: string | null;
+  allowsQuantity?: boolean;
+  minQuantity?: number | null;
   escalationKeywords?: string[];
   iconUrl?: string | null;
   displayOrder?: number;
