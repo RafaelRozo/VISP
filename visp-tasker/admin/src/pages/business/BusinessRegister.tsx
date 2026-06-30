@@ -35,6 +35,14 @@ export default function BusinessRegister() {
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyEmail, setCompanyEmail] = useState('');
   const [website, setWebsite] = useState('');
+  // Fiscal (registered) address + tax registration
+  const [fiscalLine1, setFiscalLine1] = useState('');
+  const [fiscalLine2, setFiscalLine2] = useState('');
+  const [fiscalCity, setFiscalCity] = useState('');
+  const [fiscalProvince, setFiscalProvince] = useState('');
+  const [fiscalPostal, setFiscalPostal] = useState('');
+  const [taxRegistered, setTaxRegistered] = useState(false);
+  const [taxNumber, setTaxNumber] = useState('');
 
   useEffect(() => {
     // If the user already had a session and a company, send them straight in.
@@ -81,6 +89,14 @@ export default function BusinessRegister() {
         phone: companyPhone || undefined,
         email: companyEmail || undefined,
         website: website || undefined,
+        fiscal_address_line1: fiscalLine1 || undefined,
+        fiscal_address_line2: fiscalLine2 || undefined,
+        fiscal_city: fiscalCity || undefined,
+        fiscal_province: fiscalProvince || undefined,
+        fiscal_postal_code: fiscalPostal || undefined,
+        fiscal_country: 'CA',
+        tax_registered: taxRegistered,
+        tax_number: taxNumber || undefined,
       });
       navigate('/business', { replace: true });
     } catch (err: any) {
@@ -248,6 +264,46 @@ export default function BusinessRegister() {
                     onChange={(e) => setWebsite(e.target.value)}
                   />
                 </Field>
+
+                {/* Fiscal (registered) address — jurisdiction + tax responsibility */}
+                <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--t-border)' }}>
+                  <span className="t-eyebrow">§ Fiscal address &amp; tax</span>
+                  <p className="t-meta" style={{ margin: '6px 0 12px' }}>
+                    Your registered business address. VISP doesn’t file your taxes — you declare your
+                    own earnings; this is on record for jurisdiction and compliance.
+                  </p>
+                </div>
+                <Field label="Fiscal address — line 1">
+                  <input className="t-input" value={fiscalLine1} onChange={(e) => setFiscalLine1(e.target.value)} />
+                </Field>
+                <Field label="Line 2 (optional)">
+                  <input className="t-input" value={fiscalLine2} onChange={(e) => setFiscalLine2(e.target.value)} />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 12 }}>
+                  <Field label="City">
+                    <input className="t-input" value={fiscalCity} onChange={(e) => setFiscalCity(e.target.value)} />
+                  </Field>
+                  <Field label="Province">
+                    <select className="t-select" style={{ width: '100%' }} value={fiscalProvince} onChange={(e) => setFiscalProvince(e.target.value)}>
+                      <option value="">—</option>
+                      {['ON', 'BC', 'AB', 'QC', 'MB', 'SK', 'NS', 'NB', 'NL', 'PE', 'NT', 'NU', 'YT'].map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Postal code">
+                    <input className="t-input" value={fiscalPostal} onChange={(e) => setFiscalPostal(e.target.value)} />
+                  </Field>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--t-text-2)', cursor: 'pointer', marginTop: 6 }}>
+                  <input type="checkbox" checked={taxRegistered} onChange={(e) => setTaxRegistered(e.target.checked)} />
+                  Registered for GST/HST
+                </label>
+                {taxRegistered && (
+                  <Field label="GST/HST number">
+                    <input className="t-input" value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} placeholder="123456789RT0001" />
+                  </Field>
+                )}
               </div>
               <button
                 type="submit"

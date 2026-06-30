@@ -44,6 +44,14 @@ async def create_company(db: AsyncSession, user, payload) -> Company:
         phone=payload.phone,
         email=str(payload.email) if payload.email else None,
         website=payload.website,
+        fiscal_address_line1=getattr(payload, "fiscal_address_line1", None),
+        fiscal_address_line2=getattr(payload, "fiscal_address_line2", None),
+        fiscal_city=getattr(payload, "fiscal_city", None),
+        fiscal_province=(getattr(payload, "fiscal_province", None) or None),
+        fiscal_postal_code=getattr(payload, "fiscal_postal_code", None),
+        fiscal_country=getattr(payload, "fiscal_country", None) or "CA",
+        tax_registered=bool(getattr(payload, "tax_registered", False)),
+        tax_number=getattr(payload, "tax_number", None),
         status=CompanyStatus.DRAFT,
     )
     db.add(company)

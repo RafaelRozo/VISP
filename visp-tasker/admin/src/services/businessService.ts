@@ -94,6 +94,15 @@ export interface CompanyCreateBody {
   phone?: string;
   email?: string;
   website?: string;
+  // Fiscal (registered) address + tax registration.
+  fiscal_address_line1?: string;
+  fiscal_address_line2?: string;
+  fiscal_city?: string;
+  fiscal_province?: string;
+  fiscal_postal_code?: string;
+  fiscal_country?: string;
+  tax_registered?: boolean;
+  tax_number?: string;
 }
 
 export interface CompanyInvite {

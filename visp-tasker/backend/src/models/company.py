@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,18 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Fiscal (registered) address + tax registration (migration 028). For
+    # jurisdiction + protection; the company declares its own tax, VISP doesn't.
+    fiscal_address_line1: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    fiscal_address_line2: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    fiscal_city: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    fiscal_province: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    fiscal_postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    fiscal_country: Mapped[str] = mapped_column(String(2), nullable=False, server_default="CA")
+    tax_registered: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    tax_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
     status: Mapped[CompanyStatus] = mapped_column(
         Enum(CompanyStatus, name="company_status", create_type=False),
         nullable=False,

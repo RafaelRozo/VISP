@@ -335,13 +335,19 @@ async def reprice_job_to_provider_rate(
         job.provider_payout_cents = subtotal - job.commission_amount_cents
 
     # PP3 tax: place of supply = job's service province; charged only when the
-    # provider is tax-registered. Snapshot onto the job (immutable receipt).
-    provider = await db.get(ProviderProfile, provider_id)
+    # SELLER is tax-registered — the COMPANY for a company member's job, else the
+    # provider. Snapshot onto the job (immutable receipt).
+    if company_id is not None:
+        from src.models.company import Company
+
+        seller = await db.get(Company, company_id)
+    else:
+        seller = await db.get(ProviderProfile, provider_id)
     tax = await tax_service.compute_tax(
         db,
         subtotal,
         job.service_province_state,
-        bool(provider and provider.tax_registered),
+        bool(seller and seller.tax_registered),
     )
     job.service_tax_cents = tax["service_tax_cents"]
     job.tax_rate_applied = tax["tax_rate"]

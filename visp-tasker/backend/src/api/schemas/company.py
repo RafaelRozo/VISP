@@ -16,6 +16,16 @@ class CompanyCreateIn(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=40)
     email: Optional[EmailStr] = None
     website: Optional[str] = Field(default=None, max_length=500)
+    # Fiscal (registered) address — jurisdiction + protection.
+    fiscal_address_line1: Optional[str] = Field(default=None, max_length=300)
+    fiscal_address_line2: Optional[str] = Field(default=None, max_length=300)
+    fiscal_city: Optional[str] = Field(default=None, max_length=120)
+    fiscal_province: Optional[str] = Field(default=None, max_length=2)
+    fiscal_postal_code: Optional[str] = Field(default=None, max_length=20)
+    fiscal_country: Optional[str] = Field(default="CA", max_length=2)
+    # Tax registration (the company remits its own tax; VISP only records this).
+    tax_registered: bool = False
+    tax_number: Optional[str] = Field(default=None, max_length=30)
 
 
 class CompanyMemberOut(BaseModel):
