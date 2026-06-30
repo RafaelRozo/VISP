@@ -18,9 +18,16 @@ from fastapi import APIRouter, HTTPException, status
 
 from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.provider_rate import SetRateIn
-from src.services import providerService, provider_rate_service
+from src.services import company_service, providerService, provider_rate_service
 
 router = APIRouter(prefix="/provider", tags=["Provider Rates"])
+
+# Members of a company use the COMPANY's prices (set on the web by the company);
+# they can't set or remove their own. Independents keep self-set pricing.
+_MANAGED_BY_COMPANY_DETAIL = {
+    "code": "managed_by_company",
+    "message": "Your prices are set by your company and can't be changed here.",
+}
 
 
 async def _provider_id(db: DBSession, user: CurrentUser) -> uuid.UUID:
@@ -37,8 +44,13 @@ async def _provider_id(db: DBSession, user: CurrentUser) -> uuid.UUID:
 @router.get("/rates", summary="List the provider's priceable services + rates")
 async def list_rates(db: DBSession, user: CurrentUser) -> dict[str, Any]:
     provider_id = await _provider_id(db, user)
+    # Company members see the COMPANY's prices, read-only.
+    company_id = await company_service.get_member_company_id(db, user.id)
+    if company_id is not None:
+        items = await company_service.list_company_priced_services(db, company_id)
+        return {"data": {"items": items, "managedByCompany": True}}
     items = await provider_rate_service.list_priceable_services(db, provider_id)
-    return {"data": {"items": items}}
+    return {"data": {"items": items, "managedByCompany": False}}
 
 
 @router.put("/rates/{task_id}", summary="Set or update the rate for a service")
@@ -46,6 +58,8 @@ async def set_rate(
     db: DBSession, user: CurrentUser, task_id: uuid.UUID, payload: SetRateIn
 ) -> dict[str, Any]:
     provider_id = await _provider_id(db, user)
+    if await company_service.get_member_company_id(db, user.id) is not None:
+        raise HTTPException(status_code=403, detail=_MANAGED_BY_COMPANY_DETAIL)
     try:
         rate = await provider_rate_service.set_rate(
             db,
@@ -99,6 +113,8 @@ async def delete_rate(
     db: DBSession, user: CurrentUser, task_id: uuid.UUID
 ) -> dict[str, Any]:
     provider_id = await _provider_id(db, user)
+    if await company_service.get_member_company_id(db, user.id) is not None:
+        raise HTTPException(status_code=403, detail=_MANAGED_BY_COMPANY_DETAIL)
     removed = await provider_rate_service.delete_rate(db, provider_id, task_id)
     if not removed:
         raise HTTPException(status_code=404, detail="No rate set for this service.")

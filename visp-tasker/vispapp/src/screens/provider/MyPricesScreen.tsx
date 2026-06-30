@@ -43,6 +43,9 @@ export default function MyPricesScreen(): React.JSX.Element {
   const { t: tr } = useTranslation();
 
   const [items, setItems] = useState<ProviderRateItem[]>([]);
+  // True when the provider belongs to a business: prices are set by the company
+  // on the web and shown read-only here.
+  const [managedByCompany, setManagedByCompany] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,8 +64,9 @@ export default function MyPricesScreen(): React.JSX.Element {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const rows = await providerService.getProviderRates();
+      const { items: rows, managedByCompany: mbc } = await providerService.getProviderRates();
       setItems(rows);
+      setManagedByCompany(mbc);
       // Seed the inputs with existing rates (in dollars).
       setInputs((prev) => {
         const next = { ...prev };
@@ -184,6 +188,16 @@ export default function MyPricesScreen(): React.JSX.Element {
             </Card>
           ) : null}
 
+          {managedByCompany && items.length > 0 ? (
+            <Card accent padding={VispSpace.card} style={{ marginBottom: 12 }}>
+              <Eyebrow color={t.violet}>{tr('myPricesScreen.companyManagedTitle') || 'Set by your company'}</Eyebrow>
+              <Text style={[VispText.body, { color: t.text2, marginTop: 8 }]}>
+                {tr('myPricesScreen.companyManagedBody') ||
+                  'You work for a business — these prices are set by your company and can’t be changed here.'}
+              </Text>
+            </Card>
+          ) : null}
+
           {priceable.map((item) => {
             const msg = rowMsg[item.task_id];
             const saving = savingId === item.task_id;
@@ -213,26 +227,28 @@ export default function MyPricesScreen(): React.JSX.Element {
                       keyboardType="decimal-pad"
                       placeholder="0.00"
                       placeholderTextColor={t.text4}
-                      editable={!saving}
+                      editable={!saving && !managedByCompany}
                     />
                     <Text style={{ fontFamily: FontMono, fontSize: 11, color: t.text3 }}>
                       /{unitLabel(item.pricing_unit)}
                     </Text>
                   </View>
 
-                  <Pressable
-                    onPress={() => handleSave(item)}
-                    disabled={saving}
-                    style={[styles.saveBtn, { backgroundColor: t.text, opacity: saving ? 0.6 : 1 }]}
-                  >
-                    {saving ? (
-                      <ActivityIndicator size="small" color={t.bg} />
-                    ) : (
-                      <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 13 }]}>
-                        {tr('myPricesScreen.save') || 'Save'}
-                      </Text>
-                    )}
-                  </Pressable>
+                  {!managedByCompany && (
+                    <Pressable
+                      onPress={() => handleSave(item)}
+                      disabled={saving}
+                      style={[styles.saveBtn, { backgroundColor: t.text, opacity: saving ? 0.6 : 1 }]}
+                    >
+                      {saving ? (
+                        <ActivityIndicator size="small" color={t.bg} />
+                      ) : (
+                        <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 13 }]}>
+                          {tr('myPricesScreen.save') || 'Save'}
+                        </Text>
+                      )}
+                    </Pressable>
+                  )}
                 </View>
 
                 {msg ? (

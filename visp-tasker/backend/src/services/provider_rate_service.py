@@ -258,6 +258,41 @@ async def get_provider_quote_for_job(
     }
 
 
+async def get_company_quote_for_job(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    task_id: uuid.UUID,
+    job_quantity: Optional[Any] = None,
+) -> Optional[dict[str, Any]]:
+    """Quote from the COMPANY's rate (a company member's job is priced from the
+    company's price, not the member's own). Same shape as the provider quote.
+    CompanyService carries rate_cents/min_charge_cents like a provider rate."""
+    from src.models.company import CompanyService
+
+    cs = (
+        await db.execute(
+            select(CompanyService).where(
+                CompanyService.company_id == company_id,
+                CompanyService.task_id == task_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if cs is None or cs.rate_cents is None:
+        return None
+    task = (
+        await db.execute(select(ServiceTask).where(ServiceTask.id == task_id))
+    ).scalar_one_or_none()
+    if task is None or task.pricing_unit == PricingUnit.CUSTOM_QUOTE:
+        return None
+    qty = resolve_quantity(task, job_quantity)
+    return {
+        "rate_cents": cs.rate_cents,
+        "unit": task.pricing_unit.value,
+        "quantity": float(qty),
+        "subtotal_cents": compute_quote_cents(cs, task, qty),
+    }
+
+
 async def reprice_job_to_provider_rate(
     db: AsyncSession, job: Any, provider_id: uuid.UUID
 ) -> Optional[dict[str, Any]]:
@@ -268,9 +303,23 @@ async def reprice_job_to_provider_rate(
     active fixed rate for the task or the task is custom-quote. Mutates the job
     in place; the caller commits.
     """
-    quote = await get_provider_quote_for_job(
-        db, provider_id, job.task_id, job_quantity=getattr(job, "quantity", None)
+    # A company member's job is priced from the COMPANY's rate (set on the web),
+    # not the member's own; independents use their self-set rate.
+    from src.services import company_service
+
+    accepting = await db.get(ProviderProfile, provider_id)
+    company_id = (
+        await company_service.get_member_company_id(db, accepting.user_id)
+        if accepting is not None else None
     )
+    if company_id is not None:
+        quote = await get_company_quote_for_job(
+            db, company_id, job.task_id, job_quantity=getattr(job, "quantity", None)
+        )
+    else:
+        quote = await get_provider_quote_for_job(
+            db, provider_id, job.task_id, job_quantity=getattr(job, "quantity", None)
+        )
     if quote is None:
         return None
 

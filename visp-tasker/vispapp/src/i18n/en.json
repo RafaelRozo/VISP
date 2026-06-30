@@ -103,6 +103,8 @@
     "notQualified": "This service is not approved yet.",
     "empty": "No services yet",
     "emptyBody": "Once your services are approved (no pending documents), they appear here so you can set your price.",
+    "companyManagedTitle": "Set by your company",
+    "companyManagedBody": "You work for a business — these prices are set by your company and can’t be changed here.",
     "customSection": "Quoted per job",
     "customBody": "Agreed with the customer before the job starts.",
     "unit": {

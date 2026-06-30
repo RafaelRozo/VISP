@@ -108,9 +108,11 @@ export const providerService = {
 
     /** List the services the provider is qualified to price, each with its
      *  guardrail range and current rate (null if unset). */
-    getProviderRates: async (): Promise<ProviderRateItem[]> => {
-        const res = await get<{ items: ProviderRateItem[] }>('/provider/rates');
-        return res?.items ?? [];
+    getProviderRates: async (): Promise<{ items: ProviderRateItem[]; managedByCompany: boolean }> => {
+        const res = await get<{ items: ProviderRateItem[]; managedByCompany?: boolean }>('/provider/rates');
+        // managedByCompany = the provider belongs to a business; prices are set by
+        // the company on the web and are read-only here.
+        return { items: res?.items ?? [], managedByCompany: res?.managedByCompany ?? false };
     },
 
     /** Set or update the provider's rate for one service. `rateCents` is

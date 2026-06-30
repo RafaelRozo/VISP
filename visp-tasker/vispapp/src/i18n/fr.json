@@ -103,6 +103,8 @@
     "notQualified": "Ce service n'est pas encore approuvé.",
     "empty": "Aucun service pour l'instant",
     "emptyBody": "Une fois vos services approuvés (sans documents en attente), ils apparaissent ici pour définir votre tarif.",
+    "companyManagedTitle": "Défini par votre entreprise",
+    "companyManagedBody": "Vous travaillez pour une entreprise — ces prix sont définis par votre entreprise et ne peuvent pas être modifiés ici.",
     "customSection": "Sur devis",
     "customBody": "Convenu avec le client avant le début du travail.",
     "unit": {

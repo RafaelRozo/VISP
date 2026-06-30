@@ -207,6 +207,53 @@ async def get_enabled_services(db: AsyncSession, company_id: uuid.UUID) -> list[
     ]
 
 
+async def get_member_company_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """The company a provider belongs to as an ACTIVE member, else None. Used to
+    decide whether the provider's pricing is managed by their company."""
+    from src.models.company import CompanyMemberStatus
+
+    return (
+        await db.execute(
+            select(CompanyMember.company_id).where(
+                CompanyMember.user_id == user_id,
+                CompanyMember.status == CompanyMemberStatus.ACTIVE,
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def list_company_priced_services(db: AsyncSession, company_id: uuid.UUID) -> list[dict]:
+    """The company's enabled services + the COMPANY's price, in the same shape as
+    the provider 'My Prices' list (read-only for members)."""
+    from src.models.taxonomy import PricingUnit
+
+    rows = (
+        await db.execute(
+            select(CompanyService, ServiceTask)
+            .join(ServiceTask, ServiceTask.id == CompanyService.task_id)
+            .where(CompanyService.company_id == company_id)
+            .order_by(ServiceTask.name.asc())
+        )
+    ).all()
+    out: list[dict] = []
+    for cs, task in rows:
+        out.append({
+            "task_id": str(task.id),
+            "task_name": task.name,
+            "task_slug": task.slug,
+            "level": task.level.value,
+            "pricing_unit": task.pricing_unit.value,
+            "allows_quantity": task.allows_quantity,
+            "base_price_min_cents": task.base_price_min_cents,
+            "base_price_max_cents": task.base_price_max_cents,
+            "is_custom_quote": task.pricing_unit == PricingUnit.CUSTOM_QUOTE,
+            "rate_cents": cs.rate_cents,
+            "min_charge_cents": cs.min_charge_cents,
+            "is_active": cs.rate_cents is not None,
+        })
+    return out
+
+
 async def create_invite(db: AsyncSession, company: Company, email: str, role: str) -> CompanyInvite:
     invite = CompanyInvite(
         company_id=company.id,
