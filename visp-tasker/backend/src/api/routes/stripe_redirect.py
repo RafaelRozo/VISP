@@ -21,8 +21,11 @@ from fastapi.responses import HTMLResponse
 router = APIRouter(prefix="/stripe/connect", tags=["Stripe Connect"])
 
 
-_DEEP_LINK_RETURN = "visptasker://stripe-connect-return"
-_DEEP_LINK_REFRESH = "visptasker://stripe-connect-refresh"
+# Must match the app's registered URL scheme (Info.plist CFBundleURLSchemes =
+# com.droz.vispapp). Opening any URL with this scheme brings the app to the
+# foreground, where AppState='active' triggers a payout-status refresh.
+_DEEP_LINK_RETURN = "com.droz.vispapp://stripe-connect-return"
+_DEEP_LINK_REFRESH = "com.droz.vispapp://stripe-connect-refresh"
 
 
 def _redirect_page(title: str, message: str, deep_link: str, cta: str) -> str:

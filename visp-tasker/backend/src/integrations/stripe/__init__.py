@@ -28,6 +28,8 @@ Usage::
 """
 
 from .paymentService import (
+    AuthorizationResult,
+    CaptureResult,
     PaymentConfirmation,
     PaymentError,
     PaymentIntentResult,
@@ -35,8 +37,10 @@ from .paymentService import (
     RefundResult,
     attach_payment_method,
     cancel_payment,
+    capture_job_payment,
     confirm_payment,
     create_customer,
+    create_job_authorization,
     create_payment_intent,
     get_payment_status,
     list_payment_methods,
@@ -76,9 +80,13 @@ __all__ = [
     "PaymentError",
     "PaymentIntentResult",
     "PaymentConfirmation",
+    "AuthorizationResult",
+    "CaptureResult",
     "RefundResult",
     "PaymentMethodInfo",
     "create_payment_intent",
+    "create_job_authorization",
+    "capture_job_payment",
     "confirm_payment",
     "cancel_payment",
     "refund_payment",

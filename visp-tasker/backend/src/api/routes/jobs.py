@@ -145,6 +145,7 @@ async def book_job(
                 priority=priority,
                 is_emergency=body.is_emergency,
                 customer_notes_json=body.notes or [],
+                quantity=body.quantity,
             )
         except jobService.TaskNotFoundError as exc:
             raise HTTPException(
@@ -659,6 +660,9 @@ async def update_job_status(
             detail=str(exc),
         )
 
+    # Reload server-side columns (e.g. updated_at onupdate) that the flush left
+    # expired, so the sync JobOut serialization doesn't trigger lazy async IO.
+    await db.refresh(job)
     return JobOut.model_validate(job)
 
 
@@ -910,7 +914,7 @@ async def get_pending_provider(
     from src.services import provider_rate_service
 
     _quote = await provider_rate_service.get_provider_quote_for_job(
-        db, provider.id, job.task_id
+        db, provider.id, job.task_id, job_quantity=job.quantity
     )
 
     return {"data": {
@@ -929,6 +933,11 @@ async def get_pending_provider(
         "rateCents": _quote["rate_cents"] if _quote else None,
         "pricingUnit": _quote["unit"] if _quote else None,
         "estimatedQuantity": _quote["quantity"] if _quote else None,
+        # PP3 tax line + PP4c service fee (snapshotted when the provider accepted).
+        "serviceTaxCents": job.service_tax_cents,
+        "taxJurisdiction": job.tax_jurisdiction,
+        "serviceFeeCents": job.service_fee_cents,
+        "totalChargedCents": job.total_charged_cents,
     }}
 
 
@@ -1147,4 +1156,256 @@ async def submit_job_rating(
         "tags": body.tags,
         "feedback": body.feedback,
         "message": "Rating submitted successfully",
+    }}
+
+
+# ---------------------------------------------------------------------------
+# PP4b — payment authorize / capture (destination charge, manual capture)
+# ---------------------------------------------------------------------------
+
+from pydantic import ConfigDict as _ConfigDict  # noqa: E402
+
+
+class AuthorizePaymentRequest(_BaseModel):
+    """Optional body for authorize-payment. A test/server-side flow may pass a
+    PaymentMethod to confirm immediately; the mobile app instead confirms the
+    returned clientSecret on-device."""
+    model_config = _ConfigDict(populate_by_name=True)
+    payment_method: Optional[str] = _Field(default=None, alias="paymentMethod")
+
+
+class CapturePaymentRequest(_BaseModel):
+    """Optional body for capture-payment: the reconciled actual total and, for a
+    server-side test, a PaymentMethod to collect an approved overage delta."""
+    model_config = _ConfigDict(populate_by_name=True)
+    final_total_cents: Optional[int] = _Field(default=None, alias="finalTotalCents", gt=0)
+    payment_method: Optional[str] = _Field(default=None, alias="paymentMethod")
+
+
+@router.post(
+    "/{job_id}/authorize-payment",
+    summary="Authorize (hold) payment for a job",
+    description=(
+        "Places a manual-capture destination-charge hold of total_charged × 1.30 "
+        "on the customer's card. The provider/company is merchant of record; "
+        "VISP keeps the commission as the application fee. Returns the "
+        "PaymentIntent clientSecret for on-device confirmation."
+    ),
+)
+async def authorize_payment(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: Optional[AuthorizePaymentRequest] = None,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.integrations.stripe import PaymentError
+    from src.models.job import Job
+    from src.services import job_payment_service as jp
+
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    pm = body.payment_method if body else None
+    try:
+        result = await jp.authorize_job(
+            db,
+            job,
+            customer_stripe_id=getattr(user, "stripe_customer_id", None),
+            payment_method=pm,
+            confirm=bool(pm),
+        )
+    except jp.JobNotPriceableError:
+        raise HTTPException(status_code=409, detail="Job has no agreed total to charge yet")
+    except jp.ProviderNotPayableError:
+        raise HTTPException(status_code=409, detail="Provider has no payout account configured")
+    except PaymentError as exc:
+        raise HTTPException(status_code=400, detail=f"Payment authorization failed: {exc}")
+
+    await db.commit()
+    return {"data": {
+        "paymentIntentId": result.id,
+        "clientSecret": result.client_secret,
+        "status": result.status,
+        "authorizedCents": result.amount_cents,
+        "amountCapturableCents": result.amount_capturable_cents,
+        "applicationFeeCents": result.application_fee_cents,
+    }}
+
+
+@router.post(
+    "/{job_id}/capture-payment",
+    summary="Capture the held payment at completion",
+    description=(
+        "Captures the actual amount (≤ the held ceiling) for a completed job; "
+        "the unused hold is released. Restricted to the job's customer or its "
+        "accepted provider."
+    ),
+)
+async def capture_payment(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: Optional[CapturePaymentRequest] = None,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.integrations.stripe import PaymentError
+    from src.models.job import AssignmentStatus, Job, JobAssignment
+    from src.models.provider import ProviderProfile
+    from src.models.user import User
+    from src.services import job_payment_service as jp
+
+    job = await db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Authz: customer who owns the job, or the accepted provider's user.
+    allowed = job.customer_id == user.id
+    if not allowed:
+        assignment = (
+            await db.execute(
+                select(JobAssignment).where(
+                    JobAssignment.job_id == job_id,
+                    JobAssignment.status == AssignmentStatus.ACCEPTED,
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if assignment is not None:
+            provider = await db.get(ProviderProfile, assignment.provider_id)
+            allowed = bool(provider and provider.user_id == user.id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not allowed to capture this job")
+
+    # The customer's Stripe id (for collecting an approved overage delta).
+    customer = await db.get(User, job.customer_id)
+    pm = body.payment_method if body else None
+    try:
+        result = await jp.capture_job(
+            db,
+            job,
+            final_total_cents=(body.final_total_cents if body else None),
+            customer_stripe_id=getattr(customer, "stripe_customer_id", None),
+            payment_method=pm,
+            confirm=bool(pm),
+        )
+    except jp.PaymentNotAuthorizedError:
+        raise HTTPException(status_code=409, detail="No held authorization to capture")
+    except jp.OverageApprovalRequiredError as exc:
+        raise HTTPException(status_code=409, detail={
+            "error": "overage_approval_required",
+            "actualCents": exc.actual_cents,
+            "authorizedCents": exc.authorized_cents,
+            "overageCents": exc.overage_cents,
+        })
+    except PaymentError as exc:
+        raise HTTPException(status_code=400, detail=f"Payment capture failed: {exc}")
+
+    await db.commit()
+    return {"data": {
+        "status": result.status,
+        "capturedCents": result.amount_captured_cents,
+        "applicationFeeCents": result.application_fee_cents,
+        "actualTotalCents": job.actual_total_cents,
+        "finalPriceCents": job.final_price_cents,
+    }}
+
+
+@router.post(
+    "/{job_id}/approve-overage",
+    summary="Customer approves charging above the authorized ceiling",
+    description=(
+        "Sets overage approval on a job whose actual cost exceeds the held "
+        "ceiling, so a subsequent capture-payment can collect the delta."
+    ),
+)
+async def approve_overage(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job
+
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job.overage_approved_at = datetime.now(timezone.utc)
+    await db.commit()
+    logger.info("Customer %s approved overage for job %s", user.id, job_id)
+    return {"data": {"ok": True, "overageApprovedAt": job.overage_approved_at.isoformat()}}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/jobs/{job_id}/available-providers
+#   Provider-set-pricing model: after booking, show the customer which qualified
+#   providers are available in their zone and EACH provider's own price for this
+#   task (level-agnostic). Empty list => no one available now → the job stays in
+#   the queue and providers send offers (the existing accept/reject flow).
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{job_id}/available-providers",
+    summary="Available providers in the customer's zone with their prices",
+    description=(
+        "Runs matching for the job and returns each qualified provider with "
+        "their own rate for this task (or null if they price per-job). Drives "
+        "the post-booking map; an empty list means fall back to the offer queue."
+    ),
+)
+async def available_providers(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select
+    from src.models.job import Job
+    from src.models.taxonomy import ServiceTask
+    from src.services import provider_rate_service
+    from src.services.matchingEngine import find_matching_providers
+
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    task = (
+        await db.execute(select(ServiceTask).where(ServiceTask.id == job.task_id))
+    ).scalar_one_or_none()
+
+    try:
+        match = await find_matching_providers(db, job, max_results=20)
+        matches = match.get("matches", [])
+    except Exception as exc:  # noqa: BLE001 — never 500 the map; fall back to empty
+        logger.warning("available_providers matching failed for job %s: %s", job_id, exc)
+        matches = []
+
+    providers: list[dict[str, Any]] = []
+    for m in matches:
+        quote = await provider_rate_service.get_provider_quote_for_job(
+            db, m["provider_id"], job.task_id, job_quantity=job.quantity
+        )
+        providers.append({
+            "providerId": str(m["provider_id"]),
+            "displayName": m.get("display_name") or "Provider",
+            "level": int(m["current_level"]) if m.get("current_level") else None,
+            "distanceKm": round(float(m["distance_km"]), 1) if m.get("distance_km") is not None else None,
+            "rateCents": quote["rate_cents"] if quote else None,
+            "pricingUnit": quote["unit"] if quote else (task.pricing_unit.value if task else None),
+            "quotedPriceCents": quote["subtotal_cents"] if quote else None,
+        })
+
+    return {"data": {
+        "providers": providers,
+        "count": len(providers),
+        # The catalog range the customer sees up front (level guardrail).
+        "catalogMinCents": task.base_price_min_cents if task else None,
+        "catalogMaxCents": task.base_price_max_cents if task else None,
+        "pricingUnit": task.pricing_unit.value if task else None,
     }}

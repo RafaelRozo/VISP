@@ -364,17 +364,12 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
               <Text style={styles.businessDividerText}>VISP for Business</Text>
               <View style={styles.businessDividerLine} />
             </View>
-            <TouchableOpacity
-              onPress={handleJoinCompany}
-              disabled={isLoading}
-              activeOpacity={0.8}
-              style={styles.businessButton}
-            >
-              <Text style={styles.businessButtonText}>Join your company</Text>
-              <Text style={styles.businessButtonSubtext}>
-                Register with a code from your employer
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.createAccountRow}>
+              <Text style={styles.createAccountLabel}>{'Join your company?  '}</Text>
+              <TouchableOpacity onPress={handleJoinCompany} disabled={isLoading}>
+                <Text style={styles.createAccountLink}>I have a code</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -532,25 +527,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
     marginHorizontal: Spacing.md,
-  },
-  businessButton: {
-    borderWidth: 1,
-    borderColor: 'rgba(120, 80, 255, 0.5)',
-    backgroundColor: 'rgba(120, 80, 255, 0.12)',
-    borderRadius: 14,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    alignItems: 'center',
-  },
-  businessButtonText: {
-    ...Typography.body,
-    color: 'rgba(180, 160, 255, 1)',
-    fontWeight: '700',
-  },
-  businessButtonSubtext: {
-    ...Typography.caption,
-    color: 'rgba(255, 255, 255, 0.45)',
-    marginTop: 2,
   },
 });
 

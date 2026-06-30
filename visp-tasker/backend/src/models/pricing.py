@@ -172,6 +172,19 @@ class PricingEvent(Base):
     )
     currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="CAD")
 
+    # Tax/tip snapshot (PP3) — full receipt waterfall, immutable.
+    subtotal_cents: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    service_tax_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    tax_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 5), nullable=True)
+    tip_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    service_fee_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+
     # Context at calculation time
     demand_factor: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(4, 2), nullable=True

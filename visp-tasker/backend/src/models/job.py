@@ -154,6 +154,45 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="CAD")
 
+    # Customer-confirmed booking quantity (PP4a) — multiplier applied to the
+    # provider's rate at reprice. NULL → fall back to the catalog estimate.
+    quantity: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+
+    # Tax snapshot (PP3). service_tax_cents = subtotal × rate, 0 when the
+    # provider is not tax-registered. total_charged = subtotal + tax + tip.
+    service_tax_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    tax_rate_applied: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(6, 5), nullable=True
+    )
+    tax_jurisdiction: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    total_charged_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+
+    # Service fee + overage (PP4c). service_fee = grossed-up Stripe fee the
+    # customer covers (Model C). authorized_amount = the held ceiling
+    # (total_charged × (1+capture_buffer)); actual_total reconciled at close;
+    # overage_approved_at set when the customer OKs charging above the ceiling.
+    service_fee_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    authorized_amount_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    capture_buffer_pct: Mapped[Decimal] = mapped_column(
+        Numeric(4, 3), nullable=False, server_default="0.300"
+    )
+    actual_total_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    overage_approved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Pricing model v2
     pricing_model: Mapped[Optional[str]] = mapped_column(
         Enum('TIME_BASED', 'NEGOTIATED', 'EMERGENCY_NEGOTIATED',

@@ -105,6 +105,13 @@ class ProviderProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     home_postal_zip: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     home_country: Mapped[Optional[str]] = mapped_column(String(2), server_default="CA")
 
+    # Tax registration (PP3). Default False → no sales tax charged on this
+    # provider's jobs (conservative until accountant marks them registered).
+    tax_registered: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    tax_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
     # Work preferences
     max_concurrent_jobs: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="1"

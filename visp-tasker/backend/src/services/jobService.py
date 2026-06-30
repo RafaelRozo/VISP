@@ -237,6 +237,7 @@ async def create_job(
     priority: str = "standard",
     is_emergency: bool = False,
     customer_notes_json: list[str] | None = None,
+    quantity: Decimal | None = None,
 ) -> Job:
     """Create a new job with SLA snapshot from sla_profiles.
 
@@ -322,6 +323,15 @@ async def create_job(
         job.requested_time_start = schedule.get("requested_time_start")
         job.requested_time_end = schedule.get("requested_time_end")
         job.flexible_schedule = schedule.get("flexible_schedule", False)
+
+    # 5b. Customer-confirmed quantity (PP4a). Only honoured for tasks that allow
+    # it; clamped to the task's min_quantity. Ignored otherwise (reprice then
+    # falls back to the catalog estimate).
+    if quantity is not None and task.allows_quantity:
+        q = Decimal(str(quantity))
+        if q > 0:
+            min_q = task.min_quantity or Decimal(1)
+            job.quantity = max(q, min_q)
 
     db.add(job)
     await db.flush()
@@ -426,6 +436,24 @@ async def update_job_status(
         # For L1/L2 time-based jobs: finalize the price
         if job.pricing_model == "TIME_BASED":
             await finalize_time_based_price(db, job.id)
+
+        # PP4b — auto-capture the held authorization (only jobs that went through
+        # the destination-charge hold). An overage above the ceiling is surfaced
+        # for customer approval rather than failing completion; Stripe errors are
+        # logged and don't block completion.
+        if job.authorized_amount_cents and job.stripe_payment_intent_id:
+            from src.services import job_payment_service as jp
+
+            try:
+                await jp.capture_job(db, job)
+            except jp.OverageApprovalRequiredError:
+                logger.info(
+                    "Job %s completed; actual exceeds authorized ceiling — "
+                    "awaiting customer overage approval before capture.",
+                    job.id,
+                )
+            except Exception:  # noqa: BLE001 — never block completion on capture
+                logger.exception("Auto-capture failed for job %s at completion", job.id)
 
     await db.flush()
 

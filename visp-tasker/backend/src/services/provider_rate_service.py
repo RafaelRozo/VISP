@@ -16,12 +16,15 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.pricing import PricingEvent, PricingEventType
+from src.models.provider import ProviderProfile
 from src.models.provider_rate import ProviderServiceRate
 from src.models.taxonomy import (
     PricingUnit,
     ProviderTaskQualification,
     ServiceTask,
 )
+from src.services import fee_service, tax_service
 
 
 # ---------------------------------------------------------------------------
@@ -192,8 +195,7 @@ def estimate_quantity_for(task: ServiceTask) -> Decimal:
     """Default booking quantity used to turn a rate into an estimate.
 
     HOURLY → the task's estimated duration in hours (min 1). Everything else
-    defaults to 1 unit until the full quantity picker lands (PP4b). The real
-    amount is reconciled at completion.
+    defaults to 1 unit. Used when the customer did not confirm a quantity.
     """
     if task.pricing_unit == PricingUnit.HOURLY:
         mins = task.estimated_duration_min or 60
@@ -201,20 +203,36 @@ def estimate_quantity_for(task: ServiceTask) -> Decimal:
     return Decimal(1)
 
 
-def compute_quote_cents(rate: ProviderServiceRate, task: ServiceTask) -> int:
-    """Estimate subtotal = rate × default quantity, floored at min_charge."""
-    qty = estimate_quantity_for(task)
-    subtotal = int(rate.rate_cents * qty)
+def resolve_quantity(task: ServiceTask, job_quantity: Optional[Any]) -> Decimal:
+    """The quantity to price against: the customer-confirmed booking quantity
+    when the task allows it (PP4a), otherwise the catalog estimate."""
+    if job_quantity is not None and task.allows_quantity:
+        q = Decimal(str(job_quantity))
+        if q > 0:
+            return q
+    return estimate_quantity_for(task)
+
+
+def compute_quote_cents(
+    rate: ProviderServiceRate, task: ServiceTask, quantity: Decimal
+) -> int:
+    """Subtotal = rate × quantity, floored at min_charge."""
+    subtotal = int(rate.rate_cents * quantity)
     if rate.min_charge_cents:
         subtotal = max(subtotal, rate.min_charge_cents)
     return subtotal
 
 
 async def get_provider_quote_for_job(
-    db: AsyncSession, provider_id: uuid.UUID, task_id: uuid.UUID
+    db: AsyncSession,
+    provider_id: uuid.UUID,
+    task_id: uuid.UUID,
+    job_quantity: Optional[Any] = None,
 ) -> Optional[dict[str, Any]]:
     """Read-only quote breakdown for the customer's approval screen. Returns
-    None when the provider has no active fixed rate for the task."""
+    None when the provider has no active fixed rate for the task. ``job_quantity``
+    (the customer-confirmed amount) overrides the estimate when the task allows
+    quantity."""
     rate = (
         await db.execute(
             select(ProviderServiceRate).where(
@@ -231,12 +249,12 @@ async def get_provider_quote_for_job(
     ).scalar_one_or_none()
     if task is None or task.pricing_unit == PricingUnit.CUSTOM_QUOTE:
         return None
-    qty = estimate_quantity_for(task)
+    qty = resolve_quantity(task, job_quantity)
     return {
         "rate_cents": rate.rate_cents,
         "unit": task.pricing_unit.value,
         "quantity": float(qty),
-        "subtotal_cents": compute_quote_cents(rate, task),
+        "subtotal_cents": compute_quote_cents(rate, task, qty),
     }
 
 
@@ -250,7 +268,9 @@ async def reprice_job_to_provider_rate(
     active fixed rate for the task or the task is custom-quote. Mutates the job
     in place; the caller commits.
     """
-    quote = await get_provider_quote_for_job(db, provider_id, job.task_id)
+    quote = await get_provider_quote_for_job(
+        db, provider_id, job.task_id, job_quantity=getattr(job, "quantity", None)
+    )
     if quote is None:
         return None
 
@@ -265,6 +285,58 @@ async def reprice_job_to_provider_rate(
         job.commission_amount_cents = int(Decimal(subtotal) * job.commission_rate)
         job.provider_payout_cents = subtotal - job.commission_amount_cents
 
+    # PP3 tax: place of supply = job's service province; charged only when the
+    # provider is tax-registered. Snapshot onto the job (immutable receipt).
+    provider = await db.get(ProviderProfile, provider_id)
+    tax = await tax_service.compute_tax(
+        db,
+        subtotal,
+        job.service_province_state,
+        bool(provider and provider.tax_registered),
+    )
+    job.service_tax_cents = tax["service_tax_cents"]
+    job.tax_rate_applied = tax["tax_rate"]
+    job.tax_jurisdiction = tax["tax_jurisdiction"]
+    tip = job.tip_cents or 0
+
+    # PP4c service fee ("Tarifa de servicio") — grossed-up Stripe fee the
+    # customer covers (Model C). net = subtotal + tax + tip; fee on top of net.
+    net = subtotal + job.service_tax_cents + tip
+    job.service_fee_cents = fee_service.compute_service_fee_cents(net)
+    job.total_charged_cents = net + job.service_fee_cents
+
+    # Audit/receipt snapshot — feeds the admin full-waterfall receipt view.
+    db.add(
+        PricingEvent(
+            job_id=job.id,
+            event_type=PricingEventType.QUOTE_GENERATED,
+            base_price_cents=subtotal,
+            final_price_cents=job.total_charged_cents,
+            subtotal_cents=subtotal,
+            service_tax_cents=job.service_tax_cents,
+            tax_rate=job.tax_rate_applied,
+            tip_cents=tip,
+            service_fee_cents=job.service_fee_cents,
+            commission_rate=job.commission_rate,
+            commission_cents=job.commission_amount_cents,
+            provider_payout_cents=job.provider_payout_cents,
+            currency=job.currency or "CAD",
+            calculated_by="provider_accept_reprice",
+        )
+    )
+    await db.flush()
+
+    quote.update(
+        {
+            "service_tax_cents": job.service_tax_cents,
+            "tax_rate": float(job.tax_rate_applied) if job.tax_rate_applied else None,
+            "tax_jurisdiction": job.tax_jurisdiction,
+            "tax_label": tax["label"],
+            "tip_cents": tip,
+            "service_fee_cents": job.service_fee_cents,
+            "total_charged_cents": job.total_charged_cents,
+        }
+    )
     return quote
 
 

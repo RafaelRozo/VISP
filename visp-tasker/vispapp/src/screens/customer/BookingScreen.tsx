@@ -122,6 +122,27 @@ function BookingScreen(): React.JSX.Element {
   // Loading
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // PP5 — quantity picker for per-unit/per-area tasks (fetched from task detail)
+  const [allowsQuantity, setAllowsQuantity] = useState(false);
+  const [pricingUnit, setPricingUnit] = useState<string | null>(null);
+  const [minQuantity, setMinQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    let active = true;
+    taskService.fetchTaskDetail(task.taskId)
+      .then((detail) => {
+        if (!active) return;
+        const minQ = detail.minQuantity && detail.minQuantity > 0 ? detail.minQuantity : 1;
+        setAllowsQuantity(Boolean(detail.allowsQuantity));
+        setPricingUnit(detail.pricingUnit ?? null);
+        setMinQuantity(minQ);
+        setQuantity(minQ);
+      })
+      .catch(() => { /* picker stays hidden; backend defaults the quantity */ });
+    return () => { active = false; };
+  }, [task.taskId]);
+
   const levelColor = getLevelColor(task.level);
 
   // Get priority label and color
@@ -187,6 +208,7 @@ function BookingScreen(): React.JSX.Element {
         priority: task.priority ?? 'standard',
         selectedNotes: task.selectedNotes ?? [],
         estimatedPrice: task.estimatedPrice,
+        quantity: allowsQuantity ? quantity : undefined,
       });
 
       // Payment intent creation is deferred:
@@ -438,6 +460,41 @@ function BookingScreen(): React.JSX.Element {
               </View>
             </GlassCard>
           </View>
+
+          {/* ── Quantity (PP5 — per-unit/per-area tasks) ────────────────── */}
+          {allowsQuantity && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Quantity</Text>
+              </View>
+              <GlassCard>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 14 }}>
+                    {pricingUnit ? (t(`myPricesScreen.unit.${pricingUnit}`) as string) : ''}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity
+                      onPress={() => setQuantity((q) => Math.max(minQuantity, q - 1))}
+                      activeOpacity={0.7}
+                      style={{ width: 40, height: 40, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: theme.textPrimary, fontSize: 22, fontWeight: '600' }}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={{ minWidth: 56, textAlign: 'center', color: theme.textPrimary, fontSize: 18, fontWeight: '700' }}>
+                      {quantity}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setQuantity((q) => q + 1)}
+                      activeOpacity={0.7}
+                      style={{ width: 40, height: 40, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: theme.textPrimary, fontSize: 22, fontWeight: '600' }}>＋</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </GlassCard>
+            </View>
+          )}
 
           {/* ── Additional Notes ────────────────── */}
           {selectedNoteLabels.length > 0 && (

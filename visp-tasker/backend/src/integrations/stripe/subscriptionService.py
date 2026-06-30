@@ -16,17 +16,21 @@ signatures for consistency with the rest of the payment module).
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import stripe
 
+from src.core.config import settings
+
 from .paymentService import PaymentError, _handle_stripe_error
 
 logger = logging.getLogger(__name__)
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+# Use settings (loaded from .env) like the other Stripe modules — reading the
+# raw OS env here would clobber stripe.api_key to "" when the key only lives in
+# .env (the "last import wins" race payoutService warns about).
+stripe.api_key = settings.stripe_secret_key
 
 
 # ---------------------------------------------------------------------------

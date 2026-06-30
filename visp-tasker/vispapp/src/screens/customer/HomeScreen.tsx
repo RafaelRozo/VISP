@@ -375,10 +375,16 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   }, [navigation]);
 
   // Tapping a search result jumps straight into the booking flow for that task.
+  // TaskSelection lives inside the nested CustomerNavigator (mounted by the
+  // 'CategoryDetail' route), so navigate into it via nested navigation — a bare
+  // navigate('TaskSelection') from this (App)navigator silently no-ops.
   const handleTaskPress = useCallback((task: ServiceTask) => {
     Keyboard.dismiss();
     setSearchQuery('');
-    (navigation as any).navigate('TaskSelection', { taskId: task.id });
+    (navigation as any).navigate('CategoryDetail', {
+      screen: 'TaskSelection',
+      params: { taskId: task.id },
+    });
   }, [navigation]);
 
   // Debounced natural-language search across the closed catalog (backend).

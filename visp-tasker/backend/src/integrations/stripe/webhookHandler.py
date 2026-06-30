@@ -141,6 +141,22 @@ async def _handle_payment_intent_succeeded(
     job.paid_at = datetime.now(timezone.utc)
     job.final_price_cents = amount
 
+    # 2b. PP4b — destination charges (manual-capture) already routed funds to the
+    # connected account via transfer_data and took the application_fee at capture.
+    # Do NOT create a second legacy Transfer (that would double-pay the provider).
+    if str(payment_intent.metadata.get("destination_charge", "")) == "1":
+        await db.flush()
+        logger.info(
+            "Destination-charge payment %s captured for job %s — funds routed via "
+            "transfer_data, skipping legacy transfer.",
+            payment_intent.id, job_id_str,
+        )
+        return (
+            f"Destination-charge payment {payment_intent.id} captured for job "
+            f"{job_id_str}: {amount} {currency}. Funds routed via transfer_data; "
+            f"no separate transfer created."
+        )
+
     # 3. Find the assigned provider
     assignment_result = await db.execute(
         select(JobAssignment)
@@ -270,6 +286,39 @@ async def _handle_payment_intent_failed(
     return (
         f"Payment intent {payment_intent.id} failed for job {job_id}: "
         f"{error_message}"
+    )
+
+
+async def _handle_payment_intent_amount_capturable_updated(
+    event: stripe.Event,
+    db: AsyncSession | None = None,
+) -> str:
+    """PP4b — a manual-capture authorization succeeded (the customer confirmed
+    the hold). Funds are HELD, not captured. Record the held PaymentIntent on the
+    job so completion can capture it. No transfer happens until capture."""
+    payment_intent = event.data.object
+    job_id_str = payment_intent.metadata.get("job_id", "")
+    capturable = getattr(payment_intent, "amount_capturable", 0)
+
+    logger.info(
+        "Authorization held: intent=%s, job_id=%s, capturable=%d %s",
+        payment_intent.id, job_id_str, capturable, payment_intent.currency,
+    )
+
+    if db and job_id_str:
+        from src.models.job import Job
+
+        try:
+            job = await db.get(Job, uuid.UUID(job_id_str))
+        except ValueError:
+            job = None
+        if job is not None:
+            job.stripe_payment_intent_id = payment_intent.id
+            await db.flush()
+
+    return (
+        f"Authorization held for job {job_id_str}: {capturable} "
+        f"{payment_intent.currency} capturable on intent {payment_intent.id}."
     )
 
 
@@ -452,6 +501,18 @@ async def _handle_identity_verification_verified(
     if not account_id or db is None:
         return f"verification verified session={session_id} account={account_id or 'unknown'}"
 
+    # Attach the verified Identity document onto the connected account so Stripe
+    # clears individual.verification.{document,proof_of_liveness}. Without this
+    # the requirement stays past_due and the wizard loops on "Continue setup".
+    from src.integrations.stripe.connectV2Service import (
+        attach_verified_identity_document,
+    )
+
+    try:
+        await attach_verified_identity_document(account_id, session_id)
+    except Exception:  # noqa: BLE001 — never let the webhook fail on the attach
+        logger.exception("attach verified document failed for account %s", account_id)
+
     # Refresh the connected account so any unprocessed account.updated
     # webhook does not leave the profile stale.
     try:
@@ -553,6 +614,7 @@ async def _handle_payout_failed(
 _EVENT_HANDLERS: dict[str, callable] = {
     "payment_intent.succeeded": _handle_payment_intent_succeeded,
     "payment_intent.payment_failed": _handle_payment_intent_failed,
+    "payment_intent.amount_capturable_updated": _handle_payment_intent_amount_capturable_updated,
     "charge.refunded": _handle_charge_refunded,
     "account.updated": _handle_account_updated,
     "identity.verification_session.verified": _handle_identity_verification_verified,

@@ -68,6 +68,7 @@ class V2AccountResult:
     capabilities: dict[str, Any]
     payouts_enabled: bool
     details_submitted: bool
+    disabled_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -518,14 +519,100 @@ def _extract_capabilities(account: Any) -> dict[str, Any]:
         return {}
 
 
+def _extract_disabled_reason(account: Any) -> str | None:
+    reqs = getattr(account, "requirements", None)
+    return getattr(reqs, "disabled_reason", None) if reqs else None
+
+
 def _to_status_result(account_id: str, account: Any) -> V2AccountResult:
     requirements_due = _extract_requirements_due(account)
     capabilities = _extract_capabilities(account)
+    payouts_enabled = bool(getattr(account, "payouts_enabled", False))
+    disabled_reason = _extract_disabled_reason(account)
+    step = _next_step(requirements_due)
+    # Fold payouts_enabled / disabled_reason into the completion decision: an
+    # account with no outstanding requirement fields but with payouts still
+    # disabled (e.g. disabled_reason='requirements.pending_verification') is NOT
+    # truly done — keep it out of 'complete' so the UI doesn't show finished.
+    if step == "complete" and not payouts_enabled and disabled_reason:
+        step = "pending_verification"
     return V2AccountResult(
         account_id=account_id,
-        onboarding_step=_next_step(requirements_due),
+        onboarding_step=step,
         requirements_due=requirements_due,
         capabilities=capabilities,
-        payouts_enabled=bool(getattr(account, "payouts_enabled", False)),
+        payouts_enabled=payouts_enabled,
         details_submitted=bool(getattr(account, "details_submitted", False)),
+        disabled_reason=disabled_reason,
     )
+
+
+# ---------------------------------------------------------------------------
+# Identity document attach (clears individual.verification.* on the account)
+# ---------------------------------------------------------------------------
+
+async def attach_verified_identity_document(account_id: str, session_id: str) -> bool:
+    """Copy the verified Identity document onto the connected account so Stripe
+    clears ``individual.verification.document`` / ``proof_of_liveness``.
+
+    Completing the native Identity sheet only verifies the *VerificationSession*;
+    the platform must explicitly attach the resulting document file IDs to the
+    connected account, otherwise the requirement stays ``past_due`` and the
+    wizard loops on the ID step ("Continue setup"). Returns True when a document
+    was attached. Safe no-op (False) when the session isn't verified or has no
+    document files.
+    """
+    try:
+        session = stripe.identity.VerificationSession.retrieve(
+            session_id, expand=["last_verification_report"]
+        )
+    except stripe.StripeError as exc:
+        logger.warning("attach: cannot retrieve identity session %s: %s", session_id, exc)
+        return False
+
+    if getattr(session, "status", None) != "verified":
+        return False
+
+    report = getattr(session, "last_verification_report", None)
+    if isinstance(report, str):
+        try:
+            report = stripe.identity.VerificationReport.retrieve(report)
+        except stripe.StripeError as exc:
+            logger.warning("attach: cannot retrieve verification report: %s", exc)
+            return False
+
+    document = getattr(report, "document", None) if report else None
+    files = list(getattr(document, "files", None) or []) if document else []
+    if not files:
+        logger.info("attach: no document files on session %s — nothing to attach", session_id)
+        return False
+
+    verification_doc: dict[str, str] = {"front": files[0]}
+    if len(files) > 1 and files[1]:
+        verification_doc["back"] = files[1]
+
+    try:
+        stripe.Account.modify(
+            account_id,
+            individual={"verification": {"document": verification_doc}},
+        )
+    except stripe.StripeError as exc:
+        logger.warning("attach: Account.modify failed for %s: %s", account_id, exc)
+        return False
+
+    logger.info("attach: linked verified document to account %s (files=%s)", account_id, files)
+    return True
+
+
+async def finalize_and_get_status(
+    account_id: str, identity_session_id: str | None
+) -> V2AccountResult:
+    """Fetch status; if it's stuck on the ID-document step and a verified
+    Identity session exists, attach the document and re-fetch. This is the
+    synchronous path the mobile app hits via /payouts/v2/status after the native
+    Identity sheet reports completion (does not depend on webhook delivery)."""
+    result = await get_account_status(account_id)
+    if result.onboarding_step == "identity_doc" and identity_session_id:
+        if await attach_verified_identity_document(account_id, identity_session_id):
+            result = await get_account_status(account_id)
+    return result

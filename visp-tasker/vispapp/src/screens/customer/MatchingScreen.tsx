@@ -26,6 +26,7 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
+import { taskService, type AvailableProvider } from '../../services/taskService';
 import type { CustomerFlowParamList } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -54,6 +55,17 @@ function MatchingScreen(): React.JSX.Element {
   const { jobId, taskName } = route.params;
 
   const [phase, setPhase] = useState<PostPhase>('posting');
+  const [providers, setProviders] = useState<AvailableProvider[]>([]);
+
+  // Fetch qualified providers in the customer's zone (with their own prices).
+  // Empty => none available now → the job waits for offers (existing flow).
+  useEffect(() => {
+    let active = true;
+    taskService.getAvailableProviders(jobId)
+      .then((res) => { if (active) setProviders(res.providers || []); })
+      .catch(() => { /* leave empty → fallback messaging */ });
+    return () => { active = false; };
+  }, [jobId]);
 
   // Animation values
   const dotScale = useRef(new Animated.Value(1)).current;
@@ -211,10 +223,56 @@ function MatchingScreen(): React.JSX.Element {
           {/* Success message and buttons */}
           {isPosted && (
             <Animated.View style={[styles.successContent, { opacity: contentOpacity }]}>
-              <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
-                Your job request has been posted! You'll be notified when Vispers apply
-                to your job. Check your jobs list for updates.
-              </Text>
+              {providers.length > 0 ? (
+                <>
+                  <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
+                    {providers.length} {providers.length === 1 ? 'provider is' : 'providers are'} available in your zone:
+                  </Text>
+                  <View style={{ width: '100%', marginBottom: Spacing.md }}>
+                    {providers.slice(0, 5).map((p) => (
+                      <View
+                        key={p.providerId}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          paddingVertical: 10,
+                          paddingHorizontal: Spacing.md,
+                          borderRadius: 12,
+                          borderWidth: StyleSheet.hairlineWidth,
+                          borderColor: theme.border,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: theme.textPrimary, fontWeight: '600', fontSize: FontSize.body }}>
+                            {p.displayName}
+                          </Text>
+                          <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption, marginTop: 2 }}>
+                            {p.level ? `Level ${p.level}` : ''}{p.distanceKm != null ? `  ·  ${p.distanceKm} km` : ''}
+                          </Text>
+                        </View>
+                        {p.rateCents != null ? (
+                          <Text style={{ color: theme.textPrimary, fontWeight: '700', fontSize: FontSize.body }}>
+                            ${(p.rateCents / 100).toFixed(2)}
+                            {p.pricingUnit ? <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption }}>{`/${p.pricingUnit}`}</Text> : null}
+                          </Text>
+                        ) : (
+                          <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption }}>Quotes per job</Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={[styles.successMessage, { color: theme.textTertiary }]}>
+                    They'll send you a request to accept or decline. Track it in your jobs list.
+                  </Text>
+                </>
+              ) : (
+                <Text style={[styles.successMessage, { color: theme.textSecondary }]}>
+                  Your job request has been posted! You'll be notified when Vispers apply
+                  to your job. Check your jobs list for updates.
+                </Text>
+              )}
 
               <View style={styles.buttonGroup}>
                 <GlassButton

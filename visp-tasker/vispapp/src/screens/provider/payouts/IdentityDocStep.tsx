@@ -1,21 +1,23 @@
 /**
- * VISP — Payouts onboarding · Identity document step.
+ * VISP — Payouts onboarding · Identity / verification step.
  *
- * Opens the native Stripe Identity verification sheet (document + selfie
- * with liveness check) via @stripe/stripe-identity-react-native. The sheet
- * is fully native; we just provide the session/ephemeral key fetched from
- * /v2/identity-document and listen for the completion status.
+ * Opens Stripe's HOSTED account-onboarding flow (document + selfie + liveness)
+ * in the system browser via Linking. This is required because a connected
+ * account's `individual.verification.proof_of_liveness` can only be cleared
+ * through Stripe's hosted verification — the native Identity sheet verifies the
+ * standalone session but never satisfies the account's liveness requirement, so
+ * the wizard used to loop on "Continue setup". In test mode the hosted page
+ * completes with test data and clears the requirement.
  *
- * Outcomes:
- *  - FlowCompleted  → refresh status and advance to next step (TOS or exit)
- *  - FlowCanceled   → stay on screen, let the user retry
- *  - FlowFailed     → surface the error and let the user retry
+ * We use Linking (core RN, always available) rather than expo-web-browser
+ * (not linked in this build). When the provider returns to the app, AppState
+ * flips to 'active' and we refresh status: TOS due → TOS step; complete /
+ * payouts enabled → exit; otherwise stay so they can retry.
  */
 
-import React, { useCallback, useEffect } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useStripeIdentity } from '@stripe/stripe-identity-react-native';
 
 import { Screen } from '../../../components/visp';
 import { useVispTheme, VispText, VispSpace } from '../../../theme/visp';
@@ -24,49 +26,55 @@ import { useTranslation } from '../../../i18n';
 import { payoutsV2Service } from '../../../services/payoutsV2Service';
 import { advanceToStep } from './navigation';
 
-const brandLogo = Image.resolveAssetSource(require('../../../../assets/icon.png'));
-
 export default function IdentityDocStep(): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
   const navigation = useNavigation<any>();
+  const [busy, setBusy] = useState(false);
+  const awaitingReturn = useRef(false);
 
-  const fetchOptions = useCallback(async () => {
-    const session = await payoutsV2Service.startIdentityDocument();
-    return {
-      sessionId: session.sessionId,
-      ephemeralKeySecret: session.ephemeralKeySecret,
-      brandLogo,
-    };
-  }, []);
-
-  const { present, status, loading, error } = useStripeIdentity(fetchOptions);
-
-  useEffect(() => {
-    if (status !== 'FlowCompleted') return;
-    (async () => {
-      try {
-        const fresh = await payoutsV2Service.getStatus();
-        const needsTos = (fresh.requirementsDue ?? []).some((r) =>
-          r === 'tos_acceptance.date' || r === 'tos_acceptance.ip',
-        );
-        if (needsTos) {
-          advanceToStep(navigation, 'tos');
-        } else {
-          navigation.popToTop();
-          navigation.goBack();
-        }
-      } catch (err: any) {
-        Alert.alert(tr('common.error'), err?.message ?? tr('payoutsV2.errorGeneric'));
-      }
-    })();
-  }, [status, navigation, tr]);
-
-  useEffect(() => {
-    if (status === 'FlowFailed' && error) {
-      Alert.alert(tr('payoutsV2.idDocFailedTitle'), error.localizedMessage || error.message);
+  const refreshAndRoute = useCallback(async () => {
+    const fresh = await payoutsV2Service.getStatus();
+    const needsTos = (fresh.requirementsDue ?? []).some(
+      (r) => r === 'tos_acceptance.date' || r === 'tos_acceptance.ip',
+    );
+    if (fresh.onboardingStep === 'tos' || needsTos) {
+      advanceToStep(navigation, 'tos');
+    } else if (fresh.onboardingStep === 'complete' || fresh.payoutsEnabled) {
+      navigation.popToTop();
+      navigation.goBack();
     }
-  }, [status, error, tr]);
+    // else: still pending → stay on screen, let them retry / check again.
+  }, [navigation]);
+
+  // When the provider comes back from the hosted Stripe page, re-read status.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && awaitingReturn.current) {
+        awaitingReturn.current = false;
+        refreshAndRoute().catch(() => { /* leave them on the screen */ });
+      }
+    });
+    return () => sub.remove();
+  }, [refreshAndRoute]);
+
+  const handleVerify = useCallback(async () => {
+    setBusy(true);
+    try {
+      const { url } = await payoutsV2Service.onboardingLink();
+      if (!url) {
+        Alert.alert(tr('common.error'), tr('payoutsV2.errorGeneric'));
+        return;
+      }
+      awaitingReturn.current = true;
+      await Linking.openURL(url);
+    } catch (err: any) {
+      awaitingReturn.current = false;
+      Alert.alert(tr('common.error'), err?.message ?? tr('payoutsV2.errorGeneric'));
+    } finally {
+      setBusy(false);
+    }
+  }, [tr]);
 
   return (
     <Screen edges={['top', 'bottom']}>
@@ -88,13 +96,7 @@ export default function IdentityDocStep(): React.JSX.Element {
           <Text style={[VispText.body, { color: t.text, marginTop: 4 }]}>{tr('payoutsV2.idDocStep3')}</Text>
         </View>
 
-        {status === 'FlowCanceled' && (
-          <Text style={[VispText.body, { color: t.text3, marginTop: VispSpace.section, textAlign: 'center' }]}>
-            {tr('payoutsV2.idDocCanceled')}
-          </Text>
-        )}
-
-        {loading && (
+        {busy && (
           <View style={{ alignItems: 'center', marginTop: VispSpace.section }}>
             <ActivityIndicator size="large" color={t.violet} />
           </View>
@@ -102,10 +104,16 @@ export default function IdentityDocStep(): React.JSX.Element {
 
         <View style={{ height: VispSpace.section * 2 }} />
         <GlassButton
-          title={status === 'FlowCanceled' ? tr('payoutsV2.idDocRetry') : tr('payoutsV2.idDocStart')}
+          title={tr('payoutsV2.idDocStart')}
           variant="glow"
-          loading={loading}
-          onPress={() => { present(); }}
+          loading={busy}
+          onPress={handleVerify}
+        />
+        <View style={{ height: VispSpace.section }} />
+        <GlassButton
+          title={tr('payoutsV2.idDocRefresh') || "I've finished — check status"}
+          variant="outline"
+          onPress={() => refreshAndRoute().catch(() => {})}
         />
       </ScrollView>
     </Screen>

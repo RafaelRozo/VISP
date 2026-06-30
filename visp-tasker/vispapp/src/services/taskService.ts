@@ -178,6 +178,10 @@ interface BackendTaskDetail extends BackendTask {
   hazardous: boolean;
   structural: boolean;
   emergency_eligible: boolean;
+  // PP5 — charge unit + quantity
+  pricing_unit?: string | null;
+  allows_quantity?: boolean;
+  min_quantity?: number | null;
   // Detail endpoint returns nested category object instead of category_id
   category?: { id: string; slug: string; name: string; icon_url?: string | null };
 }
@@ -202,6 +206,9 @@ function mapTaskDetail(task: BackendTaskDetail): ServiceTaskDetail {
     priceRangeMin: (task.base_price_min_cents ?? 0) / 100,
     priceRangeMax: (task.base_price_max_cents ?? 0) / 100,
     autoEscalationKeywords: task.escalation_keywords ?? [],
+    pricingUnit: task.pricing_unit ?? null,
+    allowsQuantity: task.allows_quantity ?? false,
+    minQuantity: task.min_quantity ?? null,
   };
 }
 
@@ -320,6 +327,7 @@ async function createBooking(
     scheduledAt,
     isEmergency: request.priority === 'urgent',
     notes: (request.selectedNotes && request.selectedNotes.length > 0) ? request.selectedNotes : undefined,
+    quantity: (request.quantity && request.quantity > 0) ? request.quantity : undefined,
   };
 
   console.log('[taskService] createBooking payload:', JSON.stringify(payload));
@@ -504,6 +512,11 @@ interface PendingProviderInfo {
   rateCents: number | null;
   pricingUnit: string | null;
   estimatedQuantity: number | null;
+  // PP3 tax + PP4c service fee snapshot (what the customer actually pays).
+  serviceTaxCents: number | null;
+  taxJurisdiction: string | null;
+  serviceFeeCents: number | null;
+  totalChargedCents: number | null;
 }
 
 async function getPendingProvider(jobId: string): Promise<PendingProviderInfo | null> {
@@ -517,6 +530,106 @@ async function approveProvider(jobId: string): Promise<void> {
 
 async function rejectProvider(jobId: string): Promise<void> {
   await apiClient.post(`/jobs/${jobId}/reject-provider`);
+}
+
+// ── PP5-3/4 — payment authorize / capture / overage ──────────────────────
+interface AuthorizePaymentResult {
+  paymentIntentId: string;
+  clientSecret: string | null;
+  status: string;
+  authorizedCents: number;
+  amountCapturableCents: number;
+  applicationFeeCents: number;
+}
+
+/** Place the manual-capture hold (total × 1.30) when the customer approves the
+ * provider. Pass a saved paymentMethod id to confirm server-side (current app
+ * pattern); omit it to get a clientSecret for on-device confirmation. */
+async function authorizePayment(jobId: string, paymentMethodId?: string): Promise<AuthorizePaymentResult> {
+  const resp = await apiClient.post<{ data: AuthorizePaymentResult }>(
+    `/jobs/${jobId}/authorize-payment`,
+    paymentMethodId ? { paymentMethod: paymentMethodId } : {},
+  );
+  return resp.data.data;
+}
+
+interface CapturePaymentResult {
+  status: string;
+  capturedCents: number;
+  applicationFeeCents: number;
+  actualTotalCents: number | null;
+  finalPriceCents: number | null;
+}
+
+/** Capture the actual amount at completion (≤ the held ceiling). When the actual
+ * exceeds the ceiling and the overage isn't approved, the backend returns 409
+ * with { error:'overage_approval_required', actualCents, authorizedCents,
+ * overageCents } — surfaced as OverageRequired below. */
+interface OverageRequired {
+  overage: true;
+  actualCents: number;
+  authorizedCents: number;
+  overageCents: number;
+}
+
+async function capturePayment(
+  jobId: string,
+  opts?: { finalTotalCents?: number; paymentMethodId?: string },
+): Promise<CapturePaymentResult | OverageRequired> {
+  try {
+    const resp = await apiClient.post<{ data: CapturePaymentResult }>(
+      `/jobs/${jobId}/capture-payment`,
+      {
+        finalTotalCents: opts?.finalTotalCents,
+        paymentMethod: opts?.paymentMethodId,
+      },
+    );
+    return resp.data.data;
+  } catch (err: any) {
+    const detail = err?.response?.data?.detail;
+    if (err?.response?.status === 409 && detail?.error === 'overage_approval_required') {
+      return {
+        overage: true,
+        actualCents: detail.actualCents,
+        authorizedCents: detail.authorizedCents,
+        overageCents: detail.overageCents,
+      };
+    }
+    throw err;
+  }
+}
+
+/** Customer approves charging above the held ceiling (then capture again). */
+async function approveOverage(jobId: string): Promise<void> {
+  await apiClient.post(`/jobs/${jobId}/approve-overage`);
+}
+
+// ── Provider-set-pricing: available providers in zone w/ their prices ──────
+export interface AvailableProvider {
+  providerId: string;
+  displayName: string;
+  level: number | null;
+  distanceKm: number | null;
+  rateCents: number | null;       // the provider's own rate (null = prices per-job)
+  pricingUnit: string | null;
+  quotedPriceCents: number | null; // estimate for this job at their rate
+}
+
+export interface AvailableProvidersResult {
+  providers: AvailableProvider[];
+  count: number;
+  catalogMinCents: number | null;  // the level guardrail range the customer sees
+  catalogMaxCents: number | null;
+  pricingUnit: string | null;
+}
+
+/** Qualified providers in the customer's zone for a booked job, each with their
+ * own price. Empty => none available now → job waits for offers (existing flow). */
+async function getAvailableProviders(jobId: string): Promise<AvailableProvidersResult> {
+  const resp = await apiClient.get<{ data: AvailableProvidersResult }>(
+    `/jobs/${jobId}/available-providers`,
+  );
+  return resp.data.data;
 }
 
 export const taskService = {
@@ -535,6 +648,10 @@ export const taskService = {
   getPendingProvider,
   approveProvider,
   rejectProvider,
+  authorizePayment,
+  capturePayment,
+  approveOverage,
+  getAvailableProviders,
 };
 
 export default taskService;

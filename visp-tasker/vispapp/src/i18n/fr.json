@@ -233,6 +233,7 @@
     "idDocStep2": "2. Un bon éclairage sur votre visage",
     "idDocStep3": "3. Quelques minutes — la caméra vous guidera",
     "idDocStart": "Continuer à la vérification",
+    "idDocRefresh": "J'ai terminé — vérifier le statut",
     "idDocHostedNote": "Stripe vous guidera pour la capture d'ID et le selfie. Vous reviendrez ici une fois terminé.",
     "idDocRetry": "Réessayer",
     "idDocCanceled": "Vérification annulée. Touchez réessayer pour recommencer.",
@@ -456,6 +457,12 @@
     "wantsToAccept": "Le prestataire veut accepter votre travail",
     "offeredPrice": "Prix proposé",
     "estimatedQty": "Estimé",
+    "priceServicio": "Service",
+    "priceTax": "Taxe",
+    "priceServiceFee": "Frais de service",
+    "priceTotal": "Total",
+    "holdPlaced": "Prestataire approuvé. Une autorisation a été placée sur votre carte; vous n'êtes débité du montant final qu'à la fin du travail.",
+    "holdPending": "Prestataire approuvé. Ajoutez un moyen de paiement pour autoriser le travail — vous êtes débité une fois terminé.",
     "job": "Travail"
   },
   "credentials": {

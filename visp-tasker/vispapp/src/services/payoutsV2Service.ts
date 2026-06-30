@@ -97,4 +97,11 @@ export const payoutsV2Service = {
   acceptTos(): Promise<PayoutStatus> {
     return post<PayoutStatus>(`${BASE}/tos`, { accepted: true });
   },
+
+  /** Hosted Stripe onboarding link to finish verification (incl. the liveness
+   * check that the native Identity sheet cannot satisfy on a connected account).
+   * Open with WebBrowser; in test mode the page completes with test data. */
+  onboardingLink(): Promise<{ url: string }> {
+    return post<{ url: string }>(`${BASE}/onboarding-link`);
+  },
 };

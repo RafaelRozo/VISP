@@ -527,6 +527,10 @@ export interface ServiceTaskDetail extends ServiceTask {
   priceRangeMin: number;
   priceRangeMax: number;
   autoEscalationKeywords: string[];
+  // PP5 — charge unit + quantity (drives the booking quantity picker)
+  pricingUnit?: string | null;
+  allowsQuantity?: boolean;
+  minQuantity?: number | null;
 }
 
 export interface PredefinedNote {
@@ -554,6 +558,8 @@ export interface BookingRequest {
   priority: PriorityLevel;
   selectedNotes: string[];
   estimatedPrice: number;
+  // PP5 — customer-confirmed quantity for per-unit/per-area tasks.
+  quantity?: number;
 }
 
 export interface AddressInfo {

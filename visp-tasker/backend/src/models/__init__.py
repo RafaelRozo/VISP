@@ -37,6 +37,9 @@ from .taxonomy import (
 # -- 022: Provider-set service rates --
 from .provider_rate import ProviderServiceRate
 
+# -- 024: Tax engine --
+from .tax import ProvinceTaxRate
+
 # -- 004: Verification & Legal --
 from .verification import (
     ConsentType,
@@ -152,6 +155,8 @@ __all__ = [
     "PricingUnit",
     # Provider-set service rates
     "ProviderServiceRate",
+    # Tax engine
+    "ProvinceTaxRate",
     # Verification
     "ProviderCredential",
     "CredentialStatus",

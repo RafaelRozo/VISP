@@ -362,6 +362,9 @@ class MobileJobCreateRequest(BaseModel):
     scheduled_at: Optional[datetime] = Field(default=None, alias="scheduledAt")
     is_emergency: bool = Field(default=False, alias="isEmergency")
     notes: Optional[list[str]] = None
+    # Customer-confirmed quantity for per-unit/per-area tasks (PP4a). Ignored for
+    # tasks that don't allow quantity (HOURLY/PER_VISIT/FLAT).
+    quantity: Optional[Decimal] = Field(default=None, gt=0)
 
     # Optional address components
     city: Optional[str] = None

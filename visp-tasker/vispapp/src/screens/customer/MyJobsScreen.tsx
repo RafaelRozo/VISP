@@ -49,6 +49,8 @@ import {
 } from '../../components/visp';
 import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
 import taskService from '../../services/taskService';
+import { paymentService } from '../../services/paymentService';
+import { useAuthStore } from '../../stores/authStore';
 import type { Job, RootStackParamList } from '../../types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -233,6 +235,7 @@ function MyJobsScreen(): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
   const navigation = useNavigation<NavProp>();
+  const stripeCustomerId = useAuthStore((s) => s.user?.stripeCustomerId);
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -324,13 +327,35 @@ function MyJobsScreen(): React.JSX.Element {
     async (jobId: string) => {
       try {
         await taskService.approveProvider(jobId);
-        Alert.alert(tr('myJobs.approved'), tr('myJobs.jobScheduled'));
-        fetchJobs(true);
       } catch {
         Alert.alert(tr('common.error'), tr('myJobs.failedApprove'));
+        return;
       }
+
+      // PP5-3 — place the manual-capture hold (total × 1.30) on the customer's
+      // saved card. Non-blocking: the provider is already approved; if there's
+      // no card or the hold fails, surface a prompt but keep the job scheduled.
+      let held = false;
+      try {
+        if (stripeCustomerId) {
+          const { methods } = await paymentService.listPaymentMethods(stripeCustomerId);
+          if (methods.length > 0) {
+            const res = await taskService.authorizePayment(jobId, methods[0].id);
+            held = res.status === 'requires_capture';
+          }
+        }
+      } catch {
+        held = false;
+      }
+
+      if (held) {
+        Alert.alert(tr('myJobs.approved'), tr('myJobs.holdPlaced'));
+      } else {
+        Alert.alert(tr('myJobs.approved'), tr('myJobs.holdPending'));
+      }
+      fetchJobs(true);
     },
-    [fetchJobs, tr],
+    [fetchJobs, tr, stripeCustomerId],
   );
 
   const handleRejectProvider = useCallback(
@@ -471,6 +496,42 @@ function MyJobsScreen(): React.JSX.Element {
                     <Text style={{ fontFamily: FontMono, fontSize: 15, fontWeight: '700', color: t.text, marginTop: 4 }}>
                       ${(providerInfo.quotedPriceCents / 100).toFixed(2)}
                     </Text>
+                  </View>
+                ) : null}
+
+                {/* PP4c — full price breakdown: Servicio + Impuesto + Tarifa de servicio = Total */}
+                {providerInfo.totalChargedCents != null ? (
+                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <Text style={[VispText.eyebrow, { color: t.text3 }]}>{tr('myJobs.priceServicio')}</Text>
+                      <Text style={{ fontFamily: FontMono, fontSize: 13, color: t.text2 }}>
+                        ${((providerInfo.quotedPriceCents ?? 0) / 100).toFixed(2)}
+                      </Text>
+                    </View>
+                    {providerInfo.serviceTaxCents ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <Text style={[VispText.eyebrow, { color: t.text3 }]}>
+                          {tr('myJobs.priceTax')}{providerInfo.taxJurisdiction ? ` (${providerInfo.taxJurisdiction})` : ''}
+                        </Text>
+                        <Text style={{ fontFamily: FontMono, fontSize: 13, color: t.text2 }}>
+                          ${(providerInfo.serviceTaxCents / 100).toFixed(2)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {providerInfo.serviceFeeCents ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <Text style={[VispText.eyebrow, { color: t.text3 }]}>{tr('myJobs.priceServiceFee')}</Text>
+                        <Text style={{ fontFamily: FontMono, fontSize: 13, color: t.text2 }}>
+                          ${(providerInfo.serviceFeeCents / 100).toFixed(2)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
+                      <Text style={[VispText.eyebrow, { color: t.text, fontWeight: '700' }]}>{tr('myJobs.priceTotal')}</Text>
+                      <Text style={{ fontFamily: FontMono, fontSize: 15, fontWeight: '700', color: t.text }}>
+                        ${(providerInfo.totalChargedCents / 100).toFixed(2)}
+                      </Text>
+                    </View>
                   </View>
                 ) : null}
 

@@ -233,6 +233,7 @@
     "idDocStep2": "2. Good lighting on your face",
     "idDocStep3": "3. A few minutes — the camera will guide you",
     "idDocStart": "Continue to verification",
+    "idDocRefresh": "I've finished — check status",
     "idDocHostedNote": "Stripe will guide you through ID capture and selfie. You'll return here when done.",
     "idDocRetry": "Try again",
     "idDocCanceled": "Verification cancelled. Tap try again to retry.",
@@ -456,6 +457,12 @@
     "wantsToAccept": "Provider wants to accept your job",
     "offeredPrice": "Offered price",
     "estimatedQty": "Estimated",
+    "priceServicio": "Service",
+    "priceTax": "Tax",
+    "priceServiceFee": "Service fee",
+    "priceTotal": "Total",
+    "holdPlaced": "Provider approved. A hold was placed on your card; you're only charged the final amount when the job is done.",
+    "holdPending": "Provider approved. Add a payment method to authorize the job — you're charged when it's done.",
     "job": "Job"
   },
   "credentials": {

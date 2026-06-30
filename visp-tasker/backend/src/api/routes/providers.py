@@ -1572,6 +1572,7 @@ def _v2_status_dict(profile, status_result, has_external_account: bool) -> dict[
             "capabilities": status_result.capabilities,
             "payoutsEnabled": status_result.payouts_enabled,
             "detailsSubmitted": status_result.details_submitted,
+            "disabledReason": status_result.disabled_reason,
             "hasExternalAccount": has_external_account,
             "identitySessionId": profile.stripe_identity_session_id,
         }
@@ -1899,7 +1900,7 @@ async def get_payouts_v2_status(
     db: DBSession,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    from src.integrations.stripe.connectV2Service import get_account_status
+    from src.integrations.stripe.connectV2Service import finalize_and_get_status
     from src.integrations.stripe.paymentService import PaymentError
 
     profile = await _get_my_provider_profile(db, user)
@@ -1912,13 +1913,18 @@ async def get_payouts_v2_status(
                 "capabilities": {},
                 "payoutsEnabled": False,
                 "detailsSubmitted": False,
+                "disabledReason": None,
                 "hasExternalAccount": False,
                 "identitySessionId": None,
             }
         }
 
     try:
-        result = await get_account_status(profile.stripe_account_id)
+        # Synchronously finalize: if stuck on identity_doc and a verified Identity
+        # session exists, attach the document to the account, then re-read.
+        result = await finalize_and_get_status(
+            profile.stripe_account_id, profile.stripe_identity_session_id
+        )
         profile.stripe_onboarding_step = result.onboarding_step
         profile.stripe_requirements_due = result.requirements_due
         profile.stripe_capabilities = result.capabilities
@@ -1943,6 +1949,47 @@ async def get_payouts_v2_status(
     return _v2_status_dict(
         profile, result, has_external_account=bool(profile.stripe_external_account_id),
     )
+
+
+@router.post(
+    "/payouts/v2/onboarding-link",
+    summary="Hosted Stripe onboarding link to finish verification (incl. liveness)",
+    description=(
+        "Creates a short-lived Stripe-hosted account_onboarding link for the "
+        "provider's connected account. Required for requirements the native "
+        "flow cannot satisfy — notably individual.verification.proof_of_liveness "
+        "— which Stripe only clears through its hosted verification (selfie/"
+        "liveness). In test mode the hosted page completes with test data."
+    ),
+)
+async def create_payouts_v2_onboarding_link(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from src.integrations.stripe.payoutService import create_account_link
+    from src.integrations.stripe.paymentService import PaymentError
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first.",
+        )
+
+    try:
+        url = await create_account_link(
+            account_id=profile.stripe_account_id,
+            refresh_url=_STRIPE_CONNECT_REFRESH_URL,
+            return_url=_STRIPE_CONNECT_RETURN_URL,
+        )
+    except PaymentError as exc:
+        logger.error("create_payouts_v2_onboarding_link Stripe error: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not create onboarding link: {exc}",
+        )
+
+    return {"data": {"url": url}}
 
 
 @router.get(
