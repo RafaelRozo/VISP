@@ -39,9 +39,10 @@ def _member_to_out(m):
     }
 
 
-def _company_to_out(company, enabled_task_ids):
+def _company_to_out(company, enabled_task_ids, enabled_services=None):
     return {
         "data": {
+            "services": enabled_services or [],
             "id": str(company.id),
             "legal_name": company.legal_name,
             "trade_name": company.trade_name,
@@ -78,7 +79,8 @@ async def get_my_company(db: DBSession, user: CurrentUser):
     if company is None:
         raise HTTPException(status_code=404, detail="No company for this user.")
     enabled = await company_service.get_enabled_task_ids(db, company.id)
-    return _company_to_out(company, enabled)
+    services = await company_service.get_enabled_services(db, company.id)
+    return _company_to_out(company, enabled, services)
 
 
 @router.post("/me/documents", status_code=status.HTTP_201_CREATED)
@@ -114,8 +116,22 @@ async def set_services(db: DBSession, user: CurrentUser, payload: CompanyService
     company = await company_service.get_my_company(db, user)
     if company is None:
         raise HTTPException(status_code=404, detail="No company for this user.")
-    enabled = await company_service.set_services(db, company, all_tasks=payload.all, task_ids=payload.task_ids)
-    return {"data": {"enabled_task_ids": [str(t) for t in enabled]}}
+    try:
+        enabled = await company_service.set_services(
+            db, company, all_tasks=payload.all, task_ids=payload.task_ids, services=payload.services,
+        )
+    except company_service.CompanyRateOutOfRangeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "price_out_of_range",
+                "taskId": str(exc.task_id),
+                "minCents": exc.min_cents,
+                "maxCents": exc.max_cents,
+            },
+        )
+    services = await company_service.get_enabled_services(db, company.id)
+    return {"data": {"enabled_task_ids": [str(t) for t in enabled], "services": services}}
 
 
 @router.post("/me/invites", status_code=status.HTTP_201_CREATED)

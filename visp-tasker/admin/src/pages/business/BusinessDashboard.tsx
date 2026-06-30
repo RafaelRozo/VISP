@@ -550,6 +550,14 @@ function ServicesSection({ company, onSaved }: { company: Company; onSaved: () =
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set(company.enabled_task_ids));
+  // Company's own price per service (dollars string), seeded from saved rates.
+  const [rates, setRates] = useState<Map<string, string>>(() => {
+    const m = new Map<string, string>();
+    (company.services ?? []).forEach((s) => {
+      if (s.rateCents != null) m.set(s.taskId, (s.rateCents / 100).toFixed(2));
+    });
+    return m;
+  });
 
   useEffect(() => {
     void (async () => {
@@ -587,11 +595,23 @@ function ServicesSection({ company, onSaved }: { company: Company; onSaved: () =
     setSaving(true);
     setError(null);
     try {
-      const res = await businessService.setServices(false, Array.from(selected));
+      const services = Array.from(selected).map((taskId) => {
+        const raw = rates.get(taskId);
+        const rateCents = raw && raw.trim() !== '' ? Math.round(parseFloat(raw) * 100) : null;
+        return { taskId, rateCents };
+      });
+      const res = await businessService.setServices(services);
       setSelected(new Set(res.enabled_task_ids));
       onSaved();
-    } catch {
-      setError('Could not save services.');
+    } catch (e: any) {
+      const d = e?.response?.data?.detail;
+      if (d?.error === 'price_out_of_range') {
+        const lo = d.minCents != null ? `$${(d.minCents / 100).toFixed(0)}` : '—';
+        const hi = d.maxCents != null ? `$${(d.maxCents / 100).toFixed(0)}` : '—';
+        setError(`A price is outside the allowed range (${lo}–${hi}). Adjust it and save again.`);
+      } else {
+        setError('Could not save services.');
+      }
     } finally {
       setSaving(false);
     }
@@ -698,34 +718,76 @@ function ServicesSection({ company, onSaved }: { company: Company; onSaved: () =
                     gap: 8,
                   }}
                 >
-                  {cat.tasks.map((task) => (
-                    <label
+                  {cat.tasks.map((task) => {
+                    const isSel = selected.has(task.id);
+                    const lo = task.base_price_min_cents != null ? (task.base_price_min_cents / 100).toFixed(0) : null;
+                    const hi = task.base_price_max_cents != null ? (task.base_price_max_cents / 100).toFixed(0) : null;
+                    return (
+                    <div
                       key={task.id}
                       style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        fontSize: 13.5,
-                        color: 'var(--t-text-2)',
-                        cursor: 'pointer',
+                        flexDirection: 'column',
+                        gap: 6,
+                        padding: '8px 10px',
+                        border: '1px solid var(--t-border)',
+                        borderRadius: 8,
+                        background: isSel ? 'var(--t-deep)' : 'transparent',
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(task.id)}
-                        onChange={() => toggle(task.id)}
-                      />
-                      <span>
-                        {task.name}
-                        <span
-                          className="t-mono"
-                          style={{ marginLeft: 6, fontSize: 10, color: 'var(--t-text-4)' }}
-                        >
-                          L{task.level}
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          fontSize: 13.5,
+                          color: 'var(--t-text-2)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => toggle(task.id)}
+                        />
+                        <span>
+                          {task.name}
+                          <span
+                            className="t-mono"
+                            style={{ marginLeft: 6, fontSize: 10, color: 'var(--t-text-4)' }}
+                          >
+                            L{task.level}
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                  ))}
+                      </label>
+                      {isSel && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 24 }}>
+                          <span style={{ color: 'var(--t-text-3)', fontSize: 12 }}>$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="t-input"
+                            style={{ height: 30, width: 92 }}
+                            placeholder={lo && hi ? `${lo}–${hi}` : 'price'}
+                            value={rates.get(task.id) ?? ''}
+                            onChange={(e) =>
+                              setRates((prev) => {
+                                const n = new Map(prev);
+                                n.set(task.id, e.target.value);
+                                return n;
+                              })
+                            }
+                          />
+                          <span style={{ color: 'var(--t-text-4)', fontSize: 11 }}>
+                            {task.pricing_unit ? `/${task.pricing_unit}` : ''}
+                            {lo && hi ? `  (allowed $${lo}–$${hi})` : ''}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

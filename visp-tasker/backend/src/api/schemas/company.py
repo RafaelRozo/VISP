@@ -45,11 +45,20 @@ class CompanyOut(BaseModel):
     enabled_task_ids: list[uuid.UUID] = []
 
 
+class CompanyServiceRateIn(BaseModel):
+    """One enabled service + the company's own price for it (B2B pricing).
+    ``rate_cents`` null = enabled but not priced yet."""
+    task_id: uuid.UUID
+    rate_cents: Optional[int] = None
+
+
 class CompanyServicesIn(BaseModel):
-    """Set enabled services. If ``all`` is true, every catalog task is enabled
-    and ``task_ids`` is ignored."""
+    """Set enabled services. If ``all`` is true, every catalog task is enabled.
+    When ``services`` is provided it takes precedence (enable + per-task price);
+    otherwise ``task_ids`` enables without prices (back-compat)."""
     all: bool = False
     task_ids: list[uuid.UUID] = []
+    services: Optional[list[CompanyServiceRateIn]] = None
 
 
 class CompanyInviteIn(BaseModel):

@@ -78,6 +78,13 @@ export interface Company {
   members: CompanyMember[];
   documents: CompanyDocument[];
   enabled_task_ids: string[];
+  services?: CompanyServicePrice[];
+}
+
+export interface CompanyServicePrice {
+  taskId: string;
+  rateCents: number | null;
+  unit: string | null;
 }
 
 export interface CompanyCreateBody {
@@ -118,6 +125,9 @@ export interface CatalogTask {
   description?: string | null;
   level: string;
   category_id: string;
+  base_price_min_cents?: number | null;
+  base_price_max_cents?: number | null;
+  pricing_unit?: string | null;
 }
 
 export interface CatalogCategory {
@@ -169,10 +179,10 @@ export const businessService = {
 
   submitForReview: () => bizPost<{ status: CompanyStatus }>('/companies/me/submit'),
 
-  setServices: (all: boolean, taskIds: string[]) =>
-    bizPut<{ enabled_task_ids: string[] }>('/companies/me/services', {
-      all,
-      task_ids: taskIds,
+  setServices: (services: { taskId: string; rateCents: number | null }[]) =>
+    bizPut<{ enabled_task_ids: string[]; services: CompanyServicePrice[] }>('/companies/me/services', {
+      all: false,
+      services: services.map((s) => ({ task_id: s.taskId, rate_cents: s.rateCents })),
     }),
 
   createInvite: (email: string, role: CompanyRole = 'collaborator') =>

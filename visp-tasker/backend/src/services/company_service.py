@@ -125,22 +125,86 @@ async def submit_for_review(db: AsyncSession, company: Company) -> Company:
     return company
 
 
-async def set_services(db: AsyncSession, company: Company, *, all_tasks: bool, task_ids: list[uuid.UUID]) -> list[uuid.UUID]:
-    """Replace the company's enabled services."""
+class CompanyRateOutOfRangeError(Exception):
+    """A company price falls outside the task's catalog guardrail (4xx)."""
+
+    def __init__(self, task_id: uuid.UUID, min_cents: Optional[int], max_cents: Optional[int]) -> None:
+        self.task_id = task_id
+        self.min_cents = min_cents
+        self.max_cents = max_cents
+        super().__init__(
+            f"Price for task {task_id} must be within {min_cents}..{max_cents} cents."
+        )
+
+
+async def set_services(
+    db: AsyncSession,
+    company: Company,
+    *,
+    all_tasks: bool,
+    task_ids: list[uuid.UUID],
+    services: Optional[list] = None,
+) -> list[uuid.UUID]:
+    """Replace the company's enabled services (B2B). When ``services`` is given
+    (objects with ``task_id`` + optional ``rate_cents``) it sets the company's
+    own price per service, clamped to the task's base_price_min/max guardrail;
+    ``unit`` is snapshotted from the task. Otherwise enables ``task_ids`` (or all)
+    without prices.
+
+    Raises CompanyRateOutOfRangeError when a rate is outside the guardrail.
+    """
+    if services is not None:
+        pairs = [(s.task_id, s.rate_cents) for s in services]
+    elif all_tasks:
+        ids_result = await db.execute(select(ServiceTask.id))
+        pairs = [(row[0], None) for row in ids_result.all()]
+    else:
+        pairs = [(tid, None) for tid in task_ids]
+
+    # Load the tasks we need to price (clamp + unit snapshot).
+    priced_ids = [tid for tid, rate in pairs if rate is not None]
+    tasks_by_id: dict[uuid.UUID, ServiceTask] = {}
+    if priced_ids:
+        rows = (
+            await db.execute(select(ServiceTask).where(ServiceTask.id.in_(priced_ids)))
+        ).scalars().all()
+        tasks_by_id = {t.id: t for t in rows}
+
     existing = await db.execute(
         select(CompanyService).where(CompanyService.company_id == company.id)
     )
     for row in existing.scalars().all():
         await db.delete(row)
 
-    if all_tasks:
-        ids_result = await db.execute(select(ServiceTask.id))
-        task_ids = [row[0] for row in ids_result.all()]
-
-    for tid in task_ids:
-        db.add(CompanyService(company_id=company.id, task_id=tid))
+    for tid, rate in pairs:
+        unit = None
+        if rate is not None:
+            task = tasks_by_id.get(tid)
+            if task is not None:
+                lo, hi = task.base_price_min_cents, task.base_price_max_cents
+                if (lo is not None and rate < lo) or (hi is not None and rate > hi):
+                    raise CompanyRateOutOfRangeError(tid, lo, hi)
+                unit = task.pricing_unit
+        db.add(CompanyService(company_id=company.id, task_id=tid, rate_cents=rate, unit=unit))
     await db.flush()
-    return task_ids
+    return [tid for tid, _ in pairs]
+
+
+async def get_enabled_services(db: AsyncSession, company_id: uuid.UUID) -> list[dict]:
+    """Enabled services with the company's price (drives the web pricing UI)."""
+    rows = (
+        await db.execute(
+            select(CompanyService).where(CompanyService.company_id == company_id)
+        )
+    ).scalars().all()
+    return [
+        {
+            "taskId": str(r.task_id),
+            "rateCents": r.rate_cents,
+            "unit": r.unit.value if r.unit else None,
+        }
+        for r in rows
+    ]
 
 
 async def create_invite(db: AsyncSession, company: Company, email: str, role: str) -> CompanyInvite:

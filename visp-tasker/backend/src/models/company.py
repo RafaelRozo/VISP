@@ -8,11 +8,12 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from .taxonomy import PricingUnit
 
 if TYPE_CHECKING:
     from .user import User
@@ -154,6 +155,14 @@ class CompanyService(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     task_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("service_tasks.id", ondelete="CASCADE"), nullable=False
     )
+
+    # Company-set price (B2B mirror of provider rates, migration 027). NULL rate
+    # = enabled but not priced yet. unit snapshotted from the task.
+    unit: Mapped[Optional[PricingUnit]] = mapped_column(
+        Enum(PricingUnit, name="pricing_unit", create_type=False), nullable=True
+    )
+    rate_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    min_charge_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     company: Mapped["Company"] = relationship("Company", back_populates="services")
 
