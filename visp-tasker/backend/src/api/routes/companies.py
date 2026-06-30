@@ -49,6 +49,15 @@ def _company_to_out(company, enabled_task_ids, enabled_services=None):
             "status": company.status.value,
             "stripe_account_id": company.stripe_account_id,
             "rejection_reason": company.rejection_reason,
+            # Fiscal address + tax (read-only on the dashboard).
+            "fiscal_address_line1": company.fiscal_address_line1,
+            "fiscal_address_line2": company.fiscal_address_line2,
+            "fiscal_city": company.fiscal_city,
+            "fiscal_province": company.fiscal_province,
+            "fiscal_postal_code": company.fiscal_postal_code,
+            "fiscal_country": company.fiscal_country,
+            "tax_registered": company.tax_registered,
+            "tax_number": company.tax_number,
             "members": [_member_to_out(m) for m in (company.members or [])],
             "documents": [
                 {"id": str(d.id), "doc_type": d.doc_type.value, "status": d.status.value,

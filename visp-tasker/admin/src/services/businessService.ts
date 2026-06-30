@@ -79,6 +79,15 @@ export interface Company {
   documents: CompanyDocument[];
   enabled_task_ids: string[];
   services?: CompanyServicePrice[];
+  // Fiscal address + tax (read-only on the dashboard).
+  fiscal_address_line1?: string | null;
+  fiscal_address_line2?: string | null;
+  fiscal_city?: string | null;
+  fiscal_province?: string | null;
+  fiscal_postal_code?: string | null;
+  fiscal_country?: string | null;
+  tax_registered?: boolean;
+  tax_number?: string | null;
 }
 
 export interface CompanyServicePrice {

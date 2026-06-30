@@ -332,6 +332,9 @@ function OverviewSection({
         <StatCard label="Documents" value={String(company.documents.length)} />
       </div>
 
+      {/* Fiscal address & tax — read-only (on record for jurisdiction/compliance) */}
+      <FiscalCard company={company} />
+
       <SummaryPlaceholder />
     </section>
   );
@@ -346,6 +349,39 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--t-text)', marginTop: 4 }}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function FiscalRow({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--t-border)' }}>
+      <span className="t-label" style={{ color: 'var(--t-text-3)' }}>{label}</span>
+      <span style={{ color: 'var(--t-text)', fontSize: 13.5, textAlign: 'right' }}>{value && String(value).trim() !== '' ? value : '—'}</span>
+    </div>
+  );
+}
+
+function FiscalCard({ company }: { company: Company }) {
+  const addr = [
+    company.fiscal_address_line1,
+    company.fiscal_address_line2,
+    [company.fiscal_city, company.fiscal_province, company.fiscal_postal_code].filter(Boolean).join(', '),
+    company.fiscal_country,
+  ].filter((x) => x && String(x).trim() !== '').join(' · ');
+  return (
+    <div className="t-card-base" style={{ padding: '18px 20px', marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span className="t-eyebrow">§ Fiscal address &amp; tax</span>
+        <span className="t-chip t-chip-mono" style={{ color: 'var(--t-text-3)' }}>Read-only</span>
+      </div>
+      <p className="t-meta" style={{ margin: '0 0 12px' }}>
+        On record for jurisdiction and compliance. You declare your own earnings; these can’t be edited here.
+      </p>
+      <FiscalRow label="Fiscal address" value={addr} />
+      <FiscalRow label="Province" value={company.fiscal_province} />
+      <FiscalRow label="GST/HST registered" value={company.tax_registered ? 'Yes' : 'No'} />
+      {company.tax_registered ? <FiscalRow label="GST/HST number" value={company.tax_number} /> : null}
     </div>
   );
 }
