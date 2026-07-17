@@ -653,6 +653,44 @@ async def list_payment_methods(
 # Payment status
 # ---------------------------------------------------------------------------
 
+def account_can_accept_charges(account_id: str) -> tuple[bool, str | None]:
+    """Return whether ``account_id`` can settle a destination charge as MoR.
+
+    Our job authorization is a destination charge with ``on_behalf_of`` set, which
+    makes the connected account the settlement merchant — Stripe therefore requires
+    the ``card_payments`` capability *active* on that account (plus ``transfers`` to
+    receive the payout). A provider who hasn't finished onboarding has these
+    ``inactive``/absent, so the charge would fail with a cryptic Stripe error.
+    This lets the caller raise a clean 4xx instead.
+
+    Returns ``(ready, reason)`` where ``reason`` is the first missing requirement
+    (``"card_payments"`` / ``"transfers"`` / ``"charges_disabled"``) or ``None``
+    when ready. On a Stripe API error we fail OPEN (``True``) so a transient outage
+    never blocks a legitimate booking — the charge itself remains the backstop.
+    """
+    try:
+        account = stripe.Account.retrieve(account_id)
+    except stripe.StripeError as exc:
+        logger.warning("account_can_accept_charges: retrieve failed for %s: %s", account_id, exc)
+        return True, None
+
+    caps = getattr(account, "capabilities", None) or {}
+
+    def _cap(key: str) -> str | None:
+        try:
+            return caps[key]
+        except Exception:  # noqa: BLE001 — StripeObject/absent key
+            return None
+
+    if _cap("card_payments") != "active":
+        return False, "card_payments"
+    if _cap("transfers") != "active":
+        return False, "transfers"
+    if not bool(getattr(account, "charges_enabled", False)):
+        return False, "charges_disabled"
+    return True, None
+
+
 async def get_payment_status(payment_intent_id: str) -> str:
     """Retrieve the current status of a PaymentIntent.
 

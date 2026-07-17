@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Config } from '@/services/config';
 import LangSwitcher from '@/components/LangSwitcher';
 import './Landing.css';
@@ -5,34 +6,67 @@ import './Landing.css';
 const REQUEST_URL = Config.appStoreUrl;
 const PROVIDER_URL = Config.appStoreUrl;
 
+const NAV_LINKS = [
+  { href: '#how', label: 'How It Works' },
+  { href: '#customers', label: 'Customers' },
+  { href: '#providers', label: 'Providers' },
+  { href: '#pricing', label: 'Pricing' },
+  { href: '#safety', label: 'Safety' },
+  { href: '#faq', label: 'FAQ' },
+];
+
 export default function Landing() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = () => setMenuOpen(false);
+
   return (
     <div className="visp-landing" id="top">
       <SvgSprite />
 
       {/* ============ HEADER ============ */}
-      <header className="header">
+      <header className={`header ${menuOpen ? 'menu-open' : ''}`}>
         <div className="wrap header-inner">
-          <a href="#top" className="logo">
+          <a href="#top" className="logo" onClick={closeMenu}>
             <svg className="logo-mark"><use href="#visp-mark" /></svg>
             <span className="logo-text">VISP</span>
             <span className="logo-sub">Verified Independent Service Providers</span>
           </a>
-          <nav className="nav">
-            <a href="#how">How It Works</a>
-            <a href="#customers">Customers</a>
-            <a href="#providers">Providers</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#safety">Safety</a>
-            <a href="#faq">FAQ</a>
+          <nav className={`nav ${menuOpen ? 'nav-open' : ''}`}>
+            {NAV_LINKS.map((l) => (
+              <a key={l.href} href={l.href} onClick={closeMenu}>{l.label}</a>
+            ))}
+            {/* Mobile-only actions surfaced inside the dropdown */}
+            <a href="/business/register" className="nav-mobile-only nav-cta-line" onClick={closeMenu}>
+              Register for Business
+            </a>
+            <a
+              href={REQUEST_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="nav-mobile-only btn btn-primary nav-cta-btn"
+              onClick={closeMenu}
+            >
+              Request a Job
+            </a>
           </nav>
           <div className="header-cta">
             <a href="/business/register" className="btn btn-secondary">Register for Business</a>
             <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary">Request a Job</a>
             <div className="header-lang"><LangSwitcher /></div>
+            <button
+              type="button"
+              className="menu-toggle"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              <span /><span /><span />
+            </button>
           </div>
         </div>
       </header>
+      {/* Tap-away backdrop closes the mobile menu */}
+      {menuOpen && <div className="nav-backdrop" onClick={closeMenu} aria-hidden="true" />}
 
       {/* ============ HERO ============ */}
       <section className="hero" id="hero">
@@ -612,7 +646,7 @@ export default function Landing() {
                 <li><a href="#providers">Become a Provider</a></li>
                 <li><a href="#pricing">Provider Pricing</a></li>
                 <li><a href="#safety">Verification</a></li>
-                <li><a href="https://vispapp.com/legal/terms" target="_blank" rel="noreferrer">Provider Resources</a></li>
+                <li><a href="/legal/terms">Provider Terms</a></li>
               </ul>
             </div>
             <div>
@@ -629,8 +663,8 @@ export default function Landing() {
               <ul>
                 <li><a href="#faq">FAQ</a></li>
                 <li><a href="mailto:hello@vispapp.com">Contact</a></li>
-                <li><a href="https://vispapp.com/legal/privacy" target="_blank" rel="noreferrer">Privacy</a></li>
-                <li><a href="https://vispapp.com/legal/terms" target="_blank" rel="noreferrer">Terms</a></li>
+                <li><a href="/legal/privacy">Privacy</a></li>
+                <li><a href="/legal/terms">Terms</a></li>
               </ul>
             </div>
           </div>

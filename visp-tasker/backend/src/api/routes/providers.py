@@ -673,6 +673,13 @@ async def arrive_at_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found.",
         )
+    except jobService.JobStartNotAllowedError as exc:
+        # Not yet on-site / not yet the scheduled time — surface the human reason
+        # (the app reads `detail` as a string and shows it to the provider).
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=exc.reason,
+        )
     except jobService.InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

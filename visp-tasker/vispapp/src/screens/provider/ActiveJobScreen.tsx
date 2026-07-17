@@ -326,7 +326,7 @@ const STATUS_FLOW_LABELS: Record<string, string> = {
 const NEXT_STATUS_ACTIONS: Record<string, { label: string; next: JobStatus }> = {
   scheduled: { label: 'Start Route', next: 'en_route' },
   accepted: { label: 'Start Route', next: 'en_route' },
-  en_route: { label: 'Arrived', next: 'in_progress' },
+  en_route: { label: "I've Arrived — Start Job", next: 'in_progress' },
   in_progress: { label: 'Complete Job', next: 'completed' },
 };
 
@@ -434,6 +434,20 @@ export default function ActiveJobScreen(): React.JSX.Element {
     fetchSchedule();
   }, [fetchSchedule]);
 
+  // Attempt to start the job (en_route → in_progress). The backend enforces two
+  // preconditions and returns a 409 with a clear reason when they aren't met:
+  //   • the scheduled time hasn't arrived yet, or
+  //   • the provider isn't at the customer's location (GPS geofence).
+  // arriveAtJob stores that reason in `error`; surface it as an Alert so the
+  // provider knows exactly why they can't start and can retry once on-site/on-time.
+  const doArrive = useCallback(async (id: string) => {
+    await arriveAtJob(id);
+    const err = useProviderStore.getState().error;
+    if (err) {
+      Alert.alert("You can't start this job yet", err, [{ text: 'OK' }]);
+    }
+  }, [arriveAtJob]);
+
   // ── Status update flow (preserved) ──
   const handleStatusUpdate = useCallback(async () => {
     if (!activeJob) return;
@@ -455,7 +469,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
               setLegalAcknowledged(true);
               setIsUpdating(true);
               try {
-                await arriveAtJob(activeJob.id);
+                await doArrive(activeJob.id);
               } finally {
                 setIsUpdating(false);
               }
@@ -479,7 +493,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
           setIsUpdating(true);
           try {
             if (action.next === 'en_route') await startNavigation(activeJob.id);
-            else if (action.next === 'in_progress') await arriveAtJob(activeJob.id);
+            else if (action.next === 'in_progress') await doArrive(activeJob.id);
             else if (action.next === 'completed') {
               await completeJob(activeJob.id);
               navigation.goBack();
@@ -490,7 +504,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
         },
       },
     ]);
-  }, [activeJob, startNavigation, arriveAtJob, completeJob, navigation, legalAcknowledged]);
+  }, [activeJob, startNavigation, arriveAtJob, completeJob, doArrive, navigation, legalAcknowledged]);
 
   // ── Open deep view ──
   const handleOpenJob = useCallback(
