@@ -837,15 +837,27 @@ async def get_job_tracking(
                 provider_lat = provider.user.last_latitude
                 provider_lng = provider.user.last_longitude
 
-                # Rough ETA based on distance
-                distance = haversine_distance(
-                    float(provider_lat),
-                    float(provider_lng),
-                    float(job.service_latitude),
-                    float(job.service_longitude),
-                )
-                # Assume average 40 km/h in urban areas
-                eta_minutes = max(1, int(distance / 40 * 60))
+                # ETA from real Mapbox driving directions; calculate_eta falls
+                # back to haversine × 1.3 internally if the Directions API is
+                # unavailable, and we guard the whole call so tracking never
+                # breaks on a maps outage.
+                try:
+                    from src.integrations.maps import calculate_eta
+
+                    eta_minutes = max(1, await calculate_eta(
+                        float(provider_lat),
+                        float(provider_lng),
+                        float(job.service_latitude),
+                        float(job.service_longitude),
+                    ))
+                except Exception:  # noqa: BLE001 — last-resort straight-line ETA
+                    distance = haversine_distance(
+                        float(provider_lat),
+                        float(provider_lng),
+                        float(job.service_latitude),
+                        float(job.service_longitude),
+                    )
+                    eta_minutes = max(1, int(distance / 40 * 60))
             elif assignment.estimated_arrival_min:
                 eta_minutes = assignment.estimated_arrival_min
 

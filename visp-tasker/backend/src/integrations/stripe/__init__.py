@@ -35,6 +35,7 @@ from .paymentService import (
     PaymentIntentResult,
     PaymentMethodInfo,
     RefundResult,
+    account_can_accept_charges,
     attach_payment_method,
     cancel_payment,
     capture_job_payment,
@@ -94,6 +95,7 @@ __all__ = [
     "attach_payment_method",
     "list_payment_methods",
     "get_payment_status",
+    "account_can_accept_charges",
     # Payout Service
     "ConnectedAccountResult",
     "AccountStatus",

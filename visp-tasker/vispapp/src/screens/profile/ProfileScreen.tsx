@@ -22,11 +22,13 @@ import {
   ActionSheetIOS,
   Alert,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   ViewStyle,
 } from 'react-native';
@@ -115,6 +117,34 @@ export default function ProfileScreen(): React.JSX.Element {
   const { providerProfile, earnings } = useProviderStore();
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  // Edit-name modal.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editFirst, setEditFirst] = useState('');
+  const [editLast, setEditLast] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  const openEditName = useCallback(() => {
+    setEditFirst(user?.firstName ?? '');
+    setEditLast(user?.lastName ?? '');
+    setEditOpen(true);
+  }, [user?.firstName, user?.lastName]);
+
+  const saveName = useCallback(async () => {
+    if (!user) return;
+    setSavingName(true);
+    try {
+      const updated = await userService.updateProfile({
+        firstName: editFirst.trim(),
+        lastName: editLast.trim(),
+      });
+      setUser({ ...user, ...updated });
+      setEditOpen(false);
+    } catch (err) {
+      Alert.alert(tr('common.error'), tr('common.tryAgain'));
+    } finally {
+      setSavingName(false);
+    }
+  }, [user, editFirst, editLast, setUser, tr]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodInfo[]>([]);
   // Kept to preserve original side-effect parity. The screen no longer renders
   // raw loading spinners for payment-method fetches — the menu surface stays
@@ -366,6 +396,14 @@ export default function ProfileScreen(): React.JSX.Element {
               >
                 {user.firstName} {user.lastName}
               </Text>
+              {user.email ? (
+                <Text
+                  style={[VispText.body, { color: t.text2, marginTop: 2 }]}
+                  numberOfLines={1}
+                >
+                  {user.email}
+                </Text>
+              ) : null}
               <Text
                 style={[VispText.eyebrow, { color: t.text3, marginTop: 4 }]}
                 numberOfLines={1}
@@ -374,7 +412,7 @@ export default function ProfileScreen(): React.JSX.Element {
               </Text>
             </View>
             <Pressable
-              onPress={handleChangeAvatar}
+              onPress={openEditName}
               style={[styles.editPill, { backgroundColor: t.deep, borderColor: t.border }]}
               accessibilityRole="button"
               accessibilityLabel={tr('profileScreen.edit')}
@@ -519,6 +557,55 @@ export default function ProfileScreen(): React.JSX.Element {
           {tr('profileScreen.appVersion', { version: '1.0.0', build: '10' })}
         </Text>
       </ScrollView>
+
+      {/* Edit name modal */}
+      <Modal visible={editOpen} transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => !savingName && setEditOpen(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.border }]} onPress={() => {}}>
+            <Text style={[VispText.headlineMid, { color: t.text, marginBottom: 12 }]}>
+              {tr('profileScreen.editName') || 'Edit name'}
+            </Text>
+            <Text style={[VispText.eyebrow, { color: t.text3, marginBottom: 4 }]}>{tr('profileScreen.firstName') || 'First name'}</Text>
+            <TextInput
+              style={[styles.modalInput, { color: t.text, borderColor: t.border, backgroundColor: t.deep }]}
+              value={editFirst}
+              onChangeText={setEditFirst}
+              placeholder={tr('profileScreen.firstName') || 'First name'}
+              placeholderTextColor={t.text4}
+              editable={!savingName}
+            />
+            <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 12, marginBottom: 4 }]}>{tr('profileScreen.lastName') || 'Last name'}</Text>
+            <TextInput
+              style={[styles.modalInput, { color: t.text, borderColor: t.border, backgroundColor: t.deep }]}
+              value={editLast}
+              onChangeText={setEditLast}
+              placeholder={tr('profileScreen.lastName') || 'Last name'}
+              placeholderTextColor={t.text4}
+              editable={!savingName}
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <Pressable
+                style={[styles.modalBtn, { borderColor: t.border, flex: 1 }]}
+                onPress={() => setEditOpen(false)}
+                disabled={savingName}
+              >
+                <Text style={[VispText.chip, { color: t.text2 }]}>{tr('common.cancel') || 'Cancel'}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, { backgroundColor: t.text, borderColor: t.text, flex: 1, opacity: savingName ? 0.6 : 1 }]}
+                onPress={saveName}
+                disabled={savingName}
+              >
+                {savingName ? (
+                  <AnimatedSpinner size={18} color={t.bg} />
+                ) : (
+                  <Text style={[VispText.chip, { color: t.bg }]}>{tr('common.save') || 'Save'}</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -528,6 +615,10 @@ export default function ProfileScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 24 },
+  modalCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 22 },
+  modalInput: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
+  modalBtn: { paddingVertical: 13, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   scroll: { flex: 1 },
   contentContainer: {
     paddingHorizontal: VispSpace.gutter,

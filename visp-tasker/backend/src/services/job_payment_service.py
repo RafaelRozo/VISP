@@ -52,6 +52,20 @@ class ProviderNotPayableError(Exception):
     """The job's provider/company has no Stripe Connect account to receive funds."""
 
 
+class ProviderPaymentSetupIncompleteError(Exception):
+    """The job's provider/company has a Stripe account but it can't yet settle a
+    destination charge (``card_payments``/``transfers`` not active, or charges
+    disabled) — they must finish Stripe onboarding first. Carries the account id
+    and the first missing requirement so the route can surface a clear message."""
+
+    def __init__(self, account_id: str, reason: str | None) -> None:
+        self.account_id = account_id
+        self.reason = reason
+        super().__init__(
+            f"Connected account {account_id} cannot accept charges yet (missing: {reason})."
+        )
+
+
 class PaymentNotAuthorizedError(Exception):
     """Capture was requested but the job has no held authorization."""
 
@@ -147,6 +161,16 @@ async def authorize_job(
     destination = await _resolve_destination_account(db, job)
     if not destination:
         raise ProviderNotPayableError(str(job.id))
+
+    # Gate: our destination charge sets on_behalf_of=destination, so Stripe treats
+    # that connected account as the settlement merchant and requires card_payments
+    # (+transfers) active. Verify BEFORE creating the PaymentIntent so an unfinished
+    # provider onboarding yields a clean 4xx instead of a cryptic Stripe failure.
+    from src.integrations.stripe import account_can_accept_charges
+
+    ready, reason = account_can_accept_charges(destination)
+    if not ready:
+        raise ProviderPaymentSetupIncompleteError(destination, reason)
 
     auth_amount = _buffered_authorization_cents(total)
     # On a destination charge the platform retains application_fee and pays

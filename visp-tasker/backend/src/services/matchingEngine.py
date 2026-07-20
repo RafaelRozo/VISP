@@ -201,9 +201,20 @@ async def _has_active_on_call_shift(
     return count > 0
 
 
-# ---------------------------------------------------------------------------
-# Candidate evaluation pipeline
-# ---------------------------------------------------------------------------
+def _payments_capability_blocks(provider: ProviderProfile) -> bool:
+    """True when the provider's cached Stripe capabilities show they CANNOT settle
+    a charge yet, so they must not be offered/shown as available.
+
+    Dev-safe: blocks only on positive evidence of not-ready. An empty/absent
+    ``stripe_capabilities`` (webhooks not delivered locally, or provider never
+    onboarded) is treated as UNKNOWN → allowed here; the live gate in
+    ``job_payment_service.authorize_job`` is the hard backstop at charge time.
+    """
+    caps = provider.stripe_capabilities or {}
+    if not isinstance(caps, dict) or not caps:
+        return False  # unknown → don't block
+    return caps.get("card_payments") != "active"
+
 
 async def _evaluate_candidate(
     db: AsyncSession,
@@ -278,6 +289,13 @@ async def _evaluate_candidate(
         )
         if not has_emergency_insurance:
             return None
+
+    # Hard filter 7: Payment readiness — a provider whose Stripe onboarding is
+    # known-incomplete (card_payments not active) can't be charged, so don't offer
+    # them the job. Unknown/empty capabilities pass here (see helper) and are caught
+    # by the live gate at authorize time.
+    if _payments_capability_blocks(provider):
+        return None
 
     return {
         "provider": provider,

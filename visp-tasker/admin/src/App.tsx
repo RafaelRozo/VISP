@@ -8,6 +8,8 @@ import BusinessLogin from '@/pages/business/BusinessLogin';
 import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import StripeReturn from '@/pages/public/StripeReturn';
 import StripeRefresh from '@/pages/public/StripeRefresh';
+import LegalPage from '@/pages/public/LegalPage';
+import { TERMS, PRIVACY } from '@/pages/public/legalContent';
 import Login from '@/pages/auth/Login';
 import RedeemInvite from '@/pages/auth/RedeemInvite';
 import RedeemReset from '@/pages/auth/RedeemReset';
@@ -53,6 +55,8 @@ export default function App() {
     <Routes>
       {/* Public landing (also Stripe return target) */}
       <Route path="/" element={<Landing />} />
+      <Route path="/legal/terms" element={<LegalPage doc={TERMS} />} />
+      <Route path="/legal/privacy" element={<LegalPage doc={PRIVACY} />} />
       <Route path="/stripe/return" element={<StripeReturn />} />
       <Route path="/stripe/refresh" element={<StripeRefresh />} />
 

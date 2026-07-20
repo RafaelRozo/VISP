@@ -654,6 +654,11 @@ async def update_job_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         )
+    except jobService.JobStartNotAllowedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=exc.reason,
+        )
     except jobService.InvalidTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -769,6 +774,11 @@ async def mobile_update_job_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
+        )
+    except jobService.JobStartNotAllowedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=exc.reason,
         )
     except jobService.InvalidTransitionError as exc:
         raise HTTPException(
@@ -1222,6 +1232,15 @@ async def authorize_payment(
         raise HTTPException(status_code=409, detail="Job has no agreed total to charge yet")
     except jp.ProviderNotPayableError:
         raise HTTPException(status_code=409, detail="Provider has no payout account configured")
+    except jp.ProviderPaymentSetupIncompleteError:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This professional hasn't finished setting up payments yet, so the "
+                "job can't be charged. Please choose another provider or try again "
+                "once they complete their payout setup."
+            ),
+        )
     except PaymentError as exc:
         raise HTTPException(status_code=400, detail=f"Payment authorization failed: {exc}")
 

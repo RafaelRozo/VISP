@@ -27,7 +27,7 @@ import random
 import string
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional, Sequence
 
@@ -102,6 +102,26 @@ class InvalidTransitionError(Exception):
     def __init__(self, reason: str) -> None:
         self.reason = reason
         super().__init__(reason)
+
+
+class JobStartNotAllowedError(Exception):
+    """A provider tried to start (IN_PROGRESS) before the start preconditions are
+    met: it isn't yet the scheduled time, or they haven't arrived at the customer's
+    service location. ``code`` is ``"scheduled_time"`` or ``"not_arrived"`` so the
+    route can surface a specific 4xx message."""
+
+    def __init__(self, code: str, reason: str) -> None:
+        self.code = code
+        self.reason = reason
+        super().__init__(reason)
+
+
+# Start-precondition tuning (2026-07-17 requirement: provider may only start once
+# they're at the customer's location AND the scheduled time has arrived).
+# Emergencies (L4 / is_emergency) are exempt from the TIME gate but still must be
+# on-site. A small grace lets a provider who arrived early begin without friction.
+START_ARRIVAL_RADIUS_M = 150.0
+START_SCHEDULE_GRACE_MIN = 15
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +381,85 @@ async def create_job(
     return job
 
 
+async def _enforce_start_preconditions(db: AsyncSession, job: Job, now: datetime) -> None:
+    """Guard the provider-initiated IN_PROGRESS transition (2026-07-17 requirement).
+
+    A provider may only start the work when BOTH hold:
+
+    * **Scheduled time** — ``now`` is at/after the booked slot (minus a
+      ``START_SCHEDULE_GRACE_MIN`` grace). Skipped for emergencies (L4 /
+      ``is_emergency``) and for jobs with no requested date (start-now bookings).
+    * **On-site** — the provider's last known GPS fix is within
+      ``START_ARRIVAL_RADIUS_M`` of the job's service location. Applies to every
+      job, emergencies included. A missing fix counts as not-arrived.
+
+    Raises :class:`JobStartNotAllowedError` with a ``code`` the route maps to 409.
+    """
+    from src.models.job import AssignmentStatus, JobAssignment
+    from src.models.provider import ProviderProfile
+    from src.services.geoService import haversine_distance
+
+    task = await db.get(ServiceTask, job.task_id)
+    is_emergency = bool(job.is_emergency) or (task is not None and task.level == ProviderLevel.LEVEL_4)
+
+    # --- Time gate (emergencies + start-now bookings exempt) ---
+    if not is_emergency and job.requested_date is not None:
+        slot_time = job.requested_time_start or time(0, 0)
+        scheduled = datetime.combine(job.requested_date, slot_time, tzinfo=timezone.utc)
+        earliest = scheduled - timedelta(minutes=START_SCHEDULE_GRACE_MIN)
+        if now < earliest:
+            raise JobStartNotAllowedError(
+                "scheduled_time",
+                f"This job is scheduled for {scheduled.isoformat()}; it can't be "
+                f"started before then.",
+            )
+
+    # --- Arrival gate (all jobs) ---
+    assignment = (
+        await db.execute(
+            select(JobAssignment).where(
+                JobAssignment.job_id == job.id,
+                JobAssignment.status == AssignmentStatus.ACCEPTED,
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    provider = (
+        await db.get(ProviderProfile, assignment.provider_id) if assignment else None
+    )
+    # The provider's last known location lives on their User record.
+    prov_lat = prov_lng = None
+    if provider is not None:
+        prov_user = await _load_provider_user(db, provider)
+        if prov_user is not None:
+            prov_lat = prov_user.last_latitude
+            prov_lng = prov_user.last_longitude
+
+    if prov_lat is None or prov_lng is None:
+        raise JobStartNotAllowedError(
+            "not_arrived",
+            "We can't confirm you've arrived at the customer's location yet. "
+            "Enable location and get on-site to start the job.",
+        )
+
+    distance_km = haversine_distance(
+        float(prov_lat), float(prov_lng),
+        float(job.service_latitude), float(job.service_longitude),
+    )
+    if distance_km * 1000.0 > START_ARRIVAL_RADIUS_M:
+        raise JobStartNotAllowedError(
+            "not_arrived",
+            f"You appear to be {distance_km * 1000:.0f} m from the service "
+            f"location. You must be within {START_ARRIVAL_RADIUS_M:.0f} m to start.",
+        )
+
+
+async def _load_provider_user(db: AsyncSession, provider: Any) -> Any:
+    """Return the User owning ``provider`` (for last-known location)."""
+    from src.models.user import User
+
+    return await db.get(User, provider.user_id)
+
+
 async def update_job_status(
     db: AsyncSession,
     job_id: uuid.UUID,
@@ -404,9 +503,16 @@ async def update_job_status(
     if not transition_result.allowed:
         raise InvalidTransitionError(transition_result.reason or "Transition not allowed.")
 
+    now = datetime.now(timezone.utc)
+
+    # Enforce start preconditions: a PROVIDER may only move a job to IN_PROGRESS
+    # once it's the scheduled time (grace-adjusted) AND they're on-site. System /
+    # admin transitions bypass this (overrides, tooling, tests).
+    if target_status == JobStatus.IN_PROGRESS and actor == ActorType.PROVIDER:
+        await _enforce_start_preconditions(db, job, now)
+
     # Apply the transition
     job.status = target_status
-    now = datetime.now(timezone.utc)
 
     # Fetch the task to determine level for pricing logic
     task_stmt = select(ServiceTask).where(ServiceTask.id == job.task_id)
@@ -433,8 +539,13 @@ async def update_job_status(
     elif target_status == JobStatus.COMPLETED:
         job.completed_at = now
 
-        # For L1/L2 time-based jobs: finalize the price
-        if job.pricing_model == "TIME_BASED":
+        # Legacy hourly finalization ONLY. A provider-set-priced job already has
+        # an agreed, immutable total (total_charged_cents snapshotted at accept);
+        # recomputing from actual duration would wipe the provider's fixed quote
+        # along with its commission + payout. Only fall back to duration-based
+        # finalization for legacy time-based jobs that never went through the
+        # provider-set pricing path.
+        if job.pricing_model == "TIME_BASED" and not job.total_charged_cents:
             await finalize_time_based_price(db, job.id)
 
         # PP4b — auto-capture the held authorization (only jobs that went through
