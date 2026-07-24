@@ -547,7 +547,7 @@ async def get_job_detail(
     job_id: uuid.UUID,
 ) -> dict[str, Any]:
     from src.models.job import Job, JobAssignment
-    from src.models.service import ServiceTask
+    from src.models.taxonomy import ServiceTask
     from sqlalchemy import select as sa_select
     from sqlalchemy.orm import selectinload
 
@@ -907,11 +907,12 @@ async def upload_credential(
     file: UploadFile = File(...),
     type: str = Form(...),
     task_id: Optional[str] = Form(None),
+    category_id: Optional[str] = Form(None),
 ) -> dict[str, Any]:
     import os
     from datetime import datetime, timezone
     from src.models.verification import ProviderCredential, CredentialType, CredentialStatus
-    from src.models.taxonomy import ServiceTask
+    from src.models.taxonomy import ServiceCategory, ServiceTask
     from sqlalchemy import select as sa_select
 
     try:
@@ -947,7 +948,8 @@ async def upload_credential(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # Determine credential name: use task name if task_id provided, else filename
+    # Determine credential name: prefer the SECTION name (section-based model,
+    # migration 029), then task name (legacy), else the filename.
     cred_name = file.filename or "Uploaded Document"
     task_uuid: Optional[uuid.UUID] = None
     if task_id:
@@ -963,6 +965,25 @@ async def upload_credential(
             else:
                 task_uuid = None  # bogus id — don't store an FK that won't resolve
 
+    # Section document (the current model): attach to the category so approval
+    # unlocks the whole section and flips the provider's level.
+    category_uuid: Optional[uuid.UUID] = None
+    if category_id:
+        try:
+            category_uuid = uuid.UUID(category_id)
+        except ValueError:
+            category_uuid = None
+        if category_uuid is not None:
+            cat_obj = (
+                await db.execute(
+                    sa_select(ServiceCategory).where(ServiceCategory.id == category_uuid)
+                )
+            ).scalar_one_or_none()
+            if cat_obj:
+                cred_name = cat_obj.name  # section name wins over task/filename
+            else:
+                category_uuid = None  # bogus id — don't store an unresolvable FK
+
     # Create the credential record
     credential = ProviderCredential(
         id=uuid.uuid4(),
@@ -970,6 +991,7 @@ async def upload_credential(
         credential_type=cred_type,
         name=cred_name,
         task_id=task_uuid,
+        category_id=category_uuid,
         status=CredentialStatus.PENDING_REVIEW,
         document_url=f"/uploads/credentials/{provider_id}/{safe_filename}",
     )
@@ -982,10 +1004,191 @@ async def upload_credential(
             "id": str(credential.id),
             "type": credential.credential_type.value,
             "status": credential.status.value,
+            "categoryId": str(credential.category_id) if credential.category_id else None,
             "documentUrl": credential.document_url,
             "createdAt": credential.created_at.isoformat() if credential.created_at else None,
         }
     }
+
+
+# ---------------------------------------------------------------------------
+# Provider profile summary (bio + years) and free-form documents (VISP-8)
+# ---------------------------------------------------------------------------
+
+class ProviderProfilePatch(BaseModel):
+    """Editable profile-summary fields the provider writes about themselves."""
+    bio: Optional[str] = None
+    yearsExperience: Optional[int] = None
+
+
+@router.patch("/profile", summary="Update provider profile summary (bio, years)")
+async def update_provider_profile(
+    db: DBSession,
+    user: CurrentUser,
+    body: ProviderProfilePatch,
+) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+    from src.models.provider import ProviderProfile
+
+    profile = (
+        await db.execute(sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id))
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=403, detail="User does not have a provider profile.")
+
+    if body.bio is not None:
+        profile.bio = body.bio.strip() or None
+    if body.yearsExperience is not None:
+        profile.years_experience = max(0, body.yearsExperience)
+    await db.commit()
+    return {"data": {"bio": profile.bio, "yearsExperience": profile.years_experience}}
+
+
+@router.post(
+    "/documents",
+    summary="Upload a free-form provider document/certificate",
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_provider_document(
+    db: DBSession,
+    user: CurrentUser,
+    file: UploadFile = File(...),
+    name: Optional[str] = Form(None),
+) -> dict[str, Any]:
+    import os
+    from src.models.provider import ProviderDocument
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(status_code=403, detail="User does not have a provider profile.")
+
+    uploads_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "uploads",
+        "provider_documents",
+        str(provider_id),
+    )
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    safe_filename = f"{uuid.uuid4()}_{file.filename or 'document'}"
+    with open(os.path.join(uploads_dir, safe_filename), "wb") as f:
+        f.write(await file.read())
+
+    doc = ProviderDocument(
+        provider_id=provider_id,
+        name=(name or file.filename or "Document").strip(),
+        document_url=f"/uploads/provider_documents/{provider_id}/{safe_filename}",
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    return {"data": {"id": str(doc.id), "name": doc.name, "documentUrl": doc.document_url}}
+
+
+@router.get("/documents", summary="List the provider's own documents")
+async def list_provider_documents(db: DBSession, user: CurrentUser) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+    from src.models.provider import ProviderDocument
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        return {"data": []}
+
+    rows = (
+        await db.execute(
+            sa_select(ProviderDocument)
+            .where(ProviderDocument.provider_id == provider_id)
+            .order_by(ProviderDocument.created_at.desc())
+        )
+    ).scalars().all()
+    return {"data": [
+        {"id": str(d.id), "name": d.name, "documentUrl": d.document_url} for d in rows
+    ]}
+
+
+@router.delete("/documents/{document_id}", summary="Delete one of the provider's documents")
+async def delete_provider_document(
+    db: DBSession, user: CurrentUser, document_id: uuid.UUID
+) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+    from src.models.provider import ProviderDocument
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(status_code=403, detail="User does not have a provider profile.")
+
+    doc = (
+        await db.execute(
+            sa_select(ProviderDocument).where(
+                ProviderDocument.id == document_id,
+                ProviderDocument.provider_id == provider_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    await db.delete(doc)
+    await db.commit()
+    return {"data": {"deleted": True}}
+
+
+@router.get(
+    "/{provider_id}/public-profile",
+    summary="Public provider profile (bio, rating, documents) for radar / job status",
+)
+async def get_provider_public_profile(
+    db: DBSession,
+    user: CurrentUser,
+    provider_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import func, select as sa_select
+    from src.models.provider import ProviderDocument, ProviderProfile
+    from src.models.review import Review, ReviewStatus
+    from src.models.user import User
+
+    profile = (
+        await db.execute(sa_select(ProviderProfile).where(ProviderProfile.id == provider_id))
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Provider not found.")
+
+    u = (await db.execute(sa_select(User).where(User.id == profile.user_id))).scalar_one_or_none()
+    display_name = " ".join(
+        [p for p in [getattr(u, "first_name", None), getattr(u, "last_name", None)] if p]
+    ) or "Provider"
+
+    rating_row = (
+        await db.execute(
+            sa_select(func.avg(Review.overall_rating), func.count(Review.id)).where(
+                Review.reviewee_id == profile.user_id,
+                Review.status == ReviewStatus.PUBLISHED,
+            )
+        )
+    ).one()
+    avg, cnt = rating_row
+    docs = (
+        await db.execute(
+            sa_select(ProviderDocument)
+            .where(ProviderDocument.provider_id == provider_id)
+            .order_by(ProviderDocument.created_at.desc())
+        )
+    ).scalars().all()
+
+    return {"data": {
+        "providerId": str(provider_id),
+        "displayName": display_name,
+        "level": int(profile.current_level.value.replace("LEVEL_", "")) if profile.current_level else None,
+        "bio": profile.bio,
+        "yearsExperience": profile.years_experience,
+        "rating": round(float(avg), 1) if avg is not None else None,
+        "reviewCount": int(cnt or 0),
+        "documents": [
+            {"id": str(d.id), "name": d.name, "documentUrl": d.document_url} for d in docs
+        ],
+    }}
 
 
 # ---------------------------------------------------------------------------
@@ -1159,18 +1362,87 @@ async def get_service_catalog(
     db: DBSession,
     user: CurrentUser,
 ) -> Any:
-    return [
-       {
-           "id": "item1",
-           "name": "Standard Residential Cleaning",
-           "categoryId": "cat1",
-           "categoryName": "Cleaning",
-           "level": "1",
-           "estimatedDurationMin": 60,
-           "rateDescription": "$50/hr",
-           "isAvailable": True
-       }
-    ]
+    """Real catalog for the provider's service-selection screen.
+
+    Every active task is returned with its section-gating info so the app can
+    render the section-based credentials model (migration 029):
+
+    * ``isAvailable``      — the provider already offers this service.
+    * ``requiresCredential`` — the section is gated (needs a section document).
+    * ``locked``           — gated section the provider hasn't unlocked at their
+                             current level; the app shows the help-message pop-up
+                             and prompts a section-document upload before it can
+                             be offered.
+    * ``helpMessageEn/Fr`` — the per-section upload instructions (admin-set).
+    """
+    from sqlalchemy import select as sa_select
+    from src.models.provider import ProviderLevel, ProviderProfile
+    from src.models.taxonomy import (
+        ProviderTaskQualification,
+        ServiceCategory,
+        ServiceTask,
+    )
+    from src.services.provider_level_service import task_qualifies
+
+    profile = (
+        await db.execute(
+            sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    current_level = profile.current_level if profile else ProviderLevel.LEVEL_1
+
+    offered: set[uuid.UUID] = set()
+    if profile is not None:
+        offered = set(
+            (
+                await db.execute(
+                    sa_select(ProviderTaskQualification.task_id).where(
+                        ProviderTaskQualification.provider_id == profile.id
+                    )
+                )
+            ).scalars().all()
+        )
+
+    rows = (
+        await db.execute(
+            sa_select(ServiceTask, ServiceCategory)
+            .join(ServiceCategory, ServiceTask.category_id == ServiceCategory.id)
+            .where(ServiceTask.is_active.is_(True))
+            .order_by(
+                ServiceCategory.display_order,
+                ServiceTask.display_order,
+                ServiceTask.name,
+            )
+        )
+    ).all()
+
+    items: list[dict[str, Any]] = []
+    for task, cat in rows:
+        gated = cat.requires_credential
+        can_offer = task_qualifies(current_level, task.level, gated)
+        if task.base_price_min_cents and task.base_price_max_cents:
+            lo = task.base_price_min_cents // 100
+            hi = task.base_price_max_cents // 100
+            unit = task.pricing_unit.value if task.pricing_unit else ""
+            rate_desc = f"${lo}-${hi}" + (f"/{unit}" if unit else "")
+        else:
+            rate_desc = ""
+        items.append({
+            "id": str(task.id),
+            "name": task.name,
+            "categoryId": str(cat.id),
+            "categoryName": cat.name,
+            "level": task.level.value.replace("LEVEL_", ""),
+            "estimatedDurationMin": task.estimated_duration_min or 0,
+            "rateDescription": rate_desc,
+            "isAvailable": task.id in offered,
+            # Section-based credential gating (migration 029).
+            "requiresCredential": gated,
+            "helpMessageEn": cat.help_message_en,
+            "helpMessageFr": cat.help_message_fr,
+            "locked": gated and not can_offer,
+        })
+    return items
 
 from pydantic import BaseModel as _BaseModel
 
@@ -1232,27 +1504,33 @@ async def update_services(
         await db.commit()
         return {"message": "Services cleared successfully"}
 
-    # 2. Fetch task definitions to check requirements
-    task_stmt = sa_select(ServiceTask).where(ServiceTask.id.in_(task_ids))
-    tasks = (await db.execute(task_stmt)).scalars().all()
+    # 2. Fetch task definitions + their section (gating lives on the section now)
+    from src.models.taxonomy import ServiceCategory
+    from src.services.provider_level_service import task_qualifies
 
-    # 3. Create new qualifications
-    for task in tasks:
-        is_restricted = (
-            task.regulated or
-            task.license_required or
-            task.certification_required or
-            task.hazardous or
-            task.structural
+    task_stmt = (
+        sa_select(ServiceTask, ServiceCategory)
+        .join(ServiceCategory, ServiceTask.category_id == ServiceCategory.id)
+        .where(ServiceTask.id.in_(task_ids))
+    )
+    rows = (await db.execute(task_stmt)).all()
+
+    # 3. Create new qualifications. A service is just an "I offer this" checkbox;
+    #    whether it's immediately active depends on the provider's level vs the
+    #    SECTION's gating (section-based model, migration 029). Providers in a
+    #    gated section they haven't unlocked yet get qualified=False until their
+    #    section document is approved (which flips their level + re-grants).
+    now = datetime.now(timezone.utc)
+    for task, category in rows:
+        is_qualified = task_qualifies(
+            profile.current_level, task.level, category.requires_credential
         )
-        is_qualified = not is_restricted
-
         qual = ProviderTaskQualification(
             provider_id=provider_id,
             task_id=task.id,
             qualified=is_qualified,
             auto_granted=is_qualified,
-            qualified_at=datetime.now(timezone.utc) if is_qualified else None,
+            qualified_at=now if is_qualified else None,
         )
         db.add(qual)
 

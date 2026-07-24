@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminService, PendingCredential } from '@/services/adminService';
+import { adminService, PendingCredential, LICENSE_CLASSES } from '@/services/adminService';
 import { Config } from '@/services/config';
 
 function resolveDocUrl(url: string | null): string | null {
@@ -27,6 +27,8 @@ export default function Documents() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState('');
   const [previewItem, setPreviewItem] = useState<PendingCredential | null>(null);
+  // Ontario licence class chosen at validation time, per credential id.
+  const [licenseChoice, setLicenseChoice] = useState<Record<string, string>>({});
 
   // Filters
   const [search, setSearch] = useState('');
@@ -40,7 +42,8 @@ export default function Documents() {
   });
 
   const approve = useMutation({
-    mutationFn: (id: string) => adminService.approveCredential(id),
+    mutationFn: ({ id, licenseClass }: { id: string; licenseClass?: string }) =>
+      adminService.approveCredential(id, undefined, licenseClass),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-credentials'] }),
   });
   const reject = useMutation({
@@ -198,7 +201,8 @@ export default function Documents() {
                     <span className="t-chip t-chip-mono">{c.credentialType.replaceAll('_', ' ')}</span>
                     {c.task?.category && <span className="t-chip t-chip-mono t-chip-violet">{c.task.category}</span>}
                     {c.task?.level != null && <span className="t-chip t-chip-mono">L{c.task.level}</span>}
-                    {!c.task && <span className="t-chip t-chip-mono">{t('documents.general')}</span>}
+                    {c.section && <span className="t-chip t-chip-mono t-chip-violet">§ {c.section.name}</span>}
+                    {!c.task && !c.section && <span className="t-chip t-chip-mono">{t('documents.general')}</span>}
                   </div>
                   <div style={{ marginTop: 12, fontSize: 13.5, color: 'var(--t-text-2)' }}>
                     {c.provider.firstName} {c.provider.lastName}
@@ -231,11 +235,29 @@ export default function Documents() {
                       </a>
                     </>
                   )}
+                  {c.credentialType === 'license' && (
+                    <select
+                      className="t-input t-input-sm"
+                      value={licenseChoice[c.id] ?? ''}
+                      onChange={(e) => setLicenseChoice((m) => ({ ...m, [c.id]: e.target.value }))}
+                      title={t('documents.licenseClass')}
+                      style={{ maxWidth: 150 }}
+                    >
+                      <option value="">{t('documents.licenseClass')}…</option>
+                      {LICENSE_CLASSES.map((lc) => (
+                        <option key={lc} value={lc}>
+                          {lc}
+                          {(lc === 'G2' || lc === 'G') ? ' ✓' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     type="button"
-                    onClick={() => approve.mutate(c.id)}
-                    disabled={approve.isPending}
+                    onClick={() => approve.mutate({ id: c.id, licenseClass: licenseChoice[c.id] || undefined })}
+                    disabled={approve.isPending || (c.credentialType === 'license' && !licenseChoice[c.id])}
                     className="t-btn t-btn-success t-btn-sm"
+                    title={c.credentialType === 'license' && !licenseChoice[c.id] ? t('documents.pickLicenseClassFirst') : undefined}
                   >
                     {t('common.approve')}
                   </button>
@@ -335,10 +357,25 @@ export default function Documents() {
                 <a href={url} target="_blank" rel="noreferrer" className="t-btn t-btn-secondary">
                   {t('documents.openInNewTab')}
                 </a>
+                {previewItem.credentialType === 'license' && (
+                  <select
+                    className="t-input"
+                    value={licenseChoice[previewItem.id] ?? ''}
+                    onChange={(e) => setLicenseChoice((m) => ({ ...m, [previewItem.id]: e.target.value }))}
+                    style={{ maxWidth: 160 }}
+                  >
+                    <option value="">{t('documents.licenseClass')}…</option>
+                    {LICENSE_CLASSES.map((lc) => (
+                      <option key={lc} value={lc}>
+                        {lc}{(lc === 'G2' || lc === 'G') ? ' ✓' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   type="button"
-                  onClick={() => { approve.mutate(previewItem.id); setPreviewItem(null); }}
-                  disabled={approve.isPending}
+                  onClick={() => { approve.mutate({ id: previewItem.id, licenseClass: licenseChoice[previewItem.id] || undefined }); setPreviewItem(null); }}
+                  disabled={approve.isPending || (previewItem.credentialType === 'license' && !licenseChoice[previewItem.id])}
                   className="t-btn t-btn-success"
                 >
                   {t('common.approve')}

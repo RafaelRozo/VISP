@@ -292,6 +292,11 @@ export interface ServiceCatalogItem {
   estimatedDurationMin: number;
   rateDescription: string;
   isAvailable: boolean;
+  // Section-based credential gating (backend migration 029).
+  requiresCredential: boolean;   // the section needs a document
+  helpMessageEn: string | null;  // per-section upload instructions
+  helpMessageFr: string | null;
+  locked: boolean;               // gated section not yet unlocked at this level
 }
 
 // ──────────────────────────────────────────────

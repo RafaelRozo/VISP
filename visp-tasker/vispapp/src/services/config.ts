@@ -38,6 +38,8 @@ const STAGING_CONFIG: AppConfig = {
 
 const PROD_CONFIG: AppConfig = {
   ...DEV_CONFIG,
+  // Production API (server → Visp2026). For local-device testing swap these to
+  // the Mac LAN IP (e.g. http://192.168.1.69:8000), then revert before build.
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
 };

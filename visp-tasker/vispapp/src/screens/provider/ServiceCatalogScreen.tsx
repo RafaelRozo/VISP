@@ -10,13 +10,18 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
+  Modal,
+  Pressable,
   StyleSheet,
   Switch,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { AnimatedSpinner } from '../../components/animations';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
@@ -25,6 +30,7 @@ import { GlassStyles } from '../../theme/glass';
 import { GlassCard, GlassButton } from '../../components/glass';
 import { Screen } from '../../components/visp';
 import { useProviderStore } from '../../stores/providerStore';
+import { providerService } from '../../services/providerService';
 import { ServiceCatalogItem } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -93,7 +99,7 @@ interface CategoryGroup {
 
 export default function ServiceCatalogScreen(): React.JSX.Element {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { serviceCatalog, catalogLoading, fetchServiceCatalog } =
     useProviderStore();
 
@@ -104,6 +110,61 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
   const [availabilityMap, setAvailabilityMap] = useState<
     Record<string, boolean>
   >({});
+  // Section-credential gate: the locked service the provider tapped. Drives the
+  // help-message pop-up + section-document upload (migration 029).
+  const [gateItem, setGateItem] = useState<ServiceCatalogItem | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Pick the admin-set help message for the current language, with a fallback.
+  const gateHelp = useMemo(() => {
+    if (!gateItem) return '';
+    const msg = language === 'fr' ? gateItem.helpMessageFr : gateItem.helpMessageEn;
+    return (
+      msg ||
+      t('credentials.sectionDocDefaultHelp') ||
+      'This section requires a document approved by an admin before you can offer its services. Upload it to get verified.'
+    );
+  }, [gateItem, language, t]);
+
+  const openGate = useCallback((item: ServiceCatalogItem) => {
+    setGateItem(item);
+  }, []);
+
+  const uploadSectionDoc = useCallback(async () => {
+    if (!gateItem) return;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const asset = result.assets[0];
+      setUploading(true);
+      await providerService.uploadCredential(
+        { uri: asset.uri, type: asset.mimeType, name: asset.fileName },
+        'certification',
+        { categoryId: gateItem.categoryId },
+      );
+      setGateItem(null);
+      Alert.alert(
+        t('credentials.documentUploaded') || 'Document uploaded',
+        `Your document for "${gateItem.categoryName}" has been submitted for review. You'll be notified once an admin approves it.`,
+      );
+      fetchServiceCatalog();
+    } catch (err) {
+      console.error('[ServiceCatalog] section doc upload failed', err);
+      Alert.alert(t('common.error'), t('credentials.uploadFailed') || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }, [gateItem, t, fetchServiceCatalog]);
 
   useEffect(() => {
     fetchServiceCatalog();
@@ -188,15 +249,25 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
                   </View>
                 </View>
               </View>
-              <Switch
-                value={isAvailable}
-                onValueChange={() => toggleAvailability(item.id)}
-                trackColor={{
-                  false: 'rgba(255, 255, 255, 0.12)',
-                  true: Colors.primary + '80',
-                }}
-                thumbColor={isAvailable ? Colors.primary : 'rgba(255, 255, 255, 0.4)'}
-              />
+              {item.locked ? (
+                <TouchableOpacity
+                  onPress={() => openGate(item)}
+                  style={[styles.lockPill, { borderColor: Colors.primary + '60' }]}
+                  accessibilityLabel="Locked — upload section document"
+                >
+                  <Text style={[styles.lockPillText, { color: Colors.primary }]}>🔒 Unlock</Text>
+                </TouchableOpacity>
+              ) : (
+                <Switch
+                  value={isAvailable}
+                  onValueChange={() => toggleAvailability(item.id)}
+                  trackColor={{
+                    false: 'rgba(255, 255, 255, 0.12)',
+                    true: Colors.primary + '80',
+                  }}
+                  thumbColor={isAvailable ? Colors.primary : 'rgba(255, 255, 255, 0.4)'}
+                />
+              )}
             </View>
             <View style={styles.serviceDetails}>
               <View style={styles.serviceDetailItem}>
@@ -218,7 +289,7 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
         </View>
       );
     },
-    [availabilityMap, toggleAvailability],
+    [availabilityMap, toggleAvailability, openGate, theme],
   );
 
   const renderCategory = useCallback(
@@ -324,6 +395,54 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Section-document gate pop-up: help message (EN/FR) + upload. */}
+      <Modal
+        visible={gateItem != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGateItem(null)}
+      >
+        <Pressable style={styles.gateBackdrop} onPress={() => !uploading && setGateItem(null)}>
+          <Pressable
+            style={[styles.gateCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            onPress={() => {}}
+          >
+            {gateItem && (
+              <>
+                <Text style={[styles.gateTitle, { color: theme.textPrimary }]}>
+                  🔒 {gateItem.categoryName}
+                </Text>
+                <Text style={[styles.gateSub, { color: theme.textSecondary }]}>
+                  {t('credentials.sectionLockedTitle') || 'This section needs a verified document'}
+                </Text>
+                <Text style={[styles.gateHelp, { color: theme.textSecondary }]}>
+                  {gateHelp}
+                </Text>
+                <View style={styles.gateActions}>
+                  <GlassButton
+                    title={t('common.cancel') || 'Cancel'}
+                    variant="outline"
+                    onPress={() => setGateItem(null)}
+                    disabled={uploading}
+                  />
+                  {uploading ? (
+                    <View style={styles.gateUploading}>
+                      <ActivityIndicator color={Colors.primary} />
+                    </View>
+                  ) : (
+                    <GlassButton
+                      title={t('credentials.uploadDocument') || 'Upload document'}
+                      variant="glow"
+                      onPress={uploadSectionDoc}
+                    />
+                  )}
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -333,6 +452,52 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  lockPill: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  lockPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  gateBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  gateCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 20,
+  },
+  gateTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  gateSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  gateHelp: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 12,
+  },
+  gateActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+    gap: 12,
+  },
+  gateUploading: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
   filterBar: {
     flexDirection: 'row',
     paddingHorizontal: 16,

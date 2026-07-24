@@ -613,6 +613,10 @@ export interface AvailableProvider {
   rateCents: number | null;       // the provider's own rate (null = prices per-job)
   pricingUnit: string | null;
   quotedPriceCents: number | null; // estimate for this job at their rate
+  rating: number | null;           // avg published rating (null = no reviews yet)
+  reviewCount: number;             // number of published reviews
+  yearsExperience: number | null;
+  bio: string | null;
 }
 
 export interface AvailableProvidersResult {
@@ -630,6 +634,13 @@ async function getAvailableProviders(jobId: string): Promise<AvailableProvidersR
     `/jobs/${jobId}/available-providers`,
   );
   return resp.data.data;
+}
+
+/** Cancel a job as the customer. The backend maps this to
+ * `cancelled_by_customer` and the state machine guards it (only allowed before
+ * a provider is en route). Throws on 409 if it's too late to cancel. */
+async function cancelJob(jobId: string): Promise<void> {
+  await apiClient.patch(`/jobs/${jobId}/update-status`, { status: 'cancelled' });
 }
 
 export const taskService = {
@@ -652,6 +663,7 @@ export const taskService = {
   capturePayment,
   approveOverage,
   getAvailableProviders,
+  cancelJob,
 };
 
 export default taskService;

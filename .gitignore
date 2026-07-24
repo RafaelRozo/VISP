@@ -27,6 +27,16 @@ recovery-codes-*.json
 
 # Build artifacts
 dist/
+# React Native / native build output (vispapp/build, ios/build, android/build)
+build/
+# TypeScript incremental build cache
+*.tsbuildinfo
+.gradle/
+*.hprof
+
+# Runtime / local data (not source)
+# backend user-upload storage (runtime, per-environment)
+uploads/
 
 # Local tooling
 .claude/
@@ -36,3 +46,13 @@ skills-lock.json
 
 # Work-in-progress / scratch
 newdesign/
+
+# Local dev/test scripts — these embed dev DB credentials (host/user/password),
+# so they are kept local and must not be committed. Sanitize before ever tracking.
+visp-tasker/backend/scripts/smoke_*.py
+visp-tasker/backend/scripts/seed_demo_*.py
+visp-tasker/backend/scripts/simulate_full_journey.py
+visp-tasker/backend/scripts/validate_*.py
+
+# Stray export at repo root
+/VISP Landing.html

@@ -1,4 +1,22 @@
-import { get, post, put, del, upload } from './apiClient';
+import { get, post, put, del, upload, patch } from './apiClient';
+
+// ── Provider profile summary + free-form documents (VISP-8) ──
+export interface ProviderDocumentDto {
+  id: string;
+  name: string;
+  documentUrl: string;
+}
+
+export interface ProviderPublicProfile {
+  providerId: string;
+  displayName: string;
+  level: number | null;
+  bio: string | null;
+  yearsExperience: number | null;
+  rating: number | null;
+  reviewCount: number;
+  documents: ProviderDocumentDto[];
+}
 
 /** One priceable service for the provider, with the catalog guardrail and the
  *  provider's current rate (null if unset). Mirrors the backend payload from
@@ -73,7 +91,11 @@ export const providerService = {
      * @param type Credential type (license, certification, etc.)
      * @param taskId Optional task ID to associate the credential with
      */
-    uploadCredential: async (file: any, type: string, taskId?: string): Promise<void> => {
+    uploadCredential: async (
+        file: any,
+        type: string,
+        opts?: { taskId?: string; categoryId?: string },
+    ): Promise<void> => {
         const formData = new FormData();
         formData.append('file', {
             uri: file.uri,
@@ -81,8 +103,13 @@ export const providerService = {
             name: file.name || 'upload.jpg',
         } as any);
         formData.append('type', type);
-        if (taskId) {
-            formData.append('task_id', taskId);
+        if (opts?.taskId) {
+            formData.append('task_id', opts.taskId);
+        }
+        // Section-based model (migration 029): attach the doc to the section so
+        // admin approval unlocks the whole section and flips the provider level.
+        if (opts?.categoryId) {
+            formData.append('category_id', opts.categoryId);
         }
 
         await upload('/provider/credentials', formData);
@@ -131,5 +158,37 @@ export const providerService = {
     /** Remove the provider's rate for one service. */
     deleteProviderRate: async (taskId: string): Promise<void> => {
         await del(`/provider/rates/${taskId}`);
+    },
+
+    /** Update the provider's own profile summary (bio + years of experience). */
+    updateProfileSummary: async (body: { bio?: string; yearsExperience?: number }): Promise<void> => {
+        await patch('/provider/profile', body);
+    },
+
+    /** Upload a free-form document/certificate (not tied to any service). */
+    uploadProviderDocument: async (file: any, name?: string): Promise<void> => {
+        const formData = new FormData();
+        formData.append('file', {
+            uri: file.uri,
+            type: file.type || 'image/jpeg',
+            name: file.name || 'document.jpg',
+        } as any);
+        if (name) formData.append('name', name);
+        await upload('/provider/documents', formData);
+    },
+
+    /** List the provider's own free-form documents. */
+    listProviderDocuments: async (): Promise<ProviderDocumentDto[]> => {
+        return (await get<ProviderDocumentDto[]>('/provider/documents')) ?? [];
+    },
+
+    /** Delete one of the provider's own documents. */
+    deleteProviderDocument: async (documentId: string): Promise<void> => {
+        await del(`/provider/documents/${documentId}`);
+    },
+
+    /** Public provider profile (bio, rating, documents) for radar / job status. */
+    getPublicProfile: async (providerId: string): Promise<ProviderPublicProfile> => {
+        return await get<ProviderPublicProfile>(`/provider/${providerId}/public-profile`);
     },
 };

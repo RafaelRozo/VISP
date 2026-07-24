@@ -32,6 +32,22 @@ class CredentialType(str, enum.Enum):
     PORTFOLIO = "portfolio"
 
 
+class LicenseClass(str, enum.Enum):
+    """Ontario driver's licence classes (migration 029). Only G2 and G are used
+    in practice — no truck/bus jobs — but the full official list is stored."""
+
+    G1 = "G1"
+    G2 = "G2"
+    G = "G"
+    A = "A"
+    AR = "AR"
+    D = "D"
+    B = "B"
+    C = "C"
+    E = "E"
+    F = "F"
+
+
 class InsuranceStatus(str, enum.Enum):
     PENDING_REVIEW = "pending_review"
     VERIFIED = "verified"
@@ -65,9 +81,23 @@ class ProviderCredential(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # Task this credential unlocks (NULL for general credentials like
     # criminal_record_check, portfolio, or generic trade_license).
+    # DEPRECATED for gating as of migration 029 — kept for backward compatibility.
     task_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("service_tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Section this credential is for (migration 029). Documentation is now
+    # uploaded + approved per SECTION; the first approved credential flips the
+    # provider L1 -> L2 (global) and unlocks all gated sections.
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("service_categories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Ontario licence class (only for LICENSE credentials). G2/G in practice.
+    license_class: Mapped[Optional[LicenseClass]] = mapped_column(
+        Enum(LicenseClass, name="license_class", create_type=False),
         nullable=True,
     )
 

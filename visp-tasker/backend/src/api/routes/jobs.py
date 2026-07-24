@@ -355,6 +355,15 @@ async def get_active_jobs(
         task_info = task_map.get(j.task_id, {})
         item["taskName"] = task_info.get("name", j.reference_number)
         item["categoryName"] = task_info.get("categoryName")
+        # Scheduled datetime (requested_date + requested_time_start) so the app
+        # can flag jobs whose slot passed with no provider as "expired".
+        if j.requested_date is not None:
+            from datetime import datetime as _dt, time as _time
+            item["scheduledAt"] = _dt.combine(
+                j.requested_date, j.requested_time_start or _time(0, 0)
+            ).isoformat()
+        else:
+            item["scheduledAt"] = None
         items.append(item)
 
     return {
@@ -1382,8 +1391,10 @@ async def available_providers(
     user: CurrentUser,
     job_id: uuid.UUID,
 ) -> dict[str, Any]:
-    from sqlalchemy import select
+    from sqlalchemy import func, select
     from src.models.job import Job
+    from src.models.provider import ProviderProfile
+    from src.models.review import Review, ReviewStatus
     from src.models.taxonomy import ServiceTask
     from src.services import provider_rate_service
     from src.services.matchingEngine import find_matching_providers
@@ -1405,11 +1416,46 @@ async def available_providers(
         logger.warning("available_providers matching failed for job %s: %s", job_id, exc)
         matches = []
 
+    # Enrich the matched providers with the profile bits the customer needs to
+    # decide (bio, experience) and their published-review rating. Batched so we
+    # don't fan out a query per provider.
+    provider_ids = [m["provider_id"] for m in matches]
+    prof_by_id: dict[uuid.UUID, ProviderProfile] = {}
+    rating_by_user: dict[uuid.UUID, tuple[float, int]] = {}
+    if provider_ids:
+        prof_rows = (
+            await db.execute(
+                select(ProviderProfile).where(ProviderProfile.id.in_(provider_ids))
+            )
+        ).scalars().all()
+        prof_by_id = {p.id: p for p in prof_rows}
+        user_ids = [p.user_id for p in prof_rows]
+        if user_ids:
+            rating_rows = (
+                await db.execute(
+                    select(
+                        Review.reviewee_id,
+                        func.avg(Review.overall_rating),
+                        func.count(Review.id),
+                    )
+                    .where(
+                        Review.reviewee_id.in_(user_ids),
+                        Review.status == ReviewStatus.PUBLISHED,
+                    )
+                    .group_by(Review.reviewee_id)
+                )
+            ).all()
+            rating_by_user = {
+                uid: (float(avg), int(cnt)) for uid, avg, cnt in rating_rows
+            }
+
     providers: list[dict[str, Any]] = []
     for m in matches:
         quote = await provider_rate_service.get_provider_quote_for_job(
             db, m["provider_id"], job.task_id, job_quantity=job.quantity
         )
+        prof = prof_by_id.get(m["provider_id"])
+        rating = rating_by_user.get(prof.user_id) if prof else None
         providers.append({
             "providerId": str(m["provider_id"]),
             "displayName": m.get("display_name") or "Provider",
@@ -1418,6 +1464,11 @@ async def available_providers(
             "rateCents": quote["rate_cents"] if quote else None,
             "pricingUnit": quote["unit"] if quote else (task.pricing_unit.value if task else None),
             "quotedPriceCents": quote["subtotal_cents"] if quote else None,
+            # Customer-facing profile summary (null-safe for brand-new providers).
+            "rating": round(rating[0], 1) if rating else None,
+            "reviewCount": rating[1] if rating else 0,
+            "yearsExperience": prof.years_experience if prof else None,
+            "bio": prof.bio if prof else None,
         })
 
     return {"data": {
