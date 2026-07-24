@@ -18,7 +18,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://Droz:Droz.2026@192.168.1.94:5432/visp_tasker
+      # 2026-07-24: DATABASE_URL con credenciales — configurar localmente, no subir secrets
+      # - DATABASE_URL=postgresql+asyncpg://USER:PASS@HOST:5432/visp_prod
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://user:pass@localhost:5432/visp_prod}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:-visp-dev-secret-change-me-in-production}
       - DEBUG=${DEBUG:-true}

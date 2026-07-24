@@ -1,0 +1,25 @@
+# =============================================================================
+# VISP Admin — Docker Compose
+# =============================================================================
+# Frontend React app served by Nginx
+# Accessible at: visp.richieyanez.com via Cloudflare Tunnel
+# =============================================================================
+
+name: visp-admin
+services:
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: https://api.richieyanez.com/api/v1
+    container_name: visp-admin
+    restart: always
+    ports:
+      - "8003:80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
