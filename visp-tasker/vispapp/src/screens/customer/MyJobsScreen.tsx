@@ -58,6 +58,14 @@ type TabKey = 'active' | 'completed' | 'drafts';
 
 const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 
+// A job still waiting for a provider whose scheduled time has already passed is
+// shown as "expired" (vencido) — nobody picked it up in time.
+function isExpiredJob(job: Job): boolean {
+  if (!PENDING_STATUSES.includes(job.status)) return false;
+  if (!job.scheduledAt) return false;
+  return new Date(job.scheduledAt).getTime() < Date.now();
+}
+
 // ──────────────────────────────────────────────
 // MotionPressable — scale-spring press feedback
 // ──────────────────────────────────────────────
@@ -127,9 +135,13 @@ function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element 
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 VispText.chip,
-                { color: isActive ? t.bg : t.text2 },
+                // Explicit lineHeight + no clipping: the mono chip font gets
+                // vertically clipped on iOS without it (longer FR/EN labels
+                // like "COMPLETED (00)" made the whole row look collapsed).
+                { color: isActive ? t.bg : t.text2, lineHeight: 14 },
               ]}
             >
               {tab.label} ({String(tab.count).padStart(2, '0')})
@@ -154,6 +166,9 @@ const pillStyles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: VispRadius.pill,
     borderWidth: 1,
+    minHeight: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 
@@ -380,6 +395,27 @@ function MyJobsScreen(): React.JSX.Element {
     [fetchJobs, tr],
   );
 
+  const handleCancelJob = useCallback(
+    (jobId: string) => {
+      Alert.alert(tr('myJobs.cancelJob') || 'Cancel job', tr('myJobs.cancelConfirm') || 'Are you sure you want to cancel this job request? This cannot be undone.', [
+        { text: tr('common.no') || 'No', style: 'cancel' },
+        {
+          text: tr('myJobs.cancelJob') || 'Cancel job',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await taskService.cancelJob(jobId);
+              fetchJobs(true);
+            } catch {
+              Alert.alert(tr('common.error'), tr('myJobs.failedCancel') || 'Could not cancel this job. A provider may already be on the way.');
+            }
+          },
+        },
+      ]);
+    },
+    [fetchJobs, tr],
+  );
+
   const handleNewJob = useCallback(() => {
     // Jump to the Home tab — the entry point to browse categories and start a
     // new job (CustomerHome → Home tab → CategoryDetail → TaskSelection → Booking).
@@ -392,11 +428,14 @@ function MyJobsScreen(): React.JSX.Element {
   const renderActiveCard = useCallback(
     (item: Job) => {
       const isPending = PENDING_STATUSES.includes(item.status);
+      const expired = isExpiredJob(item);
       const isPendingApproval = item.status === 'pending_approval';
       const accent = isAccentStatus(item.status);
       const providerInfo = providerInfoMap[item.id];
       const labelKey = statusLabelKey(item.status);
-      const statusText = (labelKey ? tr(labelKey) : item.status.replace(/_/g, ' ')).toUpperCase();
+      const statusText = expired
+        ? (tr('myJobs.expired') || 'Expired').toUpperCase()
+        : (labelKey ? tr(labelKey) : item.status.replace(/_/g, ' ')).toUpperCase();
       const city = item.address?.city ? `, ${item.address.city}` : '';
       const meta = [item.address?.street, city, item.categoryName?.toUpperCase()]
         .filter(Boolean)
@@ -412,10 +451,16 @@ function MyJobsScreen(): React.JSX.Element {
             {/* Top strip — status chip + mono job id */}
             <View style={[styles.cardStrip, { borderBottomColor: t.border }]}>
               <View style={styles.chipRow}>
-                {isPending ? <AnimatedSpinner size={10} color={t.violet} style={{ marginRight: 6 }} /> : null}
-                <Chip accent={accent} dark={!accent}>
-                  {statusText}
-                </Chip>
+                {isPending && !expired ? <AnimatedSpinner size={10} color={t.violet} style={{ marginRight: 6 }} /> : null}
+                {expired ? (
+                  <View style={[styles.expiredChip, { borderColor: t.danger }]}>
+                    <Text style={[VispText.chip, { color: t.danger }]}>{statusText}</Text>
+                  </View>
+                ) : (
+                  <Chip accent={accent} dark={!accent}>
+                    {statusText}
+                  </Chip>
+                )}
               </View>
               <Text style={[VispText.eyebrow, { color: t.text3 }]}>{formatJobId(item.id)}</Text>
             </View>
@@ -450,6 +495,20 @@ function MyJobsScreen(): React.JSX.Element {
                   </Text>
                 ) : null}
               </View>
+
+              {/* Cancel — allowed while no provider is assigned yet (pending /
+                  expired). Backend guards the transition; we only offer it here. */}
+              {isPending ? (
+                <Pressable
+                  onPress={() => handleCancelJob(item.id)}
+                  style={[styles.cancelBtn, { borderColor: t.danger }]}
+                  hitSlop={8}
+                >
+                  <Text style={[VispText.chip, { color: t.danger }]}>
+                    {expired ? (tr('myJobs.removeJob') || 'Remove') : (tr('myJobs.cancelJob') || 'Cancel job')}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {/* Pending approval — provider preview + actions */}
@@ -694,6 +753,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 4,
+  },
+  expiredChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  cancelBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
 
   providerCard: {

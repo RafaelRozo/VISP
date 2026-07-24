@@ -231,7 +231,7 @@ export default function CredentialsScreen(): React.JSX.Element {
             name: asset.fileName,
           },
           credType,
-          item.taskId,
+          { taskId: item.taskId },
         );
 
         Alert.alert(

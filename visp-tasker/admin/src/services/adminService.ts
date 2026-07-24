@@ -46,6 +46,9 @@ export interface PendingCredential {
   name: string;
   documentUrl: string | null;
   uploadedAt: string | null;
+  // The SECTION this document is for (drives the L1->L2 flip on approval).
+  section: { id: string; name: string } | null;
+  licenseClass: string | null;
   task: {
     id: string;
     name: string;
@@ -149,6 +152,11 @@ export interface TaxonomyCategory {
   displayOrder: number;
   isActive: boolean;
   parentId: string | null;
+  // Section-based gating (migration 029): whole section locked to L2+ providers.
+  requiresCredential: boolean;
+  // Bilingual help pop-up shown in-app before uploading this section's document.
+  helpMessageEn: string | null;
+  helpMessageFr: string | null;
   taskCount: number;
   tasks: TaxonomyTask[];
   createdAt: string | null;
@@ -163,7 +171,14 @@ export interface CategoryUpsertBody {
   displayOrder?: number;
   isActive?: boolean;
   parentId?: string | null;
+  requiresCredential?: boolean;
+  helpMessageEn?: string | null;
+  helpMessageFr?: string | null;
 }
+
+/** Ontario driver's licence classes. Only G2 and G are used in practice. */
+export const LICENSE_CLASSES = ['G1', 'G2', 'G', 'A', 'AR', 'D', 'B', 'C', 'E', 'F'] as const;
+export type LicenseClass = (typeof LICENSE_CLASSES)[number];
 
 export interface TaskUpsertBody {
   categoryId: string;
@@ -266,8 +281,11 @@ export const adminService = {
 
   pendingCredentials: () => apiGet<PendingCredential[]>('/admin/credentials/pending'),
 
-  approveCredential: (id: string, note?: string) =>
-    apiPost<{ id: string; status: string }>(`/admin/credentials/${id}/approve`, { note }),
+  approveCredential: (id: string, note?: string, licenseClass?: string) =>
+    apiPost<{ id: string; status: string }>(`/admin/credentials/${id}/approve`, {
+      note,
+      licenseClass,
+    }),
 
   rejectCredential: (id: string, note: string) =>
     apiPost<{ id: string; status: string }>(`/admin/credentials/${id}/reject`, { note }),

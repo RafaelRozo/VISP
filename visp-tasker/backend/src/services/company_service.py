@@ -398,6 +398,21 @@ async def review_document(db: AsyncSession, doc_id: uuid.UUID, admin_id: uuid.UU
 
 
 async def set_company_validation(db: AsyncSession, company: Company, *, validated: bool, reason: str | None) -> Company:
+    # BUGFIX (2026-07-23): a company may only be VALIDATED once ALL of its
+    # uploaded documents have been individually APPROVED. Previously this flipped
+    # the status with no document check, letting admins approve a business whose
+    # documentation was still pending/rejected.
+    if validated:
+        docs = list(company.documents or [])
+        if not docs:
+            raise ValueError("Cannot validate a company with no uploaded documents.")
+        unapproved = [d for d in docs if d.status != CompanyDocumentStatus.APPROVED]
+        if unapproved:
+            raise ValueError(
+                f"Cannot validate: {len(unapproved)} document(s) not yet approved. "
+                "Approve every document before validating the company."
+            )
+
     company.status = CompanyStatus.VALIDATED if validated else CompanyStatus.REJECTED
     company.rejection_reason = None if validated else reason
     await db.flush()

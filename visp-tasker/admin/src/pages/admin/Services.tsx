@@ -17,6 +17,10 @@ interface CategoryFormState {
   description: string;
   displayOrder: number;
   isActive: boolean;
+  // Section-based gating (migration 029).
+  requiresCredential: boolean;
+  helpMessageEn: string;
+  helpMessageFr: string;
 }
 
 interface TaskFormState {
@@ -48,6 +52,9 @@ const emptyCategory: CategoryFormState = {
   description: '',
   displayOrder: 0,
   isActive: true,
+  requiresCredential: false,
+  helpMessageEn: '',
+  helpMessageFr: '',
 };
 
 const emptyTask = (categoryId: string): TaskFormState => ({
@@ -253,6 +260,9 @@ export default function Services() {
                       description: cat.description ?? '',
                       displayOrder: cat.displayOrder,
                       isActive: cat.isActive,
+                      requiresCredential: cat.requiresCredential ?? false,
+                      helpMessageEn: cat.helpMessageEn ?? '',
+                      helpMessageFr: cat.helpMessageFr ?? '',
                     })}
                   >
                     {t('common.edit')}
@@ -431,6 +441,9 @@ function CategoryModal({
       description: state.description.trim() || null,
       displayOrder: state.displayOrder,
       isActive: state.isActive,
+      requiresCredential: state.requiresCredential,
+      helpMessageEn: state.helpMessageEn.trim() || null,
+      helpMessageFr: state.helpMessageFr.trim() || null,
     });
   };
 
@@ -470,6 +483,47 @@ function CategoryModal({
                 {t('services.isActive')}
               </label>
             </div>
+          </div>
+
+          {/* Section-based gating (migration 029) */}
+          <div style={{ borderTop: '1px solid var(--t-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--t-text-1)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={state.requiresCredential}
+                onChange={(e) => setState({ ...state, requiresCredential: e.target.checked })}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <strong>{t('services.requiresCredential')}</strong>
+                <div style={{ fontSize: 12, color: 'var(--t-text-2)', marginTop: 2 }}>
+                  {t('services.requiresCredentialHint')}
+                </div>
+              </span>
+            </label>
+
+            {state.requiresCredential && (
+              <>
+                <div>
+                  <label className="t-label">{t('services.helpMessageEn')}</label>
+                  <textarea
+                    className="t-textarea"
+                    placeholder="e.g. Upload a valid Ontario municipal plumber licence (e.g. G-185237)."
+                    value={state.helpMessageEn}
+                    onChange={(e) => setState({ ...state, helpMessageEn: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="t-label">{t('services.helpMessageFr')}</label>
+                  <textarea
+                    className="t-textarea"
+                    placeholder="ex. Téléversez un permis de plombier municipal valide de l'Ontario (ex. G-185237)."
+                    value={state.helpMessageFr}
+                    onChange={(e) => setState({ ...state, helpMessageFr: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="t-modal-foot">
@@ -633,26 +687,34 @@ function TaskModal({
             {t('services.allowsQuantity') || 'Customer can choose quantity (e.g. 3 items, 25 m²)'}
           </label>
 
-          {/* Flags */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '14px', border: '1px solid var(--t-border)', borderRadius: 8, background: 'var(--t-deep)' }}>
-            {([
-              ['regulated', t('services.regulated')],
-              ['licenseRequired', t('services.licenseRequired')],
-              ['certificationRequired', t('services.certRequired')],
-              ['hazardous', t('services.hazardous')],
-              ['structural', t('services.structural')],
-              ['emergencyEligible', t('services.emergencyEligible')],
-            ] as const).map(([key, label]) => (
-              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--t-text-2)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={(state as any)[key]}
-                  onChange={(e) => setState({ ...state, [key]: e.target.checked })}
-                />
-                {label}
-              </label>
-            ))}
-          </div>
+          {/* Flags — collapsed by default. Credential gating now lives at the
+              section level (category.requiresCredential); these per-task flags
+              stay available only for the rare service that needs a specific
+              document/attribute beyond its section. */}
+          <details style={{ border: '1px solid var(--t-border)', borderRadius: 8, background: 'var(--t-deep)' }}>
+            <summary style={{ padding: '12px 14px', fontSize: 13, color: 'var(--t-text-2)', cursor: 'pointer', userSelect: 'none' }}>
+              {t('services.specialFlags') || 'Special requirements / documents (optional)'}
+            </summary>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '0 14px 14px' }}>
+              {([
+                ['regulated', t('services.regulated')],
+                ['licenseRequired', t('services.licenseRequired')],
+                ['certificationRequired', t('services.certRequired')],
+                ['hazardous', t('services.hazardous')],
+                ['structural', t('services.structural')],
+                ['emergencyEligible', t('services.emergencyEligible')],
+              ] as const).map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--t-text-2)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={(state as any)[key]}
+                    onChange={(e) => setState({ ...state, [key]: e.target.checked })}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </details>
 
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>

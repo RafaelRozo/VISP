@@ -13,6 +13,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Modal,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -27,6 +30,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { taskService, type AvailableProvider } from '../../services/taskService';
+import { providerService, type ProviderDocumentDto } from '../../services/providerService';
 import type { CustomerFlowParamList } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -44,6 +48,14 @@ type PostPhase = 'posting' | 'posted';
 
 const POSTING_DURATION_MS = 1800;
 
+// Compact rating chip for the list row: "★ 4.8 (12)" or "New" for no reviews.
+function ratingLabel(p: AvailableProvider): string {
+  if (p.reviewCount > 0 && p.rating != null) {
+    return `★ ${p.rating.toFixed(1)} (${p.reviewCount})`;
+  }
+  return 'New';
+}
+
 // ──────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────
@@ -56,6 +68,18 @@ function MatchingScreen(): React.JSX.Element {
 
   const [phase, setPhase] = useState<PostPhase>('posting');
   const [providers, setProviders] = useState<AvailableProvider[]>([]);
+  const [selected, setSelected] = useState<AvailableProvider | null>(null);
+  // Full public profile (documents/certificates) fetched when a card is tapped.
+  const [selectedDocs, setSelectedDocs] = useState<ProviderDocumentDto[]>([]);
+
+  useEffect(() => {
+    if (!selected) { setSelectedDocs([]); return; }
+    let active = true;
+    providerService.getPublicProfile(selected.providerId)
+      .then((p) => { if (active) setSelectedDocs(p.documents || []); })
+      .catch(() => { if (active) setSelectedDocs([]); });
+    return () => { active = false; };
+  }, [selected]);
 
   // Fetch qualified providers in the customer's zone (with their own prices).
   // Empty => none available now → the job waits for offers (existing flow).
@@ -230,9 +254,10 @@ function MatchingScreen(): React.JSX.Element {
                   </Text>
                   <View style={{ width: '100%', marginBottom: Spacing.md }}>
                     {providers.slice(0, 5).map((p) => (
-                      <View
+                      <Pressable
                         key={p.providerId}
-                        style={{
+                        onPress={() => setSelected(p)}
+                        style={({ pressed }) => ({
                           flexDirection: 'row',
                           justifyContent: 'space-between',
                           alignItems: 'center',
@@ -242,14 +267,15 @@ function MatchingScreen(): React.JSX.Element {
                           borderWidth: StyleSheet.hairlineWidth,
                           borderColor: theme.border,
                           marginBottom: 8,
-                        }}
+                          opacity: pressed ? 0.6 : 1,
+                        })}
                       >
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: theme.textPrimary, fontWeight: '600', fontSize: FontSize.body }}>
                             {p.displayName}
                           </Text>
                           <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption, marginTop: 2 }}>
-                            {p.level ? `Level ${p.level}` : ''}{p.distanceKm != null ? `  ·  ${p.distanceKm} km` : ''}
+                            {ratingLabel(p)}{p.level ? `  ·  L${p.level}` : ''}{p.distanceKm != null ? `  ·  ${p.distanceKm} km` : ''}
                           </Text>
                         </View>
                         {p.rateCents != null ? (
@@ -260,7 +286,8 @@ function MatchingScreen(): React.JSX.Element {
                         ) : (
                           <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption }}>Quotes per job</Text>
                         )}
-                      </View>
+                        <Text style={{ color: theme.textTertiary, fontSize: FontSize.body, marginLeft: 8 }}>›</Text>
+                      </Pressable>
                     ))}
                   </View>
                   <Text style={[styles.successMessage, { color: theme.textTertiary }]}>
@@ -318,6 +345,90 @@ function MatchingScreen(): React.JSX.Element {
           </Text>
         </View>
       </View>
+
+      {/* Provider detail — tap a card to see rating, experience and summary. */}
+      <Modal
+        visible={selected != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelected(null)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setSelected(null)}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+            onPress={() => { /* swallow taps inside the card */ }}
+          >
+            {selected && (
+              <>
+                <Text style={{ color: theme.textPrimary, fontSize: FontSize.title3, fontWeight: '700' }}>
+                  {selected.displayName}
+                </Text>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                  <Text style={{ color: '#F5A623', fontSize: FontSize.body, fontWeight: '700' }}>
+                    {selected.reviewCount > 0 && selected.rating != null
+                      ? `★ ${selected.rating.toFixed(1)}`
+                      : '★ —'}
+                  </Text>
+                  <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption, marginLeft: 6 }}>
+                    {selected.reviewCount > 0
+                      ? `${selected.reviewCount} review${selected.reviewCount === 1 ? '' : 's'}`
+                      : 'No reviews yet — new provider'}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', marginTop: 12, flexWrap: 'wrap' }}>
+                  {selected.level != null && (
+                    <Text style={[styles.detailChip, { color: theme.textSecondary, borderColor: theme.border }]}>
+                      Level {selected.level}
+                    </Text>
+                  )}
+                  {selected.yearsExperience != null && (
+                    <Text style={[styles.detailChip, { color: theme.textSecondary, borderColor: theme.border }]}>
+                      {selected.yearsExperience} yr{selected.yearsExperience === 1 ? '' : 's'} exp.
+                    </Text>
+                  )}
+                  {selected.distanceKm != null && (
+                    <Text style={[styles.detailChip, { color: theme.textSecondary, borderColor: theme.border }]}>
+                      {selected.distanceKm} km away
+                    </Text>
+                  )}
+                </View>
+
+                <ScrollView style={{ maxHeight: 200, marginTop: 12 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: FontSize.body, lineHeight: 20 }}>
+                    {selected.bio || 'This provider has not added a summary yet.'}
+                  </Text>
+                  {selectedDocs.length > 0 && (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={{ color: theme.textTertiary, fontSize: FontSize.caption, fontWeight: '700', textTransform: 'uppercase', marginBottom: 6 }}>
+                        Documents · {selectedDocs.length}
+                      </Text>
+                      {selectedDocs.map((d) => (
+                        <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+                          <Text style={{ color: theme.textSecondary, fontSize: FontSize.body }}>📄  {d.name}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </ScrollView>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                  <Text style={{ color: theme.textPrimary, fontSize: FontSize.body, fontWeight: '700' }}>
+                    {selected.rateCents != null
+                      ? `$${(selected.rateCents / 100).toFixed(2)}${selected.pricingUnit ? `/${selected.pricingUnit}` : ''}`
+                      : 'Quotes per job'}
+                  </Text>
+                  <GlassButton title="Close" variant="outline" onPress={() => setSelected(null)} />
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -330,6 +441,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'space-between',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  modalCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.lg,
+  },
+  detailChip: {
+    fontSize: FontSize.caption,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 8,
+    marginBottom: 8,
+    overflow: 'hidden',
   },
 
   // Top

@@ -192,12 +192,14 @@ function JobRouteMap({ job }: { job: Job }): React.JSX.Element | null {
 const mapStyles = StyleSheet.create({
   card: {
     height: 240,
+    width: '100%',
     borderRadius: 14,
     overflow: 'hidden',
-    marginTop: 12,
     marginBottom: 4,
   },
-  view: { flex: 1 },
+  // Explicit width/height — a flex:1 Mapbox MapView inside a ScrollView renders
+  // black on iOS until it gets concrete dimensions (matches JobTrackingScreen).
+  view: { width: '100%', height: '100%' },
   customerMarker: {
     width: 24,
     height: 24,
@@ -562,7 +564,11 @@ export default function ActiveJobScreen(): React.JSX.Element {
               {new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
             </Eyebrow>
 
-            {liveTodayJob && (liveTodayJob.status === 'en_route' || liveTodayJob.status === 'in_progress') ? (
+            {/* Always show the route-to-destination map for the active job
+                (any assigned status), never gated to en_route/in_progress.
+                JobRouteMap self-guards against missing coordinates so it can
+                never render a black 0,0 ocean tile. */}
+            {liveTodayJob ? (
               <JobRouteMap job={liveTodayJob} />
             ) : null}
 

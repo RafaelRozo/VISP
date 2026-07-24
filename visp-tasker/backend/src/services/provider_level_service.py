@@ -1,0 +1,181 @@
+"""Provider level derivation + task-qualification sync (section-based model, migration 029).
+
+Rules (Ricardo, 2026-07-23):
+  * L1 (default) — no approved SECTION document. Sees/offers only OPEN sections
+    (service_categories.requires_credential = False).
+  * L2 — the provider has >= 1 VERIFIED credential tied to a SECTION
+    (provider_credentials.category_id set). This is the global L1 -> L2 flip:
+    the first approved section document unlocks all L2 gated sections.
+  * L3 — regulated trades. In addition to L2, requires a VERIFIED trade LICENSE
+    (credential_type = license, non-expired) AND a VERIFIED, active insurance
+    policy. The matching engine still enforces license+insurance as a backstop.
+  * L4 (emergency) — SHELVED for now. Never auto-assigned; L4 tasks never qualify.
+
+A task in an OPEN section is always offerable. A task in a GATED section is
+offerable once the provider's level reaches the task's required level.
+
+This module is the single source of truth for both current_level and the
+per-task ProviderTaskQualification.qualified flag; call
+``recompute_level_and_qualifications`` whenever a credential or insurance policy
+changes verification state, and use ``task_qualifies`` at onboarding/service
+selection time.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date, datetime, timezone
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.models.provider import (
+    ProviderLevel,
+    ProviderLevelRecord,
+    ProviderProfile,
+)
+from src.models.taxonomy import ProviderTaskQualification, ServiceCategory, ServiceTask
+from src.models.verification import (
+    CredentialStatus,
+    CredentialType,
+    InsuranceStatus,
+    ProviderCredential,
+    ProviderInsurancePolicy,
+)
+
+LEVEL_NUMERIC: dict[ProviderLevel, int] = {
+    ProviderLevel.LEVEL_1: 1,
+    ProviderLevel.LEVEL_2: 2,
+    ProviderLevel.LEVEL_3: 3,
+    ProviderLevel.LEVEL_4: 4,
+}
+
+
+def task_qualifies(
+    provider_level: ProviderLevel,
+    task_level: ProviderLevel,
+    section_requires_credential: bool,
+) -> bool:
+    """Whether a provider at ``provider_level`` may offer/be matched to a task.
+
+    * L4 tasks never qualify (emergency shelved).
+    * Open sections (requires_credential = False) always qualify.
+    * Gated sections require provider_level >= task_level.
+    """
+    if task_level == ProviderLevel.LEVEL_4:
+        return False
+    if not section_requires_credential:
+        return True
+    return LEVEL_NUMERIC[provider_level] >= LEVEL_NUMERIC[task_level]
+
+
+async def _has_verified_section_credential(db: AsyncSession, provider_id: uuid.UUID) -> bool:
+    """True if the provider has >= 1 VERIFIED credential attached to a section."""
+    stmt = select(func.count(ProviderCredential.id)).where(
+        ProviderCredential.provider_id == provider_id,
+        ProviderCredential.category_id.is_not(None),
+        ProviderCredential.status == CredentialStatus.VERIFIED,
+    )
+    return (await db.execute(stmt)).scalar_one() > 0
+
+
+async def _has_verified_license(
+    db: AsyncSession, provider_id: uuid.UUID, on_date: date
+) -> bool:
+    stmt = select(func.count(ProviderCredential.id)).where(
+        ProviderCredential.provider_id == provider_id,
+        ProviderCredential.credential_type == CredentialType.LICENSE,
+        ProviderCredential.status == CredentialStatus.VERIFIED,
+        or_(
+            ProviderCredential.expiry_date.is_(None),
+            ProviderCredential.expiry_date >= on_date,
+        ),
+    )
+    return (await db.execute(stmt)).scalar_one() > 0
+
+
+async def _has_verified_insurance(
+    db: AsyncSession, provider_id: uuid.UUID, on_date: date
+) -> bool:
+    stmt = select(func.count(ProviderInsurancePolicy.id)).where(
+        ProviderInsurancePolicy.provider_id == provider_id,
+        ProviderInsurancePolicy.status == InsuranceStatus.VERIFIED,
+        ProviderInsurancePolicy.effective_date <= on_date,
+        ProviderInsurancePolicy.expiry_date >= on_date,
+    )
+    return (await db.execute(stmt)).scalar_one() > 0
+
+
+async def compute_level(db: AsyncSession, provider_id: uuid.UUID) -> ProviderLevel:
+    """Derive the provider's level from their VERIFIED credentials/insurance."""
+    if not await _has_verified_section_credential(db, provider_id):
+        return ProviderLevel.LEVEL_1
+
+    today = date.today()
+    if await _has_verified_license(db, provider_id, today) and await _has_verified_insurance(
+        db, provider_id, today
+    ):
+        return ProviderLevel.LEVEL_3
+    return ProviderLevel.LEVEL_2
+
+
+async def recompute_level_and_qualifications(
+    db: AsyncSession,
+    provider_id: uuid.UUID,
+    *,
+    admin_user_id: uuid.UUID | None = None,
+) -> ProviderLevel:
+    """Recompute current_level and re-derive every ProviderTaskQualification.qualified.
+
+    Writes a ProviderLevelRecord when the level actually changes. Flushes (no
+    commit) so the caller controls the transaction. Returns the resolved level.
+    """
+    profile = (
+        await db.execute(
+            select(ProviderProfile).where(ProviderProfile.id == provider_id)
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        return ProviderLevel.LEVEL_1
+
+    now = datetime.now(timezone.utc)
+    level = await compute_level(db, provider_id)
+
+    if profile.current_level != level:
+        previous = profile.current_level
+        profile.current_level = level
+        db.add(
+            ProviderLevelRecord(
+                provider_id=provider_id,
+                level=level,
+                qualified=LEVEL_NUMERIC[level] > LEVEL_NUMERIC[previous],
+                qualified_at=now,
+                revoked_at=None if LEVEL_NUMERIC[level] >= LEVEL_NUMERIC[previous] else now,
+                revoked_reason=(
+                    None
+                    if LEVEL_NUMERIC[level] >= LEVEL_NUMERIC[previous]
+                    else "Credential/insurance no longer valid"
+                ),
+                approved_by=admin_user_id,
+            )
+        )
+
+    # Re-derive qualified for every task the provider has selected.
+    rows = (
+        await db.execute(
+            select(ProviderTaskQualification, ServiceTask, ServiceCategory)
+            .join(ServiceTask, ProviderTaskQualification.task_id == ServiceTask.id)
+            .join(ServiceCategory, ServiceTask.category_id == ServiceCategory.id)
+            .where(ProviderTaskQualification.provider_id == provider_id)
+        )
+    ).all()
+
+    for qual, task, category in rows:
+        should = task_qualifies(level, task.level, category.requires_credential)
+        if qual.qualified != should:
+            qual.qualified = should
+            qual.qualified_at = now if should else None
+            qual.auto_granted = True
+
+    await db.flush()
+    return level

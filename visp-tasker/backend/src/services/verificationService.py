@@ -501,6 +501,14 @@ async def approve_credential(
 
     await db.flush()
 
+    # Section-based model (migration 029): a newly VERIFIED section document may
+    # flip the provider L1 -> L2 (or up to L3) and unlock gated tasks.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(
+        db, credential.provider_id, admin_user_id=admin_user_id
+    )
+
     logger.info(
         "Credential approved: id=%s, type=%s, approved_by=%s",
         credential_id,
@@ -567,6 +575,14 @@ async def reject_credential(
 
     await db.flush()
 
+    # Section-based model (migration 029): losing a VERIFIED section document may
+    # demote the provider (L2/L3 -> lower) and revoke gated-task qualifications.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(
+        db, credential.provider_id, admin_user_id=admin_user_id
+    )
+
     logger.info(
         "Credential rejected: id=%s, type=%s, rejected_by=%s, reason=%s",
         credential_id,
@@ -613,6 +629,13 @@ async def approve_insurance(
     policy.verified_by = admin_user_id
 
     await db.flush()
+
+    # A verified insurance policy can complete the L3 requirement (license + insurance).
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(
+        db, policy.provider_id, admin_user_id=admin_user_id
+    )
 
     logger.info(
         "Insurance approved: id=%s, approved_by=%s",
@@ -663,6 +686,13 @@ async def reject_insurance(
     policy.verified_by = admin_user_id
 
     await db.flush()
+
+    # Losing insurance can drop the provider out of L3.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(
+        db, policy.provider_id, admin_user_id=admin_user_id
+    )
 
     logger.info(
         "Insurance rejected: id=%s, rejected_by=%s, reason=%s",

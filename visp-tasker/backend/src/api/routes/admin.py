@@ -851,24 +851,36 @@ async def list_pending_credentials(
     db: DBSession,
     _: CurrentAdmin,
 ) -> dict[str, Any]:
+    from sqlalchemy.orm import aliased
+
+    SectionCat = aliased(ServiceCategory)
     stmt = (
-        select(ProviderCredential, ProviderProfile, User, ServiceTask, ServiceCategory)
+        select(ProviderCredential, ProviderProfile, User, ServiceTask, ServiceCategory, SectionCat)
         .join(ProviderProfile, ProviderProfile.id == ProviderCredential.provider_id)
         .join(User, User.id == ProviderProfile.user_id)
         .outerjoin(ServiceTask, ServiceTask.id == ProviderCredential.task_id)
         .outerjoin(ServiceCategory, ServiceCategory.id == ServiceTask.category_id)
+        # Section-based model (029): a credential now belongs directly to a SECTION.
+        .outerjoin(SectionCat, SectionCat.id == ProviderCredential.category_id)
         .where(ProviderCredential.status == CredentialStatus.PENDING_REVIEW)
         .order_by(ProviderCredential.created_at.asc())
     )
     rows = (await db.execute(stmt)).all()
     items = []
-    for cred, profile, user, task, category in rows:
+    for cred, profile, user, task, category, section in rows:
         items.append({
             "id": str(cred.id),
             "credentialType": cred.credential_type.value,
             "name": cred.name,
             "documentUrl": cred.document_url,
             "uploadedAt": cred.created_at.isoformat() if cred.created_at else None,
+            # The SECTION this document is for (drives the L1->L2 flip on approval).
+            "section": (
+                {"id": str(section.id), "name": section.name}
+                if section is not None
+                else None
+            ),
+            "licenseClass": cred.license_class.value if cred.license_class else None,
             "task": (
                 {
                     "id": str(task.id),
@@ -893,6 +905,8 @@ async def list_pending_credentials(
 
 class CredentialDecisionRequest(_CamelModel):
     note: Optional[str] = None
+    # Ontario licence class (only for LICENSE credentials) — set at validation time.
+    license_class: Optional[str] = None
 
 
 @router.post("/credentials/{credential_id}/approve")
@@ -909,11 +923,32 @@ async def approve_credential(
     ).scalar_one_or_none()
     if cred is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Credential not found.")
+
+    # For a trade licence the admin records the Ontario licence class (G2/G in
+    # practice). Validate against the enum so bad input is a clean 400.
+    if body is not None and body.license_class:
+        from src.models.verification import LicenseClass
+
+        try:
+            cred.license_class = LicenseClass(body.license_class)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid licence class '{body.license_class}'.",
+            )
+
     cred.status = CredentialStatus.VERIFIED
     cred.verified_at = datetime.now(timezone.utc)
     # NOTE: `verified_by` is FK to users.id and superusers live in a separate
     # table. Audit which admin acted on the credential will live in a future
     # dedicated audit_log table.
+
+    # Section-based model (migration 029): a newly VERIFIED section document may
+    # flip the provider L1 -> L2 (or up to L3) and unlock gated tasks.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(db, cred.provider_id)
+
     await db.commit()
     return {"data": {"id": str(cred.id), "status": cred.status.value}}
 
@@ -938,6 +973,12 @@ async def reject_credential(
     # NOTE: `verified_by` is FK to users.id and superusers live in a separate
     # table. Audit which admin acted on the credential will live in a future
     # dedicated audit_log table.
+
+    # Losing a VERIFIED section document may demote the provider + revoke tasks.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(db, cred.provider_id)
+
     await db.commit()
     return {"data": {"id": str(cred.id), "status": cred.status.value}}
 
@@ -1047,6 +1088,11 @@ class CategoryAdminCreate(_CamelModel):
     display_order: int = 0
     is_active: bool = True
     parent_id: Optional[uuid.UUID] = None
+    # Section-based gating (migration 029): whole section locked to L2+ providers.
+    requires_credential: bool = False
+    # Bilingual (EN/FR) help pop-up shown before uploading this section's document.
+    help_message_en: Optional[str] = None
+    help_message_fr: Optional[str] = None
 
 
 class CategoryAdminUpdate(_CamelModel):
@@ -1057,6 +1103,9 @@ class CategoryAdminUpdate(_CamelModel):
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
     parent_id: Optional[uuid.UUID] = None
+    requires_credential: Optional[bool] = None
+    help_message_en: Optional[str] = None
+    help_message_fr: Optional[str] = None
 
 
 class TaskAdminCreate(_CamelModel):
@@ -1166,6 +1215,9 @@ def _category_to_out(c: ServiceCategory, tasks: Optional[list[ServiceTask]] = No
         "displayOrder": c.display_order,
         "isActive": c.is_active,
         "parentId": str(c.parent_id) if c.parent_id else None,
+        "requiresCredential": c.requires_credential,
+        "helpMessageEn": c.help_message_en,
+        "helpMessageFr": c.help_message_fr,
         "createdAt": c.created_at.isoformat() if c.created_at else None,
         "updatedAt": c.updated_at.isoformat() if c.updated_at else None,
     }
@@ -1210,6 +1262,9 @@ async def admin_create_category(
         display_order=body.display_order,
         is_active=body.is_active,
         parent_id=body.parent_id,
+        requires_credential=body.requires_credential,
+        help_message_en=body.help_message_en,
+        help_message_fr=body.help_message_fr,
     )
     db.add(cat)
     try:
@@ -1441,7 +1496,11 @@ async def admin_validate_company(db: DBSession, admin: CurrentAdmin, company_id:
     company = await company_service.get_company(db, _uuid.UUID(company_id))
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found.")
-    company = await company_service.set_company_validation(db, company, validated=True, reason=None)
+    try:
+        company = await company_service.set_company_validation(db, company, validated=True, reason=None)
+    except ValueError as exc:
+        # e.g. documents not all approved — user-facing 400 (not 5xx, Cloudflare).
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"data": {"status": company.status.value}}
 
 

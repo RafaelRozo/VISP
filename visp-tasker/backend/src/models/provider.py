@@ -248,3 +248,27 @@ class ProviderAvailability(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             f"<ProviderAvailability(provider_id={self.provider_id}, "
             f"day={self.day_of_week}, {self.start_time}-{self.end_time})>"
         )
+
+
+class ProviderDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Free-form provider documents/certificates shown in the profile preview.
+
+    NOT tied to any service or credential gating — purely informational files a
+    provider showcases to customers (diploma, first-aid card, reference, etc.).
+    Stored on disk under uploads/provider_documents/<provider_id>/ (plaintext,
+    same scheme as credentials/avatars).
+    """
+
+    __tablename__ = "provider_documents"
+
+    provider_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("provider_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    document_url: Mapped[str] = mapped_column(Text, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ProviderDocument(provider_id={self.provider_id}, name={self.name})>"

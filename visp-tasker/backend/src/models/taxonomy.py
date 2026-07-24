@@ -51,6 +51,17 @@ class ServiceCategory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # Section-level gating (migration 029). When TRUE the whole section is gated:
+    # only providers who have had a section document approved (LEVEL_2+) can offer
+    # or be matched to its services. Services themselves are plain checkboxes.
+    requires_credential: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    # Bilingual (EN/FR) help pop-up shown in-app before uploading this section's
+    # document (e.g. "You need a valid Ontario municipal plumber licence, e.g. G-185237").
+    help_message_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    help_message_fr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Self-referential parent (NULL = root category)
     parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),

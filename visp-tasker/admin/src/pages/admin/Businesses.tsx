@@ -192,6 +192,8 @@ function CompanyDetailModal({
       invalidateAll();
       onClose();
     },
+    // Backend now returns 400 if not every document is APPROVED — surface it.
+    onError: () => { /* error shown inline via validateCompany.error below */ },
   });
 
   const rejectCompany = useMutation({
@@ -205,6 +207,11 @@ function CompanyDetailModal({
   });
 
   const company = q.data;
+  // A business may only be validated once EVERY uploaded document is approved
+  // (mirrors the backend gate). Disable the button proactively + explain why.
+  const companyDocs = company?.documents ?? [];
+  const allDocsApproved =
+    companyDocs.length > 0 && companyDocs.every((d) => d.status === 'approved');
   const previewUrl = previewDoc ? resolveDocUrl(previewDoc.document_url) : null;
   const previewKind = previewUrl ? inferMimeKind(previewUrl) : 'other';
 
@@ -370,7 +377,18 @@ function CompanyDetailModal({
                 </button>
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {validateCompany.isError && (
+              <div style={{ marginBottom: 8, fontSize: 13, color: 'var(--t-danger)' }}>
+                {(validateCompany.error as Error)?.message ||
+                  t('businesses.validateFailed', 'Could not validate the business.')}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+              {!allDocsApproved && (
+                <span style={{ fontSize: 12, color: 'var(--t-text-3)', marginRight: 'auto' }}>
+                  {t('businesses.approveAllDocsFirst', 'Approve every document before validating.')}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -384,7 +402,8 @@ function CompanyDetailModal({
               <button
                 type="button"
                 onClick={() => validateCompany.mutate()}
-                disabled={validateCompany.isPending}
+                disabled={validateCompany.isPending || !allDocsApproved}
+                title={!allDocsApproved ? t('businesses.approveAllDocsFirst', 'Approve every document before validating.') : undefined}
                 className="t-btn t-btn-success"
               >
                 {t('businesses.validateBusiness', 'Validate business')}

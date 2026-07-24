@@ -26,6 +26,24 @@ from src.models.taxonomy import (
 )
 from src.services import fee_service, tax_service
 
+# VISP commission by provider level in the provider-set-pricing model — midpoints
+# of the CLAUDE.md ranges (L1 15-20, L2 12-18, L3 8-12, L4 15-25). Applied to the
+# subtotal when the job has no commission_rate set at booking (create_job leaves
+# it unset because no provider is assigned yet).
+_LEVEL_COMMISSION: dict[str, Decimal] = {
+    "1": Decimal("0.175"),
+    "2": Decimal("0.15"),
+    "3": Decimal("0.10"),
+    "4": Decimal("0.20"),
+}
+_DEFAULT_COMMISSION = Decimal("0.175")
+
+
+def commission_rate_for_level(level: Any) -> Decimal:
+    """VISP's commission fraction for a provider level (enum, its .value, or int)."""
+    key = getattr(level, "value", level)
+    return _LEVEL_COMMISSION.get(str(key), _DEFAULT_COMMISSION)
+
 
 # ---------------------------------------------------------------------------
 # Exceptions (mapped to 4xx by the route layer — never 5xx, Cloudflare rule)
@@ -328,8 +346,12 @@ async def reprice_job_to_provider_rate(
     if quote["unit"] == PricingUnit.HOURLY.value:
         job.hourly_rate_cents = quote["rate_cents"]
 
-    # Recompute commission + payout off the new subtotal (commission_rate was
-    # set at booking from the level schedule).
+    # Recompute commission + payout off the new subtotal. VISP's take is a % of
+    # the subtotal keyed to the level of the provider WHO ACCEPTED. At booking no
+    # provider is assigned yet, so create_job can only stamp a placeholder rate —
+    # override it here now that the real accepting provider (and level) is known.
+    if accepting is not None:
+        job.commission_rate = commission_rate_for_level(accepting.current_level)
     if job.commission_rate is not None:
         job.commission_amount_cents = int(Decimal(subtotal) * job.commission_rate)
         job.provider_payout_cents = subtotal - job.commission_amount_cents
