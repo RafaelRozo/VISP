@@ -40,7 +40,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 logger = logging.getLogger(__name__)
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentAdmin, DBSession
@@ -50,7 +51,12 @@ from src.models.job import Job, JobAssignment, JobStatus
 from src.models.promotion import Promotion
 from src.models.provider import ProviderLevel, ProviderProfile
 from src.models.user import User
-from src.models.taxonomy import ServiceCategory, ServiceTask
+from src.models.taxonomy import (
+    CredentialRequirement,
+    ServiceCategory,
+    ServiceCredentialRequirement,
+    ServiceTask,
+)
 from src.models.verification import (
     CredentialStatus,
     ProviderCredential,
@@ -1108,12 +1114,24 @@ class CategoryAdminUpdate(_CamelModel):
     help_message_fr: Optional[str] = None
 
 
+class TaskCredentialRequirementIn(_CamelModel):
+    """Un código de credencial exigido por un servicio.
+
+    ``mandatory=False`` = condicional/alternativo (los casos "306A y/o 309A"
+    del PDF de estructuración).
+    """
+
+    code: str = Field(min_length=1, max_length=40)
+    mandatory: bool = True
+    notes: Optional[str] = None
+
+
 class TaskAdminCreate(_CamelModel):
     category_id: uuid.UUID
     slug: str = Field(min_length=1, max_length=150)
     name: str = Field(min_length=1, max_length=300)
     description: Optional[str] = None
-    level: str = Field(pattern=r"^[1-4]$")
+    level: str = Field(pattern=r"^[0-3]$")
     regulated: bool = False
     license_required: bool = False
     certification_required: bool = False
@@ -1132,6 +1150,8 @@ class TaskAdminCreate(_CamelModel):
     icon_url: Optional[str] = None
     display_order: int = 0
     is_active: bool = True
+    # Requisitos de credencial por servicio (gate de L2/L3).
+    credential_requirements: list[TaskCredentialRequirementIn] = Field(default_factory=list)
 
 
 class TaskAdminUpdate(_CamelModel):
@@ -1139,7 +1159,7 @@ class TaskAdminUpdate(_CamelModel):
     slug: Optional[str] = Field(default=None, min_length=1, max_length=150)
     name: Optional[str] = Field(default=None, min_length=1, max_length=300)
     description: Optional[str] = None
-    level: Optional[str] = Field(default=None, pattern=r"^[1-4]$")
+    level: Optional[str] = Field(default=None, pattern=r"^[0-3]$")
     regulated: Optional[bool] = None
     license_required: Optional[bool] = None
     certification_required: Optional[bool] = None
@@ -1156,6 +1176,8 @@ class TaskAdminUpdate(_CamelModel):
     icon_url: Optional[str] = None
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
+    # Cuando viene, REEMPLAZA el conjunto completo de requisitos del servicio.
+    credential_requirements: Optional[list[TaskCredentialRequirementIn]] = None
 
 
 def _level_value(level: Any) -> str:
@@ -1176,8 +1198,11 @@ def _parse_pricing_unit(value: Any) -> "PricingUnit":
         return PricingUnit(v.lower())
 
 
-def _task_to_out(t: ServiceTask) -> dict[str, Any]:
+def _task_to_out(
+    t: ServiceTask, requirements: Optional[list[dict[str, Any]]] = None
+) -> dict[str, Any]:
     return {
+        "credentialRequirements": requirements or [],
         "id": str(t.id),
         "categoryId": str(t.category_id),
         "slug": t.slug,
@@ -1205,7 +1230,11 @@ def _task_to_out(t: ServiceTask) -> dict[str, Any]:
     }
 
 
-def _category_to_out(c: ServiceCategory, tasks: Optional[list[ServiceTask]] = None) -> dict[str, Any]:
+def _category_to_out(
+    c: ServiceCategory,
+    tasks: Optional[list[ServiceTask]] = None,
+    requirements: Optional[dict[uuid.UUID, list[dict[str, Any]]]] = None,
+) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": str(c.id),
         "slug": c.slug,
@@ -1222,7 +1251,8 @@ def _category_to_out(c: ServiceCategory, tasks: Optional[list[ServiceTask]] = No
         "updatedAt": c.updated_at.isoformat() if c.updated_at else None,
     }
     if tasks is not None:
-        out["tasks"] = [_task_to_out(t) for t in tasks]
+        reqs = requirements or {}
+        out["tasks"] = [_task_to_out(t, reqs.get(t.id)) for t in tasks]
         out["taskCount"] = len(tasks)
     return out
 
@@ -1238,13 +1268,18 @@ async def taxonomy_full(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
         )
     ).scalars().all()
 
+    all_task_ids = [t.id for c in cats for t in c.tasks]
+    requirements = await _load_task_requirements(db, all_task_ids)
+
     data: list[dict[str, Any]] = []
     for c in cats:
+        # Ordenado por NIVEL (L0 -> L3) y luego por nombre: es el orden en que
+        # el cliente revisa el catálogo tras la reestructuración de niveles.
         tasks_sorted = sorted(
             c.tasks,
-            key=lambda t: (t.display_order, t.name),
+            key=lambda t: (_level_value(t.level), t.name),
         )
-        data.append(_category_to_out(c, tasks_sorted))
+        data.append(_category_to_out(c, tasks_sorted, requirements))
     return {"data": data}
 
 
@@ -1320,15 +1355,160 @@ async def admin_delete_category(
 
 
 def _parse_level(level: str) -> ProviderLevel:
+    """Escala L0..L3. LEVEL_4 quedó muerto (Emergency salió del producto)."""
     mapping = {
+        "0": ProviderLevel.LEVEL_0,
         "1": ProviderLevel.LEVEL_1,
         "2": ProviderLevel.LEVEL_2,
         "3": ProviderLevel.LEVEL_3,
-        "4": ProviderLevel.LEVEL_4,
     }
     if level not in mapping:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid level (must be 1-4).")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid level (must be 0-3). L4/Emergency no longer exists.",
+        )
     return mapping[level]
+
+
+# Niveles cuyo acceso se abre con una credencial que coincide con el servicio.
+_CREDENTIAL_GATED_LEVELS = {ProviderLevel.LEVEL_2, ProviderLevel.LEVEL_3}
+
+
+async def _load_task_requirements(
+    db: AsyncSession, task_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """Requisitos de credencial agrupados por servicio, en una sola query."""
+    if not task_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(ServiceCredentialRequirement, CredentialRequirement)
+            .join(
+                CredentialRequirement,
+                CredentialRequirement.code == ServiceCredentialRequirement.code,
+            )
+            .where(ServiceCredentialRequirement.task_id.in_(task_ids))
+            .order_by(
+                ServiceCredentialRequirement.mandatory.desc(),
+                ServiceCredentialRequirement.code,
+            )
+        )
+    ).all()
+
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for link, req in rows:
+        out.setdefault(link.task_id, []).append(
+            {
+                "code": link.code,
+                "mandatory": link.mandatory,
+                "labelEn": req.label_en,
+                "labelFr": req.label_fr,
+                "authority": req.authority,
+                "notes": link.notes,
+            }
+        )
+    return out
+
+
+async def _replace_task_requirements(
+    db: AsyncSession,
+    task: ServiceTask,
+    items: list["TaskCredentialRequirementIn"],
+) -> None:
+    """Reemplaza el conjunto de requisitos de un servicio (borra + inserta)."""
+    codes = [i.code.strip() for i in items if i.code and i.code.strip()]
+    if codes:
+        known = set(
+            (
+                await db.execute(
+                    select(CredentialRequirement.code).where(
+                        CredentialRequirement.code.in_(codes)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        unknown = sorted(set(codes) - known)
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown credential requirement code(s): {', '.join(unknown)}",
+            )
+
+    await db.execute(
+        delete(ServiceCredentialRequirement).where(
+            ServiceCredentialRequirement.task_id == task.id
+        )
+    )
+    seen: set[str] = set()
+    for item in items:
+        code = (item.code or "").strip()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        db.add(
+            ServiceCredentialRequirement(
+                task_id=task.id,
+                code=code,
+                mandatory=item.mandatory,
+                notes=(item.notes or None),
+            )
+        )
+
+
+async def _assert_credential_gate(
+    db: AsyncSession, task: ServiceTask, pending: Optional[list["TaskCredentialRequirementIn"]]
+) -> None:
+    """Guardarraíl: un servicio L2/L3 sin requisitos de credencial es un servicio
+    muerto — nadie podría calificarlo nunca y nadie entendería por qué no aparece."""
+    if task.level not in _CREDENTIAL_GATED_LEVELS:
+        return
+    if pending is not None:
+        count = len([i for i in pending if i.code and i.code.strip()])
+    else:
+        count = (
+            await db.execute(
+                select(func.count())
+                .select_from(ServiceCredentialRequirement)
+                .where(ServiceCredentialRequirement.task_id == task.id)
+            )
+        ).scalar_one()
+    if count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "A Level 2 or Level 3 service must declare at least one credential "
+                "requirement, otherwise no provider can ever qualify for it."
+            ),
+        )
+
+
+@router.get("/taxonomy/credential-requirements")
+async def admin_credential_requirements(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
+    """Catálogo de códigos de credencial disponibles (306A, ESA_LEC, TSSA_G2...)."""
+    rows = (
+        await db.execute(
+            select(CredentialRequirement)
+            .where(CredentialRequirement.is_active.is_(True))
+            .order_by(CredentialRequirement.code)
+        )
+    ).scalars().all()
+    return {
+        "data": [
+            {
+                "code": r.code,
+                "labelEn": r.label_en,
+                "labelFr": r.label_fr,
+                "authority": r.authority,
+                "registryName": r.registry_name,
+                "registryUrl": r.registry_url,
+                "verificationMethod": r.verification_method,
+                "description": r.description,
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.post("/taxonomy/tasks", status_code=status.HTTP_201_CREATED)
@@ -1367,17 +1547,25 @@ async def admin_create_task(
         display_order=body.display_order,
         is_active=body.is_active,
     )
+    # Guardarraíl: L2/L3 sin requisitos = servicio que nadie puede tomar nunca.
+    await _assert_credential_gate(db, task, body.credential_requirements)
+
     db.add(task)
     try:
+        await db.flush()
+        await _replace_task_requirements(db, task, body.credential_requirements)
         await db.commit()
         await db.refresh(task)
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as exc:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Could not create service: {exc}",
         )
-    return {"data": _task_to_out(task)}
+    return {"data": _task_to_out(task, (await _load_task_requirements(db, [task.id])).get(task.id))}
 
 
 @router.patch("/taxonomy/tasks/{task_id}")
@@ -1394,6 +1582,9 @@ async def admin_update_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found.")
 
     payload = body.model_dump(exclude_unset=True)
+
+    # Los requisitos de credencial no son una columna: se manejan aparte.
+    payload.pop("credential_requirements", None)
 
     if "level" in payload and payload["level"] is not None:
         payload["level"] = _parse_level(payload["level"])
@@ -1412,13 +1603,22 @@ async def admin_update_task(
     for field, value in payload.items():
         setattr(task, field, value)
 
+    # El guardarraíl se evalúa sobre el nivel RESULTANTE: subir un servicio a
+    # L2/L3 sin requisitos lo dejaría inalcanzable para todo proveedor.
+    await _assert_credential_gate(db, task, body.credential_requirements)
+
     try:
+        if body.credential_requirements is not None:
+            await _replace_task_requirements(db, task, body.credential_requirements)
         await db.commit()
         await db.refresh(task)
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Could not update service: {exc}")
-    return {"data": _task_to_out(task)}
+    return {"data": _task_to_out(task, (await _load_task_requirements(db, [task.id])).get(task.id))}
 
 
 @router.delete("/taxonomy/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

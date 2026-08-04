@@ -4,11 +4,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   adminService,
   CategoryUpsertBody,
+  CREDENTIAL_GATED_LEVELS,
+  CredentialRequirementOption,
+  levelColor,
+  SERVICE_LEVELS,
+  ServiceLevel,
+  TaskCredentialRequirement,
   TaskUpsertBody,
   TaxonomyCategory,
 } from '@/services/adminService';
+import { centsToInput, formatMoneyRange, inputToCents } from '@/lib/money';
 
-type Level = '1' | '2' | '3' | '4';
+type Level = ServiceLevel;
 
 interface CategoryFormState {
   id?: string;
@@ -17,8 +24,9 @@ interface CategoryFormState {
   description: string;
   displayOrder: number;
   isActive: boolean;
-  // Section-based gating (migration 029).
-  requiresCredential: boolean;
+  // Ayuda bilingüe. Antes describía el documento de la sección (migración 029);
+  // ahora que el gate es por servicio, se reutiliza como ayuda para la evidencia
+  // de experiencia que el proveedor sube por clasificación (L1).
   helpMessageEn: string;
   helpMessageFr: string;
 }
@@ -30,14 +38,16 @@ interface TaskFormState {
   name: string;
   description: string;
   level: Level;
+  credentialRequirements: TaskCredentialRequirement[];
   regulated: boolean;
   licenseRequired: boolean;
   certificationRequired: boolean;
   hazardous: boolean;
   structural: boolean;
   emergencyEligible: boolean;
-  basePriceMinCents: string;
-  basePriceMaxCents: string;
+  /** En DÓLARES en el formulario; se convierte a centavos al guardar. */
+  basePriceMin: string;
+  basePriceMax: string;
   estimatedDurationMin: string;
   pricingUnit: string;
   allowsQuantity: boolean;
@@ -52,7 +62,6 @@ const emptyCategory: CategoryFormState = {
   description: '',
   displayOrder: 0,
   isActive: true,
-  requiresCredential: false,
   helpMessageEn: '',
   helpMessageFr: '',
 };
@@ -62,15 +71,16 @@ const emptyTask = (categoryId: string): TaskFormState => ({
   slug: '',
   name: '',
   description: '',
-  level: '1',
+  level: '0',
+  credentialRequirements: [],
   regulated: false,
   licenseRequired: false,
   certificationRequired: false,
   hazardous: false,
   structural: false,
   emergencyEligible: false,
-  basePriceMinCents: '',
-  basePriceMaxCents: '',
+  basePriceMin: '',
+  basePriceMax: '',
   estimatedDurationMin: '',
   pricingUnit: 'hourly',
   allowsQuantity: true,
@@ -79,20 +89,12 @@ const emptyTask = (categoryId: string): TaskFormState => ({
   isActive: true,
 });
 
-function levelBadgeColor(level: Level): string {
-  switch (level) {
-    case '1': return 'var(--t-ok)';
-    case '2': return '#F6AD55';
-    case '3': return '#A78BFA';
-    case '4': return 'var(--t-danger)';
-  }
-}
-
 export default function Services() {
   const { t } = useTranslation();
   const qc = useQueryClient();
 
   const [search, setSearch] = useState('');
+  const [levelFilter, setLevelFilter] = useState<Level | 'all'>('all');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const [categoryForm, setCategoryForm] = useState<CategoryFormState | null>(null);
@@ -137,23 +139,45 @@ export default function Services() {
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return categories;
     return categories
       .map((c) => {
-        const catMatch = c.name.toLowerCase().includes(needle) || c.slug.toLowerCase().includes(needle);
-        const filteredTasks = c.tasks.filter(
+        const catMatch =
+          !needle ||
+          c.name.toLowerCase().includes(needle) ||
+          c.slug.toLowerCase().includes(needle);
+        // La búsqueda por texto encaja con la categoría entera; el filtro por
+        // nivel siempre se aplica a los servicios, uno a uno.
+        const tasks = (catMatch ? c.tasks : c.tasks.filter(
           (tk) =>
             tk.name.toLowerCase().includes(needle) ||
             tk.slug.toLowerCase().includes(needle) ||
             (tk.description && tk.description.toLowerCase().includes(needle)),
-        );
-        if (catMatch || filteredTasks.length > 0) {
-          return { ...c, tasks: catMatch ? c.tasks : filteredTasks };
+        )).filter((tk) => levelFilter === 'all' || tk.level === levelFilter);
+
+        if (tasks.length > 0 || (catMatch && levelFilter === 'all')) {
+          // El backend ya ordena por nivel; reordenamos por si acaso para que
+          // los separadores de nivel salgan siempre bien.
+          const sorted = [...tasks].sort(
+            (a, b) => a.level.localeCompare(b.level) || a.name.localeCompare(b.name),
+          );
+          return { ...c, tasks: sorted };
         }
         return null;
       })
       .filter((c): c is TaxonomyCategory => c !== null);
-  }, [categories, search]);
+  }, [categories, search, levelFilter]);
+
+  /** Cuántos servicios activos hay por nivel — el resumen que el cliente revisa. */
+  const levelCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0 };
+    for (const c of categories) {
+      for (const tk of c.tasks) {
+        counts[tk.level] = (counts[tk.level] ?? 0) + 1;
+        counts.all += 1;
+      }
+    }
+    return counts;
+  }, [categories]);
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => {
@@ -190,6 +214,39 @@ export default function Services() {
         >
           + {t('services.newCategory')}
         </button>
+      </div>
+
+      {/* Filtro por nivel — la vista principal de revisión del catálogo L0–L3 */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          type="button"
+          className={`t-chip${levelFilter === 'all' ? ' t-chip-active' : ''}`}
+          style={{
+            cursor: 'pointer',
+            borderColor: levelFilter === 'all' ? 'var(--t-text)' : undefined,
+            color: levelFilter === 'all' ? 'var(--t-text)' : undefined,
+          }}
+          onClick={() => setLevelFilter('all')}
+        >
+          {t('services.allLevels')} · {levelCounts.all ?? 0}
+        </button>
+        {SERVICE_LEVELS.map((lv) => (
+          <button
+            key={lv.value}
+            type="button"
+            className="t-chip t-chip-mono"
+            style={{
+              cursor: 'pointer',
+              color: lv.color,
+              borderColor: lv.color,
+              opacity: levelFilter === 'all' || levelFilter === lv.value ? 1 : 0.4,
+            }}
+            onClick={() => setLevelFilter(levelFilter === lv.value ? 'all' : lv.value)}
+            title={lv.label}
+          >
+            L{lv.value} · {levelCounts[lv.value] ?? 0}
+          </button>
+        ))}
       </div>
 
       {q.isLoading && <div className="t-meta">{t('common.loading')}</div>}
@@ -260,7 +317,6 @@ export default function Services() {
                       description: cat.description ?? '',
                       displayOrder: cat.displayOrder,
                       isActive: cat.isActive,
-                      requiresCredential: cat.requiresCredential ?? false,
                       helpMessageEn: cat.helpMessageEn ?? '',
                       helpMessageFr: cat.helpMessageFr ?? '',
                     })}
@@ -290,13 +346,38 @@ export default function Services() {
                       {t('services.emptyCategory')}
                     </div>
                   ) : (
-                    cat.tasks.map((tk, idx) => (
+                    cat.tasks.map((tk, idx) => {
+                      const prevLevel = idx > 0 ? cat.tasks[idx - 1].level : null;
+                      const startsLevel = tk.level !== prevLevel;
+                      const color = levelColor(tk.level);
+                      const price = formatMoneyRange(tk.basePriceMinCents, tk.basePriceMaxCents);
+                      const needsCreds = CREDENTIAL_GATED_LEVELS.includes(tk.level);
+                      const reqs = tk.credentialRequirements ?? [];
+                      return (
+                      <div key={tk.id}>
+                        {/* Separador de nivel: el catálogo se lee L0 -> L3 */}
+                        {startsLevel && (
+                          <div
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '10px 20px 6px',
+                              borderTop: idx === 0 ? 'none' : '1px solid var(--t-border)',
+                              background: 'var(--t-deep)',
+                            }}
+                          >
+                            <span className="t-chip t-chip-mono" style={{ color, borderColor: color }}>
+                              L{tk.level}
+                            </span>
+                            <span style={{ fontSize: 11, color: 'var(--t-text-3)', letterSpacing: '0.04em' }}>
+                              {SERVICE_LEVELS.find((l) => l.value === tk.level)?.label}
+                            </span>
+                          </div>
+                        )}
                       <div
-                        key={tk.id}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 14,
                           padding: '14px 20px',
-                          borderTop: idx === 0 ? 'none' : '1px solid var(--t-border)',
+                          borderTop: startsLevel ? 'none' : '1px solid var(--t-border)',
                         }}
                       >
                         <span className="t-mono" style={{ fontSize: 10, color: 'var(--t-text-4)', letterSpacing: '0.1em', width: 24 }}>
@@ -305,19 +386,30 @@ export default function Services() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--t-text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span>{tk.name}</span>
-                            <span className="t-chip t-chip-mono" style={{ color: levelBadgeColor(tk.level), borderColor: levelBadgeColor(tk.level) }}>
+                            <span className="t-chip t-chip-mono" style={{ color, borderColor: color }}>
                               L{tk.level}
                             </span>
-                            {tk.emergencyEligible && <span className="t-chip t-chip-mono t-chip-danger">EMERG</span>}
-                            {tk.licenseRequired && <span className="t-chip t-chip-mono">LIC</span>}
-                            {tk.regulated && <span className="t-chip t-chip-mono">REG</span>}
+                            {/* Un L2/L3 sin requisitos no lo puede tomar nadie. */}
+                            {needsCreds && reqs.length === 0 && (
+                              <span className="t-chip t-chip-mono t-chip-warn" title={t('services.noCredsWarning')}>
+                                ⚠ {t('services.noCreds')}
+                              </span>
+                            )}
+                            {reqs.map((r) => (
+                              <span
+                                key={r.code}
+                                className="t-chip t-chip-mono"
+                                title={`${r.labelEn ?? r.code}${r.mandatory ? '' : ' — ' + t('services.conditional')}`}
+                                style={{ opacity: r.mandatory ? 1 : 0.55 }}
+                              >
+                                {r.code}{r.mandatory ? '' : '?'}
+                              </span>
+                            ))}
                             {!tk.isActive && <span className="t-chip t-chip-mono t-chip-warn">INACTIVE</span>}
                           </div>
                           <div className="t-mono" style={{ fontSize: 11, color: 'var(--t-text-3)', marginTop: 3, letterSpacing: '0.06em' }}>
                             {tk.slug}
-                            {tk.basePriceMinCents != null && tk.basePriceMaxCents != null && (
-                              <> · ${(tk.basePriceMinCents / 100).toFixed(0)}–${(tk.basePriceMaxCents / 100).toFixed(0)}</>
-                            )}
+                            {price && <> · {price}</>}
                             {tk.estimatedDurationMin != null && <> · {tk.estimatedDurationMin} min</>}
                           </div>
                         </div>
@@ -332,14 +424,15 @@ export default function Services() {
                               name: tk.name,
                               description: tk.description ?? '',
                               level: tk.level,
+                              credentialRequirements: reqs,
                               regulated: tk.regulated,
                               licenseRequired: tk.licenseRequired,
                               certificationRequired: tk.certificationRequired,
                               hazardous: tk.hazardous,
                               structural: tk.structural,
                               emergencyEligible: tk.emergencyEligible,
-                              basePriceMinCents: tk.basePriceMinCents != null ? String(tk.basePriceMinCents) : '',
-                              basePriceMaxCents: tk.basePriceMaxCents != null ? String(tk.basePriceMaxCents) : '',
+                              basePriceMin: centsToInput(tk.basePriceMinCents),
+                              basePriceMax: centsToInput(tk.basePriceMaxCents),
                               estimatedDurationMin: tk.estimatedDurationMin != null ? String(tk.estimatedDurationMin) : '',
                               pricingUnit: tk.pricingUnit ?? 'hourly',
                               allowsQuantity: tk.allowsQuantity ?? true,
@@ -364,7 +457,9 @@ export default function Services() {
                           </button>
                         </div>
                       </div>
-                    ))
+                      </div>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -403,6 +498,10 @@ export default function Services() {
             }
           }}
           submitting={createTask.isPending || updateTask.isPending}
+          errorMessage={
+            // El backend rechaza con 400 un L2/L3 sin requisitos de credencial.
+            ((createTask.error ?? updateTask.error) as { message?: string } | null)?.message ?? null
+          }
         />
       )}
     </div>
@@ -441,7 +540,6 @@ function CategoryModal({
       description: state.description.trim() || null,
       displayOrder: state.displayOrder,
       isActive: state.isActive,
-      requiresCredential: state.requiresCredential,
       helpMessageEn: state.helpMessageEn.trim() || null,
       helpMessageFr: state.helpMessageFr.trim() || null,
     });
@@ -485,45 +583,38 @@ function CategoryModal({
             </div>
           </div>
 
-          {/* Section-based gating (migration 029) */}
+          {/* Ayuda para la evidencia de experiencia L1.
+              El gate por SECCIÓN de la migración 029 desapareció: ahora la
+              credencial se exige por servicio. Estos textos se reutilizan como
+              la ayuda que ve el proveedor al subir su experiencia en esta
+              clasificación para desbloquear los servicios L1. */}
           <div style={{ borderTop: '1px solid var(--t-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--t-text-1)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={state.requiresCredential}
-                onChange={(e) => setState({ ...state, requiresCredential: e.target.checked })}
-                style={{ marginTop: 3 }}
+            <div>
+              <strong style={{ fontSize: 14, color: 'var(--t-text-1)' }}>
+                {t('services.experienceHelpTitle')}
+              </strong>
+              <div style={{ fontSize: 12, color: 'var(--t-text-2)', marginTop: 2 }}>
+                {t('services.experienceHelpHint')}
+              </div>
+            </div>
+            <div>
+              <label className="t-label">{t('services.helpMessageEn')}</label>
+              <textarea
+                className="t-textarea"
+                placeholder="e.g. Upload a resume, references, training records or photos of similar work you have done."
+                value={state.helpMessageEn}
+                onChange={(e) => setState({ ...state, helpMessageEn: e.target.value })}
               />
-              <span>
-                <strong>{t('services.requiresCredential')}</strong>
-                <div style={{ fontSize: 12, color: 'var(--t-text-2)', marginTop: 2 }}>
-                  {t('services.requiresCredentialHint')}
-                </div>
-              </span>
-            </label>
-
-            {state.requiresCredential && (
-              <>
-                <div>
-                  <label className="t-label">{t('services.helpMessageEn')}</label>
-                  <textarea
-                    className="t-textarea"
-                    placeholder="e.g. Upload a valid Ontario municipal plumber licence (e.g. G-185237)."
-                    value={state.helpMessageEn}
-                    onChange={(e) => setState({ ...state, helpMessageEn: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="t-label">{t('services.helpMessageFr')}</label>
-                  <textarea
-                    className="t-textarea"
-                    placeholder="ex. Téléversez un permis de plombier municipal valide de l'Ontario (ex. G-185237)."
-                    value={state.helpMessageFr}
-                    onChange={(e) => setState({ ...state, helpMessageFr: e.target.value })}
-                  />
-                </div>
-              </>
-            )}
+            </div>
+            <div>
+              <label className="t-label">{t('services.helpMessageFr')}</label>
+              <textarea
+                className="t-textarea"
+                placeholder="ex. Téléversez un CV, des références, des attestations de formation ou des photos de travaux similaires."
+                value={state.helpMessageFr}
+                onChange={(e) => setState({ ...state, helpMessageFr: e.target.value })}
+              />
+            </div>
           </div>
         </div>
         <div className="t-modal-foot">
@@ -545,32 +636,72 @@ function TaskModal({
   onClose,
   onSubmit,
   submitting,
+  errorMessage,
 }: {
   form: TaskFormState;
   categories: TaxonomyCategory[];
   onClose: () => void;
   onSubmit: (body: TaskUpsertBody) => void;
   submitting: boolean;
+  errorMessage: string | null;
 }) {
   const { t } = useTranslation();
   const [state, setState] = useState<TaskFormState>(form);
 
+  const options = useQuery<CredentialRequirementOption[]>({
+    queryKey: ['credential-requirement-options'],
+    queryFn: () => adminService.credentialRequirementOptions(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const needsCreds = CREDENTIAL_GATED_LEVELS.includes(state.level);
+  const credGateFails = needsCreds && state.credentialRequirements.length === 0;
+
+  const addRequirement = (code: string) => {
+    if (!code || state.credentialRequirements.some((r) => r.code === code)) return;
+    setState({
+      ...state,
+      credentialRequirements: [...state.credentialRequirements, { code, mandatory: true }],
+    });
+  };
+
+  const removeRequirement = (code: string) =>
+    setState({
+      ...state,
+      credentialRequirements: state.credentialRequirements.filter((r) => r.code !== code),
+    });
+
+  const toggleMandatory = (code: string) =>
+    setState({
+      ...state,
+      credentialRequirements: state.credentialRequirements.map((r) =>
+        r.code === code ? { ...r, mandatory: !r.mandatory } : r,
+      ),
+    });
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (credGateFails) return;
     onSubmit({
       categoryId: state.categoryId,
       slug: state.slug.trim(),
       name: state.name.trim(),
       description: state.description.trim() || null,
       level: state.level,
+      credentialRequirements: state.credentialRequirements.map((r) => ({
+        code: r.code,
+        mandatory: r.mandatory,
+        notes: r.notes ?? null,
+      })),
       regulated: state.regulated,
       licenseRequired: state.licenseRequired,
       certificationRequired: state.certificationRequired,
       hazardous: state.hazardous,
       structural: state.structural,
       emergencyEligible: state.emergencyEligible,
-      basePriceMinCents: state.basePriceMinCents.trim() === '' ? null : parseInt(state.basePriceMinCents, 10),
-      basePriceMaxCents: state.basePriceMaxCents.trim() === '' ? null : parseInt(state.basePriceMaxCents, 10),
+      // Los inputs están en dólares; la API siempre habla en centavos.
+      basePriceMinCents: inputToCents(state.basePriceMin),
+      basePriceMaxCents: inputToCents(state.basePriceMax),
       estimatedDurationMin: state.estimatedDurationMin.trim() === '' ? null : parseInt(state.estimatedDurationMin, 10),
       pricingUnit: state.pricingUnit,
       allowsQuantity: state.allowsQuantity,
@@ -614,10 +745,9 @@ function TaskModal({
             <div>
               <label className="t-label">{t('services.level')}</label>
               <select className="t-select" style={{ width: '100%' }} value={state.level} onChange={(e) => setState({ ...state, level: e.target.value as Level })}>
-                <option value="1">L1 — Helper</option>
-                <option value="2">L2 — Experienced</option>
-                <option value="3">L3 — Certified Pro</option>
-                <option value="4">L4 — Emergency</option>
+                {SERVICE_LEVELS.map((lv) => (
+                  <option key={lv.value} value={lv.value}>{lv.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -632,14 +762,32 @@ function TaskModal({
             <textarea className="t-textarea" value={state.description} onChange={(e) => setState({ ...state, description: e.target.value })} />
           </div>
 
+          {/* Precios en DÓLARES. La API los guarda en centavos; la conversión
+              es de ida y vuelta en @/lib/money. */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div>
               <label className="t-label">{t('services.basePriceMin')}</label>
-              <input type="number" className="t-input" value={state.basePriceMinCents} onChange={(e) => setState({ ...state, basePriceMinCents: e.target.value })} />
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--t-text-3)', fontSize: 14, pointerEvents: 'none' }}>$</span>
+                <input
+                  type="number" step="0.01" min="0" inputMode="decimal" placeholder="25"
+                  className="t-input" style={{ paddingLeft: 26 }}
+                  value={state.basePriceMin}
+                  onChange={(e) => setState({ ...state, basePriceMin: e.target.value })}
+                />
+              </div>
             </div>
             <div>
               <label className="t-label">{t('services.basePriceMax')}</label>
-              <input type="number" className="t-input" value={state.basePriceMaxCents} onChange={(e) => setState({ ...state, basePriceMaxCents: e.target.value })} />
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--t-text-3)', fontSize: 14, pointerEvents: 'none' }}>$</span>
+                <input
+                  type="number" step="0.01" min="0" inputMode="decimal" placeholder="45"
+                  className="t-input" style={{ paddingLeft: 26 }}
+                  value={state.basePriceMax}
+                  onChange={(e) => setState({ ...state, basePriceMax: e.target.value })}
+                />
+              </div>
             </div>
             <div>
               <label className="t-label">{t('services.estDuration')}</label>
@@ -687,10 +835,93 @@ function TaskModal({
             {t('services.allowsQuantity') || 'Customer can choose quantity (e.g. 3 items, 25 m²)'}
           </label>
 
-          {/* Flags — collapsed by default. Credential gating now lives at the
-              section level (category.requiresCredential); these per-task flags
-              stay available only for the rare service that needs a specific
-              document/attribute beyond its section. */}
+          {/* Requisitos de credencial POR SERVICIO — el gate de L2/L3.
+              Sustituye al gate por sección de la migración 029. */}
+          <div
+            style={{
+              border: `1px solid ${credGateFails ? 'var(--t-warn)' : 'var(--t-border)'}`,
+              borderRadius: 8, background: 'var(--t-deep)', padding: 14,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}
+          >
+            <div>
+              <strong style={{ fontSize: 13, color: 'var(--t-text-1)' }}>
+                {t('services.credentialRequirements')}
+              </strong>
+              <div style={{ fontSize: 12, color: 'var(--t-text-2)', marginTop: 2 }}>
+                {needsCreds ? t('services.credentialRequirementsRequired') : t('services.credentialRequirementsOptional')}
+              </div>
+            </div>
+
+            {state.credentialRequirements.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {state.credentialRequirements.map((r) => {
+                  const opt = options.data?.find((o) => o.code === r.code);
+                  return (
+                    <div
+                      key={r.code}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 10px', borderRadius: 6,
+                        background: 'var(--t-surface)', border: '1px solid var(--t-border)',
+                      }}
+                    >
+                      <span className="t-mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--t-text)', minWidth: 92 }}>
+                        {r.code}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--t-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {opt?.labelEn ?? r.labelEn ?? ''}
+                        {opt?.authority && <span style={{ color: 'var(--t-text-3)' }}> · {opt.authority}</span>}
+                      </span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--t-text-2)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={r.mandatory} onChange={() => toggleMandatory(r.code)} />
+                        {t('services.mandatory')}
+                      </label>
+                      <button
+                        type="button"
+                        className="t-btn t-btn-ghost t-btn-sm"
+                        style={{ color: 'var(--t-danger)' }}
+                        onClick={() => removeRequirement(r.code)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 11, color: 'var(--t-text-3)' }}>
+                  {t('services.mandatoryHint')}
+                </div>
+              </div>
+            )}
+
+            <select
+              className="t-select"
+              style={{ width: '100%' }}
+              value=""
+              onChange={(e) => { addRequirement(e.target.value); e.target.value = ''; }}
+            >
+              <option value="">
+                {options.isLoading ? t('common.loading') : `+ ${t('services.addCredential')}`}
+              </option>
+              {(options.data ?? [])
+                .filter((o) => !state.credentialRequirements.some((r) => r.code === o.code))
+                .map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.code} — {o.labelEn}
+                  </option>
+                ))}
+            </select>
+
+            {credGateFails && (
+              <div style={{ fontSize: 12, color: 'var(--t-warn)' }}>
+                ⚠ {t('services.credentialGateBlocked')}
+              </div>
+            )}
+          </div>
+
+          {/* Flags — colapsados. El gate real vive ahora en los requisitos de
+              credencial de arriba; estos flags quedan solo para el caso raro de
+              un servicio que necesite marcar un atributo extra. */}
           <details style={{ border: '1px solid var(--t-border)', borderRadius: 8, background: 'var(--t-deep)' }}>
             <summary style={{ padding: '12px 14px', fontSize: 13, color: 'var(--t-text-2)', cursor: 'pointer', userSelect: 'none' }}>
               {t('services.specialFlags') || 'Special requirements / documents (optional)'}
@@ -728,12 +959,17 @@ function TaskModal({
           </div>
         </div>
 
-        <div className="t-modal-foot">
-          <button type="button" className="t-btn t-btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-          <button type="submit" className="t-btn t-btn-primary" disabled={submitting}>
-            {submitting && <span className="t-spinner" />}
-            {form.id ? t('common.save') : t('common.create')}
-          </button>
+        <div className="t-modal-foot" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+          {errorMessage && (
+            <div style={{ fontSize: 12, color: 'var(--t-danger)', textAlign: 'right' }}>{errorMessage}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="t-btn t-btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
+            <button type="submit" className="t-btn t-btn-primary" disabled={submitting || credGateFails}>
+              {submitting && <span className="t-spinner" />}
+              {form.id ? t('common.save') : t('common.create')}
+            </button>
+          </div>
         </div>
       </form>
     </div>

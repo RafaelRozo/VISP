@@ -116,13 +116,59 @@ export interface UserListResponse {
   meta: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
+/**
+ * Escala de niveles L0..L3 (reestructuración 2026-08-04). L4/Emergency salió
+ * del producto: no se ofrece en el admin ni existe en el catálogo activo.
+ */
+export const SERVICE_LEVELS = [
+  { value: '0', label: 'L0 — Basic Assistance', color: '#8AB4F8' },
+  { value: '1', label: 'L1 — Skilled, Non-Regulated', color: 'var(--t-ok)' },
+  { value: '2', label: 'L2 — Verified Regulated / Supervised', color: '#F6AD55' },
+  { value: '3', label: 'L3 — Advanced Regulated / Professional', color: '#A78BFA' },
+] as const;
+
+export type ServiceLevel = (typeof SERVICE_LEVELS)[number]['value'];
+
+export function levelColor(level: string): string {
+  return SERVICE_LEVELS.find((l) => l.value === level)?.color ?? 'var(--t-text-3)';
+}
+
+/** El acceso a L2/L3 se abre con una credencial que coincide con el servicio. */
+export const CREDENTIAL_GATED_LEVELS: readonly string[] = ['2', '3'];
+
+/** Un código del catálogo de credenciales (306A, ESA_LEC, TSSA_G2, ...). */
+export interface CredentialRequirementOption {
+  code: string;
+  labelEn: string;
+  labelFr: string | null;
+  authority: string | null;
+  registryName: string | null;
+  registryUrl: string | null;
+  verificationMethod: 'REGISTRY' | 'DOCUMENT' | 'SELF_DECLARED';
+  description: string | null;
+}
+
+/**
+ * Requisito de credencial de un servicio.
+ * `mandatory: false` = condicional o alternativo (los casos "306A y/o 309A").
+ */
+export interface TaskCredentialRequirement {
+  code: string;
+  mandatory: boolean;
+  labelEn?: string;
+  labelFr?: string | null;
+  authority?: string | null;
+  notes?: string | null;
+}
+
 export interface TaxonomyTask {
   id: string;
   categoryId: string;
   slug: string;
   name: string;
   description: string | null;
-  level: '1' | '2' | '3' | '4';
+  level: ServiceLevel;
+  credentialRequirements: TaskCredentialRequirement[];
   regulated: boolean;
   licenseRequired: boolean;
   certificationRequired: boolean;
@@ -185,7 +231,9 @@ export interface TaskUpsertBody {
   slug: string;
   name: string;
   description?: string | null;
-  level: '1' | '2' | '3' | '4';
+  level: ServiceLevel;
+  /** Cuando viene, REEMPLAZA el conjunto completo de requisitos del servicio. */
+  credentialRequirements?: { code: string; mandatory: boolean; notes?: string | null }[];
   regulated?: boolean;
   licenseRequired?: boolean;
   certificationRequired?: boolean;
@@ -326,6 +374,10 @@ export const adminService = {
 
   // ── Taxonomy (service categories + tasks) ──
   taxonomyFull: () => apiGet<TaxonomyCategory[]>('/admin/taxonomy/full'),
+
+  /** Catálogo de códigos de credencial que un servicio L2/L3 puede exigir. */
+  credentialRequirementOptions: () =>
+    apiGet<CredentialRequirementOption[]>('/admin/taxonomy/credential-requirements'),
 
   createCategory: (body: CategoryUpsertBody) =>
     apiPost<TaxonomyCategory>('/admin/taxonomy/categories', body),

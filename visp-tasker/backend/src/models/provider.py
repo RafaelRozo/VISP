@@ -29,6 +29,14 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class ProviderLevel(str, enum.Enum):
+    """Escala L0..L3 (migración 031).
+
+    LEVEL_4 sigue en el enum de Postgres porque no se puede quitar un valor sin
+    recrear el tipo, pero está MUERTO: L4/Emergency salió del producto el
+    2026-08-04. Ningún servicio ni proveedor debe usarlo.
+    """
+
+    LEVEL_0 = "0"
     LEVEL_1 = "1"
     LEVEL_2 = "2"
     LEVEL_3 = "3"

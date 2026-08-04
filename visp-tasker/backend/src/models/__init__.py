@@ -28,9 +28,11 @@ from .provider import (
 
 # -- 003: Taxonomy --
 from .taxonomy import (
+    CredentialRequirement,
     PricingUnit,
     ProviderTaskQualification,
     ServiceCategory,
+    ServiceCredentialRequirement,
     ServiceTask,
 )
 
@@ -151,6 +153,8 @@ __all__ = [
     # Taxonomy
     "ServiceCategory",
     "ServiceTask",
+    "CredentialRequirement",
+    "ServiceCredentialRequirement",
     "ProviderTaskQualification",
     "PricingUnit",
     # Provider-set service rates

@@ -1,0 +1,221 @@
+﻿categoria,servicio,nombre_nuevo,nivel_actual,nivel_nuevo,accion,fuente,nota
+Assembly,Baby-Proofing & Safety Installation,,L2,L1,L2 -> L1,PDF,
+Assembly,Baseboard & Crown Moulding Installation,,L2,L1,L2 -> L1,PDF,
+Assembly,Bed Frame Assembly,,L1,L1,sin cambio,PDF,
+Assembly,Blinds & Curtain Rod Installation,,L2,L1,L2 -> L1,PDF,
+Assembly,Bookshelf Assembly,,L1,L1,sin cambio,PDF,
+Assembly,Closet Organizer Assembly,,L1,L1,sin cambio,PDF,
+Assembly,Desk Assembly,,L1,L1,sin cambio,PDF,
+Assembly,Door Adjustment & Hardware Replacement,,L2,L1,L2 -> L1,PDF,
+Assembly,Exercise Equipment Assembly,,L1,L1,sin cambio,PDF,
+Assembly,Exterior Door Replacement (Entry),,L3,L1,L3 -> L1,REVISAR,"ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. Afecta envolvente del edificio, puede requerir permiso. ¿Confirmas L1 o lo subo a L2?"
+Assembly,Fence Board Replacement,,L2,L1,L2 -> L1,PDF,
+Assembly,Floating Shelf Installation,,L2,L1,L2 -> L1,PROPUESTA,No está en el PDF. Propongo L1 (igual que el resto de montaje).
+Assembly,Garage Door Replacement,,L3,L1,L3 -> L1,REVISAR,"ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. Puerta de garaje = resortes bajo tensión, riesgo de lesión. ¿Confirmas L1 o L2?"
+Assembly,Garage Shelving Installation,,L2,L1,L2 -> L1,PDF,
+Assembly,IKEA Furniture Assembly,,L1,L1,sin cambio,PDF,
+Assembly,Interior Door Installation (Pre-Hung),,L2,L1,L2 -> L1,PDF,
+Assembly,Kitchen Cabinet Installation,,L3,L1,L3 -> L1,REVISAR,ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. En el PDF aparece DUPLICADO en Assembly L1. ¿Confirmas L1?
+Assembly,Outdoor Furniture Assembly,,L1,L1,sin cambio,PDF,
+Assembly,TV Wall Mount Setup (No Wiring),,L1,L1,sin cambio,PDF,
+Assembly,TV Wall Mount with Concealed Wiring,,L2,L1,L2 -> L1,PDF,
+Assembly,Weatherstripping & Caulking (Doors/Windows),,L2,L1,L2 -> L1,PDF,
+Assembly,Window Replacement,,L3,L1,L3 -> L1,REVISAR,"ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. Afecta envolvente, suele requerir permiso. ¿Confirmas L1 o L2?"
+Assembly,Appliance Installation (Non-Gas),,L2,L2,sin cambio,PDF,Cert: Plumber 306A y/o Electricista 309A/309C. El DOCX pide PARTIRLO por tipo de conexión (agua / gas / eléctrico fijo).
+Assembly,Emergency Door / Lock Repair,Door / Lock Repair,L4,L2,L4 -> L2,PDF,El PDF lo recupera como Assembly L2. Cert: Locksmith (259L). Renombrar sin 'Emergency'.
+Assembly,Structural Beam Installation,,L3,L2,L3 -> L2,PDF,Cert: Building Permit + BCIN Designer
+Assembly,Emergency Window Board-Up,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Cleaning,Garage Cleanup & Organization,,L1,L0,L1 -> L0,PDF,
+Cleaning,Move-Out Cleaning,,L1,L0,L1 -> L0,PDF,
+Cleaning,Oven & Stovetop Cleaning,,L1,L0,L1 -> L0,PDF,
+Cleaning,Refrigerator Deep Cleaning,,L1,L0,L1 -> L0,PDF,
+Cleaning,Standard Residential Cleaning,,L1,L0,L1 -> L0,PROPUESTA,No está en el PDF. Propongo L0 (equivale a las otras limpiezas básicas).
+Cleaning,Window Cleaning (Interior & Ground Level Exterior),,L1,L0,L1 -> L0,PDF,El PDF lo parte en 'Window Cleaning (Ground floor)' y '(interior)'. ¿Separar en 2 servicios o dejar 1?
+Cleaning,Bathroom Deep Cleaning,,L1,L1,sin cambio,PDF,
+Cleaning,Carpet Steam Cleaning,,L1,L1,sin cambio,PDF,
+Cleaning,Carpet Vacuuming & Spot Treatment,,L1,L1,sin cambio,PDF,
+Cleaning,Kitchen Deep Cleaning,,L1,L1,sin cambio,PDF,
+Cleaning,Post-Construction Cleaning (Light),,L1,L1,sin cambio,PDF,
+Cleaning,Asbestos Testing & Abatement,,L3,L3,sin cambio,PDF,Cert: Ontario Asbestos Worker Training
+Cleaning,Biohazard Cleanup,,L3,L3,sin cambio,PDF,Cert: WHMIS + biohazard / bloodborne-pathogen training
+Cleaning,Lead Paint Remediation,,L2,L3,L2 -> L3,CLIENTE,MOVIDO A L3 por el cliente. El proveedor debe completar formación reconocida de lead-safe painting / lead remediation y seguir procedimientos de contención y seguridad.
+Cleaning,Mold Remediation,,L3,L3,sin cambio,PDF,Cert: WHMIS + mold remediation training (IICRC AMRT)
+Cleaning,Emergency Fire Damage Board-Up,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Cleaning,Emergency Flood Water Extraction,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Electrical,Smart Home Hub Setup & Configuration,,L2,L1,L2 -> L1,PROPUESTA,No está en el PDF. Bajo voltaje / sin cableado. Propongo L1.
+Electrical,Under-Cabinet LED Lighting,,L2,L1,L2 -> L1,PDF,PDF: 'No wiring' -> scope sin cableado fijo.
+Electrical,Ceiling Fan Installation (Existing Box),,L2,L2,sin cambio,PDF,Cert: ECRA/ESA LEC + Electricista 309A/309C
+Electrical,EV Charger Installation (Level 2),,L3,L2,L3 -> L2,PDF,Cert: ECRA/ESA LEC + Electricista 309A/309C
+Electrical,Home Security System Hardwired Installation,,L3,L2,L3 -> L2,PROPUESTA,No está en el PDF. Propongo L2.
+Electrical,Knob-and-Tube Wiring Replacement,,L3,L2,L3 -> L2,REVISAR,"ACEPTADO POR DEFECTO (manda el PDF) — El PDF lo baja de L3 a L2, pero es recableado completo de una casa antigua. Recomiendo mantenerlo en L3."
+Electrical,Light Fixture Replacement,,L2,L2,sin cambio,PDF,Cert: ECRA/ESA LEC + Electricista 309A/309C
+Electrical,Outlet & Switch Replacement,,L2,L2,sin cambio,PDF,Cert: ECRA/ESA LEC + Electricista 309A/309C
+Electrical,Smart Doorbell & Camera Installation,,L2,L2,sin cambio,PDF,Cert: ninguna si es batería/enchufe/bajo voltaje; ESA LEC + 309A/309C si es cableado fijo.
+Electrical,Smart Thermostat Installation,,L2,L2,sin cambio,PDF,Cert: ESA LEC + 309A/309C si es cableado fijo.
+Electrical,Smoke & Carbon Monoxide Detector Installation,,L2,L2,sin cambio,PDF,Cert: ESA LEC + 309A/309C si es cableado fijo.
+Electrical,Aluminum Wiring Remediation,,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Electrical Panel Upgrade (100A to 200A),,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Electrical Permit & ESA Inspection Coordination,,L3,L3,sin cambio,PROPUESTA,No está en el PDF. Propongo L3.
+Electrical,Emergency Total Power Loss,Power Loss Diagnosis,L4,L3,L4 -> L3,PDF,El PDF lo recupera como Electrical L3 'Emergency Power Loss Diagnosis'. Renombrar a 'Power Loss Diagnosis'.
+Electrical,GFCI Outlet Installation,,L2,L3,L2 -> L3,PDF,El PDF lo SUBE de L2 a L3 ('GFCI outlet installation (wiring)'). Cert: ECRA/ESA LEC + 309A/309C.
+Electrical,Generator Installation (Standby),,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Hot Tub / Pool Electrical Hookup,,L3,L3,sin cambio,PROPUESTA,No está en el PDF. Propongo L3 (ESA LEC + 309A).
+Electrical,Outdoor Electrical Panel / Disconnect,,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Recessed Lighting Installation (New Circuits),,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Solar Panel Electrical Integration,,L3,L3,sin cambio,PDF,PDF lo llama 'Solar panel lighting Installation'. Cert: ECRA/ESA LEC + 309A/309C.
+Electrical,Sub-Panel Installation,,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Whole-House Rewiring,,L3,L3,sin cambio,PDF,Cert: ECRA/ESA LEC + 309A/309C
+Electrical,Emergency Electrical Fire Damage Assessment,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Electrical,Emergency Electrical Hazard Make-Safe,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Electrical,Emergency Generator Hookup (Portable),,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Errands & Delivery,Dry Cleaning Pickup & Drop-Off,,L1,L0,L1 -> L0,PDF,
+Errands & Delivery,Grocery Shopping,,L1,L0,L1 -> L0,PDF,
+Errands & Delivery,Package Pickup & Delivery,,L1,L0,L1 -> L0,PDF,
+Errands & Delivery,Prescription Pickup,,L1,L0,L1 -> L0,PDF,
+Errands & Delivery,Return Item to Store,,L1,L0,L1 -> L0,PDF,
+Errands & Delivery,Waiting in Line,,L1,L0,L1 -> L0,PDF,
+Events,Balloon & Decoration Setup,,L1,L0,L1 -> L0,PDF,
+Events,Event Serving Assistance,Event Service (No Food),L1,L0,L1 -> L0,PDF,El PDF lo PARTE EN 3: 'Event Service (no food)' L0 (este) + 2 servicios NUEVOS L2: alcohol (Smart Serve) y comida (Food Handler). Renombrar a 'Event Service (No Food)'.
+Events,Event Teardown & Cleanup,,L1,L0,L1 -> L0,PDF,
+Events,Party Setup (Tables & Chairs),,L1,L0,L1 -> L0,PDF,
+Events,Tent & Canopy Setup,,L2,L0,L2 -> L0,PDF,
+Events,Event Service Assistance (Alcohol Handling),,-,L2,CREAR,NUEVO,Cert: Smart Serve
+Events,Event Serving Assistance (Food Handling),,-,L2,CREAR,NUEVO,Cert: Food Safety / SafeCheck / FoodSafe4U / ServSafe / FoodPrep / Canadian Food Safety Training
+Gardening & Landscaping,Hedge Trimming (Under 6ft),,L1,L0,L1 -> L0,PDF,
+Gardening & Landscaping,Leaf Raking & Yard Cleanup,,L1,L0,L1 -> L0,PDF,
+Gardening & Landscaping,Mulching,,L1,L0,L1 -> L0,PDF,
+Gardening & Landscaping,Pressure Washing (Driveway & Patio),,L2,L0,L2 -> L0,PDF,
+Gardening & Landscaping,Pressure Washing (House Exterior),,L2,L0,L2 -> L0,PDF,
+Gardening & Landscaping,Watering Plants & Gardens,,L1,L0,L1 -> L0,PDF,
+Gardening & Landscaping,Concrete Patio / Walkway Pouring,,L3,L1,L3 -> L1,REVISAR,ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. ¿Confirmas L1 o L2?
+Gardening & Landscaping,Driveway Paving (Asphalt),,L3,L1,L3 -> L1,REVISAR,ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. Maquinaria pesada. ¿Confirmas L1 o L2?
+Gardening & Landscaping,Fence Installation (Full),,L3,L1,L3 -> L1,REVISAR,ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. Puede requerir permiso según altura. ¿Confirmas L1?
+Gardening & Landscaping,Flower Bed Planting,,L1,L1,sin cambio,PDF,
+Gardening & Landscaping,Garden Bed Edging & Border Install,,L2,L1,L2 -> L1,PDF,
+Gardening & Landscaping,Garden Weeding,,L1,L1,sin cambio,PDF,
+Gardening & Landscaping,Lawn Mowing,,L1,L1,sin cambio,PDF,
+Gardening & Landscaping,Paver Patio Installation (Small),,L2,L1,L2 -> L1,PDF,
+Gardening & Landscaping,Sod Laying,,L2,L1,L2 -> L1,PDF,
+Gardening & Landscaping,Sprinkler Head Replacement,,L2,L1,L2 -> L1,PDF,
+Gardening & Landscaping,Tree Pruning (Small Trees),,L2,L1,L2 -> L1,PDF,
+Gardening & Landscaping,French Drain Installation,,L3,L2,L3 -> L2,PROPUESTA,No está en el PDF. Excavación + drenaje. Propongo L2.
+Gardening & Landscaping,Irrigation System Installation,,L3,L2,L3 -> L2,PDF,Cert: Plumber 306A para conexión a agua potable; ESA LEC + 309A/309C para controles fijos.
+Gardening & Landscaping,Large Tree Removal,,L3,L2,L3 -> L2,PDF,Cert: ISA Certified Arborist / Utility Arborist (444B) recomendado
+Gardening & Landscaping,Retaining Wall Construction,,L3,L2,L3 -> L2,PDF,Cert: BCIN / P.Eng.
+Gardening & Landscaping,Deck Construction (New Build),,L3,L3,sin cambio,CLIENTE,SE QUEDA EN L3 por el cliente (el PDF lo bajaba a L1): riesgo elevado + trabajo de construcción. Requiere Working at Heights aprobado; pueden aplicar requisitos de permiso de construcción.
+Gardening & Landscaping,Pool Installation (Above-Ground),,L3,L3,sin cambio,PDF,Sin certificación salvo conexión a plomería del edificio; entonces Plumber 306A.
+HVAC,HVAC Filter Replacement & Cleaning,,L2,L1,L2 -> L1,PDF,
+HVAC,Portable Heater / Space Heater Setup,,L2,L1,L2 -> L1,PDF,
+HVAC,Window AC Unit Installation,,L2,L1,L2 -> L1,PDF,
+HVAC,Duct Cleaning (Professional NADCA Standard),,L3,L2,L3 -> L2,PROPUESTA,No está en el PDF. No es oficio regulado. Propongo L2.
+HVAC,HVAC System Annual Inspection & Tune-Up,,L3,L2,L3 -> L2,PROPUESTA,No está en el PDF. Propongo L2.
+HVAC,Boiler Installation / Replacement,,L3,L3,sin cambio,PROPUESTA,No está en el PDF. Propongo L3 (TSSA + G1/G2).
+HVAC,Central Air Conditioner Installation,,L3,L3,sin cambio,PDF,Cert: HVAC Mechanic 313A/313D + ODP + ESA LEC/309A; Sheet Metal 308A/308R si aplica.
+HVAC,Chimney Liner Installation,,L3,L3,sin cambio,PROPUESTA,No está en el PDF. Propongo L3 (WETT / TSSA).
+HVAC,Ductwork Installation / Replacement,,L3,L3,sin cambio,PDF,Cert: Sheet Metal Worker 308A o 308R
+HVAC,Furnace Replacement,,L3,L3,sin cambio,PDF,Cert: TSSA fuels contractor + G1/G2 + Sheet Metal 308A/308R + ESA LEC/309A
+HVAC,Gas Fireplace Installation,,L3,L3,sin cambio,PDF,Cert: TSSA fuels contractor + G1/G2; ESA LEC/309A si eléctrico fijo
+HVAC,Geothermal Heat Pump Installation,,L3,L3,sin cambio,PDF,
+HVAC,HRV / ERV Installation,,L3,L3,sin cambio,PDF,Cert: Sheet Metal 308A/308R
+HVAC,Heat Pump Installation (Mini-Split),,L3,L3,sin cambio,PDF,
+HVAC,Radiant Floor Heating Installation,,L3,L3,sin cambio,PDF,Cert: eléctrico ESA LEC/309A; hidrónico Plumber 306A / Steamfitter 307A + TSSA.
+HVAC,Refrigerant Recharge & Leak Repair,,L3,L3,sin cambio,PROPUESTA,No está en el PDF. Requiere ODP. Propongo L3.
+HVAC,Emergency AC Failure (Extreme Heat),,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+HVAC,Emergency Boiler Failure,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+HVAC,Emergency Carbon Monoxide Detection Response,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+HVAC,Emergency Gas Furnace Relight / Repair,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+HVAC,Emergency No Heat (Furnace Failure),,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Moving & Hauling,Donation Drop-Off,,L1,L0,L1 -> L0,PROPUESTA,No está en el PDF. Propongo L0.
+Moving & Hauling,Furniture Rearrangement,,L1,L0,L1 -> L0,PDF,
+Moving & Hauling,Junk Removal (Light),,L1,L0,L1 -> L0,PDF,
+Moving & Hauling,Local Apartment Move (Studio/1BR),,L2,L0,L2 -> L0,PDF,El PDF marca 'requires G2/G' -> necesita flag requires_driver_license.
+Moving & Hauling,Small Item Moving (Same Building),,L1,L0,L1 -> L0,PDF,
+Moving & Hauling,Storage Unit Organization,,L1,L0,L1 -> L0,PDF,
+Moving & Hauling,Heavy Furniture Moving (Stairs),,L2,L1,L2 -> L1,PDF,
+Moving & Hauling,Hot Tub / Spa Moving,Hot Tub Moving — Transportation Only,L3,L1,L3 -> L1,CLIENTE,"RENOMBRAR a 'Hot Tub Moving — Transportation Only'. El scope NO incluye desconexión ni reconexión eléctrica, de plomería, gas ni mecánica."
+Painting,Backsplash Tile Installation,,L2,L1,L2 -> L1,PDF,
+Painting,Ceramic / Porcelain Tile Floor Installation,,L3,L1,L3 -> L1,PDF,
+Painting,Countertop Installation (Granite/Quartz),,L3,L1,L3 -> L1,PDF,
+Painting,Custom Shower Tile Installation,,L3,L1,L3 -> L1,PDF,PDF: 'no pipe handling' -> el scope debe excluir plomería.
+Painting,Deck Staining & Sealing,,L2,L1,L2 -> L1,PDF,
+Painting,Drywall Patching & Repair,,L2,L1,L2 -> L1,PDF,
+Painting,Exterior Painting (Single Storey),,L2,L1,L2 -> L1,PDF,
+Painting,Fence Painting / Staining,,L1,L1,sin cambio,PDF,
+Painting,Hardwood Floor Installation,,L3,L1,L3 -> L1,PDF,
+Painting,Hardwood Floor Refinishing,,L3,L1,L3 -> L1,PDF,
+Painting,Laminate Flooring Installation,,L2,L1,L2 -> L1,PROPUESTA,No está en el PDF. Propongo L1 (igual que vinyl plank).
+Painting,Multi-Room Interior Painting,,L2,L1,L2 -> L1,PDF,
+Painting,Popcorn Ceiling Removal (Single Room),Popcorn Ceiling Removal — Asbestos-Free Only,L2,L1,L2 -> L1,CLIENTE,RENOMBRAR a 'Popcorn Ceiling Removal — Asbestos-Free Only'. Solo puede ejecutarse cuando se ha confirmado que el material NO contiene asbesto.
+Painting,Single Room Painting (Basic),,L1,L1,sin cambio,PDF,
+Painting,Touch-Up Painting (Small Area),,L1,L1,sin cambio,PDF,
+Painting,Vinyl Plank Flooring Installation,,L2,L1,L2 -> L1,PDF,
+Painting,Wallpaper Removal,,L2,L1,L2 -> L1,PDF,
+Painting,Exterior Siding Replacement,,L3,L2,L3 -> L2,PDF,Cert: CPO-Approved Working at Heights
+Painting,Load-Bearing Wall Modification,,L3,L2,L3 -> L2,PDF,Cert: Building permit + BCIN designer / P.Eng.; Carpenter 403A recomendado
+Painting,Room Addition Framing,,L3,L2,L3 -> L2,PDF,Cert: Building permit + BCIN / P.Eng.; Carpenter/Roofer + Working at Heights
+Painting,Skylight Installation,,L3,L2,L3 -> L2,PDF,Cert: Building permit + BCIN / P.Eng.; Working at Heights
+Painting,Staircase Construction / Renovation,,L3,L2,L3 -> L2,PDF,Cert: Building permit + BCIN / P.Eng.
+Painting,Stucco Application / Repair,,L3,L2,L3 -> L2,PDF,Cert: CPO-Approved Working at Heights
+Painting,Accessibility Renovation (Barrier-Free),,L3,L3,sin cambio,PDF,Sin cert única: 306A / ESA LEC 309A-309C / TSSA EDM-E para elevadores / BCIN o P.Eng. para estructural.
+Painting,Basement Finishing / Renovation,,L3,L3,sin cambio,PDF,"Sin cert única: ESA LEC 309A/309C, 306A, TSSA G1/G2/DA/GP/OBT, 313A/313D, 308A/308R, BCIN/P.Eng."
+Painting,Full Bathroom Renovation,,L3,L3,sin cambio,PDF,"Sin cert única: 306A, ESA LEC 309A/309C, 308A/308R, BCIN/P.Eng., training de asbesto."
+Painting,Full Kitchen Renovation,,L3,L3,sin cambio,PDF,"Sin cert única: 306A, ESA LEC 309A/309C, TSSA G1/G2/DA/GP, 308A/308R, BCIN/P.Eng."
+Pet Care,Dog Bathing (Small/Medium),,L1,L0,L1 -> L0,PDF,
+Pet Care,Dog Walking (30 min),,L1,L0,L1 -> L0,PDF,
+Pet Care,Dog Walking (60 min),,L1,L0,L1 -> L0,PDF,
+Pet Care,Litter Box & Pet Area Cleaning,,L1,L0,L1 -> L0,PDF,
+Pet Care,Pet Feeding Visit,,L1,L0,L1 -> L0,PDF,
+Pet Care,Pet Sitting (Half Day),,L1,L0,L1 -> L0,PDF,
+Plumbing,Caulking & Grout Refresh (Bathroom),,L2,L1,L2 -> L1,PDF,
+Plumbing,Outdoor Hose Bib Winterization,,L2,L1,L2 -> L1,PROPUESTA,No está en el PDF. Propongo L1.
+Plumbing,Showerhead & Fixture Upgrade,,L2,L1,L2 -> L1,PDF,PDF: 'No pipe alteration' -> el scope debe excluir alteración de tubería.
+Plumbing,Drain Snaking (Sink/Tub),,L2,L2,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Faucet Replacement,,L2,L2,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Garbage Disposal Installation,,L2,L2,sin cambio,PROPUESTA,No está en el PDF. Propongo L2 (306A + eléctrico).
+Plumbing,Sump Pump Installation (New),,L3,L2,L3 -> L2,PDF,Cert: Plumber 306A
+Plumbing,Tankless Water Heater Installation,,L3,L2,L3 -> L2,PDF,Cert: Plumber 306A + TSSA G1/G2 gas + ESA LEC/309A si eléctrico fijo
+Plumbing,Toilet Replacement,,L2,L2,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Water Heater Replacement (Tank),,L3,L2,L3 -> L2,PDF,Cert: Plumber 306A + TSSA G1/G2 + ESA LEC/309A
+Plumbing,Water Softener Installation,,L3,L2,L3 -> L2,PDF,Cert: Plumber 306A
+Plumbing,Backflow Preventer Installation,,L3,L3,sin cambio,PDF,Cert: Plumber 306A + Cross-Connection Control / Backflow Tester
+Plumbing,Bathroom Rough-In Plumbing,,L3,L3,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Bathtub Replacement,,L3,L3,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Gas Appliance Installation (Range/Dryer),,L3,L3,sin cambio,PDF,Cert: TSSA fuels contractor + G1/G2
+Plumbing,Gas Line Installation / Extension,,L3,L3,sin cambio,PDF,Cert: TSSA fuels contractor + G1/G2
+Plumbing,Hydronic Heating Pipe Repair,,L3,L3,sin cambio,PDF,Cert: Plumber 306A / Steamfitter 307A + TSSA G1/G2 / ESA
+Plumbing,Main Water Line Repair,,L3,L3,sin cambio,PROPUESTA,No está explícito en el PDF. Propongo L3 (306A).
+Plumbing,Septic System Inspection & Pump-Out,,L3,L3,sin cambio,PDF,Cert: OBC Part 8 / BCIN septic + aprobación de transportista de aguas residuales
+Plumbing,Sewer Line Repair / Replacement,,L3,L3,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Sump Pump Testing & Maintenance,,L2,L3,L2 -> L3,PDF,Ricardo confirma L3 tal como dice el PDF (aunque Sump Pump Installation queda en L2).
+Plumbing,Whole-House Re-Pipe (Copper/PEX),,L3,L3,sin cambio,PDF,Cert: Plumber 306A
+Plumbing,Emergency Burst Pipe Repair,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Plumbing,Emergency Frozen Pipe Thawing,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Plumbing,Emergency Gas Leak Response,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Plumbing,Emergency Main Water Shut-Off & Repair,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Plumbing,Emergency Sewer Backup,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Plumbing,Emergency Sump Pump Failure,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Plumbing,Emergency Water Heater Failure,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Seasonal,Driveway Snow Shoveling,,L1,L0,L1 -> L0,PDF,
+Seasonal,Attic Insulation Upgrade,,L3,L1,L3 -> L1,PROPUESTA,No está en el PDF. Propongo L1.
+Seasonal,Exterior Waterproofing (Foundation),Exterior Waterproofing — Coating Only,L3,L1,L3 -> L1,CLIENTE,"RENOMBRAR a 'Exterior Waterproofing — Coating Only'. Scope limitado a aplicar recubrimientos impermeables; NO incluye excavación, reparación estructural de cimentación, conexiones de drenaje ni plomería."
+Seasonal,Holiday Decoration Installation (Ground Level),,L1,L1,sin cambio,PDF,
+Seasonal,Holiday Decoration Removal,,L1,L1,sin cambio,PDF,
+Seasonal,Patio Furniture Seasonal Storage Prep,,L1,L1,sin cambio,PDF,
+Seasonal,Sidewalk De-Icing,,L1,L1,sin cambio,PDF,
+Seasonal,Snow Blower Service,,L2,L1,L2 -> L1,PDF,
+Seasonal,Soffit & Fascia Replacement,,L3,L1,L3 -> L1,REVISAR,ACEPTADO POR DEFECTO (manda el PDF) — Hoy L3. Trabajo en altura. Recomiendo L2 con Working at Heights.
+Seasonal,Window Screen Installation,,L1,L1,sin cambio,PDF,El PDF anota: 'needs to be heavily vetted with reviews'.
+Seasonal,Foundation Crack Repair (Interior Injection),,L3,L2,L3 -> L2,PDF,Cert: sin cert única; permiso / P.Eng. / Plumber 306A según alcance.
+Seasonal,Gutter Cleaning (Single Storey),,L2,L2,sin cambio,PDF,Cert: CPO-Approved Working at Heights
+Seasonal,Gutter Guard Installation,,L3,L2,L3 -> L2,PDF,Cert: Working at Heights
+Seasonal,Holiday Light Installation (Roofline),,L2,L2,sin cambio,PDF,Cert: CPO-Approved Working at Heights
+Seasonal,Roof Repair (Shingles),,L3,L2,L3 -> L2,PDF,Cert: Working at Heights
+Seasonal,Roof Snow Removal,,L3,L2,L3 -> L2,PDF,Cert: Working at Heights
+Seasonal,"Window Cleaning (Exterior, Single Storey)",,L2,L2,sin cambio,PROPUESTA,No está en el PDF. Trabajo en altura. Propongo L2.
+Seasonal,Emergency Roof Leak / Tarping,Roof Leak Repair,L4,L3,L4 -> L3,PDF,El PDF lo recupera como Seasonal L3 'Roof Leak Repair'. Renombrar a 'Roof Leak Repair'.
+Seasonal,Full Roof Replacement,,L3,L3,sin cambio,PDF,Cert: Roofer 449A recomendado + Ontario Working at Heights
+Seasonal,Spray Foam Insulation,,L3,L3,sin cambio,CLIENTE,SE QUEDA EN L3 por el cliente (el PDF lo bajaba a L1). Requiere la certificación de instalador de spray-foam específica del producto bajo el programa de aseguramiento de calidad reconocido.
+Seasonal,Emergency Ice Dam Removal,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Seasonal,Emergency Storm Damage Response,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Seasonal,Emergency Structural Assessment,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),
+Seasonal,Emergency Tree on House,,L4,,DESACTIVAR (L4),PDF (L4 eliminado),

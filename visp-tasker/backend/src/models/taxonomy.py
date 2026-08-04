@@ -208,3 +208,72 @@ class ProviderTaskQualification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             f"<ProviderTaskQualification(provider={self.provider_id}, "
             f"task={self.task_id}, qualified={self.qualified})>"
         )
+
+
+class CredentialRequirement(Base):
+    """Catálogo de códigos de credencial (306A, ESA_LEC, TSSA_G2, SMART_SERVE...).
+
+    Migración 032. La clave primaria es el propio código para que las tablas que
+    lo referencian sean legibles sin hacer join.
+    """
+
+    __tablename__ = "credential_requirements"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label_en: Mapped[str] = mapped_column(String(200), nullable=False)
+    label_fr: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    authority: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    registry_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    registry_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    verification_method: Mapped[str] = mapped_column(
+        Enum(
+            "REGISTRY",
+            "DOCUMENT",
+            "SELF_DECLARED",
+            name="credential_verification_method",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default=text("'DOCUMENT'"),
+    )
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+    )
+
+    def __repr__(self) -> str:
+        return f"<CredentialRequirement({self.code})>"
+
+
+class ServiceCredentialRequirement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Qué códigos de credencial exige un SERVICIO concreto (migración 032).
+
+    Es la pieza que hace que el gate de L2/L3 sea por servicio y no por sección.
+
+    ``mandatory=True``  -> obligatorio siempre.
+    ``mandatory=False`` -> condicional o alternativo (los casos "306A y/o 309A"
+    del PDF). Regla del motor: si un servicio no tiene NINGÚN requisito
+    obligatorio, se exige al menos UNO de los marcados como no obligatorios.
+    """
+
+    __tablename__ = "service_credential_requirements"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("service_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    code: Mapped[str] = mapped_column(
+        String(40), ForeignKey("credential_requirements.code"), nullable=False
+    )
+    mandatory: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    requirement: Mapped["CredentialRequirement"] = relationship("CredentialRequirement")
+
+    def __repr__(self) -> str:
+        return f"<ServiceCredentialRequirement(task={self.task_id}, code={self.code})>"

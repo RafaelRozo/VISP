@@ -56,3 +56,6 @@ visp-tasker/backend/scripts/validate_*.py
 
 # Stray export at repo root
 /VISP Landing.html
+
+# DB backups (datos reales, nunca al repo)
+visp-tasker/backend/backups/
