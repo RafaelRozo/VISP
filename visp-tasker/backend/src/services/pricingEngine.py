@@ -88,12 +88,16 @@ HOLIDAYS: list[tuple[int, int]] = [
 
 # Hourly rate ranges per level (in cents)
 HOURLY_RATES: dict[ProviderLevel, dict[str, int]] = {
+    # L0 hereda las tarifas de L1 (decisión de negocio 2026-08-04: los precios
+    # no cambian con la reestructuración de niveles).
+    ProviderLevel.LEVEL_0: {"min": 4500, "max": 7000, "default": 4500},
     ProviderLevel.LEVEL_1: {"min": 4500, "max": 7000, "default": 4500},
     ProviderLevel.LEVEL_2: {"min": 8000, "max": 12000, "default": 8000},
 }
 
 # Pricing model per level
 LEVEL_PRICING_MODEL: dict[ProviderLevel, str] = {
+    ProviderLevel.LEVEL_0: "TIME_BASED",
     ProviderLevel.LEVEL_1: "TIME_BASED",
     ProviderLevel.LEVEL_2: "TIME_BASED",
     ProviderLevel.LEVEL_3: "NEGOTIATED",
@@ -102,6 +106,12 @@ LEVEL_PRICING_MODEL: dict[ProviderLevel, str] = {
 
 # Default commission rates when no CommissionSchedule is found
 DEFAULT_COMMISSION: dict[ProviderLevel, dict[str, Decimal]] = {
+    # L0 usa la comisión que tenía L1 (decisión de negocio 2026-08-04).
+    ProviderLevel.LEVEL_0: {
+        "min": Decimal("0.1500"),
+        "max": Decimal("0.2000"),
+        "default": Decimal("0.2000"),
+    },
     ProviderLevel.LEVEL_1: {
         "min": Decimal("0.1500"),
         "max": Decimal("0.2000"),

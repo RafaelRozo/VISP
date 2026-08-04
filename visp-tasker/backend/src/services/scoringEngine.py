@@ -49,6 +49,9 @@ class LevelScoreConfig:
 
 
 LEVEL_SCORE_CONFIG: dict[ProviderLevel, LevelScoreConfig] = {
+    # L0 (acceso base) hereda la configuración de L1. Sin esta entrada,
+    # LEVEL_SCORE_CONFIG[level] lanza KeyError en cuanto un proveedor es L0.
+    ProviderLevel.LEVEL_0: LevelScoreConfig(base=Decimal("70"), max=Decimal("90"), min=Decimal("40")),
     ProviderLevel.LEVEL_1: LevelScoreConfig(base=Decimal("70"), max=Decimal("90"), min=Decimal("40")),
     ProviderLevel.LEVEL_2: LevelScoreConfig(base=Decimal("75"), max=Decimal("95"), min=Decimal("50")),
     ProviderLevel.LEVEL_3: LevelScoreConfig(base=Decimal("80"), max=Decimal("98"), min=Decimal("60")),
@@ -61,6 +64,12 @@ LEVEL_SCORE_CONFIG: dict[ProviderLevel, LevelScoreConfig] = {
 # ---------------------------------------------------------------------------
 
 PENALTY_TABLE: dict[ProviderLevel, dict[str, Decimal]] = {
+    ProviderLevel.LEVEL_0: {
+        "response_timeout": Decimal("-2"),
+        "cancellation": Decimal("-3"),
+        "no_show": Decimal("-10"),
+        "bad_review": Decimal("-5"),
+    },
     ProviderLevel.LEVEL_1: {
         "response_timeout": Decimal("-2"),
         "cancellation": Decimal("-3"),

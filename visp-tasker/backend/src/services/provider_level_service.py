@@ -44,6 +44,7 @@ from src.models.verification import (
 )
 
 LEVEL_NUMERIC: dict[ProviderLevel, int] = {
+    ProviderLevel.LEVEL_0: 0,
     ProviderLevel.LEVEL_1: 1,
     ProviderLevel.LEVEL_2: 2,
     ProviderLevel.LEVEL_3: 3,
@@ -54,17 +55,32 @@ LEVEL_NUMERIC: dict[ProviderLevel, int] = {
 def task_qualifies(
     provider_level: ProviderLevel,
     task_level: ProviderLevel,
-    section_requires_credential: bool,
+    section_requires_credential: bool = False,
 ) -> bool:
     """Whether a provider at ``provider_level`` may offer/be matched to a task.
 
-    * L4 tasks never qualify (emergency shelved).
-    * Open sections (requires_credential = False) always qualify.
-    * Gated sections require provider_level >= task_level.
+    INTERINO (2026-08-04). La reestructuración L0..L3 apagó
+    ``service_categories.requires_credential`` en las 12 categorías porque el
+    gate pasó de la SECCIÓN al SERVICIO. Con la lógica anterior eso dejaba
+    ``section_requires_credential=False`` para todo, y la función devolvía True
+    incluso para instalar una línea de gas: cualquier proveedor podría tomar
+    cualquier trabajo regulado.
+
+    Hasta que el motor por servicio esté (lee los códigos de
+    ``service_credential_requirements`` contra las credenciales verificadas del
+    proveedor), se aplica el nivel GLOBAL como backstop para el trabajo
+    regulado:
+
+    * L4 nunca califica (Emergency fuera del producto).
+    * L0/L1 (acceso base y trabajo no regulado) califican siempre.
+    * L2/L3 exigen provider_level >= task_level.
+
+    ``section_requires_credential`` se conserva en la firma por compatibilidad
+    con las llamadas existentes, pero ya no decide nada.
     """
     if task_level == ProviderLevel.LEVEL_4:
         return False
-    if not section_requires_credential:
+    if task_level in (ProviderLevel.LEVEL_0, ProviderLevel.LEVEL_1):
         return True
     return LEVEL_NUMERIC[provider_level] >= LEVEL_NUMERIC[task_level]
 
