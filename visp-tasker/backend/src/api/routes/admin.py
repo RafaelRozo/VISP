@@ -1485,32 +1485,206 @@ async def _assert_credential_gate(
         )
 
 
-@router.get("/taxonomy/credential-requirements")
-async def admin_credential_requirements(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
-    """Catálogo de códigos de credencial disponibles (306A, ESA_LEC, TSSA_G2...)."""
+_REQUIREMENT_KINDS = ("CREDENTIAL", "INSURANCE", "PERMIT")
+_VERIFICATION_METHODS = ("REGISTRY", "DOCUMENT", "SELF_DECLARED")
+
+
+class CredentialRequirementCreate(_CamelModel):
+    # El código es la PK y lo referencian service_credential_requirements y
+    # provider_credential_codes: se fija al crear y no se puede cambiar después.
+    code: str = Field(min_length=1, max_length=40, pattern=r"^[A-Z0-9_]+$")
+    label_en: str = Field(min_length=1, max_length=200)
+    label_fr: Optional[str] = Field(default=None, max_length=200)
+    kind: str = "CREDENTIAL"
+    authority: Optional[str] = Field(default=None, max_length=200)
+    registry_name: Optional[str] = Field(default=None, max_length=200)
+    registry_url: Optional[str] = None
+    verification_method: str = "DOCUMENT"
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class CredentialRequirementUpdate(_CamelModel):
+    label_en: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    label_fr: Optional[str] = Field(default=None, max_length=200)
+    kind: Optional[str] = None
+    authority: Optional[str] = Field(default=None, max_length=200)
+    registry_name: Optional[str] = Field(default=None, max_length=200)
+    registry_url: Optional[str] = None
+    verification_method: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _requirement_to_out(r: CredentialRequirement, usage: int = 0) -> dict[str, Any]:
+    return {
+        "code": r.code,
+        "kind": r.kind,
+        "labelEn": r.label_en,
+        "labelFr": r.label_fr,
+        "authority": r.authority,
+        "registryName": r.registry_name,
+        "registryUrl": r.registry_url,
+        "verificationMethod": r.verification_method,
+        "description": r.description,
+        "isActive": r.is_active,
+        # Cuántos servicios lo exigen — evita borrar algo que está en uso.
+        "usageCount": usage,
+    }
+
+
+def _validate_requirement_enums(kind: Optional[str], method: Optional[str]) -> None:
+    if kind is not None and kind not in _REQUIREMENT_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid kind. Must be one of: {', '.join(_REQUIREMENT_KINDS)}.",
+        )
+    if method is not None and method not in _VERIFICATION_METHODS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid verificationMethod. Must be one of: {', '.join(_VERIFICATION_METHODS)}.",
+        )
+
+
+async def _requirement_usage(db: AsyncSession) -> dict[str, int]:
+    """Cuántos servicios exigen cada código."""
     rows = (
         await db.execute(
-            select(CredentialRequirement)
-            .where(CredentialRequirement.is_active.is_(True))
-            .order_by(CredentialRequirement.kind, CredentialRequirement.code)
+            select(
+                ServiceCredentialRequirement.code,
+                func.count(ServiceCredentialRequirement.id),
+            ).group_by(ServiceCredentialRequirement.code)
         )
+    ).all()
+    return {code: count for code, count in rows}
+
+
+@router.get("/taxonomy/credential-requirements")
+async def admin_credential_requirements(
+    db: DBSession,
+    _: CurrentAdmin,
+    include_inactive: bool = Query(default=False),
+) -> dict[str, Any]:
+    """Catálogo de requisitos: credenciales de oficio, seguros y permisos."""
+    stmt = select(CredentialRequirement)
+    if not include_inactive:
+        stmt = stmt.where(CredentialRequirement.is_active.is_(True))
+    rows = (
+        await db.execute(stmt.order_by(CredentialRequirement.kind, CredentialRequirement.code))
     ).scalars().all()
-    return {
-        "data": [
-            {
-                "code": r.code,
-                "kind": r.kind,
-                "labelEn": r.label_en,
-                "labelFr": r.label_fr,
-                "authority": r.authority,
-                "registryName": r.registry_name,
-                "registryUrl": r.registry_url,
-                "verificationMethod": r.verification_method,
-                "description": r.description,
-            }
-            for r in rows
-        ]
-    }
+    usage = await _requirement_usage(db)
+    return {"data": [_requirement_to_out(r, usage.get(r.code, 0)) for r in rows]}
+
+
+@router.post("/taxonomy/credential-requirements", status_code=status.HTTP_201_CREATED)
+async def admin_create_credential_requirement(
+    db: DBSession,
+    _: CurrentAdmin,
+    body: CredentialRequirementCreate,
+) -> dict[str, Any]:
+    _validate_requirement_enums(body.kind, body.verification_method)
+    code = body.code.strip().upper()
+
+    exists = (
+        await db.execute(select(CredentialRequirement).where(CredentialRequirement.code == code))
+    ).scalar_one_or_none()
+    if exists is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A requirement with code '{code}' already exists.",
+        )
+
+    req = CredentialRequirement(
+        code=code,
+        label_en=body.label_en.strip(),
+        label_fr=(body.label_fr or "").strip() or None,
+        kind=body.kind,
+        authority=(body.authority or "").strip() or None,
+        registry_name=(body.registry_name or "").strip() or None,
+        registry_url=(body.registry_url or "").strip() or None,
+        verification_method=body.verification_method,
+        description=(body.description or "").strip() or None,
+        is_active=body.is_active,
+    )
+    db.add(req)
+    try:
+        await db.commit()
+        await db.refresh(req)
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Could not create requirement: {exc}",
+        )
+    return {"data": _requirement_to_out(req)}
+
+
+@router.patch("/taxonomy/credential-requirements/{code}")
+async def admin_update_credential_requirement(
+    db: DBSession,
+    _: CurrentAdmin,
+    code: str,
+    body: CredentialRequirementUpdate,
+) -> dict[str, Any]:
+    req = (
+        await db.execute(select(CredentialRequirement).where(CredentialRequirement.code == code))
+    ).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found.")
+
+    payload = body.model_dump(exclude_unset=True)
+    _validate_requirement_enums(payload.get("kind"), payload.get("verification_method"))
+
+    for field, value in payload.items():
+        if isinstance(value, str):
+            value = value.strip() or None
+        setattr(req, field, value)
+
+    try:
+        await db.commit()
+        await db.refresh(req)
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Could not update requirement: {exc}",
+        )
+    usage = await _requirement_usage(db)
+    return {"data": _requirement_to_out(req, usage.get(req.code, 0))}
+
+
+@router.delete("/taxonomy/credential-requirements/{code}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_credential_requirement(
+    db: DBSession,
+    _: CurrentAdmin,
+    code: str,
+) -> None:
+    req = (
+        await db.execute(select(CredentialRequirement).where(CredentialRequirement.code == code))
+    ).scalar_one_or_none()
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found.")
+
+    # Borrarlo dejaría servicios L2/L3 sin ningún requisito, es decir
+    # inalcanzables para todo proveedor. Se desactiva, no se borra.
+    in_use = (
+        await db.execute(
+            select(func.count())
+            .select_from(ServiceCredentialRequirement)
+            .where(ServiceCredentialRequirement.code == code)
+        )
+    ).scalar_one()
+    if in_use:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"'{code}' is required by {in_use} service(s) and cannot be deleted. "
+                "Remove it from those services first, or deactivate it instead."
+            ),
+        )
+
+    await db.delete(req)
+    await db.commit()
 
 
 @router.post("/taxonomy/tasks", status_code=status.HTTP_201_CREATED)

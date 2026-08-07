@@ -151,6 +151,14 @@ export const REQUIREMENT_KIND_ORDER: CredentialRequirementKind[] = [
   'PERMIT',
 ];
 
+export type VerificationMethod = 'REGISTRY' | 'DOCUMENT' | 'SELF_DECLARED';
+
+export const VERIFICATION_METHODS: VerificationMethod[] = [
+  'REGISTRY',
+  'DOCUMENT',
+  'SELF_DECLARED',
+];
+
 /** Un código del catálogo de requisitos (306A, ESA_LEC, CGL, ...). */
 export interface CredentialRequirementOption {
   code: string;
@@ -160,8 +168,25 @@ export interface CredentialRequirementOption {
   authority: string | null;
   registryName: string | null;
   registryUrl: string | null;
-  verificationMethod: 'REGISTRY' | 'DOCUMENT' | 'SELF_DECLARED';
+  verificationMethod: VerificationMethod;
   description: string | null;
+  isActive?: boolean;
+  /** Cuántos servicios exigen este código. Bloquea el borrado si > 0. */
+  usageCount?: number;
+}
+
+export interface CredentialRequirementUpsertBody {
+  /** Solo al crear: es la PK y la referencian los servicios. Inmutable después. */
+  code?: string;
+  labelEn: string;
+  labelFr?: string | null;
+  kind: CredentialRequirementKind;
+  authority?: string | null;
+  registryName?: string | null;
+  registryUrl?: string | null;
+  verificationMethod: VerificationMethod;
+  description?: string | null;
+  isActive?: boolean;
 }
 
 /**
@@ -392,9 +417,27 @@ export const adminService = {
   // ── Taxonomy (service categories + tasks) ──
   taxonomyFull: () => apiGet<TaxonomyCategory[]>('/admin/taxonomy/full'),
 
-  /** Catálogo de códigos de credencial que un servicio L2/L3 puede exigir. */
-  credentialRequirementOptions: () =>
-    apiGet<CredentialRequirementOption[]>('/admin/taxonomy/credential-requirements'),
+  /** Catálogo de requisitos que un servicio puede exigir (credenciales, seguros, permisos). */
+  credentialRequirementOptions: (includeInactive = false) =>
+    apiGet<CredentialRequirementOption[]>(
+      '/admin/taxonomy/credential-requirements',
+      includeInactive ? { include_inactive: true } : undefined,
+    ),
+
+  createCredentialRequirement: (body: CredentialRequirementUpsertBody) =>
+    apiPost<CredentialRequirementOption>('/admin/taxonomy/credential-requirements', body),
+
+  updateCredentialRequirement: (
+    code: string,
+    body: Partial<CredentialRequirementUpsertBody>,
+  ) =>
+    apiPatch<CredentialRequirementOption>(
+      `/admin/taxonomy/credential-requirements/${encodeURIComponent(code)}`,
+      body,
+    ),
+
+  deleteCredentialRequirement: (code: string) =>
+    apiDelete<void>(`/admin/taxonomy/credential-requirements/${encodeURIComponent(code)}`),
 
   createCategory: (body: CategoryUpsertBody) =>
     apiPost<TaxonomyCategory>('/admin/taxonomy/categories', body),

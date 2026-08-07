@@ -5,7 +5,9 @@ import {
   adminService,
   CategoryUpsertBody,
   CREDENTIAL_GATED_LEVELS,
+  CredentialRequirementKind,
   CredentialRequirementOption,
+  CredentialRequirementUpsertBody,
   levelColor,
   REQUIREMENT_KIND_ORDER,
   SERVICE_LEVELS,
@@ -13,6 +15,8 @@ import {
   TaskCredentialRequirement,
   TaskUpsertBody,
   TaxonomyCategory,
+  VERIFICATION_METHODS,
+  VerificationMethod,
 } from '@/services/adminService';
 import { centsToInput, formatMoneyRange, inputToCents } from '@/lib/money';
 
@@ -67,6 +71,34 @@ const emptyCategory: CategoryFormState = {
   helpMessageFr: '',
 };
 
+interface RequirementFormState {
+  /** Vacío = alta. Con valor = edición (el código es la PK, no se cambia). */
+  originalCode?: string;
+  code: string;
+  labelEn: string;
+  labelFr: string;
+  kind: CredentialRequirementKind;
+  authority: string;
+  registryName: string;
+  registryUrl: string;
+  verificationMethod: VerificationMethod;
+  description: string;
+  isActive: boolean;
+}
+
+const emptyRequirement: RequirementFormState = {
+  code: '',
+  labelEn: '',
+  labelFr: '',
+  kind: 'CREDENTIAL',
+  authority: '',
+  registryName: '',
+  registryUrl: '',
+  verificationMethod: 'DOCUMENT',
+  description: '',
+  isActive: true,
+};
+
 const emptyTask = (categoryId: string): TaskFormState => ({
   categoryId,
   slug: '',
@@ -100,6 +132,9 @@ export default function Services() {
 
   const [categoryForm, setCategoryForm] = useState<CategoryFormState | null>(null);
   const [taskForm, setTaskForm] = useState<TaskFormState | null>(null);
+  // Gestor del catálogo de requisitos: lista + editor de una ficha.
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [requirementForm, setRequirementForm] = useState<RequirementFormState | null>(null);
 
   const q = useQuery<TaxonomyCategory[]>({
     queryKey: ['taxonomy-full'],
@@ -208,6 +243,14 @@ export default function Services() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <button
+          type="button"
+          className="t-btn t-btn-ghost"
+          onClick={() => setCatalogOpen(true)}
+          title={t('services.manageRequirementsHint')}
+        >
+          {t('services.manageRequirements')}
+        </button>
         <button
           type="button"
           className="t-btn t-btn-secondary"
@@ -503,6 +546,35 @@ export default function Services() {
             // El backend rechaza con 400 un L2/L3 sin requisitos de credencial.
             ((createTask.error ?? updateTask.error) as { message?: string } | null)?.message ?? null
           }
+        />
+      )}
+
+      {/* Modal 1 — catálogo de requisitos (lista + alta/edición/baja) */}
+      {catalogOpen && (
+        <RequirementCatalogModal
+          onClose={() => setCatalogOpen(false)}
+          onNew={() => setRequirementForm({ ...emptyRequirement })}
+          onEdit={(o) => setRequirementForm({
+            originalCode: o.code,
+            code: o.code,
+            labelEn: o.labelEn,
+            labelFr: o.labelFr ?? '',
+            kind: o.kind,
+            authority: o.authority ?? '',
+            registryName: o.registryName ?? '',
+            registryUrl: o.registryUrl ?? '',
+            verificationMethod: o.verificationMethod,
+            description: o.description ?? '',
+            isActive: o.isActive ?? true,
+          })}
+        />
+      )}
+
+      {/* Modal 2 — ficha de un requisito */}
+      {requirementForm && (
+        <RequirementEditModal
+          form={requirementForm}
+          onClose={() => setRequirementForm(null)}
         />
       )}
     </div>
@@ -985,6 +1057,360 @@ function TaskModal({
             <button type="submit" className="t-btn t-btn-primary" disabled={submitting || credGateFails}>
               {submitting && <span className="t-spinner" />}
               {form.id ? t('common.save') : t('common.create')}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* =================== Modal 1: catálogo de requisitos ===================
+   Lista todos los códigos (credenciales de oficio, seguros y permisos) para
+   poder darlos de alta, editarlos o retirarlos sin tocar la base a mano. */
+function RequirementCatalogModal({
+  onClose,
+  onNew,
+  onEdit,
+}: {
+  onClose: () => void;
+  onNew: () => void;
+  onEdit: (o: CredentialRequirementOption) => void;
+}) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [search, setSearch] = useState('');
+
+  const q = useQuery<CredentialRequirementOption[]>({
+    // Incluye los inactivos: si no, un código retirado desaparecería del gestor
+    // y no habría forma de reactivarlo.
+    queryKey: ['credential-requirement-catalog'],
+    queryFn: () => adminService.credentialRequirementOptions(true),
+  });
+
+  const del = useMutation({
+    mutationFn: (code: string) => adminService.deleteCredentialRequirement(code),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['credential-requirement-catalog'] });
+      qc.invalidateQueries({ queryKey: ['credential-requirement-options'] });
+    },
+  });
+
+  const items = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const all = q.data ?? [];
+    if (!needle) return all;
+    return all.filter(
+      (o) =>
+        o.code.toLowerCase().includes(needle) ||
+        o.labelEn.toLowerCase().includes(needle) ||
+        (o.labelFr ?? '').toLowerCase().includes(needle) ||
+        (o.authority ?? '').toLowerCase().includes(needle),
+    );
+  }, [q.data, search]);
+
+  return (
+    <div className="t-modal-backdrop" onClick={onClose}>
+      <div className="t-modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
+        <div className="t-modal-head">
+          <div>
+            <span className="t-eyebrow">§ Catalog</span>
+            <div className="t-h3" style={{ marginTop: 4 }}>{t('services.manageRequirements')}</div>
+            <div style={{ fontSize: 12, color: 'var(--t-text-2)', marginTop: 4 }}>
+              {t('services.manageRequirementsHint')}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="t-btn t-btn-ghost t-btn-sm">✕</button>
+        </div>
+
+        <div className="t-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="t-search" style={{ flex: 1 }}>
+              <SearchIcon />
+              <input
+                type="search"
+                placeholder={t('services.searchRequirement')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <button type="button" className="t-btn t-btn-primary t-btn-sm" onClick={onNew}>
+              + {t('services.newRequirement')}
+            </button>
+          </div>
+
+          {q.isLoading && <div className="t-meta">{t('common.loading')}</div>}
+          {del.error && (
+            <div style={{ fontSize: 12, color: 'var(--t-danger)' }}>
+              {(del.error as { message?: string }).message}
+            </div>
+          )}
+
+          {REQUIREMENT_KIND_ORDER.map((kind) => {
+            const group = items.filter((o) => o.kind === kind);
+            if (group.length === 0) return null;
+            return (
+              <div key={kind} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="t-eyebrow" style={{ marginTop: 4 }}>
+                  {t(`services.kind.${kind}`)} · {group.length}
+                </div>
+                {group.map((o) => (
+                  <div
+                    key={o.code}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '9px 11px', borderRadius: 6,
+                      background: 'var(--t-surface)', border: '1px solid var(--t-border)',
+                      opacity: o.isActive === false ? 0.5 : 1,
+                    }}
+                  >
+                    <span className="t-mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--t-text)', minWidth: 116 }}>
+                      {o.code}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: 'var(--t-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {o.labelEn}
+                      </div>
+                      <div className="t-mono" style={{ fontSize: 10, color: 'var(--t-text-3)', marginTop: 2 }}>
+                        {o.authority || '—'} · {o.verificationMethod}
+                        {o.isActive === false && ` · ${t('services.inactive')}`}
+                      </div>
+                    </div>
+                    {/* Un código en uso no se puede borrar: dejaría servicios
+                        L2/L3 sin requisitos, o sea inalcanzables. */}
+                    <span
+                      className="t-chip t-chip-mono"
+                      style={{ fontSize: 9 }}
+                      title={t('services.usedByServices')}
+                    >
+                      {o.usageCount ?? 0}
+                    </span>
+                    <button type="button" className="t-btn t-btn-ghost t-btn-sm" onClick={() => onEdit(o)}>
+                      {t('common.edit')}
+                    </button>
+                    <button
+                      type="button"
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      style={{ color: 'var(--t-danger)' }}
+                      disabled={(o.usageCount ?? 0) > 0 || del.isPending}
+                      title={(o.usageCount ?? 0) > 0 ? t('services.cannotDeleteInUse') : undefined}
+                      onClick={() => {
+                        if (confirm(t('services.deleteRequirementConfirm', { code: o.code }))) {
+                          del.mutate(o.code);
+                        }
+                      }}
+                    >
+                      {t('common.delete')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {!q.isLoading && items.length === 0 && (
+            <div className="t-empty"><h3>{t('services.noRequirementsFound')}</h3></div>
+          )}
+        </div>
+
+        <div className="t-modal-foot">
+          <button type="button" className="t-btn t-btn-ghost" onClick={onClose}>{t('common.close')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =================== Modal 2: ficha de un requisito =================== */
+function RequirementEditModal({
+  form,
+  onClose,
+}: {
+  form: RequirementFormState;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [state, setState] = useState<RequirementFormState>(form);
+  const isEdit = Boolean(form.originalCode);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['credential-requirement-catalog'] });
+    qc.invalidateQueries({ queryKey: ['credential-requirement-options'] });
+    qc.invalidateQueries({ queryKey: ['taxonomy-full'] });
+  };
+
+  const create = useMutation({
+    mutationFn: (body: CredentialRequirementUpsertBody) =>
+      adminService.createCredentialRequirement(body),
+    onSuccess: () => { invalidate(); onClose(); },
+  });
+  const update = useMutation({
+    mutationFn: (body: Partial<CredentialRequirementUpsertBody>) =>
+      adminService.updateCredentialRequirement(form.originalCode!, body),
+    onSuccess: () => { invalidate(); onClose(); },
+  });
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const body: CredentialRequirementUpsertBody = {
+      labelEn: state.labelEn.trim(),
+      labelFr: state.labelFr.trim() || null,
+      kind: state.kind,
+      authority: state.authority.trim() || null,
+      registryName: state.registryName.trim() || null,
+      registryUrl: state.registryUrl.trim() || null,
+      verificationMethod: state.verificationMethod,
+      description: state.description.trim() || null,
+      isActive: state.isActive,
+    };
+    if (isEdit) update.mutate(body);
+    else create.mutate({ ...body, code: state.code.trim().toUpperCase() });
+  };
+
+  const submitting = create.isPending || update.isPending;
+  const error = ((create.error ?? update.error) as { message?: string } | null)?.message ?? null;
+
+  return (
+    <div className="t-modal-backdrop" onClick={onClose}>
+      <form className="t-modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <div className="t-modal-head">
+          <div>
+            <span className="t-eyebrow">§ {isEdit ? 'Edit' : 'New'}</span>
+            <div className="t-h3" style={{ marginTop: 4 }}>
+              {isEdit ? t('services.editRequirement') : t('services.newRequirement')}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="t-btn t-btn-ghost t-btn-sm">✕</button>
+        </div>
+
+        <div className="t-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
+            <div>
+              <label className="t-label">{t('services.requirementCode')}</label>
+              <input
+                type="text"
+                className="t-input t-mono"
+                required
+                // La PK la referencian los servicios: se fija al crear.
+                disabled={isEdit}
+                pattern="[A-Za-z0-9_]+"
+                placeholder="CGL"
+                value={state.code}
+                onChange={(e) => setState({ ...state, code: e.target.value.toUpperCase() })}
+              />
+              <div style={{ fontSize: 11, color: 'var(--t-text-3)', marginTop: 4 }}>
+                {isEdit ? t('services.requirementCodeLocked') : t('services.requirementCodeHint')}
+              </div>
+            </div>
+            <div>
+              <label className="t-label">{t('services.requirementKind')}</label>
+              <select
+                className="t-select"
+                style={{ width: '100%' }}
+                value={state.kind}
+                onChange={(e) => setState({ ...state, kind: e.target.value as CredentialRequirementKind })}
+              >
+                {REQUIREMENT_KIND_ORDER.map((k) => (
+                  <option key={k} value={k}>{t(`services.kind.${k}`)}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--t-text-3)', marginTop: 4 }}>
+                {t(`services.kindHint.${state.kind}`)}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="t-label">{t('services.requirementLabelEn')}</label>
+            <input
+              type="text" className="t-input" required
+              placeholder="Commercial General Liability insurance"
+              value={state.labelEn}
+              onChange={(e) => setState({ ...state, labelEn: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="t-label">{t('services.requirementLabelFr')}</label>
+            <input
+              type="text" className="t-input"
+              placeholder="Assurance responsabilité civile générale commerciale"
+              value={state.labelFr}
+              onChange={(e) => setState({ ...state, labelFr: e.target.value })}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="t-label">{t('services.requirementAuthority')}</label>
+              <input
+                type="text" className="t-input" placeholder="Skilled Trades Ontario"
+                value={state.authority}
+                onChange={(e) => setState({ ...state, authority: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="t-label">{t('services.requirementVerification')}</label>
+              <select
+                className="t-select" style={{ width: '100%' }}
+                value={state.verificationMethod}
+                onChange={(e) => setState({ ...state, verificationMethod: e.target.value as VerificationMethod })}
+              >
+                {VERIFICATION_METHODS.map((m) => (
+                  <option key={m} value={m}>{t(`services.verification.${m}`)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Solo tiene sentido si se verifica contra un registro oficial. */}
+          {state.verificationMethod === 'REGISTRY' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="t-label">{t('services.requirementRegistryName')}</label>
+                <input
+                  type="text" className="t-input" placeholder="Skilled Trades Ontario Public Register"
+                  value={state.registryName}
+                  onChange={(e) => setState({ ...state, registryName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="t-label">{t('services.requirementRegistryUrl')}</label>
+                <input
+                  type="url" className="t-input" placeholder="https://..."
+                  value={state.registryUrl}
+                  onChange={(e) => setState({ ...state, registryUrl: e.target.value })}
+                />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="t-label">{t('services.requirementDescription')}</label>
+            <textarea
+              className="t-textarea"
+              value={state.description}
+              onChange={(e) => setState({ ...state, description: e.target.value })}
+            />
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--t-text-2)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={state.isActive}
+              onChange={(e) => setState({ ...state, isActive: e.target.checked })}
+            />
+            {t('services.isActive')}
+          </label>
+        </div>
+
+        <div className="t-modal-foot" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+          {error && <div style={{ fontSize: 12, color: 'var(--t-danger)', textAlign: 'right' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="t-btn t-btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
+            <button type="submit" className="t-btn t-btn-primary" disabled={submitting}>
+              {submitting && <span className="t-spinner" />}
+              {isEdit ? t('common.save') : t('common.create')}
             </button>
           </div>
         </div>
