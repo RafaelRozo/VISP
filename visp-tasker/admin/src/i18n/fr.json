@@ -121,7 +121,7 @@
     "credentialGateBlocked": "Ajoutez au moins une qualification requise avant d'enregistrer ce service en L2 ou L3.",
     "credentialRequirements": "Qualifications requises",
     "credentialRequirementsOptional": "Les services de niveau 0 et 1 n'exigent pas de qualification. Le L1 se débloque avec une preuve d'expérience validée pour la classification.",
-    "credentialRequirementsRequired": "Les services de niveau 2 et 3 doivent exiger au moins une qualification — sinon aucun prestataire ne pourra jamais y accéder.",
+    "credentialRequirementsRequired": "Les services de niveau 2 et 3 doivent exiger au moins un élément — sinon aucun prestataire ne pourra y accéder. L'assurance responsabilité civile générale (CGL) est déjà obligatoire pour tout L2/L3 par politique de niveau ; ajoutez-la ici pour la rendre explicite sur ce service.",
     "deleteCategoryConfirm": "Supprimer cette catégorie ? Tous les services seront aussi supprimés.",
     "deleteTaskConfirm": "Supprimer ce service ? Cette action est irréversible.",
     "displayOrder": "Ordre d'affichage",
@@ -137,6 +137,11 @@
     "helpMessageEn": "Message d'aide au téléversement (anglais)",
     "helpMessageFr": "Message d'aide au téléversement (français)",
     "isActive": "Actif",
+    "kind": {
+      "CREDENTIAL": "Qualification de métier",
+      "INSURANCE": "Assurance",
+      "PERMIT": "Permis de travaux"
+    },
     "level": "Niveau requis",
     "licenseRequired": "Licence requise",
     "mandatory": "Obligatoire",

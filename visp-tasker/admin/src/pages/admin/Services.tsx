@@ -7,6 +7,7 @@ import {
   CREDENTIAL_GATED_LEVELS,
   CredentialRequirementOption,
   levelColor,
+  REQUIREMENT_KIND_ORDER,
   SERVICE_LEVELS,
   ServiceLevel,
   TaskCredentialRequirement,
@@ -857,6 +858,7 @@ function TaskModal({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {state.credentialRequirements.map((r) => {
                   const opt = options.data?.find((o) => o.code === r.code);
+                  const kind = opt?.kind ?? r.kind ?? 'CREDENTIAL';
                   return (
                     <div
                       key={r.code}
@@ -869,6 +871,11 @@ function TaskModal({
                       <span className="t-mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--t-text)', minWidth: 92 }}>
                         {r.code}
                       </span>
+                      {kind !== 'CREDENTIAL' && (
+                        <span className="t-chip t-chip-mono" style={{ fontSize: 9 }}>
+                          {t(`services.kind.${kind}`)}
+                        </span>
+                      )}
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--t-text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {opt?.labelEn ?? r.labelEn ?? ''}
                         {opt?.authority && <span style={{ color: 'var(--t-text-3)' }}> · {opt.authority}</span>}
@@ -894,6 +901,8 @@ function TaskModal({
               </div>
             )}
 
+            {/* Agrupado por tipo: las credenciales de oficio son muchas y si no
+                se separan, el seguro y el permiso se pierden en la lista. */}
             <select
               className="t-select"
               style={{ width: '100%' }}
@@ -903,13 +912,21 @@ function TaskModal({
               <option value="">
                 {options.isLoading ? t('common.loading') : `+ ${t('services.addCredential')}`}
               </option>
-              {(options.data ?? [])
-                .filter((o) => !state.credentialRequirements.some((r) => r.code === o.code))
-                .map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.code} — {o.labelEn}
-                  </option>
-                ))}
+              {REQUIREMENT_KIND_ORDER.map((kind) => {
+                const group = (options.data ?? []).filter(
+                  (o) => o.kind === kind && !state.credentialRequirements.some((r) => r.code === o.code),
+                );
+                if (group.length === 0) return null;
+                return (
+                  <optgroup key={kind} label={t(`services.kind.${kind}`)}>
+                    {group.map((o) => (
+                      <option key={o.code} value={o.code}>
+                        {o.code} — {o.labelEn}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
 
             {credGateFails && (

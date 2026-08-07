@@ -121,7 +121,7 @@
     "credentialGateBlocked": "Add at least one credential requirement before saving this service at L2 or L3.",
     "credentialRequirements": "Credential requirements",
     "credentialRequirementsOptional": "Level 0 and Level 1 services do not require credentials. L1 is unlocked with validated experience evidence for the classification.",
-    "credentialRequirementsRequired": "Level 2 and Level 3 services must require at least one credential — otherwise no provider can ever qualify for them.",
+    "credentialRequirementsRequired": "Level 2 and Level 3 services must require at least one item — otherwise no provider can ever qualify for them. Commercial General Liability insurance (CGL) is already mandatory for every L2/L3 by level policy; add it here to make it explicit on this service.",
     "deleteCategoryConfirm": "Delete this category? All services inside will also be removed.",
     "deleteTaskConfirm": "Delete this service? This cannot be undone.",
     "displayOrder": "Display order",
@@ -137,6 +137,11 @@
     "helpMessageEn": "Upload help message (English)",
     "helpMessageFr": "Upload help message (French)",
     "isActive": "Active",
+    "kind": {
+      "CREDENTIAL": "Trade credential",
+      "INSURANCE": "Insurance",
+      "PERMIT": "Job permit"
+    },
     "level": "Required level",
     "licenseRequired": "License required",
     "mandatory": "Required",

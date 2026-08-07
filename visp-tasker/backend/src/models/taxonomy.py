@@ -220,6 +220,21 @@ class CredentialRequirement(Base):
     __tablename__ = "credential_requirements"
 
     code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    # Dónde verifica el motor este requisito (migración 034):
+    #   CREDENTIAL -> provider_credentials + provider_credential_codes
+    #   INSURANCE  -> provider_insurance_policies (NO es una credencial)
+    #   PERMIT     -> ligado al TRABAJO, no al proveedor; se exige por reserva
+    kind: Mapped[str] = mapped_column(
+        Enum(
+            "CREDENTIAL",
+            "INSURANCE",
+            "PERMIT",
+            name="credential_requirement_kind",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default=text("'CREDENTIAL'"),
+    )
     label_en: Mapped[str] = mapped_column(String(200), nullable=False)
     label_fr: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     authority: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)

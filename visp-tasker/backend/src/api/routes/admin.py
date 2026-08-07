@@ -1401,6 +1401,7 @@ async def _load_task_requirements(
             {
                 "code": link.code,
                 "mandatory": link.mandatory,
+                "kind": req.kind,
                 "labelEn": req.label_en,
                 "labelFr": req.label_fr,
                 "authority": req.authority,
@@ -1491,13 +1492,14 @@ async def admin_credential_requirements(db: DBSession, _: CurrentAdmin) -> dict[
         await db.execute(
             select(CredentialRequirement)
             .where(CredentialRequirement.is_active.is_(True))
-            .order_by(CredentialRequirement.code)
+            .order_by(CredentialRequirement.kind, CredentialRequirement.code)
         )
     ).scalars().all()
     return {
         "data": [
             {
                 "code": r.code,
+                "kind": r.kind,
                 "labelEn": r.label_en,
                 "labelFr": r.label_fr,
                 "authority": r.authority,

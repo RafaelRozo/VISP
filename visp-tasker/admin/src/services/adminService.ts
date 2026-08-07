@@ -136,9 +136,25 @@ export function levelColor(level: string): string {
 /** El acceso a L2/L3 se abre con una credencial que coincide con el servicio. */
 export const CREDENTIAL_GATED_LEVELS: readonly string[] = ['2', '3'];
 
-/** Un código del catálogo de credenciales (306A, ESA_LEC, TSSA_G2, ...). */
+/**
+ * Qué clase de requisito es un código, porque el motor lo verifica en sitios
+ * distintos:
+ *  - CREDENTIAL: credencial del proveedor (306A, ESA_LEC, Smart Serve...).
+ *  - INSURANCE:  póliza (CGL). Vive en provider_insurance_policies.
+ *  - PERMIT:     permiso del TRABAJO, no del proveedor (building permit).
+ */
+export type CredentialRequirementKind = 'CREDENTIAL' | 'INSURANCE' | 'PERMIT';
+
+export const REQUIREMENT_KIND_ORDER: CredentialRequirementKind[] = [
+  'CREDENTIAL',
+  'INSURANCE',
+  'PERMIT',
+];
+
+/** Un código del catálogo de requisitos (306A, ESA_LEC, CGL, ...). */
 export interface CredentialRequirementOption {
   code: string;
+  kind: CredentialRequirementKind;
   labelEn: string;
   labelFr: string | null;
   authority: string | null;
@@ -155,6 +171,7 @@ export interface CredentialRequirementOption {
 export interface TaskCredentialRequirement {
   code: string;
   mandatory: boolean;
+  kind?: CredentialRequirementKind;
   labelEn?: string;
   labelFr?: string | null;
   authority?: string | null;
