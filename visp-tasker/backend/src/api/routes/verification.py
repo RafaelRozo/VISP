@@ -19,7 +19,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, status
 
-from src.api.deps import DBSession
+from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.verification import (
     AdminActionOut,
     AdminApproveRequest,
@@ -183,21 +183,45 @@ async def submit_license_route(
     "/insurance",
     response_model=InsuranceSubmissionOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Submit an insurance policy",
+    summary="Submit an insurance policy (metadata only, authenticated)",
     description=(
-        "Submit an insurance policy for verification.  Level 3+ providers "
-        "must have at least $2,000,000 in general liability coverage.  "
-        "The policy is created with pending_review status."
+        "Da de alta una póliza para verificación, SIN archivo. El flujo de la app "
+        "es `POST /api/v1/provider/insurance`, que sube el certificado además de "
+        "los datos.\n\n"
+        "El proveedor se toma del token. El `providerId` del body se ignora."
     ),
 )
 async def submit_insurance_route(
     body: InsurancePolicyRequest,
     db: DBSession,
+    user: CurrentUser,
 ) -> InsuranceSubmissionOut:
+    # AGUJERO CERRADO (2026-08-11, decisión de Ricardo): esta ruta no pedía
+    # autenticación y tomaba `provider_id` DEL BODY, así que cualquiera con acceso
+    # a la API podía dar de alta una póliza a nombre de otro proveedor — y una
+    # póliza verificada abre servicios que exigen CGL.
+    #
+    # El proveedor se deriva del token y el `providerId` del body se ignora en vez
+    # de rechazarse, para no romper clientes que aún lo manden.
+    from sqlalchemy import select as _select
+
+    from src.models.provider import ProviderProfile
+
+    own_provider_id = (
+        await db.execute(
+            _select(ProviderProfile.id).where(ProviderProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if own_provider_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
     try:
         result = await submit_insurance(
             db=db,
-            provider_id=body.provider_id,
+            provider_id=own_provider_id,
             policy_number=body.policy_number,
             insurer_name=body.insurer_name,
             policy_type=body.policy_type,

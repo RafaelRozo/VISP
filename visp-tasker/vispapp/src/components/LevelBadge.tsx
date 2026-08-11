@@ -2,10 +2,11 @@
  * VISP - LevelBadge Component
  *
  * Colored badge that displays the provider/task service level.
- * Level 1: Green #27AE60 "Helper"
+ * Level 0: Slate  #5D6D7E "Base"
+ * Level 1: Green  #27AE60 "Helper"
  * Level 2: Yellow #F39C12 "Experienced"
  * Level 3: Purple #9B59B6 "Certified Pro"
- * Level 4: Red #E74C3C "Emergency"
+ * Level 4: Red    #E74C3C "Emergency" (dead product, legacy job data only)
  *
  * Supports small, medium, and large size variants.
  */
@@ -37,6 +38,7 @@ interface LevelBadgeProps {
 // ──────────────────────────────────────────────
 
 const LEVEL_LABELS: Record<ServiceLevel, string> = {
+  0: 'Base',
   1: 'Helper',
   2: 'Experienced',
   3: 'Certified Pro',
@@ -44,6 +46,7 @@ const LEVEL_LABELS: Record<ServiceLevel, string> = {
 };
 
 const LEVEL_SHORT_LABELS: Record<ServiceLevel, string> = {
+  0: 'L0',
   1: 'L1',
   2: 'L2',
   3: 'L3',

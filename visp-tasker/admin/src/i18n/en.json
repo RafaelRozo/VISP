@@ -192,7 +192,17 @@
       "REGISTRY": "Official registry lookup",
       "DOCUMENT": "Uploaded document",
       "SELF_DECLARED": "Self-declared"
-    }
+    },
+    "bookingInputTitle": "What the customer must provide when booking",
+    "bookingInputHelp": "The provider sees this before accepting, to judge whether the job is worth taking at their price range. It does not change the scope or the price — those come from the catalogue.",
+    "requiresDetails": "Details are required (the customer must describe the work)",
+    "requiresEvidence": "At least one photo is required",
+    "detailsPromptEn": "Details prompt (EN)",
+    "detailsPromptFr": "Details prompt (FR)",
+    "detailsPromptPlaceholder": "e.g. How many rooms and bathrooms? Any pets? How do we get in?",
+    "detailsPromptRequired": "A service that requires details also needs an English prompt — it is what steers the customer to describe the scale and access of THIS service instead of asking for extra work.",
+    "detailsChip": "DETAILS",
+    "evidenceChip": "PHOTO"
   },
   "filters": {
     "all": "All",

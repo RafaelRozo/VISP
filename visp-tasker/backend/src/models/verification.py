@@ -25,6 +25,12 @@ class CredentialStatus(str, enum.Enum):
 
 class CredentialType(str, enum.Enum):
     LICENSE = "license"
+    # Licencia de CONDUCIR (migración 035). Tipo propio a propósito: mientras
+    # compartió el valor LICENSE con la licencia de oficio, un proveedor subía su
+    # G2, el admin la aprobaba de buena fe, y `_has_verified_license()` la contaba
+    # como licencia de oficio verificada -> le abría el gate de trabajo regulado.
+    # No lleva nivel asociado: todos la suben como documento de identidad.
+    DRIVERS_LICENSE = "drivers_license"
     CERTIFICATION = "certification"
     PERMIT = "permit"
     TRAINING = "training"
@@ -185,6 +191,9 @@ class ProviderInsurancePolicy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id"),
         nullable=True,
     )
+    # Migración 037. Sin esta columna mapeada, asignar el motivo de rechazo creaba
+    # un atributo suelto de Python: SQLAlchemy no protesta y el texto se pierde.
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Document
     document_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -255,4 +264,87 @@ class LegalConsent(Base):
             f"<LegalConsent(id={self.id}, user={self.user_id}, "
             f"type={self.consent_type}, version={self.consent_version}, "
             f"granted={self.granted})>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Expediente de experiencia del proveedor (L1) — migraciones 032 y 038
+# ---------------------------------------------------------------------------
+
+
+class ExperienceRecordKind(str, enum.Enum):
+    """Tipo de evidencia que el proveedor aporta para validar experiencia."""
+
+    PREVIOUS_JOBS = "previous_jobs"
+    RESUME = "resume"
+    RECOMMENDATION_LETTER = "recommendation_letter"
+    REFERENCE = "reference"
+    WORK_PHOTOS = "work_photos"
+    TRAINING_RECORD = "training_record"
+    OTHER = "other"
+
+
+class ExperienceRecordStatus(str, enum.Enum):
+    PENDING = "pending"
+    VALIDATED = "validated"
+    REJECTED = "rejected"
+
+
+class ProviderExperienceRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Evidencia de experiencia con la que un proveedor sube a L1.
+
+    Decisión del cliente (2026-08-11): es un expediente ÚNICO y global —el
+    proveedor sube su CV, fotos de trabajos y cartas de recomendación— y NO por
+    categoría, como se había planteado el 2026-08-04.
+
+    Lo que VISP valida aquí es DOCUMENTAL, no de competencia: se confirma que la
+    evidencia declarada existe y está legible. VISP no certifica que el proveedor
+    sepa hacer el trabajo. `REJECTED` significa "documentación incompleta o
+    ilegible", nunca "no eres competente".
+    """
+
+    __tablename__ = "provider_experience_records"
+
+    provider_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("provider_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # NULL = expediente global (el modelo de la v1). Con valor = evidencia atada a
+    # una clasificación, reservado para cuando se abra L2. Ver migración 038.
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("service_categories.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    kind: Mapped[ExperienceRecordKind] = mapped_column(
+        Enum(ExperienceRecordKind, name="experience_record_kind", create_type=False),
+        nullable=False,
+    )
+    title: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    document_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    status: Mapped[ExperienceRecordStatus] = mapped_column(
+        Enum(ExperienceRecordStatus, name="experience_record_status", create_type=False),
+        nullable=False,
+        server_default="PENDING",
+    )
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    validated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    validated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        scope = "global" if self.category_id is None else f"cat={self.category_id}"
+        return (
+            f"<ProviderExperienceRecord(provider={self.provider_id}, "
+            f"{self.kind}, {scope}, {self.status})>"
         )

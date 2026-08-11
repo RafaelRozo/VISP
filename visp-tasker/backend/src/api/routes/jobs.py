@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.job import (
@@ -46,7 +46,7 @@ from src.api.schemas.provider import (
     MobileJobStatusUpdateRequest,
 )
 from src.core.config import settings
-from src.services import jobService
+from src.services import jobService, service_zone_service
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,107 @@ async def create_job(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         )
+    except jobService.BookingInputRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    except service_zone_service.OutsideServiceAreaError as exc:
+        # 400, no 5xx: Cloudflare envuelve los 5xx en su propia página y el
+        # usuario nunca vería este mensaje.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
 
     return JobOut.model_validate(job)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/jobs/booking-evidence -- subir las fotos ANTES de reservar
+# ---------------------------------------------------------------------------
+#
+# Se sube antes y por separado porque el endpoint de reserva es JSON: convertirlo
+# a multipart obligaría a rehacer todo el cuerpo de la petición y el flujo de
+# pago que ya funciona. El cliente sube las fotos, recibe las URLs y las manda en
+# `evidence` al reservar.
+#
+# Contrapartida asumida: si el cliente abandona el flujo, los archivos quedan
+# huérfanos. Hace falta una limpieza periódica de evidencia sin job asociado
+# (junto con la política de retención de `uploads/`, que crece sin límite).
+
+_EVIDENCE_ALLOWED_MIME = {
+    "image/jpeg", "image/jpg", "image/png", "image/heic", "image/heif", "image/webp",
+}
+# 8 MB por foto. La app debe reescalar antes de subir (lado largo ~1600px, JPEG
+# 0.7 -> ~300 KB); este tope es la red de seguridad, no el objetivo.
+_EVIDENCE_MAX_BYTES = 8 * 1024 * 1024
+
+
+@router.post(
+    "/booking-evidence",
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload booking evidence photos",
+    description=(
+        "Sube hasta 5 fotos y devuelve sus URLs para mandarlas en `evidence` al "
+        "reservar. Son SOPORTE DE DECISIÓN para el proveedor: las ve antes de "
+        "aceptar. No cambian alcance ni precio."
+    ),
+)
+async def upload_booking_evidence(
+    db: DBSession,
+    user: CurrentUser,
+    files: list[UploadFile] = File(...),
+) -> dict[str, Any]:
+    import os
+
+    from src.services.jobService import MAX_CUSTOMER_EVIDENCE_PHOTOS
+
+    if len(files) > MAX_CUSTOMER_EVIDENCE_PHOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"You can attach at most {MAX_CUSTOMER_EVIDENCE_PHOTOS} photos "
+                f"({len(files)} given)."
+            ),
+        )
+
+    uploads_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "uploads",
+        "booking-evidence",
+        str(user.id),
+    )
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    urls: list[str] = []
+    for f in files:
+        if f.content_type and f.content_type.lower() not in _EVIDENCE_ALLOWED_MIME:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{f.content_type}' is not a supported image format.",
+            )
+        content = await f.read()
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="One of the photos is empty.",
+            )
+        if len(content) > _EVIDENCE_MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"'{f.filename}' is too large "
+                    f"({len(content) // (1024 * 1024)} MB). "
+                    f"Maximum is {_EVIDENCE_MAX_BYTES // (1024 * 1024)} MB per photo."
+                ),
+            )
+        safe_filename = f"{uuid.uuid4()}_{f.filename or 'evidence.jpg'}"
+        with open(os.path.join(uploads_dir, safe_filename), "wb") as fh:
+            fh.write(content)
+        urls.append(f"/uploads/booking-evidence/{user.id}/{safe_filename}")
+
+    return {"data": {"urls": urls}}
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +245,25 @@ async def book_job(
                 is_emergency=body.is_emergency,
                 customer_notes_json=body.notes or [],
                 quantity=body.quantity,
+                customer_details=body.details,
+                customer_evidence=body.evidence,
+                customer_extra_note=body.extra_note,
             )
         except jobService.TaskNotFoundError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+            )
+        except jobService.BookingInputRequiredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
+        except service_zone_service.OutsideServiceAreaError as exc:
+            # 400, no 5xx: Cloudflare envuelve los 5xx en su propia página y el
+            # usuario nunca vería este mensaje.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             )
 

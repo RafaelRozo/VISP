@@ -12,10 +12,11 @@ export const Colors = {
   primaryLight: '#6BA8F0',
 
   // ── Service Levels ─────────────────────────
+  level0: '#5D6D7E', // Base - Slate (deliberately neutral: L0 is entry, not a rank)
   level1: '#27AE60', // Helper - Green
   level2: '#F39C12', // Experienced - Yellow
   level3: '#9B59B6', // Certified Pro - Purple
-  level4: '#E74C3C', // Emergency - Red
+  level4: '#E74C3C', // Emergency - Red (dead product; kept for legacy job data)
 
   // ── Semantic ───────────────────────────────
   emergencyRed: '#E74C3C',
@@ -107,8 +108,9 @@ export const Colors = {
 /**
  * Returns the color associated with a service level.
  */
-export function getLevelColor(level: 1 | 2 | 3 | 4): string {
+export function getLevelColor(level: 0 | 1 | 2 | 3 | 4): string {
   const map: Record<number, string> = {
+    0: Colors.level0,
     1: Colors.level1,
     2: Colors.level2,
     3: Colors.level3,

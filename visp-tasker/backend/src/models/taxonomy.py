@@ -131,6 +131,24 @@ class ServiceTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Numeric(10, 2), nullable=False, server_default=text("1")
     )
 
+    # Requisitos de ENTRADA DE LA RESERVA (migración 038). Dos flags y no uno
+    # porque son independientes: en un paseo de perros los detalles no aportan
+    # pero la nota sí, y en un daño la foto vale más que la prosa.
+    # No confundir con `service_credential_requirements`, que es lo que debe tener
+    # el PROVEEDOR; esto es lo que debe aportar el CLIENTE al reservar.
+    requires_details: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    requires_evidence: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    # Placeholder del campo de detalles para ESTE servicio, editable en el admin.
+    # Es la pieza que mantiene el campo dentro de la regla del catálogo cerrado:
+    # guía a describir escala y acceso del servicio ya elegido, no a pedir tareas
+    # nuevas. Un placeholder genérico invita a pedir lo que no está cotizado.
+    details_prompt_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    details_prompt_fr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Auto-escalation keywords (JSON array of strings)
     escalation_keywords: Mapped[Any] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), nullable=False

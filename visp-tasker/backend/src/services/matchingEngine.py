@@ -84,8 +84,21 @@ LICENSED_LEVELS: frozenset[ProviderLevel] = frozenset({
     ProviderLevel.LEVEL_4,
 })
 
-# Level numeric mapping for comparison
+# Level numeric mapping for comparison.
+#
+# LEVEL_0 tiene que estar. Faltaba, y `_level_meets_requirement` indexa este dict
+# DIRECTAMENTE (no con .get), así que cualquier job o proveedor L0 lanzaba KeyError
+# dentro de `find_matching_providers`. La ruta de reserva atrapa la excepción con
+# un `except Exception` y solo la loguea como "Offer broadcast failed", de modo que
+# el fallo era SILENCIOSO: el cliente reservaba, el job se creaba, y ningún
+# proveedor recibía la oferta nunca.
+#
+# Con 35 de los 147 servicios activos en L0 —el grupo más grande de la v1— esto
+# dejaba sin matching a todo el catálogo base. Misma clase de bug que el commit
+# 7b6e3ff arregló en provider_level_service, scoringEngine y pricingEngine; este
+# módulo se quedó fuera.
 LEVEL_NUMERIC: dict[ProviderLevel, int] = {
+    ProviderLevel.LEVEL_0: 0,
     ProviderLevel.LEVEL_1: 1,
     ProviderLevel.LEVEL_2: 2,
     ProviderLevel.LEVEL_3: 3,

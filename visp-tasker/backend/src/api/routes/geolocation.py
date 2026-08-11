@@ -13,6 +13,7 @@ Endpoints:
   - POST /api/v1/geo/distance         Distance & ETA between two points
   - GET  /api/v1/geo/track/{job_id}         Current provider location
   - GET  /api/v1/geo/track/{job_id}/history Location history trail
+  - GET  /api/v1/geo/service-area     Is this point inside an active zone?
 """
 
 from __future__ import annotations
@@ -22,10 +23,11 @@ import logging
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from src.api.deps import CurrentUser
+from src.api.deps import CurrentUser, DBSession
+from src.services import service_zone_service
 from src.integrations.maps import (
     MapboxError,
     geocode_service_address,
@@ -291,3 +293,64 @@ async def get_provider_location_history(
         }
     finally:
         await redis.aclose()
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/geo/service-area -- ¿operamos en este punto?
+# ---------------------------------------------------------------------------
+
+
+class ServiceAreaOut(BaseModel):
+    """Resultado de comprobar un punto contra las zonas activas."""
+
+    inside: bool = Field(description="True si el punto cae en una zona activa")
+    zoneCode: str | None = Field(default=None, description="Código de la zona")
+    zoneName: str | None = Field(default=None, description="Nombre de la zona")
+    distanceKm: float | None = Field(
+        default=None,
+        description=(
+            "Si inside=false, km que faltan hasta el BORDE de la zona más cercana."
+        ),
+    )
+    message: str | None = Field(default=None, description="Texto listo para mostrar")
+
+
+@router.get(
+    "/service-area",
+    response_model=ServiceAreaOut,
+    summary="Check whether a point is inside an active service zone",
+    description=(
+        "Consulta NO bloqueante, para que la app pueda avisar en el selector de "
+        "dirección en vez de dejar que el usuario complete todo el flujo y choque "
+        "con un 400 al reservar. El gate real vive en la creación del job.\n\n"
+        "Se consulta la DIRECCIÓN del trabajo, no el GPS del dispositivo: un "
+        "cliente de viaje debe poder reservar para su casa dentro de la zona."
+    ),
+)
+async def check_service_area(
+    db: DBSession,
+    lat: float = Query(ge=-90, le=90, description="Latitude"),
+    lng: float = Query(ge=-180, le=180, description="Longitude"),
+) -> ServiceAreaOut:
+    match = await service_zone_service.locate_point(db, lat, lng)
+
+    if match.inside:
+        return ServiceAreaOut(
+            inside=True,
+            zoneCode=match.zone.code if match.zone else None,
+            zoneName=match.zone.name_en if match.zone else None,
+        )
+
+    nearest = match.zone
+    return ServiceAreaOut(
+        inside=False,
+        zoneCode=nearest.code if nearest else None,
+        zoneName=nearest.name_en if nearest else None,
+        distanceKm=round(match.distance_km, 1) if nearest else None,
+        message=(
+            f"We do not cover this address yet. The closest area we serve is "
+            f"{nearest.name_en}, about {match.distance_km:.0f} km away."
+            if nearest
+            else "We do not cover this address yet."
+        ),
+    )

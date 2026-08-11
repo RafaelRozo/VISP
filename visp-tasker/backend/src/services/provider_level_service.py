@@ -98,6 +98,14 @@ async def _has_verified_section_credential(db: AsyncSession, provider_id: uuid.U
 async def _has_verified_license(
     db: AsyncSession, provider_id: uuid.UUID, on_date: date
 ) -> bool:
+    """True si el proveedor tiene una licencia de OFICIO verificada y vigente.
+
+    NO ampliar el filtro de tipo. Cuenta ``CredentialType.LICENSE`` y nada más:
+    la licencia de CONDUCIR tiene su propio tipo (``DRIVERS_LICENSE``, migración
+    035) justo para que no llegue hasta aquí. Mientras las dos compartieron el
+    valor ``LICENSE``, un proveedor subía su G2, el admin la aprobaba de buena
+    fe, y esta función devolvía True -> le abría el gate de trabajo regulado.
+    """
     stmt = select(func.count(ProviderCredential.id)).where(
         ProviderCredential.provider_id == provider_id,
         ProviderCredential.credential_type == CredentialType.LICENSE,

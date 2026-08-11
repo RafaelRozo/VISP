@@ -28,6 +28,7 @@ import { Colors } from '../theme/colors';
 // ──────────────────────────────────────────────
 
 export const LEVEL_LABELS: Record<ServiceLevel, string> = {
+  0: 'Base',
   1: 'Helper',
   2: 'Experienced',
   3: 'Certified Pro',
@@ -35,6 +36,7 @@ export const LEVEL_LABELS: Record<ServiceLevel, string> = {
 };
 
 export const LEVEL_DESCRIPTIONS: Record<ServiceLevel, string> = {
+  0: 'Everyday help that needs no trade credential',
   1: 'Basic tasks, ideal for general help around the house',
   2: 'Technical light work requiring some experience',
   3: 'Licensed and regulated professional services',

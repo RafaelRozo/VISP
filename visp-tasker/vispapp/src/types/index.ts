@@ -74,7 +74,16 @@ export interface AuthResponse {
 // Service Levels
 // ──────────────────────────────────────────────
 
-export type ServiceLevel = 1 | 2 | 3 | 4;
+/**
+ * L0 is the base level introduced by the L0-L3 restructuring and is the LARGEST
+ * group of active services in the v1 beta, so every level-indexed map must cover
+ * it or it renders `undefined`.
+ *
+ * L4 (Emergency) is dead as a product but stays in the union: historical jobs
+ * still reference L4 services, and dropping it would make those screens crash
+ * instead of rendering a legacy badge.
+ */
+export type ServiceLevel = 0 | 1 | 2 | 3 | 4;
 
 export interface ServiceLevelInfo {
   level: ServiceLevel;

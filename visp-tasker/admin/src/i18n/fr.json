@@ -192,7 +192,17 @@
       "REGISTRY": "Vérification au registre officiel",
       "DOCUMENT": "Document téléversé",
       "SELF_DECLARED": "Auto-déclaré"
-    }
+    },
+    "bookingInputTitle": "Ce que le client doit fournir à la réservation",
+    "bookingInputHelp": "Le prestataire le voit avant d'accepter, pour juger si le travail vaut la peine à sa fourchette de prix. Cela ne change ni la portée ni le prix — ils viennent du catalogue.",
+    "requiresDetails": "Détails obligatoires (le client doit décrire le travail)",
+    "requiresEvidence": "Au moins une photo est obligatoire",
+    "detailsPromptEn": "Invite à détailler (EN)",
+    "detailsPromptFr": "Invite à détailler (FR)",
+    "detailsPromptPlaceholder": "ex. Combien de pièces et de salles de bain ? Des animaux ? Comment entrer ?",
+    "detailsPromptRequired": "Un service exigeant des détails a aussi besoin d'une invite en anglais — c'est ce qui amène le client à décrire l'ampleur et l'accès de CE service au lieu de demander du travail supplémentaire.",
+    "detailsChip": "DÉTAILS",
+    "evidenceChip": "PHOTO"
   },
   "filters": {
     "all": "Tous",

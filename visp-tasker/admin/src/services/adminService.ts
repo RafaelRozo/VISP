@@ -224,6 +224,22 @@ export interface TaxonomyTask {
   allowsQuantity: boolean;
   minQuantity: number | null;
   escalationKeywords: string[];
+  /**
+   * Requisitos de ENTRADA DE LA RESERVA (migración 038). No confundir con
+   * credentialRequirements: eso es lo que debe tener el PROVEEDOR, esto es lo
+   * que debe aportar el CLIENTE al reservar para que el proveedor pueda decidir
+   * si acepta el trabajo con su rango de precio.
+   */
+  requiresDetails: boolean;
+  requiresEvidence: boolean;
+  /**
+   * Placeholder del campo de detalles para ESTE servicio. Es lo que mantiene el
+   * texto libre dentro de la regla del catálogo cerrado: guía al cliente a
+   * describir escala y acceso del servicio elegido, no a pedir tareas nuevas.
+   * Obligatorio si requiresDetails está activo (la API devuelve 400 sin él).
+   */
+  detailsPromptEn: string | null;
+  detailsPromptFr: string | null;
   iconUrl: string | null;
   displayOrder: number;
   isActive: boolean;
@@ -289,6 +305,10 @@ export interface TaskUpsertBody {
   allowsQuantity?: boolean;
   minQuantity?: number | null;
   escalationKeywords?: string[];
+  requiresDetails?: boolean;
+  requiresEvidence?: boolean;
+  detailsPromptEn?: string | null;
+  detailsPromptFr?: string | null;
   iconUrl?: string | null;
   displayOrder?: number;
   isActive?: boolean;

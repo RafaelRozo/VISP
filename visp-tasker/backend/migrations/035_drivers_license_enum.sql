@@ -1,0 +1,21 @@
+-- 035_drivers_license_enum.sql
+-- v1 L0/L1 — PASO 1: separar la licencia de CONDUCIR de la licencia de OFICIO.
+--
+-- Va en su PROPIA migración por la misma razón que la 031: Postgres no permite
+-- USAR un valor de enum en la misma transacción en la que se añade. La 036 ya
+-- puede usarlo.
+--
+-- POR QUÉ existe esta migración (agujero de seguridad real, no cosmético):
+-- el mapa de tipos de la app (`_MOBILE_CRED_TYPE_MAP` en api/routes/providers.py)
+-- traducía "drivers_license" -> CredentialType.LICENSE, el MISMO tipo que la
+-- licencia de oficio. Y `provider_level_service._has_verified_license()` cuenta
+-- CUALQUIER credencial LICENSE verificada y no vencida. Resultado: un proveedor
+-- subía su licencia de conducir G2, el admin la aprobaba de buena fe, y el
+-- sistema la contaba como licencia de oficio verificada -> le abría el gate de
+-- trabajo regulado.
+--
+-- Con un tipo propio, `_has_verified_license` puede excluirla explícitamente y
+-- la licencia de conducir pasa a ser lo que el modelo L0 dice que es: un
+-- documento de identidad que TODOS pueden subir, sin nivel asociado.
+
+ALTER TYPE credential_type ADD VALUE IF NOT EXISTS 'DRIVERS_LICENSE' AFTER 'LICENSE';

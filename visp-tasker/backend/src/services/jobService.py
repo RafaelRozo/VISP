@@ -46,6 +46,7 @@ from src.models.job import Job, JobPriority, JobStatus
 from src.models.provider import ProviderLevel
 from src.models.sla import SLAProfile
 from src.models.taxonomy import ServiceTask
+from src.services import service_zone_service
 from src.services.jobStateManager import ActorType, validate_transition
 from src.services.pricingEngine import (
     HOURLY_RATES,
@@ -54,6 +55,13 @@ from src.services.pricingEngine import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Tope de fotos que el cliente puede adjuntar al reservar (decisión del cliente
+# 2026-08-11). El número evita saturar la vista del proveedor; el peso lo controla
+# el downscale en la app: 5 fotos de iPhone sin comprimir son ~25 MB, con
+# downscale ~1,5 MB. Sin comprimir, 5 saturan igual que 20.
+MAX_CUSTOMER_EVIDENCE_PHOTOS = 5
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +102,21 @@ class TaskNotFoundError(Exception):
     def __init__(self, task_id: uuid.UUID) -> None:
         self.task_id = task_id
         super().__init__(f"Task with id '{task_id}' not found.")
+
+
+class BookingInputRequiredError(Exception):
+    """El servicio exige detalles o evidencia que el cliente no aportó.
+
+    Se lanza cuando `service_tasks.requires_details` o `requires_evidence` están
+    encendidos y falta lo correspondiente, o cuando se exceden las 5 fotos.
+
+    Las rutas la traducen a 400. Nunca a 5xx: `api.richieyanez.com` está detrás de
+    Cloudflare, que envuelve los 5xx en su propia página y el cliente no vería el
+    mensaje que le dice qué le falta.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 
 class InvalidTransitionError(Exception):
@@ -258,6 +281,9 @@ async def create_job(
     is_emergency: bool = False,
     customer_notes_json: list[str] | None = None,
     quantity: Decimal | None = None,
+    customer_details: str | None = None,
+    customer_evidence: list[str] | None = None,
+    customer_extra_note: str | None = None,
 ) -> Job:
     """Create a new job with SLA snapshot from sla_profiles.
 
@@ -291,6 +317,47 @@ async def create_job(
 
     if task is None:
         raise TaskNotFoundError(task_id)
+
+    # 1b. Gate de zona de servicio. Va ANTES de cualquier escritura: si la
+    # dirección del trabajo cae fuera de las zonas activas, no se crea nada.
+    # Se valida la dirección DEL TRABAJO, no el GPS de quien reserva — ver
+    # service_zone_service y CLAUDE.md § Service Zones.
+    await service_zone_service.assert_in_service_area(
+        db,
+        location.get("latitude"),
+        location.get("longitude"),
+        subject="service address",
+    )
+
+    # 1c. Detalles y evidencia que aporta el cliente (migración 038).
+    #
+    # Estos datos son SOPORTE DE DECISIÓN para el proveedor: los ve antes de
+    # aceptar, para juzgar si le interesa el trabajo con su rango de precio. NO
+    # cambian el alcance ni el precio, que salen del catálogo. Ver CLAUDE.md
+    # regla 1.
+    #
+    # La validación vive AQUÍ y no en las rutas a propósito: hay dos caminos de
+    # reserva (`POST /jobs` y `POST /jobs/book`) y si la regla se duplicara en
+    # cada uno, tarde o temprano divergen y uno se salta el requisito.
+    details = (customer_details or "").strip() or None
+    extra_note = (customer_extra_note or "").strip() or None
+    evidence = [u for u in (customer_evidence or []) if u and u.strip()]
+
+    if len(evidence) > MAX_CUSTOMER_EVIDENCE_PHOTOS:
+        raise BookingInputRequiredError(
+            f"You can attach at most {MAX_CUSTOMER_EVIDENCE_PHOTOS} photos "
+            f"({len(evidence)} given)."
+        )
+    if task.requires_details and not details:
+        raise BookingInputRequiredError(
+            "This service needs a description of the work before it can be booked. "
+            "Tell the provider what to expect so they can decide whether to accept."
+        )
+    if task.requires_evidence and not evidence:
+        raise BookingInputRequiredError(
+            "This service needs at least one photo before it can be booked. "
+            "The provider uses it to decide whether to accept the job."
+        )
 
     # 2. Capture SLA snapshot (IMMUTABLE after this point)
     sla_snapshot = await _capture_sla_snapshot(
@@ -335,6 +402,10 @@ async def create_job(
         sla_snapshot_json=sla_snapshot,
         # Notes
         customer_notes_json=customer_notes_json or [],
+        # Detalles / evidencia / nota del cliente (migración 038)
+        customer_details=details,
+        customer_evidence_json=evidence,
+        customer_extra_note=extra_note,
     )
 
     # 5. Apply schedule if provided

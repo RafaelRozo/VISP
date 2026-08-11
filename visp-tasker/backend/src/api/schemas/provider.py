@@ -181,6 +181,13 @@ class JobOfferOut(BaseModel):
     pricing: OfferPricingInfo
     sla: OfferSLAInfo
 
+    # Lo que describió y fotografió el cliente al reservar (migración 038).
+    # Es la base con la que el proveedor decide aceptar o rechazar a su rango de
+    # precio, así que viaja en la OFERTA y no solo en el detalle del job.
+    customer_details: Optional[str] = Field(default=None, alias="customerDetails")
+    customer_evidence: list[str] = Field(default_factory=list, alias="customerEvidence")
+    customer_extra_note: Optional[str] = Field(default=None, alias="customerExtraNote")
+
     # Offer metadata
     distance_km: Optional[float] = Field(default=None, alias="distanceKm")
     offered_at: datetime = Field(alias="offeredAt")
@@ -365,6 +372,20 @@ class MobileJobCreateRequest(BaseModel):
     # Customer-confirmed quantity for per-unit/per-area tasks (PP4a). Ignored for
     # tasks that don't allow quantity (HOURLY/PER_VISIT/FLAT).
     quantity: Optional[Decimal] = Field(default=None, gt=0)
+
+    # Detalles, evidencia y nota del cliente (migración 038). Son SOPORTE DE
+    # DECISIÓN para el proveedor —los ve antes de aceptar, para juzgar si le
+    # interesa el trabajo con su rango de precio— y NO cambian alcance ni precio,
+    # que salen del catálogo. Ver CLAUDE.md regla 1.
+    #
+    # Obligatorios o no según `service_tasks.requires_details` /
+    # `requires_evidence`; lo valida `jobService.create_job`, no este schema,
+    # porque depende del servicio elegido.
+    details: Optional[str] = Field(default=None, max_length=4000)
+    extra_note: Optional[str] = Field(default=None, alias="extraNote", max_length=2000)
+    # URLs devueltas por POST /api/v1/jobs/booking-evidence. Máximo 5, validado en
+    # el servicio.
+    evidence: Optional[list[str]] = None
 
     # Optional address components
     city: Optional[str] = None

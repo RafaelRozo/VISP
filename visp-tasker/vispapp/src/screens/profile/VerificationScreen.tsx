@@ -45,7 +45,16 @@ interface VerificationStep {
   title: string;
   description: string;
   credentialType: CredentialType | null;
-  requiredForLevel: ServiceLevel;
+  /**
+   * Level this document unlocks, or `null` when it is not tied to a level at all.
+   * Two documents are levelless by design (client decision 2026-08-10):
+   *   - the driver's licence, which every provider uploads as base ID;
+   *   - the insurance certificate, which individual SERVICES require at any
+   *     level via the CGL requirement, not the level ladder.
+   */
+  requiredForLevel: ServiceLevel | null;
+  /** Badge text used when `requiredForLevel` is null. */
+  tagLabel?: string;
   status: 'not_started' | 'in_progress' | 'completed' | 'failed';
 }
 
@@ -54,11 +63,15 @@ interface VerificationStep {
 // ---------------------------------------------------------------------------
 
 const LEVEL_NAMES: Record<number, string> = {
+  0: 'Base',
   1: 'Helper',
   2: 'Experienced',
   3: 'Certified Pro',
   4: 'Emergency',
 };
+
+/** Highest level a provider can reach in the v1 beta. L2/L3 are on stand-by. */
+const MAX_LEVEL_V1 = 1;
 
 function getStepStatusConfig(status: string): {
   label: string;
@@ -127,7 +140,10 @@ function StepCard({
 }: StepCardProps): React.JSX.Element {
   const theme = useTheme();
   const statusConfig = getStepStatusConfig(step.status);
-  const levelColor = getLevelColor(step.requiredForLevel);
+  // Levelless documents (driver's licence, insurance) get a neutral slate tag —
+  // painting them with a level colour would imply a rank they don't carry.
+  const levelColor =
+    step.requiredForLevel === null ? Colors.level0 : getLevelColor(step.requiredForLevel);
 
   return (
     <View style={stepStyles.container}>
@@ -211,7 +227,9 @@ function StepCard({
               ]}
             >
               <Text style={[stepStyles.levelTagText, { color: levelColor }]}>
-                L{step.requiredForLevel}+
+                {step.requiredForLevel === null
+                  ? step.tagLabel ?? 'All providers'
+                  : `L${step.requiredForLevel}+`}
               </Text>
             </View>
           </View>
@@ -359,52 +377,86 @@ export default function VerificationScreen(): React.JSX.Element {
       setCredentials(data.credentials);
       setCurrentLevel(data.currentLevel);
 
+      // Steps for the v1 beta (L0/L1 only — client decision 2026-08-10).
+      // See visp-tasker/docs/plan-v1-l0-l1-ontario.md §7 WP1.
       const verificationSteps: VerificationStep[] = [
         {
           id: 'crc',
           title: 'Background Check',
           description:
-            'A criminal record check is required for all service levels. Upload your CRC document to begin the verification process.',
+            'A criminal record check is required for every provider. Upload your CRC document to begin the verification process.',
           credentialType: 'criminal_record_check',
-          requiredForLevel: 1,
+          requiredForLevel: null,
+          tagLabel: 'All providers',
           status: getCredentialStepStatus(data.credentials, 'criminal_record_check'),
+        },
+        {
+          id: 'drivers_license',
+          title: "Driver's Licence",
+          description:
+            "Upload your Ontario driver's licence (G1, G2 or G). Every provider uploads it as photo ID, and it is what lets you take jobs that involve driving. It is not a trade licence and does not raise your level.",
+          credentialType: 'drivers_license',
+          requiredForLevel: null,
+          tagLabel: 'All providers',
+          status: getCredentialStepStatus(data.credentials, 'drivers_license'),
         },
         {
           id: 'portfolio',
           title: 'Portfolio / Work History',
           description:
-            'Demonstrate your experience with photos of completed work or references from previous clients.',
+            'Show your experience with photos of completed work, references or training, together with your bio. VISP checks that the documents are complete and legitimate — this unlocks Level 1 for the categories you submit.',
           credentialType: 'portfolio',
-          requiredForLevel: 2,
+          requiredForLevel: 1,
           status: getCredentialStepStatus(data.credentials, 'portfolio'),
-        },
-        {
-          id: 'license',
-          title: 'Trade License',
-          description:
-            'Upload your valid trade license. This must be current and issued by a recognized authority in your province.',
-          credentialType: 'trade_license',
-          requiredForLevel: 3,
-          status: getCredentialStepStatus(data.credentials, 'trade_license'),
         },
         {
           id: 'insurance',
           title: 'Insurance Certificate',
           description:
-            'Upload proof of $2M minimum liability insurance coverage. Your certificate must show the policy period and coverage amount.',
+            'Commercial general liability coverage. Some services require it regardless of your level — you can upload it at any time, and services that need it unlock once it is verified.',
           credentialType: 'insurance_certificate',
-          requiredForLevel: 3,
+          requiredForLevel: null,
+          tagLabel: 'Some services',
           status: getCredentialStepStatus(data.credentials, 'insurance_certificate'),
         },
-        {
-          id: 'certification',
-          title: 'Professional Certification',
-          description:
-            'Specialized certifications for emergency services. Required for Level 4 on-call status and SLA-bound work.',
-          credentialType: 'certification',
-          requiredForLevel: 4,
-          status: getCredentialStepStatus(data.credentials, 'certification'),
-        },
+
+        // ── EN STAND-BY hasta que se abran L2/L3 (decisión del cliente 2026-08-10) ──
+        //
+        // 'Trade License' se retira de esta pantalla porque quedó REDUNDANTE, no
+        // porque estorbe: la licencia de oficio ya no es un documento genérico,
+        // vive en `service_credential_requirements` con su código real (306A,
+        // ESA_LEC, TSSA_G2...) por servicio. Un "Trade License" sin código
+        // asociado no lo puede verificar ningún motor contra ningún registro.
+        // Cuando se abra L2, la subida va por servicio, no por esta lista.
+        //
+        // {
+        //   id: 'license',
+        //   title: 'Trade License',
+        //   description:
+        //     'Upload your valid trade license. This must be current and issued by a recognized authority in your province.',
+        //   credentialType: 'trade_license',
+        //   requiredForLevel: 2,
+        //   status: getCredentialStepStatus(data.credentials, 'trade_license'),
+        // },
+        //
+        // 'Professional Certification' se retira porque era el requisito de L4
+        // (Emergency), que está eliminado como producto.
+        //
+        // OJO al reactivar cualquiera de los dos: `_MOBILE_CRED_TYPE_MAP` en
+        // backend/src/api/routes/providers.py mapea `insurance_certificate` Y
+        // `certification` al MISMO CredentialType.CERTIFICATION, así que los dos
+        // renglones compartían estado (subías uno y los dos se ponían en verde).
+        // Hay que separarlos antes de volver a mostrarlos juntos.
+        //
+        // {
+        //   id: 'certification',
+        //   title: 'Professional Certification',
+        //   description:
+        //     'Specialized certifications for emergency services. Required for Level 4 on-call status and SLA-bound work.',
+        //   credentialType: 'certification',
+        //   requiredForLevel: 4,
+        //   status: getCredentialStepStatus(data.credentials, 'certification'),
+        // },
       ];
 
       setSteps(verificationSteps);
@@ -582,8 +634,9 @@ export default function VerificationScreen(): React.JSX.Element {
           </View>
         </GlassCard>
 
-        {/* Next steps info */}
-        {currentLevel < 4 && (
+        {/* Next steps info. Capped at MAX_LEVEL_V1: promising "Next: Level 2"
+            while L2/L3 are on stand-by would be selling a door that is shut. */}
+        {currentLevel < MAX_LEVEL_V1 && (
           <GlassCard
             variant="dark"
             style={styles.nextStepsCard}

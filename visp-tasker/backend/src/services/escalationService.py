@@ -85,7 +85,11 @@ for _level, _keywords in ESCALATION_KEYWORDS:
 # Provider level ordering helper
 # ---------------------------------------------------------------------------
 
+# LEVEL_0 explícito. `_level_value` usaba `.get(level, 0)` y devolvía el número
+# correcto para L0 por pura coincidencia del valor por defecto; `_level_from_str`
+# en cambio lanzaba ValueError con "0". Mejor declararlo que depender de la suerte.
 _LEVEL_ORDER: dict[ProviderLevel, int] = {
+    ProviderLevel.LEVEL_0: 0,
     ProviderLevel.LEVEL_1: 1,
     ProviderLevel.LEVEL_2: 2,
     ProviderLevel.LEVEL_3: 3,
@@ -101,6 +105,7 @@ def _level_value(level: ProviderLevel) -> int:
 def _level_from_str(level_str: str) -> ProviderLevel:
     """Convert a level string to ProviderLevel enum."""
     mapping = {
+        "0": ProviderLevel.LEVEL_0,
         "1": ProviderLevel.LEVEL_1,
         "2": ProviderLevel.LEVEL_2,
         "3": ProviderLevel.LEVEL_3,

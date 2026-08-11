@@ -57,6 +57,14 @@ interface TaskFormState {
   pricingUnit: string;
   allowsQuantity: boolean;
   minQuantity: string;
+  /**
+   * Requisitos de ENTRADA DE LA RESERVA (migración 038). Lo que debe aportar el
+   * CLIENTE al reservar, no lo que debe tener el proveedor.
+   */
+  requiresDetails: boolean;
+  requiresEvidence: boolean;
+  detailsPromptEn: string;
+  detailsPromptFr: string;
   displayOrder: number;
   isActive: boolean;
 }
@@ -118,6 +126,10 @@ const emptyTask = (categoryId: string): TaskFormState => ({
   pricingUnit: 'hourly',
   allowsQuantity: true,
   minQuantity: '1',
+  requiresDetails: false,
+  requiresEvidence: false,
+  detailsPromptEn: '',
+  detailsPromptFr: '',
   displayOrder: 0,
   isActive: true,
 });
@@ -449,6 +461,19 @@ export default function Services() {
                                 {r.code}{r.mandatory ? '' : '?'}
                               </span>
                             ))}
+                            {/* Lo que se le exige al CLIENTE al reservar. Se muestra
+                                aquí para poder auditar de un vistazo qué servicios
+                                lo piden, sin abrir cada modal. */}
+                            {tk.requiresDetails && (
+                              <span className="t-chip t-chip-mono" title={t('services.requiresDetails')}>
+                                {t('services.detailsChip')}
+                              </span>
+                            )}
+                            {tk.requiresEvidence && (
+                              <span className="t-chip t-chip-mono" title={t('services.requiresEvidence')}>
+                                {t('services.evidenceChip')}
+                              </span>
+                            )}
                             {!tk.isActive && <span className="t-chip t-chip-mono t-chip-warn">INACTIVE</span>}
                           </div>
                           <div className="t-mono" style={{ fontSize: 11, color: 'var(--t-text-3)', marginTop: 3, letterSpacing: '0.06em' }}>
@@ -481,6 +506,10 @@ export default function Services() {
                               pricingUnit: tk.pricingUnit ?? 'hourly',
                               allowsQuantity: tk.allowsQuantity ?? true,
                               minQuantity: tk.minQuantity != null ? String(tk.minQuantity) : '1',
+                              requiresDetails: tk.requiresDetails ?? false,
+                              requiresEvidence: tk.requiresEvidence ?? false,
+                              detailsPromptEn: tk.detailsPromptEn ?? '',
+                              detailsPromptFr: tk.detailsPromptFr ?? '',
                               displayOrder: tk.displayOrder,
                               isActive: tk.isActive,
                             })}
@@ -730,6 +759,13 @@ function TaskModal({
   const needsCreds = CREDENTIAL_GATED_LEVELS.includes(state.level);
   const credGateFails = needsCreds && state.credentialRequirements.length === 0;
 
+  // Espeja el 400 de la API: detalles obligatorios exigen prompt EN. El prompt es
+  // lo que mantiene el texto libre dentro de la regla del catálogo cerrado —
+  // orienta a describir escala y acceso del servicio elegido en vez de pedir
+  // trabajo extra. Mejor bloquearlo aquí que dejar que el guardado falle.
+  const detailsPromptMissing =
+    state.requiresDetails && state.detailsPromptEn.trim() === '';
+
   const addRequirement = (code: string) => {
     if (!code || state.credentialRequirements.some((r) => r.code === code)) return;
     setState({
@@ -754,7 +790,7 @@ function TaskModal({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (credGateFails) return;
+    if (credGateFails || detailsPromptMissing) return;
     onSubmit({
       categoryId: state.categoryId,
       slug: state.slug.trim(),
@@ -779,6 +815,10 @@ function TaskModal({
       pricingUnit: state.pricingUnit,
       allowsQuantity: state.allowsQuantity,
       minQuantity: state.minQuantity.trim() === '' ? null : parseFloat(state.minQuantity),
+      requiresDetails: state.requiresDetails,
+      requiresEvidence: state.requiresEvidence,
+      detailsPromptEn: state.detailsPromptEn.trim() || null,
+      detailsPromptFr: state.detailsPromptFr.trim() || null,
       displayOrder: state.displayOrder,
       isActive: state.isActive,
     });
@@ -1008,6 +1048,77 @@ function TaskModal({
             )}
           </div>
 
+          {/* Qué debe aportar el CLIENTE al reservar (migración 038).
+              Distinto del bloque de arriba: eso es lo que debe tener el
+              PROVEEDOR. Esto es la información con la que el proveedor decide si
+              acepta el trabajo con su rango de precio, así que la ve ANTES de
+              aceptar. No cambia alcance ni precio: siguen saliendo del catálogo. */}
+          <div
+            style={{
+              border: '1px solid var(--t-border)',
+              borderRadius: 8, background: 'var(--t-deep)', padding: 14,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 13, color: 'var(--t-text-2)' }}>
+              {t('services.bookingInputTitle')}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--t-text-3)', lineHeight: 1.5 }}>
+              {t('services.bookingInputHelp')}
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={state.requiresDetails}
+                onChange={(e) => setState({ ...state, requiresDetails: e.target.checked })}
+              />
+              {t('services.requiresDetails')}
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={state.requiresEvidence}
+                onChange={(e) => setState({ ...state, requiresEvidence: e.target.checked })}
+              />
+              {t('services.requiresEvidence')}
+            </label>
+
+            {/* El prompt se pide siempre que haya detalles obligatorios, y se
+                ofrece igualmente cuando son opcionales: una caja en blanco invita
+                a pedir cosas que nadie cotizó. */}
+            <label className="t-field">
+              <span className="t-label">
+                {t('services.detailsPromptEn')}
+                {state.requiresDetails ? ' *' : ''}
+              </span>
+              <textarea
+                className="t-input"
+                rows={2}
+                value={state.detailsPromptEn}
+                placeholder={t('services.detailsPromptPlaceholder')}
+                onChange={(e) => setState({ ...state, detailsPromptEn: e.target.value })}
+              />
+            </label>
+
+            <label className="t-field">
+              <span className="t-label">{t('services.detailsPromptFr')}</span>
+              <textarea
+                className="t-input"
+                rows={2}
+                value={state.detailsPromptFr}
+                onChange={(e) => setState({ ...state, detailsPromptFr: e.target.value })}
+              />
+            </label>
+
+            {detailsPromptMissing && (
+              <div style={{ fontSize: 12, color: 'var(--t-warn)' }}>
+                ⚠ {t('services.detailsPromptRequired')}
+              </div>
+            )}
+          </div>
+
           {/* Flags — colapsados. El gate real vive ahora en los requisitos de
               credencial de arriba; estos flags quedan solo para el caso raro de
               un servicio que necesite marcar un atributo extra. */}
@@ -1054,7 +1165,11 @@ function TaskModal({
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="t-btn t-btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-            <button type="submit" className="t-btn t-btn-primary" disabled={submitting || credGateFails}>
+            <button
+              type="submit"
+              className="t-btn t-btn-primary"
+              disabled={submitting || credGateFails || detailsPromptMissing}
+            >
               {submitting && <span className="t-spinner" />}
               {form.id ? t('common.save') : t('common.create')}
             </button>

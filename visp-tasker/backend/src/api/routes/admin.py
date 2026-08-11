@@ -31,7 +31,7 @@ Routes:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import logging
 from typing import Any, Optional
@@ -59,7 +59,9 @@ from src.models.taxonomy import (
 )
 from src.models.verification import (
     CredentialStatus,
+    InsuranceStatus,
     ProviderCredential,
+    ProviderInsurancePolicy,
 )
 from src.services import admin_service
 
@@ -990,6 +992,294 @@ async def reject_credential(
 
 
 # ---------------------------------------------------------------------------
+# Pólizas de seguro — cola de validación (WP1b)
+# ---------------------------------------------------------------------------
+#
+# Estas rutas NO existían. `verificationService.approve_insurance` /
+# `reject_insurance` estaban escritas pero ninguna ruta las llamaba: código
+# muerto. Es decir, un proveedor podía subir su póliza y se quedaba en
+# PENDING_REVIEW para siempre, así que el requisito CGL por servicio nunca podía
+# abrirse. Sin esto, WP1b no sirve de nada.
+#
+# NO se reusan esas funciones a propósito: setean `policy.verified_by =
+# admin_user_id`, y `verified_by` es FK a `users.id` mientras los admins viven en
+# la tabla `superusers` — pasarles un id de superuser reventaría con violación de
+# FK en tiempo de ejecución. Se sigue el mismo patrón que las credenciales, que
+# ya omite esa columna por la misma razón.
+
+
+@router.get("/insurance-policies", summary="Insurance policies pending review")
+async def list_insurance_policies(
+    db: DBSession,
+    admin: CurrentAdmin,
+    status_filter: Optional[str] = None,
+) -> dict[str, Any]:
+    stmt = (
+        select(ProviderInsurancePolicy, ProviderProfile, User)
+        .join(ProviderProfile, ProviderInsurancePolicy.provider_id == ProviderProfile.id)
+        .join(User, ProviderProfile.user_id == User.id)
+        .order_by(ProviderInsurancePolicy.created_at.desc())
+    )
+    if status_filter:
+        # Los VALORES del enum de Python son minúsculas ('pending_review') pero
+        # las etiquetas del enum de Postgres son mayúsculas ('PENDING_REVIEW'),
+        # así que el admin puede mandar cualquiera de las dos formas. Se acepta
+        # por valor y por nombre en vez de asumir una.
+        raw = status_filter.strip()
+        parsed: Optional[InsuranceStatus] = None
+        for candidate in (raw, raw.lower(), raw.upper()):
+            try:
+                parsed = InsuranceStatus(candidate)
+                break
+            except ValueError:
+                parsed = getattr(InsuranceStatus, candidate.upper(), None)
+                if isinstance(parsed, InsuranceStatus):
+                    break
+                parsed = None
+        if parsed is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invalid status '{status_filter}'. Valid: "
+                    + ", ".join(s.value for s in InsuranceStatus)
+                ),
+            )
+        stmt = stmt.where(ProviderInsurancePolicy.status == parsed)
+
+    today = date.today()
+    rows = (await db.execute(stmt)).all()
+    return {
+        "data": [
+            {
+                "id": str(p.id),
+                "providerId": str(p.provider_id),
+                "providerName": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+                "policyNumber": p.policy_number,
+                "insurerName": p.insurer_name,
+                "policyType": p.policy_type,
+                "coverageAmountCents": p.coverage_amount_cents,
+                "effectiveDate": p.effective_date.isoformat(),
+                "expiryDate": p.expiry_date.isoformat(),
+                # Se marca lo ya vencido: una póliza VERIFIED que caducó no debe
+                # leerse como vigente en la pantalla del admin.
+                "isExpired": p.expiry_date < today,
+                "status": p.status.value,
+                "documentUrl": p.document_url,
+                "createdAt": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p, _prof, u in rows
+        ]
+    }
+
+
+@router.post("/insurance-policies/{policy_id}/approve")
+async def approve_insurance_policy(
+    db: DBSession,
+    admin: CurrentAdmin,
+    policy_id: uuid.UUID,
+) -> dict[str, Any]:
+    policy = (
+        await db.execute(
+            select(ProviderInsurancePolicy).where(ProviderInsurancePolicy.id == policy_id)
+        )
+    ).scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Insurance policy not found."
+        )
+    if policy.expiry_date < date.today():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"This policy expired on {policy.expiry_date.isoformat()}. "
+                f"Ask the provider to upload a current one instead of approving it."
+            ),
+        )
+
+    policy.status = InsuranceStatus.VERIFIED
+    policy.verified_at = datetime.now(timezone.utc)
+    # `verified_by` se omite: FK a users.id y los admins son superusers. Igual que
+    # en las credenciales, la auditoría de quién actuó irá en audit_log.
+
+    # Una póliza recién verificada puede abrirle servicios que exigen CGL.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(db, policy.provider_id)
+
+    await db.commit()
+    return {"data": {"id": str(policy.id), "status": policy.status.value}}
+
+
+@router.post("/insurance-policies/{policy_id}/reject")
+async def reject_insurance_policy(
+    db: DBSession,
+    admin: CurrentAdmin,
+    policy_id: uuid.UUID,
+    body: CredentialDecisionRequest,
+) -> dict[str, Any]:
+    policy = (
+        await db.execute(
+            select(ProviderInsurancePolicy).where(ProviderInsurancePolicy.id == policy_id)
+        )
+    ).scalar_one_or_none()
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Insurance policy not found."
+        )
+
+    policy.status = InsuranceStatus.REJECTED
+    policy.rejection_reason = body.note or "Rejected by admin"
+    policy.verified_at = datetime.now(timezone.utc)
+
+    # Perder la póliza puede cerrarle servicios que exigían CGL.
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(db, policy.provider_id)
+
+    await db.commit()
+    return {"data": {"id": str(policy.id), "status": policy.status.value}}
+
+
+# ---------------------------------------------------------------------------
+# Expediente de experiencia (L1) — cola de validación, WP1c
+# ---------------------------------------------------------------------------
+#
+# La validación es DOCUMENTAL, no de competencia: se confirma que la evidencia
+# existe y está legible. Rechazar significa "documentación incompleta o
+# ilegible", nunca "no eres competente" — el copy que ve el proveedor tiene que
+# decir eso, porque es la diferencia entre un trámite y un juicio profesional.
+
+
+@router.get("/experience-records", summary="Experience records pending validation")
+async def list_experience_records(
+    db: DBSession,
+    admin: CurrentAdmin,
+    status_filter: Optional[str] = None,
+) -> dict[str, Any]:
+    from src.models.verification import ExperienceRecordStatus, ProviderExperienceRecord
+
+    stmt = (
+        select(ProviderExperienceRecord, User)
+        .join(ProviderProfile, ProviderExperienceRecord.provider_id == ProviderProfile.id)
+        .join(User, ProviderProfile.user_id == User.id)
+        .order_by(ProviderExperienceRecord.submitted_at.desc())
+    )
+    if status_filter:
+        raw = status_filter.strip()
+        parsed = None
+        for candidate in (raw.lower(), raw.upper()):
+            try:
+                parsed = ExperienceRecordStatus(candidate)
+                break
+            except ValueError:
+                attr = getattr(ExperienceRecordStatus, candidate.upper(), None)
+                if isinstance(attr, ExperienceRecordStatus):
+                    parsed = attr
+                    break
+        if parsed is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invalid status '{status_filter}'. Valid: "
+                    + ", ".join(s.value for s in ExperienceRecordStatus)
+                ),
+            )
+        stmt = stmt.where(ProviderExperienceRecord.status == parsed)
+
+    rows = (await db.execute(stmt)).all()
+    return {
+        "data": [
+            {
+                "id": str(r.id),
+                "providerId": str(r.provider_id),
+                "providerName": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+                "kind": r.kind.value,
+                "title": r.title,
+                "description": r.description,
+                "documentUrl": r.document_url,
+                "status": r.status.value,
+                "rejectionReason": r.rejection_reason,
+                # NULL = expediente global (modelo v1). Con valor = por clasificación.
+                "categoryId": str(r.category_id) if r.category_id else None,
+                "submittedAt": r.submitted_at.isoformat() if r.submitted_at else None,
+            }
+            for r, u in rows
+        ]
+    }
+
+
+@router.post("/experience-records/{record_id}/validate")
+async def validate_experience_record(
+    db: DBSession,
+    admin: CurrentAdmin,
+    record_id: uuid.UUID,
+) -> dict[str, Any]:
+    from src.models.verification import ExperienceRecordStatus, ProviderExperienceRecord
+
+    record = (
+        await db.execute(
+            select(ProviderExperienceRecord).where(ProviderExperienceRecord.id == record_id)
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experience record not found."
+        )
+
+    record.status = ExperienceRecordStatus.VALIDATED
+    record.validated_at = datetime.now(timezone.utc)
+    record.rejection_reason = None
+    # `validated_by` se omite: FK a users.id y los admins viven en `superusers`.
+    # Igual que en credenciales y pólizas; la auditoría irá en audit_log.
+
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(db, record.provider_id)
+
+    await db.commit()
+    return {"data": {"id": str(record.id), "status": record.status.value}}
+
+
+@router.post("/experience-records/{record_id}/reject")
+async def reject_experience_record(
+    db: DBSession,
+    admin: CurrentAdmin,
+    record_id: uuid.UUID,
+    body: CredentialDecisionRequest,
+) -> dict[str, Any]:
+    from src.models.verification import ExperienceRecordStatus, ProviderExperienceRecord
+
+    record = (
+        await db.execute(
+            select(ProviderExperienceRecord).where(ProviderExperienceRecord.id == record_id)
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experience record not found."
+        )
+
+    record.status = ExperienceRecordStatus.REJECTED
+    record.validated_at = datetime.now(timezone.utc)
+    # Sin motivo, el proveedor vuelve a subir lo mismo y la cola se llena de
+    # reintentos idénticos. De ahí que se guarde siempre algo.
+    record.rejection_reason = body.note or "Documentation incomplete or unreadable"
+
+    from src.services import provider_level_service
+
+    await provider_level_service.recompute_level_and_qualifications(db, record.provider_id)
+
+    await db.commit()
+    return {
+        "data": {
+            "id": str(record.id),
+            "status": record.status.value,
+            "rejectionReason": record.rejection_reason,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
 # Promotions
 # ---------------------------------------------------------------------------
 
@@ -1150,6 +1440,13 @@ class TaskAdminCreate(_CamelModel):
     icon_url: Optional[str] = None
     display_order: int = 0
     is_active: bool = True
+    # Requisitos de ENTRADA DE LA RESERVA (migración 038). Distintos de
+    # credential_requirements: eso es lo que debe tener el PROVEEDOR, esto es lo
+    # que debe aportar el CLIENTE al reservar para que el proveedor pueda decidir.
+    requires_details: bool = False
+    requires_evidence: bool = False
+    details_prompt_en: Optional[str] = None
+    details_prompt_fr: Optional[str] = None
     # Requisitos de credencial por servicio (gate de L2/L3).
     credential_requirements: list[TaskCredentialRequirementIn] = Field(default_factory=list)
 
@@ -1176,6 +1473,10 @@ class TaskAdminUpdate(_CamelModel):
     icon_url: Optional[str] = None
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
+    requires_details: Optional[bool] = None
+    requires_evidence: Optional[bool] = None
+    details_prompt_en: Optional[str] = None
+    details_prompt_fr: Optional[str] = None
     # Cuando viene, REEMPLAZA el conjunto completo de requisitos del servicio.
     credential_requirements: Optional[list[TaskCredentialRequirementIn]] = None
 
@@ -1222,6 +1523,10 @@ def _task_to_out(
         "basePriceMaxCents": t.base_price_max_cents,
         "estimatedDurationMin": t.estimated_duration_min,
         "escalationKeywords": t.escalation_keywords or [],
+        "requiresDetails": t.requires_details,
+        "requiresEvidence": t.requires_evidence,
+        "detailsPromptEn": t.details_prompt_en,
+        "detailsPromptFr": t.details_prompt_fr,
         "iconUrl": t.icon_url,
         "displayOrder": t.display_order,
         "isActive": t.is_active,
@@ -1455,6 +1760,29 @@ async def _replace_task_requirements(
                 mandatory=item.mandatory,
                 notes=(item.notes or None),
             )
+        )
+
+
+def _assert_details_prompt(task: ServiceTask) -> None:
+    """Guardarraíl: detalles obligatorios exigen un prompt para ese servicio.
+
+    El prompt por servicio es lo que mantiene el campo de texto libre DENTRO de la
+    regla del catálogo cerrado: guía al cliente a describir escala y acceso del
+    servicio ya elegido ("¿cuántas habitaciones y baños? ¿mascotas? ¿acceso?") en
+    vez de pedir tareas nuevas. Una caja de texto en blanco y obligatoria es la
+    forma más directa de que aparezcan peticiones que nadie cotizó.
+
+    Se evalúa sobre el estado RESULTANTE, igual que el gate de credenciales, para
+    que encender `requiresDetails` sin prompt también quede bloqueado.
+    """
+    if task.requires_details and not (task.details_prompt_en or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "A service that requires details also needs 'detailsPromptEn': it is "
+                "what tells the customer to describe the scale and access of THIS "
+                "service instead of asking for extra work."
+            ),
         )
 
 
@@ -1717,6 +2045,10 @@ async def admin_create_task(
         estimated_duration_min=body.estimated_duration_min,
         pricing_unit=_parse_pricing_unit(body.pricing_unit or "hourly"),
         allows_quantity=body.allows_quantity,
+        requires_details=body.requires_details,
+        requires_evidence=body.requires_evidence,
+        details_prompt_en=(body.details_prompt_en or None),
+        details_prompt_fr=(body.details_prompt_fr or None),
         min_quantity=body.min_quantity if body.min_quantity is not None else 1,
         escalation_keywords=body.escalation_keywords,
         icon_url=body.icon_url,
@@ -1725,6 +2057,7 @@ async def admin_create_task(
     )
     # Guardarraíl: L2/L3 sin requisitos = servicio que nadie puede tomar nunca.
     await _assert_credential_gate(db, task, body.credential_requirements)
+    _assert_details_prompt(task)
 
     db.add(task)
     try:
@@ -1782,6 +2115,7 @@ async def admin_update_task(
     # El guardarraíl se evalúa sobre el nivel RESULTANTE: subir un servicio a
     # L2/L3 sin requisitos lo dejaría inalcanzable para todo proveedor.
     await _assert_credential_gate(db, task, body.credential_requirements)
+    _assert_details_prompt(task)
 
     try:
         if body.credential_requirements is not None:

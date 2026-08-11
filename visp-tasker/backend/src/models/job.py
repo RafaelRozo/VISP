@@ -225,7 +225,25 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )
 
+    # Detalles y evidencia que aporta el CLIENTE al reservar (migración 038).
+    #
+    # `customer_details` es CONTEXTO DE EJECUCIÓN del servicio ya elegido y
+    # cotizado ("2 habitaciones, 2 baños"), NO un cambio de alcance: no altera
+    # precio, nivel ni SLA, que salen del catálogo. Si el trabajo resulta mayor de
+    # lo previsto, el camino correcto es accept+reprice del proveedor, no este
+    # texto. Mantener esa frontera es lo que conserva la regla del catálogo
+    # cerrado y la de "el proveedor no decide el alcance".
+    customer_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    customer_extra_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Photos
+    #
+    # OJO: `customer_evidence_json` son las fotos del CLIENTE al reservar;
+    # `photos_before_json` son las del PROVEEDOR al iniciar. Mezclarlas haría
+    # imposible saber quién aportó qué en una disputa.
+    customer_evidence_json: Mapped[Any] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
+    )
     photos_before_json: Mapped[Any] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), nullable=False
     )

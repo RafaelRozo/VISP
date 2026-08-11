@@ -112,6 +112,9 @@ from .promotion import Promotion
 # -- 014: Admin access codes --
 from .admin_access_code import AdminAccessCode
 
+# -- 036: Service zones (lanzamiento área por área) --
+from .service_zone import ServiceZone
+
 # -- 019: VISP for Business --
 from .company import (
     Company,
@@ -213,6 +216,8 @@ __all__ = [
     "Promotion",
     # Admin access codes
     "AdminAccessCode",
+    # Service zones
+    "ServiceZone",
     # VISP for Business
     "Company",
     "CompanyStatus",

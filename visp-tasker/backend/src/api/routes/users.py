@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.api.deps import CurrentUser, DBSession
+from src.services import service_zone_service
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,23 @@ async def update_me(
             db_user.default_address_longitude = addr.longitude
             db_user.default_address_formatted = addr.formattedAddress[:500] if addr.formattedAddress else None
 
+            # Gate de zona para TODOS, clientes incluidos (decisión de Ricardo
+            # 2026-08-11: "deberán ser de Ontario igual"). La v1 es una beta en
+            # área controlada: un cliente cuyo domicilio está fuera de la zona no
+            # tiene nada que reservar aquí, y dejarle guardar la dirección solo
+            # aplaza el rechazo hasta el final del flujo de reserva.
+            #
+            # Va ANTES de escribir la dirección, no dentro del bloque del
+            # proveedor: si no, un cliente la guardaría y solo se validaría a los
+            # proveedores.
+            if addr.latitude is not None and addr.longitude is not None:
+                await service_zone_service.assert_in_service_area(
+                    db,
+                    addr.latitude,
+                    addr.longitude,
+                    subject="address",
+                )
+
             # Also update ProviderProfile home location for matching engine
             if addr.latitude is not None and addr.longitude is not None:
                 try:
@@ -180,6 +198,10 @@ async def update_me(
                             provider.id, addr.latitude, addr.longitude,
                         )
                 except Exception as prov_exc:
+                    # Este except genérico existe para que un fallo al sincronizar
+                    # la ubicación del proveedor no rompa el guardado del perfil.
+                    # El gate de zona ya se evaluó ARRIBA, fuera de este try, justo
+                    # para que no se lo trague y llegue al usuario como 400.
                     logger.warning("Could not update provider location: %s", prov_exc)
 
         try:
@@ -197,6 +219,15 @@ async def update_me(
 
     except HTTPException:
         raise
+    except service_zone_service.OutsideServiceAreaError as exc:
+        # Antes del except genérico a propósito: si cae ahí se convierte en 500,
+        # y Cloudflare envuelve los 5xx en su propia página de error — el
+        # proveedor nunca leería por qué se rechazó su dirección.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
     except Exception as exc:
         import traceback
         error_tb = traceback.format_exc()

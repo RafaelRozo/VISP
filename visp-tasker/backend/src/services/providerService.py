@@ -383,6 +383,19 @@ async def get_pending_offers(
                 "arrival_time_min": job.sla_arrival_time_min,
                 "completion_time_min": job.sla_completion_time_min,
             },
+            # Lo que el CLIENTE describió y fotografió al reservar (migración 038).
+            #
+            # Requisito duro de negocio (Ricardo, 2026-08-11): el proveedor tiene
+            # que verlo ANTES de aceptar, porque es con esto que decide si le
+            # interesa el trabajo con su rango de precio — si la casa vale la pena
+            # limpiar, si el césped a cortar entra en esa categoría.
+            #
+            # NO basta con guardarlo en la fila del job: si no viaja en la oferta,
+            # el proveedor acepta a ciegas y re-cotizar al llegar se vuelve la
+            # norma, que es justo lo que esto evita.
+            "customer_details": job.customer_details,
+            "customer_evidence": job.customer_evidence_json or [],
+            "customer_extra_note": job.customer_extra_note,
             "distance_km": distance_km,
             "offered_at": assignment.offered_at,
             "offer_expires_at": assignment.offer_expires_at,

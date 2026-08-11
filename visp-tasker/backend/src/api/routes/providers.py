@@ -434,6 +434,9 @@ async def list_offers(
             customer=OfferCustomerInfo(**offer["customer"]),
             pricing=OfferPricingInfo(**offer["pricing"]),
             sla=OfferSLAInfo(**offer["sla"]),
+            customer_details=offer["customer_details"],
+            customer_evidence=offer["customer_evidence"],
+            customer_extra_note=offer["customer_extra_note"],
             distance_km=offer["distance_km"],
             offered_at=offer["offered_at"],
             offer_expires_at=offer["offer_expires_at"],
@@ -885,13 +888,24 @@ async def get_credentials(
 # ---------------------------------------------------------------------------
 
 # Map mobile type strings → backend CredentialType enum
+#
+# OJO al editar: este mapa colapsaba tres documentos distintos en un solo tipo y
+# de ahí salieron dos bugs reales. Cada línea que apunte dos claves al mismo
+# valor hace que esos dos renglones de la pantalla de Verification compartan
+# estado (subes uno y los dos se ponen en verde).
 _MOBILE_CRED_TYPE_MAP: dict[str, str] = {
     "trade_license": "license",
     "certification": "certification",
     "criminal_record_check": "background_check",
+    # El certificado de seguro NO es una credencial: la póliza vive en
+    # `provider_insurance_policies` (nº, aseguradora, cobertura, vigencia) y es
+    # ahí donde la lee el motor. Se mantiene la entrada para no romper subidas
+    # antiguas, pero el flujo nuevo va por POST /api/v1/provider/insurance.
     "insurance_certificate": "certification",
     "portfolio": "portfolio",
-    "drivers_license": "license",
+    # Tipo PROPIO desde la migración 035. Antes apuntaba a "license" y por eso
+    # una licencia de conducir aprobada contaba como licencia de oficio.
+    "drivers_license": "drivers_license",
 }
 
 
@@ -1009,6 +1023,386 @@ async def upload_credential(
             "createdAt": credential.created_at.isoformat() if credential.created_at else None,
         }
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/provider/insurance  — subir la PÓLIZA (no un archivo suelto)
+# ---------------------------------------------------------------------------
+#
+# POR QUÉ ESTE ENDPOINT EXISTE (WP1b, decisión del cliente 2026-08-10):
+# la pantalla de Verification subía el certificado de seguro como una credencial
+# genérica (`_MOBILE_CRED_TYPE_MAP` lo mandaba a CredentialType.CERTIFICATION):
+# un PDF suelto, sin número de póliza, sin aseguradora, sin monto y SIN FECHA DE
+# VENCIMIENTO. Mientras tanto el motor lee `provider_insurance_policies`, que
+# estaba vacía. Resultado: el proveedor subía su certificado, el admin lo
+# aprobaba, y el gate de seguro seguía respondiendo "no tiene seguro".
+#
+# Sin vencimiento una póliza caducada se ve idéntica a una vigente, que es justo
+# el riesgo que el seguro venía a cubrir — de ahí que los campos sean requeridos.
+#
+# El endpoint viejo `POST /verification/insurance` recibe `provider_id` EN EL
+# BODY sin autenticar (un proveedor podría dar de alta una póliza a nombre de
+# otro) y no acepta archivo. Este toma el proveedor del token.
+
+
+@router.post(
+    "/insurance",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit an insurance policy with its document",
+    description=(
+        "Sube el certificado y los datos de la póliza. Queda en PENDING_REVIEW "
+        "hasta que un admin la verifique.\n\n"
+        "NO está atado a un nivel: cualquier proveedor puede subir su póliza en "
+        "cualquier momento, y los servicios que exijan CGL se le abren cuando "
+        "queda verificada."
+    ),
+)
+async def submit_provider_insurance(
+    db: DBSession,
+    user: CurrentUser,
+    file: UploadFile = File(..., description="Certificado de la póliza"),
+    policyNumber: str = Form(...),
+    insurerName: str = Form(...),
+    coverageAmountCents: int = Form(..., description="Cobertura en CENTAVOS"),
+    effectiveDate: str = Form(..., description="ISO date, p.ej. 2026-01-01"),
+    expiryDate: str = Form(..., description="ISO date"),
+    policyType: str = Form("general_liability"),
+    deductibleCents: Optional[int] = Form(None),
+) -> dict[str, Any]:
+    import os
+    from datetime import date as _date
+
+    from src.models.verification import InsuranceStatus, ProviderInsurancePolicy
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    def _parse_date(raw: str, label: str) -> _date:
+        try:
+            return _date.fromisoformat(raw.strip())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{label} must be an ISO date (YYYY-MM-DD).",
+            )
+
+    effective = _parse_date(effectiveDate, "effectiveDate")
+    expiry = _parse_date(expiryDate, "expiryDate")
+
+    # 400 y no 422/5xx: Cloudflare envuelve los 5xx y el proveedor no leería nada.
+    if expiry <= effective:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The expiry date must be after the effective date.",
+        )
+    # Una póliza ya vencida no se acepta: entraría como PENDING_REVIEW y le haría
+    # perder el tiempo al admin para acabar rechazándola.
+    if expiry <= _date.today():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This policy has already expired. Upload a policy that is still valid.",
+        )
+    if coverageAmountCents <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The coverage amount must be greater than zero.",
+        )
+    if not policyNumber.strip() or not insurerName.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Policy number and insurer name are required.",
+        )
+
+    uploads_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "uploads",
+        "insurance",
+        str(provider_id),
+    )
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    safe_filename = f"{uuid.uuid4()}_{file.filename or 'policy.pdf'}"
+    with open(os.path.join(uploads_dir, safe_filename), "wb") as fh:
+        fh.write(await file.read())
+
+    policy = ProviderInsurancePolicy(
+        provider_id=provider_id,
+        policy_number=policyNumber.strip(),
+        insurer_name=insurerName.strip(),
+        policy_type=policyType.strip() or "general_liability",
+        coverage_amount_cents=coverageAmountCents,
+        deductible_cents=deductibleCents,
+        effective_date=effective,
+        expiry_date=expiry,
+        status=InsuranceStatus.PENDING_REVIEW,
+        document_url=f"/uploads/insurance/{provider_id}/{safe_filename}",
+    )
+    db.add(policy)
+    await db.commit()
+    await db.refresh(policy)
+
+    return {
+        "data": {
+            "id": str(policy.id),
+            "policyNumber": policy.policy_number,
+            "insurerName": policy.insurer_name,
+            "policyType": policy.policy_type,
+            "coverageAmountCents": policy.coverage_amount_cents,
+            "effectiveDate": policy.effective_date.isoformat(),
+            "expiryDate": policy.expiry_date.isoformat(),
+            "status": policy.status.value,
+            "documentUrl": policy.document_url,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# Expediente de experiencia (L1) — WP1c
+# ---------------------------------------------------------------------------
+#
+# Decisión del cliente (2026-08-11): el proveedor sube su CV, fotos de trabajos y
+# cartas de recomendación en UN expediente global, y con eso valida experiencia
+# para subir a L1. NO es por categoría (eso se planteó el 2026-08-04 y se revirtió).
+#
+# Lo que VISP valida es DOCUMENTAL, no de competencia: que la evidencia exista y
+# esté legible. `REJECTED` significa "documentación incompleta o ilegible", nunca
+# "no eres competente". Es importante que el copy de la app lo refleje.
+
+_EXPERIENCE_UPLOAD_MAX_BYTES = 15 * 1024 * 1024
+
+
+@router.get("/experience", summary="List my experience records")
+async def list_my_experience(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+
+    from src.models.verification import ProviderExperienceRecord
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    rows = (
+        await db.execute(
+            sa_select(ProviderExperienceRecord)
+            .where(
+                ProviderExperienceRecord.provider_id == provider_id,
+                # Solo el expediente GLOBAL: category_id IS NULL. Lo atado a una
+                # clasificación queda reservado para cuando se abra L2.
+                ProviderExperienceRecord.category_id.is_(None),
+            )
+            .order_by(ProviderExperienceRecord.submitted_at.desc())
+        )
+    ).scalars().all()
+
+    return {
+        "data": [
+            {
+                "id": str(r.id),
+                "kind": r.kind.value,
+                "title": r.title,
+                "description": r.description,
+                "documentUrl": r.document_url,
+                "status": r.status.value,
+                "rejectionReason": r.rejection_reason,
+                "submittedAt": r.submitted_at.isoformat() if r.submitted_at else None,
+                "validatedAt": r.validated_at.isoformat() if r.validated_at else None,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post(
+    "/experience",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit or replace one piece of experience evidence",
+    description=(
+        "Sube un documento del expediente de experiencia (CV, fotos de trabajos, "
+        "carta de recomendación...). Queda en PENDING hasta que un admin lo "
+        "valide.\n\n"
+        "Si ya existe un documento del MISMO tipo, se REEMPLAZA y vuelve a "
+        "PENDING: acumular dos CV distintos dejaría al validador sin saber cuál "
+        "mirar."
+    ),
+)
+async def submit_experience_record(
+    db: DBSession,
+    user: CurrentUser,
+    file: UploadFile = File(...),
+    kind: str = Form(..., description="resume | work_photos | recommendation_letter | ..."),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+) -> dict[str, Any]:
+    import os
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
+
+    from sqlalchemy import select as sa_select
+
+    from src.models.verification import (
+        ExperienceRecordKind,
+        ExperienceRecordStatus,
+        ProviderExperienceRecord,
+    )
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    raw_kind = (kind or "").strip()
+    parsed_kind: Optional[ExperienceRecordKind] = None
+    for candidate in (raw_kind.lower(), raw_kind.upper()):
+        try:
+            parsed_kind = ExperienceRecordKind(candidate)
+            break
+        except ValueError:
+            attr = getattr(ExperienceRecordKind, candidate.upper(), None)
+            if isinstance(attr, ExperienceRecordKind):
+                parsed_kind = attr
+                break
+    if parsed_kind is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Invalid kind '{kind}'. Valid: "
+                + ", ".join(k.value for k in ExperienceRecordKind)
+            ),
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file is empty.",
+        )
+    if len(content) > _EXPERIENCE_UPLOAD_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"File is too large ({len(content) // (1024 * 1024)} MB). "
+                f"Maximum is {_EXPERIENCE_UPLOAD_MAX_BYTES // (1024 * 1024)} MB."
+            ),
+        )
+
+    uploads_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "uploads",
+        "experience",
+        str(provider_id),
+    )
+    os.makedirs(uploads_dir, exist_ok=True)
+    safe_filename = f"{uuid.uuid4()}_{file.filename or 'evidence'}"
+    with open(os.path.join(uploads_dir, safe_filename), "wb") as fh:
+        fh.write(content)
+    document_url = f"/uploads/experience/{provider_id}/{safe_filename}"
+
+    # Reemplazo, no acumulación. Coincide con el índice único parcial
+    # `uq_experience_global_kind` de la migración 038: sin este upsert, un segundo
+    # envío del mismo tipo devolvería un 500 por violación de unicidad.
+    existing = (
+        await db.execute(
+            sa_select(ProviderExperienceRecord).where(
+                ProviderExperienceRecord.provider_id == provider_id,
+                ProviderExperienceRecord.category_id.is_(None),
+                ProviderExperienceRecord.kind == parsed_kind,
+            )
+        )
+    ).scalar_one_or_none()
+
+    now = _dt.now(_tz.utc)
+    if existing is not None:
+        existing.title = (title or "").strip() or existing.title
+        existing.description = (description or "").strip() or existing.description
+        existing.document_url = document_url
+        # Documento nuevo = validación nueva. Dejarlo VALIDATED permitiría
+        # sustituir un documento aprobado por otro sin revisar.
+        existing.status = ExperienceRecordStatus.PENDING
+        existing.submitted_at = now
+        existing.validated_at = None
+        existing.rejection_reason = None
+        record = existing
+        created = False
+    else:
+        record = ProviderExperienceRecord(
+            provider_id=provider_id,
+            category_id=None,
+            kind=parsed_kind,
+            title=(title or "").strip() or None,
+            description=(description or "").strip() or None,
+            document_url=document_url,
+            status=ExperienceRecordStatus.PENDING,
+            submitted_at=now,
+        )
+        db.add(record)
+        created = True
+
+    await db.commit()
+    await db.refresh(record)
+
+    return {
+        "data": {
+            "id": str(record.id),
+            "kind": record.kind.value,
+            "title": record.title,
+            "status": record.status.value,
+            "documentUrl": record.document_url,
+            "replaced": not created,
+        }
+    }
+
+
+@router.delete("/experience/{record_id}", summary="Delete one experience record")
+async def delete_experience_record(
+    db: DBSession,
+    user: CurrentUser,
+    record_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+
+    from src.models.verification import ProviderExperienceRecord
+
+    try:
+        provider_id = await _get_provider_id(db, user)
+    except providerService.ProviderNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+
+    record = (
+        await db.execute(
+            sa_select(ProviderExperienceRecord).where(
+                ProviderExperienceRecord.id == record_id,
+                # El filtro por provider_id no es cosmético: sin él, cualquier
+                # proveedor autenticado podría borrar la evidencia de otro.
+                ProviderExperienceRecord.provider_id == provider_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experience record not found."
+        )
+
+    await db.delete(record)
+    await db.commit()
+    return {"data": {"id": str(record_id), "deleted": True}}
 
 
 # ---------------------------------------------------------------------------
