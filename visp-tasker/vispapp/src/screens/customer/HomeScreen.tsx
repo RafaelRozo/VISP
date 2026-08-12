@@ -706,6 +706,9 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
             <FlatList
               data={activeJobs}
               horizontal
+              // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
+              // horizontal se expande y roba el espacio vertical del padre.
+              style={{ flexGrow: 0 }}
               showsHorizontalScrollIndicator={false}
               keyExtractor={(item) => item.id}
               ItemSeparatorComponent={() => <View style={{ width: 10 }} />}

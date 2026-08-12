@@ -115,14 +115,11 @@ export const providerService = {
         await upload('/provider/credentials', formData);
     },
 
-    /**
-     * Start (or continue) Stripe Connect onboarding for the authenticated provider.
-     * Backend creates the connected account if missing and persists the account id.
-     * Returns a fresh onboarding URL that can be opened with Linking.openURL.
+    /*
+     * setupPayouts — RETIRADO el 2026-08-12. Llamaba a /provider/payouts/setup
+     * (Stripe Express), endpoint que ya no existe. Ninguna pantalla lo usaba; el
+     * onboarding es payoutsV2Service (Accounts v2).
      */
-    setupPayouts: async (): Promise<PayoutsSetupResponse> => {
-        return await post<PayoutsSetupResponse>('/provider/payouts/setup', {});
-    },
 
     /**
      * Check whether the provider's Stripe Connect account is fully active.

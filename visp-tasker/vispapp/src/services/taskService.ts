@@ -184,6 +184,12 @@ interface BackendTaskDetail extends BackendTask {
   pricing_unit?: string | null;
   allows_quantity?: boolean;
   min_quantity?: number | null;
+  // Qué debe aportar el cliente al reservar (migración 038). El endpoint de
+  // detalle responde en snake_case, de ahí el mapeo explícito.
+  requires_details?: boolean;
+  requires_evidence?: boolean;
+  details_prompt_en?: string | null;
+  details_prompt_fr?: string | null;
   // Detail endpoint returns nested category object instead of category_id
   category?: { id: string; slug: string; name: string; icon_url?: string | null };
 }
@@ -211,6 +217,10 @@ function mapTaskDetail(task: BackendTaskDetail): ServiceTaskDetail {
     pricingUnit: task.pricing_unit ?? null,
     allowsQuantity: task.allows_quantity ?? false,
     minQuantity: task.min_quantity ?? null,
+    requiresDetails: task.requires_details ?? false,
+    requiresEvidence: task.requires_evidence ?? false,
+    detailsPromptEn: task.details_prompt_en ?? null,
+    detailsPromptFr: task.details_prompt_fr ?? null,
   };
 }
 
@@ -295,6 +305,36 @@ async function calculatePriceEstimate(
  * Submit a booking request. Returns the created booking ID.
  * Uses raw axios to bypass apiClient interceptor for debugging.
  */
+/**
+ * Sube las fotos de evidencia y devuelve sus URLs para mandarlas al reservar.
+ *
+ * Va aparte del POST de reserva porque ese endpoint es JSON: convertirlo a
+ * multipart obligaría a rehacer el cuerpo completo y el flujo de pago.
+ *
+ * NOTA SOBRE EL PESO: `expo-image-picker` comprime por calidad pero NO
+ * redimensiona (haría falta expo-image-manipulator, un módulo nativo). Con
+ * quality 0.6 una foto de iPhone baja a ~1-2 MB. El backend rechaza cualquiera
+ * por encima de 8 MB.
+ */
+async function uploadBookingEvidence(
+  uris: string[],
+): Promise<string[]> {
+  if (uris.length === 0) return [];
+  const form = new FormData();
+  uris.forEach((uri, i) => {
+    const name = uri.split('/').pop() || `evidence-${i}.jpg`;
+    const ext = (name.split('.').pop() || 'jpg').toLowerCase();
+    const mime = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : 'image/jpeg';
+    // @ts-expect-error — el shape de FormData de React Native no es el del DOM
+    form.append('files', { uri, name, type: mime });
+  });
+  const response = await apiClient.post('/jobs/booking-evidence', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  const data = response.data?.data ?? response.data;
+  return (data?.urls ?? []) as string[];
+}
+
 async function createBooking(
   request: BookingRequest,
 ): Promise<{ bookingId: string; estimatedPrice: number }> {
@@ -330,6 +370,11 @@ async function createBooking(
     isEmergency: request.priority === 'urgent',
     notes: (request.selectedNotes && request.selectedNotes.length > 0) ? request.selectedNotes : undefined,
     quantity: (request.quantity && request.quantity > 0) ? request.quantity : undefined,
+    // Pantalla "More info" (migración 038). El proveedor los ve ANTES de aceptar,
+    // así que viajan con la reserva; el backend los mete en el payload de la oferta.
+    details: request.details || undefined,
+    evidence: (request.evidence && request.evidence.length > 0) ? request.evidence : undefined,
+    extraNote: request.extraNote || undefined,
   };
 
   console.log('[taskService] createBooking payload:', JSON.stringify(payload));
@@ -652,6 +697,7 @@ export const taskService = {
   fetchTimeSlots,
   calculatePriceEstimate,
   createBooking,
+  uploadBookingEvidence,
   searchTasks,
   searchAllTasks,
   getActiveJobs,

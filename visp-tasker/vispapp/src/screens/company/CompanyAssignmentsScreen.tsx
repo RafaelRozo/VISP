@@ -21,7 +21,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { useTranslation } from '../../i18n';
 import {
@@ -150,6 +150,9 @@ function AssignmentRow({
 // ──────────────────────────────────────────────
 
 export default function CompanyAssignmentsScreen(): React.JSX.Element {
+  // ScreenTitle aporta el botón de volver: el header del stack está oculto
+  // para no duplicar el título.
+  const navigation = useNavigation();
   const t = useVispTheme();
   const { t: tr } = useTranslation();
 
@@ -243,6 +246,7 @@ export default function CompanyAssignmentsScreen(): React.JSX.Element {
       <ScreenTitle
         title={tr('companyAssignments.title') || 'My assignments'}
         sub={tr('companyAssignments.eyebrow') || '§ From your company'}
+       onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
       />
 
       {loading ? (

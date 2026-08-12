@@ -2049,163 +2049,23 @@ _STRIPE_CONNECT_REFRESH_URL = _settings.stripe_connect_refresh_url
 _STRIPE_CONNECT_RETURN_URL = _settings.stripe_connect_return_url
 
 
-@router.post(
-    "/payouts/setup",
-    summary="Start or continue Stripe Connect onboarding for a provider",
-    description=(
-        "Creates a Stripe Express connected account for the authenticated "
-        "provider if one does not exist, persists the account id, and "
-        "returns a fresh onboarding URL the app can open."
-    ),
-)
-async def setup_payouts(
-    db: DBSession,
-    user: CurrentUser,
-) -> dict[str, Any]:
-    from src.models.provider import ProviderProfile
-    from src.integrations.stripe.payoutService import (
-        create_connected_account as stripe_create_account,
-        create_account_link as stripe_create_link,
-        check_account_status as stripe_status,
-    )
-    from src.integrations.stripe.paymentService import PaymentError
-    from sqlalchemy import select as sa_select
-
-    stmt = sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
-    profile = (await db.execute(stmt)).scalar_one_or_none()
-    if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User does not have a provider profile.",
-        )
-
-    # Pre-validate the VISP profile so we don't hand Stripe an account that
-    # will immediately get blocked by missing address fields. We require the
-    # fields Stripe insists on for transfers in CA: street, city, province,
-    # postal code. Country defaults to CA when missing.
-    missing: list[str] = []
-    if not (user.default_address_street or profile.home_address):
-        missing.append("street")
-    if not (user.default_address_city or profile.home_city):
-        missing.append("city")
-    if not (user.default_address_province or profile.home_province_state):
-        missing.append("province")
-    if not (user.default_address_postal_code or profile.home_postal_zip):
-        missing.append("postalCode")
-
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "profile_incomplete",
-                "missing": missing,
-                "message": (
-                    "Complete your VISP profile (address) before setting up "
-                    "payouts. Stripe requires these fields."
-                ),
-            },
-        )
-
-    # Validate country is one Stripe Connect supports for transfers-only
-    # Express accounts. Mexico (MX), for example, requires the card_payments
-    # capability alongside transfers, which doesn't fit VISP's merchant-of-
-    # record model. Marketplace scope per CLAUDE.md is Canada & USA only.
-    raw_country = (
-        user.default_address_country
-        or profile.home_country
-        or "CA"
-    ).upper()
-    SUPPORTED_PAYOUT_COUNTRIES = {"CA", "US"}
-    if raw_country not in SUPPORTED_PAYOUT_COUNTRIES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "unsupported_country",
-                "country": raw_country,
-                "supportedCountries": sorted(SUPPORTED_PAYOUT_COUNTRIES),
-                "message": (
-                    "VISP payouts are currently available only for providers "
-                    "in Canada and the USA. Update your address to continue."
-                ),
-            },
-        )
-
-    try:
-        # If we already have a stripe_account_id, verify it still exists on
-        # Stripe. Accounts can be deleted from the Stripe dashboard or via
-        # cleanup scripts; when that happens we need to create a fresh one
-        # instead of trying to issue an AccountLink against a dead id.
-        if profile.stripe_account_id:
-            logger.info(
-                "setup_payouts: checking existing stripe account %s for provider %s",
-                profile.stripe_account_id, profile.id,
-            )
-            current = await stripe_status(profile.stripe_account_id)
-            if current.deleted:
-                logger.warning(
-                    "Provider %s had stale stripe_account_id %s (deleted); recreating",
-                    profile.id,
-                    profile.stripe_account_id,
-                )
-                profile.stripe_account_id = None
-                await db.commit()
-                await db.refresh(profile)
-
-        if not profile.stripe_account_id:
-            country_code = (
-                user.default_address_country
-                or profile.home_country
-                or "CA"
-            )
-            result = await stripe_create_account(
-                provider_id=profile.id,
-                email=user.email,
-                country=country_code,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                phone=user.phone,
-                address_line1=user.default_address_street or profile.home_address,
-                address_city=user.default_address_city or profile.home_city,
-                address_state=(
-                    user.default_address_province or profile.home_province_state
-                ),
-                address_postal_code=(
-                    user.default_address_postal_code or profile.home_postal_zip
-                ),
-            )
-            profile.stripe_account_id = result.account_id
-            await db.commit()
-            await db.refresh(profile)
-
-        url = await stripe_create_link(
-            account_id=profile.stripe_account_id,
-            refresh_url=_STRIPE_CONNECT_REFRESH_URL,
-            return_url=_STRIPE_CONNECT_RETURN_URL,
-        )
-    except PaymentError as exc:
-        logger.error("setup_payouts Stripe error for provider %s: %s", profile.id, exc)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Stripe error: {exc}",
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        # Catch-all so the worker returns a JSON 500 instead of dying mid-
-        # response (which Cloudflare then wraps in its "origin returned
-        # invalid response" HTML page). The traceback still lands in logs.
-        logger.exception("setup_payouts unexpected error for provider %s", profile.id)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal error during payouts setup: {type(exc).__name__}",
-        )
-
-    return {
-        "data": {
-            "accountId": profile.stripe_account_id,
-            "onboardingUrl": url,
-        }
-    }
+# ---------------------------------------------------------------------------
+# POST /provider/payouts/setup — RETIRADO el 2026-08-12
+# ---------------------------------------------------------------------------
+# Creaba una cuenta Stripe Express (`type: 'express'`) y devolvía un enlace de
+# onboarding hospedado. Sustituido por completo por el flujo nativo
+# /provider/payouts/v2/*, que usa Accounts v2.
+#
+# Por qué se retira y no se deja "por si acaso":
+#   - Ninguna pantalla de la app lo llamaba (el wrapper existía en
+#     providerService.ts sin usarse).
+#   - Tener dos caminos para crear la cuenta de cobro del MISMO proveedor deja
+#     abierta la posibilidad de una cuenta Express huérfana junto a la v2, y
+#     que el dinero se enrute a la que no completó verificación.
+#   - La guía de Stripe indica no usar los tipos legacy en plataformas nuevas.
+#
+# La validación de perfil incompleto y el gate de país que vivían aquí ya se
+# aplican en el flujo v2.
 
 
 # ---------------------------------------------------------------------------

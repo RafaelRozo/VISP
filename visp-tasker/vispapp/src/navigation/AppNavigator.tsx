@@ -364,7 +364,13 @@ function ProfileStackNavigator(): React.JSX.Element {
       <ProfileStack.Screen
         name="ProfileMain"
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{
+          // ProfileScreen ya pinta su propio <ScreenTitle>: con el header del
+          // stack salían DOS títulos y doble safe-area arriba. Es la raíz de
+          // este stack, así que no necesita botón de volver.
+          headerShown: false,
+          title: 'Profile',
+        }}
       />
       <ProfileStack.Screen
         name="Credentials"
@@ -389,7 +395,12 @@ function ProfileStackNavigator(): React.JSX.Element {
       <ProfileStack.Screen
         name="MyPrices"
         component={MyPricesScreen}
-        options={{ title: 'My Prices' }}
+        options={{
+          // MyPricesScreen ya pinta su propio <ScreenTitle>. Al ser una pantalla
+          // APILADA, el volver lo aporta ScreenTitle vía onBack.
+          headerShown: false,
+          title: 'My Prices',
+        }}
       />
       <ProfileStack.Screen
         name="PaymentMethods"
@@ -462,7 +473,14 @@ function ProviderJobStackNavigator(): React.JSX.Element {
       <ProviderJobStack.Screen
         name="ActiveJob"
         component={ActiveJobScreen}
-        options={{ title: 'Active Job' }}
+        options={{
+          // ActiveJobScreen ya pinta su propio <ScreenTitle> ("My Work" cuando no
+          // hay trabajo activo). El header del stack decía "Active Job" incluso
+          // en ese estado, así que salían dos títulos CONTRADICTORIOS. Pantalla
+          // apilada: el volver lo aporta ScreenTitle vía onBack.
+          headerShown: false,
+          title: 'Active Job',
+        }}
       />
       <ProviderJobStack.Screen
         name="Chat"
@@ -714,7 +732,10 @@ export default function AppNavigator(): React.JSX.Element {
               name="CompanySupervisor"
               component={CompanySupervisorScreen}
               options={{
-                headerShown: true,
+                // La pantalla ya pinta su propio <ScreenTitle>: con el header del
+                // stack salían DOS títulos y doble safe-area arriba. El botón de
+                // volver lo aporta ScreenTitle vía onBack.
+                headerShown: false,
                 ...SCREEN_OPTIONS,
                 title: 'Company jobs',
                 headerBackTitle: 'Back',
@@ -724,7 +745,8 @@ export default function AppNavigator(): React.JSX.Element {
               name="CompanyAssignments"
               component={CompanyAssignmentsScreen}
               options={{
-                headerShown: true,
+                // Ídem: ScreenTitle ya titula y aporta el volver vía onBack.
+                headerShown: false,
                 ...SCREEN_OPTIONS,
                 title: 'My assignments',
                 headerBackTitle: 'Back',
@@ -759,7 +781,10 @@ export default function AppNavigator(): React.JSX.Element {
               name="CompanySupervisor"
               component={CompanySupervisorScreen}
               options={{
-                headerShown: true,
+                // La pantalla ya pinta su propio <ScreenTitle>: con el header del
+                // stack salían DOS títulos y doble safe-area arriba. El botón de
+                // volver lo aporta ScreenTitle vía onBack.
+                headerShown: false,
                 ...SCREEN_OPTIONS,
                 title: 'Company jobs',
                 headerBackTitle: 'Back',
@@ -769,7 +794,8 @@ export default function AppNavigator(): React.JSX.Element {
               name="CompanyAssignments"
               component={CompanyAssignmentsScreen}
               options={{
-                headerShown: true,
+                // Ídem: ScreenTitle ya titula y aporta el volver vía onBack.
+                headerShown: false,
                 ...SCREEN_OPTIONS,
                 title: 'My assignments',
                 headerBackTitle: 'Back',

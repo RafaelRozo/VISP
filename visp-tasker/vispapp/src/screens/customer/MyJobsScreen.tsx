@@ -117,6 +117,9 @@ function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element 
   return (
     <ScrollView
       horizontal
+      // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
+      // horizontal se expande y roba el espacio vertical del padre.
+      style={{ flexGrow: 0 }}
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={pillStyles.row}
     >
@@ -159,7 +162,10 @@ const pillStyles = StyleSheet.create({
     paddingBottom: 14,
     gap: 8,
     flexDirection: 'row',
-    alignItems: 'center',
+    // Alineación al inicio, NO centrada: mientras existió el bug del flexGrow
+    // la caja quedaba alta y centrar en vertical dejaba hueco arriba y abajo.
+    // Con flexGrow:0 la caja ajusta al contenido y esto la mantiene pegada.
+    alignItems: 'flex-start',
   },
   pill: {
     paddingHorizontal: 14,

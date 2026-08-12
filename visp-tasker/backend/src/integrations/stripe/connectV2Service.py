@@ -54,6 +54,26 @@ logger = logging.getLogger(__name__)
 
 stripe.api_key = settings.stripe_secret_key
 
+# ---------------------------------------------------------------------------
+# Constantes de plataforma para la capability `card_payments`
+# ---------------------------------------------------------------------------
+# Son datos de VISP, no del proveedor, así que se rellenan solos: cada uno que se
+# deje sin fijar aparece en `currently_due` y bloquea la activación de la cuenta,
+# obligando a pedirle al proveedor algo que no le corresponde saber.
+
+# MCC 7299 "Services Not Elsewhere Classified" — marketplace mixto de servicios
+# del hogar (limpieza, manitas, temporada). Mismo valor que usaba el camino v1.
+_PLATFORM_MCC = "7299"
+
+_PLATFORM_BUSINESS_PROFILE = {
+    "url": "https://richieyanez.com",
+    "product_description": (
+        "Independent home services provider on the VISP Tasker marketplace, "
+        "offering on-demand cleaning, handyman and seasonal services to "
+        "customers in Ontario, Canada."
+    ),
+}
+
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -199,6 +219,37 @@ async def create_v2_account(
             },
         },
         "configuration": {
+            # MERCHANT — `card_payments` es OBLIGATORIO, no opcional.
+            #
+            # El cobro de un trabajo es un destination charge con
+            # `on_behalf_of` = esta cuenta (ver paymentService.create_job_authorization),
+            # lo que convierte al proveedor en MERCHANT OF RECORD. Ese es el
+            # modelo fiscal acordado: el proveedor es el vendedor y remite su
+            # propio impuesto. Stripe exige entonces `card_payments` ACTIVA en la
+            # cuenta conectada.
+            #
+            # Sin esto el onboarding termina "correctamente" y el proveedor queda
+            # IMPOSIBLE DE PAGAR: `account_can_accept_charges` lo rechaza y el
+            # cliente recibe un 4xx al autorizar. Se comprobó en test: las cuentas
+            # creadas sin este bloque salen con card_payments=None y fallan el gate.
+            #
+            # NO quitar esto sin quitar también `on_behalf_of` del pago — son las
+            # dos mitades del mismo diseño, y separarlas ya rompió el flujo una vez.
+            "merchant": {
+                # MCC 7299 "Services Not Elsewhere Classified": encaja con un
+                # marketplace mixto de servicios del hogar. Es una constante de
+                # PLATAFORMA, no un dato del proveedor, así que se fija al crear
+                # y le quita un requisito de encima al wizard.
+                #
+                # `url` y `product_description` NO se aceptan aquí (Stripe
+                # responde "Unknown field, did you mean mcc, support?"): van por
+                # `business_profile` de la API v1, justo después de crear.
+                "mcc": _PLATFORM_MCC,
+                "capabilities": {
+                    "card_payments": {"requested": True},
+                },
+            },
+            # RECIPIENT — para recibir el payout al balance de Stripe.
             "recipient": {
                 "capabilities": {
                     "stripe_balance": {
@@ -224,6 +275,22 @@ async def create_v2_account(
         raise _handle_stripe_error(exc) from exc
 
     account_id = v2_account.id  # type: ignore[attr-defined]
+
+    # `business_profile.url` y `.product_description` son requisitos de la
+    # capability `card_payments` y son CONSTANTES DE PLATAFORMA — el proveedor no
+    # tiene por qué escribirlas. La API v2 no los acepta en `configuration.merchant`
+    # (solo `mcc` y `support`), así que se fijan por la v1 justo después de crear.
+    #
+    # Best-effort a propósito: si esto falla, la cuenta existe y sirve; los dos
+    # campos quedarán en `currently_due` y el admin los puede completar. Perder la
+    # cuenta recién creada por esto sería mucho peor.
+    try:
+        stripe.Account.modify(account_id, business_profile=_PLATFORM_BUSINESS_PROFILE)
+    except stripe.StripeError as exc:
+        logger.warning(
+            "No se pudo fijar business_profile en %s (%s). Quedará en currently_due.",
+            account_id, exc,
+        )
 
     # v2 create returns a different shape than v1 (requirements live under
     # configuration.recipient.requirements.entries instead of top-level

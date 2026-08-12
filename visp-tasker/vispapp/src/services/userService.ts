@@ -78,14 +78,26 @@ export const userService = {
   },
 };
 
-export function resolveAvatarUrl(avatarUrl: string | null | undefined): string | null {
-  if (!avatarUrl) return null;
-  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
-    return avatarUrl;
+/**
+ * Convierte una ruta relativa de `/uploads/...` en una URL absoluta que el
+ * componente <Image> pueda cargar. Sirve para CUALQUIER archivo subido —
+ * avatares, documentos, evidencia de reserva — no solo avatares.
+ */
+export function resolveUploadUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
   }
   const origin = Config.apiBaseUrl.replace(/\/api\/v\d+\/?$/, '');
-  const path = avatarUrl.startsWith('/') ? avatarUrl : `/${avatarUrl}`;
+  const path = url.startsWith('/') ? url : `/${url}`;
   return `${origin}${path}`;
 }
+
+/**
+ * @deprecated Alias histórico de {@link resolveUploadUrl}. El nombre sugería que
+ * era solo para avatares y por eso se estuvo a punto de duplicar la lógica.
+ * Se conserva porque ya lo usan Profile y Dashboard.
+ */
+export const resolveAvatarUrl = resolveUploadUrl;
 
 export default userService;

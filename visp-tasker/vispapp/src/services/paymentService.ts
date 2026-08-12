@@ -185,47 +185,15 @@ async function attachPaymentMethod(
 // Stripe Connect (Provider)
 // ---------------------------------------------------------------------------
 
-/**
- * Create a Stripe Connect Express account for a provider.
- * POST /api/v1/payments/connect/create
+/*
+ * Wrappers de Connect v1 (Express) — RETIRADOS el 2026-08-12.
+ *
+ * createConnectAccount / getOnboardingLink / checkConnectStatus llamaban a
+ * /payments/connect/*, que ya no existe en el backend. Ninguna pantalla los
+ * usaba: el onboarding del proveedor vive en payoutsV2Service (Accounts v2),
+ * que además pide la capability `card_payments` sin la cual el proveedor no
+ * podía cobrar.
  */
-async function createConnectAccount(
-  providerId: string,
-  email: string,
-  country: string = 'CA',
-): Promise<ConnectedAccount> {
-  return post<ConnectedAccount>('/payments/connect/create', {
-    provider_id: providerId,
-    email,
-    country,
-  });
-}
-
-/**
- * Generate a Stripe onboarding link for a provider.
- * POST /api/v1/payments/connect/onboard-link
- */
-async function getOnboardingLink(
-  accountId: string,
-  refreshUrl: string,
-  returnUrl: string,
-): Promise<AccountLink> {
-  return post<AccountLink>('/payments/connect/onboard-link', {
-    account_id: accountId,
-    refresh_url: refreshUrl,
-    return_url: returnUrl,
-  });
-}
-
-/**
- * Check the status of a provider's Stripe Connect account.
- * GET /api/v1/payments/connect/status/{account_id}
- */
-async function checkConnectStatus(
-  accountId: string,
-): Promise<AccountStatus> {
-  return get<AccountStatus>(`/payments/connect/status/${accountId}`);
-}
 
 // ---------------------------------------------------------------------------
 // Provider Balance & Payouts
@@ -263,9 +231,8 @@ export const paymentService = {
   cancelPayment,
   listPaymentMethods,
   attachPaymentMethod,
-  createConnectAccount,
-  getOnboardingLink,
-  checkConnectStatus,
+  // createConnectAccount / getOnboardingLink / checkConnectStatus retirados
+  // con Connect v1 — ver la nota más arriba.
   getProviderBalance,
   listProviderPayouts,
 };

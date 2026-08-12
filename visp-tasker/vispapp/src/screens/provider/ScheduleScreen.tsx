@@ -136,6 +136,9 @@ function CalendarStrip({
   return (
     <ScrollView
       horizontal
+      // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
+      // horizontal se expande y roba el espacio vertical del padre.
+      style={{ flexGrow: 0 }}
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={calendarStyles.container}
     >
@@ -939,6 +942,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
+    // Sin esto el último elemento queda debajo de la tab bar / barra
+    // de acción y no se puede alcanzar.
+    paddingBottom: 40,
     paddingTop: 8,
   },
   tabBar: {
@@ -1055,6 +1061,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   timeOffDateScroll: {
+    // flexGrow:0 obligatorio: sin él el scroll horizontal se expande
+    // y roba el espacio vertical del modal.
+    flexGrow: 0,
     marginBottom: 4,
   },
   timeOffDayCell: {

@@ -130,154 +130,16 @@ class PayoutInfo:
 # Connected Account operations
 # ---------------------------------------------------------------------------
 
-async def create_connected_account(
-    provider_id: uuid.UUID,
-    email: str,
-    country: str = "CA",
-    first_name: Optional[str] = None,
-    last_name: Optional[str] = None,
-    phone: Optional[str] = None,
-    address_line1: Optional[str] = None,
-    address_city: Optional[str] = None,
-    address_state: Optional[str] = None,
-    address_postal_code: Optional[str] = None,
-) -> ConnectedAccountResult:
-    """Create a Stripe Connect Express account for a provider.
-
-    Express accounts are recommended for marketplaces because Stripe handles
-    the onboarding UI, identity verification, and tax reporting.
-
-    Pre-fill arguments (first_name, last_name, phone, address fields,
-    business_url) are optional. Stripe will skip the corresponding form
-    steps if the data passes validation, otherwise the provider sees the
-    field pre-populated and just confirms. Phone must be in E.164 format
-    (e.g. ``+15551234567``).
-
-    Args:
-        provider_id: The VISP provider profile UUID.
-        email: Provider email address.
-        country: Two-letter ISO country code (default ``CA`` for Canada).
-        first_name: Provider's legal first name (pre-fill).
-        last_name: Provider's legal last name (pre-fill).
-        phone: Phone in E.164 format (pre-fill).
-        address_line1: Street address line 1 (pre-fill).
-        address_city: City (pre-fill).
-        address_state: Province / state code (pre-fill).
-        address_postal_code: Postal code (pre-fill).
-
-    Returns:
-        ConnectedAccountResult with the account details.
-
-    Raises:
-        PaymentError: If the Stripe API call fails.
-    """
-    # Build individual sub-dict only with present fields — Stripe rejects
-    # null values, and partial data is better than no pre-fill at all.
-    individual: dict[str, Any] = {}
-    if first_name:
-        individual["first_name"] = first_name
-    if last_name:
-        individual["last_name"] = last_name
-    # Only include phone if it matches the account country — Stripe rejects
-    # mismatched phones (e.g. +52 Mexican phone on a CA account).
-    if phone and _phone_matches_country(phone, country):
-        individual["phone"] = phone
-    if email:
-        individual["email"] = email
-
-    address: dict[str, Any] = {}
-    if address_line1:
-        address["line1"] = address_line1
-    if address_city:
-        address["city"] = address_city
-    if address_state:
-        address["state"] = address_state
-    if address_postal_code:
-        address["postal_code"] = address_postal_code
-    if address:
-        address["country"] = country.upper()
-        individual["address"] = address
-
-    # VISP is the merchant of record (customers pay the platform via PaymentIntent
-    # on the platform account, then VISP transfers commission to the provider).
-    # Providers only need ``transfers`` capability — NOT ``card_payments`` —
-    # which reduces the KYC scope.
-    #
-    # NOTE on Business Details screen: Stripe still shows the "Business details"
-    # step for transfers-only Express accounts in many countries (CA included),
-    # apparently for risk classification regardless of capability. We pre-fill
-    # ``business_profile`` so the user only confirms (does not type) the fields.
-    #
-    # NOTE on TOS acceptance: server-side ``tos_acceptance`` is NOT supported
-    # for Express accounts (Stripe collects TOS in their hosted form). It IS
-    # supported for Custom accounts under Accounts v2 — revisit when migrating.
-    create_kwargs: dict[str, Any] = {
-        "type": "express",
-        "country": country.upper(),
-        "email": email,
-        "capabilities": {
-            "transfers": {"requested": True},
-        },
-        "metadata": {
-            "visp_provider_id": str(provider_id),
-            "platform": "visp_tasker",
-        },
-        "business_type": "individual",
-        "business_profile": {
-            # MCC 7299: "Services Not Elsewhere Classified" — fits a mixed
-            # home-services marketplace (cleaning, handyman, emergency, etc.).
-            "mcc": "7299",
-            "product_description": (
-                "Independent home services provider on the VISP Tasker "
-                "marketplace, offering on-demand cleaning, handyman, and "
-                "emergency services to customers across Canada."
-            ),
-            "url": "https://richieyanez.com",
-        },
-        "settings": {
-            "payouts": {
-                "schedule": {
-                    "interval": "daily",
-                },
-            },
-        },
-    }
-    if individual:
-        create_kwargs["individual"] = individual
-
-    # Pre-fill is best-effort. If Stripe still rejects the individual block
-    # (e.g. weird address), drop ONLY that block on retry — keep the
-    # business_profile because mcc/url/description are hardcoded and safe.
-    # The provider re-enters personal info in the hosted form; business
-    # details stay pre-populated.
-    try:
-        account = stripe.Account.create(**create_kwargs)
-    except stripe.StripeError as exc:
-        if "individual" in create_kwargs:
-            logger.warning(
-                "Stripe account create with individual pre-fill failed (%s) — retrying without individual",
-                exc,
-            )
-            create_kwargs.pop("individual", None)
-            try:
-                account = stripe.Account.create(**create_kwargs)
-            except stripe.StripeError as exc2:
-                raise _handle_stripe_error(exc2) from exc2
-        else:
-            raise _handle_stripe_error(exc) from exc
-
-    logger.info(
-        "Connected account created: account_id=%s, provider_id=%s, country=%s",
-        account.id,
-        provider_id,
-        country,
-    )
-
-    return ConnectedAccountResult(
-        account_id=account.id,
-        onboarding_complete=bool(account.details_submitted and account.charges_enabled),
-        details_submitted=bool(account.details_submitted),
-    )
+# create_connected_account — RETIRADA el 2026-08-12.
+#
+# Creaba cuentas Stripe Express (`type: 'express'`). La plataforma opera con
+# Accounts v2 (`connectV2Service.create_v2_account`), que además pide la
+# capability `card_payments` que el cobro necesita: el pago es un destination
+# charge con `on_behalf_of`, así que el proveedor es merchant of record.
+#
+# `create_account_link` y `check_account_status` SÍ se conservan: el flujo v2 los
+# usa para la página hospedada donde el proveedor completa la verificación de
+# liveness y para leer el estado de la cuenta.
 
 
 async def create_account_link(

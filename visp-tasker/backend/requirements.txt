@@ -51,3 +51,10 @@ orjson>=3.9.0
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
 aiosqlite>=0.19.0
+
+# -- Imagen --
+# Reescala la evidencia fotográfica de las reservas al guardarla. El cliente
+# comprime por calidad (expo-image-picker no redimensiona), así que sin esto
+# entran fotos de 1-2 MB y `uploads/` crece sin control.
+# El código la usa de forma OPCIONAL: si no está instalada, guarda el original.
+Pillow>=10.3.0

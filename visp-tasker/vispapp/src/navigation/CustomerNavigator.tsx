@@ -2,7 +2,12 @@
  * VISP - Customer Flow Navigator
  *
  * Stack navigator for the complete customer booking flow:
- * Category -> Subcategory -> TaskSelection -> Booking -> Matching -> JobTracking -> Rating
+ * Category -> Subcategory -> TaskSelection -> BookingDetails -> Booking ->
+ * Matching -> JobTracking -> Rating
+ *
+ * BookingDetails ("More info") se intercala entre elegir el servicio y
+ * confirmar: recoge detalles, fotos y una nota que el PROVEEDOR lee antes de
+ * aceptar, para decidir si le interesa el trabajo con su rango de precio.
  *
  * This navigator is presented as a modal stack from the root navigator when
  * a customer taps on a category from the Home screen.
@@ -18,6 +23,7 @@ import type { CustomerFlowParamList } from '../types';
 import CategoryScreen from '../screens/customer/CategoryScreen';
 import SubcategoryScreen from '../screens/customer/SubcategoryScreen';
 import TaskSelectionScreen from '../screens/customer/TaskSelectionScreen';
+import BookingDetailsScreen from '../screens/customer/BookingDetailsScreen';
 import BookingScreen from '../screens/customer/BookingScreen';
 import MatchingScreen from '../screens/customer/MatchingScreen';
 import JobTrackingScreen from '../screens/customer/JobTrackingScreen';
@@ -71,6 +77,16 @@ function CustomerNavigator({ initialCategoryId, initialCategoryName }: CustomerN
         name="TaskSelection"
         component={TaskSelectionScreen}
         options={{ title: 'Book Service' }}
+      />
+      <Stack.Screen
+        name="BookingDetails"
+        component={BookingDetailsScreen}
+        options={{
+          // La pantalla pinta su propio <ScreenTitle> y aporta el volver vía
+          // onBack; con el header del stack saldrían dos títulos.
+          headerShown: false,
+          title: 'More info',
+        }}
       />
       <Stack.Screen
         name="Booking"

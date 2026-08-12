@@ -382,6 +382,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    // Sin esto el último elemento queda debajo de la tab bar / barra
+    // de acción y no se puede alcanzar.
+    paddingBottom: 40,
     paddingTop: Spacing.lg,
   },
 

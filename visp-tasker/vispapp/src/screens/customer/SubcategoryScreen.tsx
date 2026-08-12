@@ -165,6 +165,9 @@ function SubcategoryScreen(): React.JSX.Element {
               <FlatList
                 data={taskDetail.examplePhotos}
                 horizontal
+                // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
+                // horizontal se expande y roba el espacio vertical del padre.
+                style={{ flexGrow: 0 }}
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item, index) => `photo-${index}`}

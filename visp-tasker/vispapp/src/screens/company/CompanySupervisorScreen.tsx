@@ -24,7 +24,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { useTranslation } from '../../i18n';
 import {
@@ -241,6 +241,9 @@ function JobRow({
 // ──────────────────────────────────────────────
 
 export default function CompanySupervisorScreen(): React.JSX.Element {
+  // ScreenTitle aporta el botón de volver: el header del stack está oculto
+  // para no duplicar el título.
+  const navigation = useNavigation();
   const t = useVispTheme();
   const { t: tr } = useTranslation();
   const membership = useCompanyStore((s) => s.membership);
@@ -389,6 +392,7 @@ export default function CompanySupervisorScreen(): React.JSX.Element {
       <ScreenTitle
         title={tr('companySupervisor.title') || 'Company jobs'}
         sub={membership?.companyName || (tr('companySupervisor.eyebrow') || '§ Supervisor')}
+       onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
       />
 
       {loading ? (

@@ -206,48 +206,14 @@ class TestPaymentMethods:
         assert body["payment_method_id"] == "pm_test_new_card"
 
 
-class TestStripeConnectAccounts:
-    """Provider Stripe Connect account operations."""
-
-    async def test_create_connected_account(self, client: AsyncClient):
-        resp = await client.post(
-            "/api/v1/payments/connect/create",
-            json={
-                "provider_id": str(PROVIDER_PROFILE_ID),
-                "email": "provider@test.visp.ca",
-                "country": "CA",
-            },
-        )
-        assert resp.status_code == 201
-        body = resp.json()
-        assert body["account_id"] == "acct_test_new"
-        assert isinstance(body["onboarding_complete"], bool)
-        assert isinstance(body["details_submitted"], bool)
-
-    async def test_create_onboarding_link(self, client: AsyncClient):
-        resp = await client.post(
-            "/api/v1/payments/connect/onboard-link",
-            json={
-                "account_id": "acct_test_l1",
-                "refresh_url": "https://tasker.visp.ca/onboard/refresh",
-                "return_url": "https://tasker.visp.ca/onboard/return",
-            },
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["url"] == "https://connect.stripe.com/setup/test"
-        assert body["account_id"] == "acct_test_l1"
-
-    async def test_check_account_status(self, client: AsyncClient):
-        resp = await client.get(
-            "/api/v1/payments/connect/status/acct_test_l1",
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["account_id"] == "acct_test_l1"
-        assert body["charges_enabled"] is True
-        assert body["payouts_enabled"] is True
-        assert body["requirements_due"] == []
+# TestStripeConnectAccounts — RETIRADA el 2026-08-12.
+#
+# Cubría POST /payments/connect/create, /connect/onboard-link y
+# GET /connect/status/{account_id}: los tres endpoints de Connect v1 (Express)
+# que se retiraron. El onboarding vive ahora en /provider/payouts/v2/* con
+# Accounts v2, y se verifica con scripts/smoke_* contra Stripe test real, que
+# comprueba lo que estos mocks no podían: que la cuenta acabe con
+# `card_payments` ACTIVA y por tanto sea cobrable.
 
 
 class TestProviderBalanceAndPayouts:
@@ -499,43 +465,16 @@ class TestPaymentJobIntegration:
 class TestProviderConnectPayoutIntegration:
     """Provider Connect account setup and payout queries."""
 
-    async def test_provider_connect_setup_and_balance_check(
-        self, client: AsyncClient
-    ):
-        # 1. Create Connect account for provider
-        connect_resp = await client.post(
-            "/api/v1/payments/connect/create",
-            json={
-                "provider_id": str(PROVIDER_PROFILE_ID),
-                "email": "provider@test.visp.ca",
-                "country": "CA",
-            },
-        )
-        assert connect_resp.status_code == 201
-        account_id = connect_resp.json()["account_id"]
+    async def test_provider_balance_and_payouts(self, client: AsyncClient):
+        """Balance y listado de payouts de una cuenta conectada.
 
-        # 2. Generate onboarding link
-        link_resp = await client.post(
-            "/api/v1/payments/connect/onboard-link",
-            json={
-                "account_id": account_id,
-                "refresh_url": "https://tasker.visp.ca/refresh",
-                "return_url": "https://tasker.visp.ca/return",
-            },
-        )
-        assert link_resp.status_code == 200
-        assert "url" in link_resp.json()
+        Antes este test empezaba creando la cuenta por /payments/connect/create y
+        pedía un enlace de onboarding hospedado. Esos tres pasos se retiraron con
+        Connect v1; la creación se verifica ahora contra Stripe test real en
+        scripts/smoke_*. Aquí se conserva lo que sigue vivo.
+        """
+        account_id = "acct_test_l1"
 
-        # 3. Check account status
-        status_resp = await client.get(
-            f"/api/v1/payments/connect/status/{account_id}",
-        )
-        assert status_resp.status_code == 200
-        status = status_resp.json()
-        assert status["charges_enabled"] is True
-        assert status["payouts_enabled"] is True
-
-        # 4. Check balance
         balance_resp = await client.get(
             f"/api/v1/payments/balance/{account_id}",
         )
@@ -544,7 +483,6 @@ class TestProviderConnectPayoutIntegration:
         assert balance["available_cents"] >= 0
         assert balance["pending_cents"] >= 0
 
-        # 5. List payouts
         payouts_resp = await client.get(
             f"/api/v1/payments/payouts/{account_id}",
         )

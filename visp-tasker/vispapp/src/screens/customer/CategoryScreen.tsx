@@ -125,6 +125,9 @@ function CategoryScreen(): React.JSX.Element {
       {/* Level filter pills */}
       <ScrollView
         horizontal
+        // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
+        // horizontal se expande y roba el espacio vertical del padre.
+        style={{ flexGrow: 0 }}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabsRow}
       >

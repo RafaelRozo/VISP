@@ -124,6 +124,51 @@ _EVIDENCE_ALLOWED_MIME = {
 # 0.7 -> ~300 KB); este tope es la red de seguridad, no el objetivo.
 _EVIDENCE_MAX_BYTES = 8 * 1024 * 1024
 
+# Lado largo al que se reescala la evidencia guardada. 1600 px es de sobra para
+# que un proveedor juzgue un espacio en el móvil, y deja la foto en ~200-400 KB.
+_EVIDENCE_MAX_EDGE = 1600
+_EVIDENCE_JPEG_QUALITY = 78
+
+
+def _downscale_evidence(raw: bytes) -> bytes:
+    """Reescala la foto si Pillow está disponible; si no, devuelve el original.
+
+    POR QUÉ EN EL SERVIDOR: `expo-image-picker` comprime por calidad pero NO
+    redimensiona (eso exige expo-image-manipulator, un módulo nativo, y añadirlo
+    obliga a un prebuild de iOS). Reescalar aquí también protege el
+    almacenamiento frente a cualquier cliente que no comprima.
+
+    La dependencia es OPCIONAL a propósito: mientras el servidor no tenga Pillow
+    instalado, esta función es un paso-a-través y la subida sigue funcionando.
+    Así el código se puede desplegar antes de reconstruir la imagen de Docker.
+    """
+    try:
+        import io
+
+        from PIL import Image, ImageOps
+    except ImportError:
+        return raw
+
+    try:
+        with Image.open(io.BytesIO(raw)) as img:
+            # exif_transpose respeta la orientación de la cámara: sin esto las
+            # fotos verticales del iPhone se guardan tumbadas.
+            img = ImageOps.exif_transpose(img)
+            if max(img.size) <= _EVIDENCE_MAX_EDGE and img.format == "JPEG":
+                return raw
+            img.thumbnail((_EVIDENCE_MAX_EDGE, _EVIDENCE_MAX_EDGE))
+            # JPEG no admite canal alfa: convertir evita reventar con PNG/HEIC.
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            out = io.BytesIO()
+            img.save(out, format="JPEG", quality=_EVIDENCE_JPEG_QUALITY, optimize=True)
+            return out.getvalue()
+    except Exception:  # noqa: BLE001
+        # Un archivo que Pillow no entienda no debe tumbar la subida: se guarda
+        # tal cual y el admin lo verá igual.
+        logger.warning("No se pudo reescalar una foto de evidencia; se guarda el original")
+        return raw
+
 
 @router.post(
     "/booking-evidence",
@@ -185,7 +230,7 @@ async def upload_booking_evidence(
             )
         safe_filename = f"{uuid.uuid4()}_{f.filename or 'evidence.jpg'}"
         with open(os.path.join(uploads_dir, safe_filename), "wb") as fh:
-            fh.write(content)
+            fh.write(_downscale_evidence(content))
         urls.append(f"/uploads/booking-evidence/{user.id}/{safe_filename}")
 
     return {"data": {"urls": urls}}

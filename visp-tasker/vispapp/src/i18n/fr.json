@@ -644,5 +644,27 @@
     "errorTitle": "Une erreur est survenue",
     "emptyTitle": "Aucune assignation pour l'instant",
     "emptyBody": "Les travaux que votre superviseur vous assigne apparaîtront ici."
+  },
+  "bookingDetails": {
+    "title": "Plus d'infos",
+    "eyebrow": "§ Aidez le prestataire à décider",
+    "intro": "Le prestataire lit ceci avant d'accepter, pour décider si le travail lui convient. Cela ne change ni le service ni le prix.",
+    "detailsLabel": "Détails du service",
+    "promptFallback": "Décrivez l'ampleur et l'accès pour ce service — pièces, superficie, étage, animaux, comment entrer.",
+    "detailsRequired": "Ce service exige une description avant la réservation.",
+    "evidenceLabel": "Photos",
+    "evidenceHelp": "Une photo de l'espace ou du problème évite bien des questions.",
+    "evidenceRequired": "Ce service exige au moins une photo avant la réservation.",
+    "addPhoto": "Ajouter une photo",
+    "removePhoto": "Retirer la photo",
+    "maxPhotosTitle": "Limite de photos atteinte",
+    "maxPhotosBody": "Vous pouvez joindre jusqu'à {n} photos.",
+    "permTitle": "Accès aux photos requis",
+    "permBody": "Autorisez l'accès aux photos pour joindre des images du travail.",
+    "uploadFailedTitle": "Échec de l'envoi",
+    "uploadFailedBody": "Les photos n'ont pas pu être envoyées. Vérifiez votre connexion et réessayez.",
+    "noteLabel": "Autre chose",
+    "noteHelp": "Facultatif. Tout ce qui n'entre pas ci-dessus — un chien craintif, un portail difficile.",
+    "notePlaceholder": "Note facultative"
   }
 }

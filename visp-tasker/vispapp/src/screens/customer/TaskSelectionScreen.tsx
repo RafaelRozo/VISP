@@ -175,6 +175,17 @@ function TaskSelectionScreen(): React.JSX.Element {
     navigation.setOptions({ title: 'Book Service' });
   }, [navigation]);
 
+  // Priority está fuera de la v1: todo es STANDARD. El selector se comentó más
+  // abajo, así que nadie fija este valor desde la UI — pero el store sobrevive
+  // entre reservas de una misma sesión, y si el usuario eligió otra prioridad
+  // ANTES de este cambio, se quedaría pegada con su multiplicador aplicado sin
+  // que se vea nada en pantalla. Se fuerza al montar.
+  useEffect(() => {
+    if (priority !== 'standard') {
+      setPriority('standard');
+    }
+  }, [priority, setPriority]);
+
   // Load time slots when date changes
   useEffect(() => {
     if (scheduledDate && taskDetail) {
@@ -322,7 +333,9 @@ function TaskSelectionScreen(): React.JSX.Element {
       return;
     }
 
-    navigation.navigate('Booking', {
+    // Pasa por "More info" antes de confirmar: ahí el cliente describe el
+    // trabajo y sube fotos para que el proveedor decida si lo acepta.
+    navigation.navigate('BookingDetails', {
       task: {
         taskId: taskDetail.id,
         taskName: taskDetail.name,
@@ -453,6 +466,9 @@ function TaskSelectionScreen(): React.JSX.Element {
             <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Select Date</Text>
             <ScrollView
               horizontal
+              // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
+              // horizontal se expande y roba el espacio vertical del padre.
+              style={{ flexGrow: 0 }}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.dateScrollContent}
             >
@@ -584,69 +600,80 @@ function TaskSelectionScreen(): React.JSX.Element {
             </GlassCard>
           </View>
 
-          {/* Priority selection */}
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Priority</Text>
-            <View style={styles.priorityContainer}>
+          {/* ── Priority: FUERA de la v1 ─────────────────────────────────
+              Decisión del cliente (2026-08-11): en esta fase todo es STANDARD.
+              Se comenta en vez de borrar porque el enum job_priority, las
+              pricing_rules y los multiplicadores del backend siguen intactos:
+              reactivar esto es descomentar, no volver a construirlo.
+
+              El estado `priority` se conserva y se fuerza a 'standard' al
+              montar, así que el resto del flujo (estimación y reserva) sigue
+              recibiendo un valor válido con multiplicador 1.0.
+
+              <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Priority</Text>
+              <View style={styles.priorityContainer}>
               {PRIORITY_OPTIONS.map((option: PriorityOption) => {
-                const isSelected = priority === option.value;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.priorityCard,
-                      isSelected && {
-                        borderColor: option.color,
-                        backgroundColor: `${option.color}18`,
-                      },
-                    ]}
-                    onPress={() => handleSelectPriority(option.value)}
-                    activeOpacity={0.7}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={`${option.label}: ${option.description}`}
-                  >
-                    <View style={styles.priorityHeader}>
-                      <View
-                        style={[
-                          styles.priorityRadio,
-                          isSelected && {
-                            borderColor: option.color,
-                          },
-                        ]}
-                      >
-                        {isSelected && (
-                          <View
-                            style={[
-                              styles.priorityRadioInner,
-                              { backgroundColor: option.color },
-                            ]}
-                          />
-                        )}
-                      </View>
-                      <Text
-                        style={[
-                          styles.priorityLabel,
-                          { color: theme.textPrimary },
-                          isSelected && { color: option.color },
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                      {option.multiplier > 1 && (
-                        <Text style={[styles.priorityMultiplier, { color: option.color }]}>
-                          {option.multiplier}x
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={[styles.priorityDescription, { color: theme.textSecondary }]}>
-                      {option.description}
-                    </Text>
-                  </TouchableOpacity>
-                );
+              const isSelected = priority === option.value;
+              return (
+              <TouchableOpacity
+              key={option.value}
+              style={[
+              styles.priorityCard,
+              isSelected && {
+              borderColor: option.color,
+              backgroundColor: `${option.color}18`,
+              },
+              ]}
+              onPress={() => handleSelectPriority(option.value)}
+              activeOpacity={0.7}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={`${option.label}: ${option.description}`}
+              >
+              <View style={styles.priorityHeader}>
+              <View
+              style={[
+              styles.priorityRadio,
+              isSelected && {
+              borderColor: option.color,
+              },
+              ]}
+              >
+              {isSelected && (
+              <View
+              style={[
+              styles.priorityRadioInner,
+              { backgroundColor: option.color },
+              ]}
+              />
+              )}
+              </View>
+              <Text
+              style={[
+              styles.priorityLabel,
+              { color: theme.textPrimary },
+              isSelected && { color: option.color },
+              ]}
+              >
+              {option.label}
+              </Text>
+              {option.multiplier > 1 && (
+              <Text style={[styles.priorityMultiplier, { color: option.color }]}>
+              {option.multiplier}x
+              </Text>
+              )}
+              </View>
+              <Text style={[styles.priorityDescription, { color: theme.textSecondary }]}>
+              {option.description}
+              </Text>
+              </TouchableOpacity>
+              );
               })}
-            </View>
-          </View>
+              </View>
+              </View>
+          --- fin del bloque comentado --- */}
+
 
           {/* Predefined notes (NO free text) */}
           <View style={styles.section}>
@@ -762,6 +789,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    // Sin esto el último elemento queda debajo de la tab bar / barra
+    // de acción y no se puede alcanzar.
+    paddingBottom: 40,
     paddingTop: Spacing.lg,
   },
 

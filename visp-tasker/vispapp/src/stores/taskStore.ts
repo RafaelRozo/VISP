@@ -45,6 +45,13 @@ interface TaskState {
   priority: PriorityLevel;
   selectedNotes: string[];
   estimatedPrice: number;
+  /**
+   * Pantalla "More info" (migración 038). Soporte de decisión para el proveedor:
+   * los ve antes de aceptar. No alteran servicio ni precio.
+   */
+  details: string;
+  evidence: string[];
+  extraNote: string;
 
   // Loading flags
   isLoadingCategories: boolean;
@@ -73,6 +80,10 @@ interface TaskState {
   setScheduledTimeSlot: (slot: string) => void;
   setFlexibleSchedule: (flexible: boolean) => void;
   setPriority: (priority: PriorityLevel) => void;
+  setDetails: (details: string) => void;
+  setExtraNote: (note: string) => void;
+  addEvidence: (urls: string[]) => void;
+  removeEvidence: (url: string) => void;
   toggleNote: (noteId: string) => void;
   clearError: () => void;
   resetBookingForm: () => void;
@@ -93,6 +104,9 @@ const initialBookingState = {
   priority: 'standard' as PriorityLevel,
   selectedNotes: [],
   estimatedPrice: 0,
+  details: '',
+  evidence: [] as string[],
+  extraNote: '',
 };
 
 const initialState = {
@@ -253,12 +267,32 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
       priority: state.priority,
       selectedNotes: state.selectedNotes,
       estimatedPrice: state.estimatedPrice,
+      details: state.details.trim() || undefined,
+      evidence: state.evidence.length > 0 ? state.evidence : undefined,
+      extraNote: state.extraNote.trim() || undefined,
     };
 
     set({ isSubmittingBooking: true, error: null });
     try {
       const result = await taskService.createBooking(request);
-      set({ isSubmittingBooking: false });
+      // Se limpian los campos de "More info" en cuanto la reserva existe.
+      //
+      // NO es cosmético: `resetBookingForm` está definido pero NADIE lo llama, así
+      // que el formulario sobrevive entre reservas de una misma sesión. Con la
+      // dirección o la fecha eso era inofensivo porque el flujo siguiente las
+      // vuelve a pedir, pero los detalles y las FOTOS no se re-piden: se
+      // arrastrarían a la reserva siguiente y el proveedor vería la descripción y
+      // las imágenes de OTRA propiedad.
+      //
+      // Se limpian solo estos tres y no todo el formulario a propósito: la
+      // pantalla de confirmación sigue usando selectedTask y estimatedPrice para
+      // el paso de pago después de este punto.
+      set({
+        isSubmittingBooking: false,
+        details: '',
+        evidence: [],
+        extraNote: '',
+      });
       return { bookingId: result.bookingId };
     } catch (err: unknown) {
       set({
@@ -287,6 +321,26 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
 
   setAddress: (address: AddressInfo) => {
     set({ address });
+  },
+
+  setDetails: (details: string) => {
+    set({ details });
+  },
+
+  setExtraNote: (extraNote: string) => {
+    set({ extraNote });
+  },
+
+  addEvidence: (urls: string[]) => {
+    // Tope duro de 5 (MAX_CUSTOMER_EVIDENCE_PHOTOS en el backend). Se recorta
+    // aquí también: la API responde 400 si se pasa, y es mejor no dejar que el
+    // usuario suba una sexta foto para rechazarla al final del flujo.
+    const merged = [...getState().evidence, ...urls].slice(0, 5);
+    set({ evidence: merged });
+  },
+
+  removeEvidence: (url: string) => {
+    set({ evidence: getState().evidence.filter((u) => u !== url) });
   },
 
   setScheduledDate: (date: string) => {

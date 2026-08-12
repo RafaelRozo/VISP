@@ -428,38 +428,46 @@ function BookingScreen(): React.JSX.Element {
             </GlassCard>
           </View>
 
-          {/* ── Priority ────────────────── */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+          {/* ── Priority: FUERA de la v1 ──────────────────────────────────
+              Decisión del cliente (2026-08-11): todo es STANDARD en esta fase.
+              Se comenta en lugar de borrar: el selector de TaskSelectionScreen,
+              el enum job_priority y los multiplicadores de pricing siguen
+              intactos, así que reactivarlo es descomentar.
+
+              <View style={styles.section}>
+              <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Priority</Text>
               <TouchableOpacity onPress={handleEdit} activeOpacity={0.7}>
-                <Text style={styles.editLink}>Edit</Text>
+              <Text style={styles.editLink}>Edit</Text>
               </TouchableOpacity>
-            </View>
-            <GlassCard variant="standard">
-              <View style={styles.reviewCardRow}>
-                <View
-                  style={[
-                    styles.priorityDot,
-                    { backgroundColor: priorityOption?.color ?? Colors.success },
-                  ]}
-                />
-                <View style={styles.reviewCardContent}>
-                  <Text style={[styles.reviewCardPrimary, { color: theme.textPrimary }]}>
-                    {priorityOption?.label ?? 'Standard'}
-                  </Text>
-                  <Text style={[styles.reviewCardSecondary, { color: theme.textSecondary }]}>
-                    {priorityOption?.description ?? ''}
-                  </Text>
-                  {(priorityOption?.multiplier ?? 1) > 1 && (
-                    <Text style={[styles.multiplierBadge, { color: priorityOption?.color }]}>
-                      {priorityOption?.multiplier}x rate
-                    </Text>
-                  )}
-                </View>
               </View>
-            </GlassCard>
-          </View>
+              <GlassCard variant="standard">
+              <View style={styles.reviewCardRow}>
+              <View
+              style={[
+              styles.priorityDot,
+              { backgroundColor: priorityOption?.color ?? Colors.success },
+              ]}
+              />
+              <View style={styles.reviewCardContent}>
+              <Text style={[styles.reviewCardPrimary, { color: theme.textPrimary }]}>
+              {priorityOption?.label ?? 'Standard'}
+              </Text>
+              <Text style={[styles.reviewCardSecondary, { color: theme.textSecondary }]}>
+              {priorityOption?.description ?? ''}
+              </Text>
+              {(priorityOption?.multiplier ?? 1) > 1 && (
+              <Text style={[styles.multiplierBadge, { color: priorityOption?.color }]}>
+              {priorityOption?.multiplier}x rate
+              </Text>
+              )}
+              </View>
+              </View>
+              </GlassCard>
+              </View>
+
+          --- fin del bloque comentado --- */}
+
 
           {/* ── Quantity (PP5 — per-unit/per-area tasks) ────────────────── */}
           {allowsQuantity && (
@@ -740,6 +748,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    // Sin esto el último elemento queda debajo de la tab bar / barra
+    // de acción y no se puede alcanzar.
+    paddingBottom: 40,
     paddingTop: Spacing.lg,
   },
 

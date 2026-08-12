@@ -773,7 +773,10 @@ function JobTrackingScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollView: { flex: 1 },
-  scrollContent: { paddingTop: Spacing.lg },
+  scrollContent: {
+    // Sin esto el último elemento queda debajo de la tab bar / barra
+    // de acción y no se puede alcanzar.
+    paddingBottom: 40, paddingTop: Spacing.lg },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
   loadingText: { ...Typography.body, color: 'rgba(255, 255, 255, 0.6)' },
   errorText: { ...Typography.body, color: Colors.emergencyRed },

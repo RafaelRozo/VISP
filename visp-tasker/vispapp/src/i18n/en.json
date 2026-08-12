@@ -644,5 +644,27 @@
     "errorTitle": "Something went wrong",
     "emptyTitle": "No assignments yet",
     "emptyBody": "Jobs your supervisor assigns to you will appear here."
+  },
+  "bookingDetails": {
+    "title": "More info",
+    "eyebrow": "§ Help the provider decide",
+    "intro": "The provider reads this before accepting, to decide whether the job suits them. It does not change the service or the price.",
+    "detailsLabel": "Service details",
+    "promptFallback": "Describe the size and access for this service — rooms, area, floor, pets, how we get in.",
+    "detailsRequired": "This service needs a description before booking.",
+    "evidenceLabel": "Photos",
+    "evidenceHelp": "A photo of the space or the problem saves questions later.",
+    "evidenceRequired": "This service needs at least one photo before booking.",
+    "addPhoto": "Add photo",
+    "removePhoto": "Remove photo",
+    "maxPhotosTitle": "Photo limit reached",
+    "maxPhotosBody": "You can attach up to {n} photos.",
+    "permTitle": "Photo access needed",
+    "permBody": "Allow photo access to attach pictures of the job.",
+    "uploadFailedTitle": "Upload failed",
+    "uploadFailedBody": "The photos could not be uploaded. Check your connection and try again.",
+    "noteLabel": "Anything else",
+    "noteHelp": "Optional. Anything that does not fit above — a nervous dog, a tricky gate.",
+    "notePlaceholder": "Optional note"
   }
 }

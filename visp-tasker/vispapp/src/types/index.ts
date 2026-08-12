@@ -545,6 +545,17 @@ export interface ServiceTaskDetail extends ServiceTask {
   pricingUnit?: string | null;
   allowsQuantity?: boolean;
   minQuantity?: number | null;
+  /**
+   * Qué debe aportar el cliente al reservar (migración 038). Los detalles y las
+   * fotos son SOPORTE DE DECISIÓN para el proveedor —los ve antes de aceptar,
+   * para juzgar si le interesa el trabajo con su rango de precio— y no cambian
+   * el servicio ni el precio, que salen del catálogo cerrado.
+   */
+  requiresDetails?: boolean;
+  requiresEvidence?: boolean;
+  /** Placeholder por servicio. Guía a describir escala y acceso, no a pedir extras. */
+  detailsPromptEn?: string | null;
+  detailsPromptFr?: string | null;
 }
 
 export interface PredefinedNote {
@@ -574,6 +585,14 @@ export interface BookingRequest {
   estimatedPrice: number;
   // PP5 — customer-confirmed quantity for per-unit/per-area tasks.
   quantity?: number;
+  /**
+   * Detalles, evidencia y nota que aporta el cliente (migración 038). El
+   * proveedor los ve ANTES de aceptar, para decidir si le interesa el trabajo
+   * con su rango de precio. No cambian el servicio ni el precio.
+   */
+  details?: string;
+  evidence?: string[];
+  extraNote?: string;
 }
 
 export interface AddressInfo {
@@ -762,6 +781,9 @@ export type CustomerFlowParamList = {
   Category: { categoryId: string; categoryName: string };
   Subcategory: { taskId: string };
   TaskSelection: { taskId: string };
+  /** "More info": recoge detalles/fotos/nota y PASA DE LARGO el mismo payload
+   *  que espera Booking, para no cambiar su contrato. */
+  BookingDetails: { task: BookingTaskSummary };
   Booking: { task: BookingTaskSummary };
   Matching: { jobId: string; taskName: string };
   JobTracking: { jobId: string };

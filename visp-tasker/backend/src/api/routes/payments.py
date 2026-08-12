@@ -34,15 +34,14 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from src.api.schemas.payment import (
-    AccountLinkOut,
-    AccountStatusOut,
+    # AccountLinkOut / AccountStatusOut / ConnectedAccountOut y sus Request
+    # correspondientes se dejaron de importar al retirar los endpoints de
+    # Connect v1 (ver la nota más abajo). Los schemas siguen definidos por si
+    # se reutilizan.
     AttachPaymentMethodRequest,
     BalanceOut,
     CancelPaymentOut,
     CancelPaymentRequest,
-    ConnectedAccountOut,
-    CreateAccountLinkRequest,
-    CreateConnectedAccountRequest,
     CreatePaymentIntentRequest,
     PaymentConfirmationOut,
     PaymentIntentOut,
@@ -66,9 +65,6 @@ from src.integrations.stripe.paymentService import (
     refund_payment,
 )
 from src.integrations.stripe.payoutService import (
-    check_account_status,
-    create_account_link,
-    create_connected_account,
     get_balance,
     list_payouts,
 )
@@ -359,99 +355,27 @@ async def stripe_webhook_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# POST /payments/connect/create
+# Connect v1 (Express) — RETIRADO el 2026-08-12
 # ---------------------------------------------------------------------------
-
-@router.post(
-    "/connect/create",
-    response_model=ConnectedAccountOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a Stripe Connect account for a provider",
-    description=(
-        "Creates a Stripe Express connected account for the provider. "
-        "This enables the marketplace to transfer the provider's share "
-        "of each job payment to their bank account."
-    ),
-)
-async def create_connected_account_endpoint(
-    body: CreateConnectedAccountRequest,
-) -> ConnectedAccountOut:
-    try:
-        result = await create_connected_account(
-            provider_id=body.provider_id,
-            email=body.email,
-            country=body.country,
-        )
-    except PaymentError as exc:
-        raise _payment_error_to_http(exc) from exc
-
-    return ConnectedAccountOut(
-        account_id=result.account_id,
-        onboarding_complete=result.onboarding_complete,
-        details_submitted=result.details_submitted,
-    )
-
-
-# ---------------------------------------------------------------------------
-# POST /payments/connect/onboard-link
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/connect/onboard-link",
-    response_model=AccountLinkOut,
-    summary="Generate a Stripe onboarding link",
-    description=(
-        "Creates a short-lived URL that redirects the provider to Stripe's "
-        "hosted onboarding flow. The link expires quickly, so generate a "
-        "fresh one each time the provider needs to continue onboarding."
-    ),
-)
-async def create_onboard_link_endpoint(
-    body: CreateAccountLinkRequest,
-) -> AccountLinkOut:
-    try:
-        url = await create_account_link(
-            account_id=body.account_id,
-            refresh_url=body.refresh_url,
-            return_url=body.return_url,
-        )
-    except PaymentError as exc:
-        raise _payment_error_to_http(exc) from exc
-
-    return AccountLinkOut(
-        url=url,
-        account_id=body.account_id,
-    )
-
-
-# ---------------------------------------------------------------------------
-# GET /payments/connect/status/{account_id}
-# ---------------------------------------------------------------------------
-
-@router.get(
-    "/connect/status/{account_id}",
-    response_model=AccountStatusOut,
-    summary="Check Stripe Connect account status",
-    description=(
-        "Returns the current status of a provider's Stripe Connect account, "
-        "including whether charges and payouts are enabled and what "
-        "verification requirements remain."
-    ),
-)
-async def get_account_status_endpoint(
-    account_id: str,
-) -> AccountStatusOut:
-    try:
-        account_status = await check_account_status(account_id)
-    except PaymentError as exc:
-        raise _payment_error_to_http(exc) from exc
-
-    return AccountStatusOut(
-        account_id=account_status.account_id,
-        charges_enabled=account_status.charges_enabled,
-        payouts_enabled=account_status.payouts_enabled,
-        requirements_due=account_status.requirements_due,
-    )
+# Aquí vivían POST /connect/create, POST /connect/onboard-link y
+# GET /connect/status/{account_id}: onboarding con cuentas Express (`type:
+# 'express'`) y páginas hospedadas de Stripe.
+#
+# Se retiran por tres razones:
+#   1. La plataforma opera con Accounts v2 (`/v2/core/accounts`), que es la vía
+#      en la que Stripe invierte; su guía dice explícitamente no usar los tipos
+#      legacy (express/custom/standard) en plataformas nuevas.
+#   2. Tener DOS formas de crear la cuenta de pago del mismo proveedor es una
+#      trampa: la v1 podía dejar una cuenta Express huérfana junto a la v2.
+#   3. Los tres endpoints NO pedían autenticación y tomaban `provider_id` del
+#      body — cualquiera podía crear una cuenta de cobro a nombre de otro.
+#
+# Ningún cliente los llamaba (verificado en app y admin). El onboarding vive en
+# /api/v1/provider/payouts/v2/*.
+#
+# `create_account_link` y `check_account_status` NO se retiran: el flujo v2 los
+# usa para la página hospedada de liveness y para leer el estado de la cuenta
+# (el retrieve v1 funciona sobre cuentas v2, comprobado).
 
 
 # ---------------------------------------------------------------------------

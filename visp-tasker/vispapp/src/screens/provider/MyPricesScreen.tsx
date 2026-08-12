@@ -19,7 +19,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { useTranslation } from '../../i18n';
 import { Screen, ScreenTitle, Eyebrow, Card } from '../../components/visp';
@@ -39,6 +39,9 @@ function dollarsLabel(cents: number | null | undefined): string {
 }
 
 export default function MyPricesScreen(): React.JSX.Element {
+  // ScreenTitle aporta el botón de volver: el header del stack está oculto
+  // para no duplicar el título.
+  const navigation = useNavigation();
   const t = useVispTheme();
   const { t: tr } = useTranslation();
 
@@ -159,6 +162,7 @@ export default function MyPricesScreen(): React.JSX.Element {
       <ScreenTitle
         title={tr('myPricesScreen.title') || 'My Prices'}
         sub={tr('myPricesScreen.subtitle') || '§ Set your rate per service'}
+       onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
       />
 
       {loading ? (

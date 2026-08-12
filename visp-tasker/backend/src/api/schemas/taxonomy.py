@@ -127,6 +127,15 @@ class TaskDetail(BaseModel):
     # Auto-escalation
     escalation_keywords: list[str] = Field(default_factory=list)
 
+    # Qué debe aportar el CLIENTE al reservar (migración 038). La app los necesita
+    # para saber si puede seguir sin detalles/foto y qué prompt mostrar; sin ellos
+    # tendría que adivinar y el rechazo llegaría del backend al final del flujo,
+    # cuando el usuario ya invirtió todo el recorrido.
+    requires_details: bool = False
+    requires_evidence: bool = False
+    details_prompt_en: Optional[str] = None
+    details_prompt_fr: Optional[str] = None
+
     # Display
     icon_url: Optional[str] = None
     display_order: int
