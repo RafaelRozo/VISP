@@ -26,6 +26,7 @@ import MapboxGL from '@rnmapbox/maps';
 
 import { GlassCard, GlassButton } from '../../components/glass';
 import { Screen } from '../../components/visp';
+import CancelWithReasonModal from '../../components/CancelWithReasonModal';
 import { Colors, getLevelColor, Spacing, GlassStyles } from '../../theme';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -108,6 +109,7 @@ function JobTrackingScreen(): React.JSX.Element {
   const route = useRoute<JobTrackingRouteProp>();
   const navigation = useNavigation<JobTrackingNavProp>();
   const { jobId } = route.params;
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   // State
   const [job, setJob] = useState<Job | null>(null);
@@ -759,9 +761,40 @@ function JobTrackingScreen(): React.JSX.Element {
             </GlassCard>
           </View>
 
+          {/* Cancelar con motivo. Solo mientras el trabajo sigue vivo: una vez
+              completado o ya cancelado no hay nada que cancelar. */}
+          {['scheduled', 'accepted', 'provider_accepted', 'en_route',
+            'provider_en_route', 'in_progress'].includes(currentStatus) ? (
+            <View style={styles.section}>
+              <TouchableOpacity
+                onPress={() => setCancelOpen(true)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: Colors.emergencyRed + '60',
+                  borderRadius: BorderRadius.lg,
+                  paddingVertical: 14,
+                  alignItems: 'center',
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: Colors.emergencyRed, fontWeight: '600' }}>
+                  {t('cancelReason.openCustomer') || 'Something is wrong — cancel this job'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           <View style={styles.bottomPadding} />
         </ScrollView>
       </View>
+
+      <CancelWithReasonModal
+        visible={cancelOpen}
+        jobId={jobId}
+        role="customer"
+        onClose={() => setCancelOpen(false)}
+        onCancelled={() => navigation.goBack()}
+      />
     </Screen>
   );
 }

@@ -52,6 +52,7 @@ import {
   Icon,
   VispIconName,
 } from '../../components/visp';
+import CancelWithReasonModal from '../../components/CancelWithReasonModal';
 import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
 import { AnimatedSpinner } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
@@ -415,6 +416,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
   const { t: tr } = useTranslation();
   const route = useRoute<ActiveJobRoute>();
   const navigation = useNavigation<ActiveJobNav>();
+  const [cancelOpen, setCancelOpen] = useState(false);
   const {
     activeJob,
     scheduledJobs,
@@ -595,6 +597,23 @@ export default function ActiveJobScreen(): React.JSX.Element {
                   isLoading={isUpdating}
                   isNext
                 />
+                {/* Cancelar con motivo. Solo con un trabajo asignado: antes de eso
+                    no hay contraparte a la que reportar. */}
+                <MotionPressable
+                  onPress={() => setCancelOpen(true)}
+                  style={{
+                    marginTop: 10,
+                    borderWidth: 1,
+                    borderColor: t.danger + '55',
+                    borderRadius: VispRadius.card,
+                    paddingVertical: 12,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={[VispText.chip, { color: t.danger }]}>
+                    {tr('cancelReason.openProvider') || "Can't do this job — cancel"}
+                  </Text>
+                </MotionPressable>
               </View>
             ) : null}
 
@@ -689,6 +708,17 @@ export default function ActiveJobScreen(): React.JSX.Element {
           </View>
         ) : null}
       </ScrollView>
+
+      <CancelWithReasonModal
+        visible={cancelOpen}
+        jobId={liveTodayJob?.id ?? ''}
+        role="provider"
+        onClose={() => setCancelOpen(false)}
+        onCancelled={() => {
+          setCancelOpen(false);
+          fetchSchedule();
+        }}
+      />
     </Screen>
   );
 }

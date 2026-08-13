@@ -588,7 +588,8 @@
     "cancelled": "Cancelled",
     "pending": "Pending",
     "approved": "Approved",
-    "rejected": "Rejected"
+    "rejected": "Rejected",
+    "optional": "optional"
   },
   "emergency": {
     "requestEmergency": "Request Emergency Service",
@@ -678,5 +679,17 @@
     "insuranceNeededTitle": "Insurance required",
     "insuranceNeededBody": "This service requires commercial general liability insurance. Add your policy in Verification — once VISP verifies it, the service unlocks on its own.",
     "insuranceLock": "Insurance"
+  },
+  "cancelReason": {
+    "title": "Cancel this job",
+    "free": "No charge. Cancelling here costs you nothing — VISP reviews what happened.",
+    "whatHappened": "What happened?",
+    "details": "Details",
+    "notePlaceholder": "Tell us what happened",
+    "keep": "Keep the job",
+    "confirm": "Cancel job",
+    "failed": "Could not cancel. Try again.",
+    "openCustomer": "Something is wrong — cancel this job",
+    "openProvider": "Can't do this job — cancel"
   }
 }

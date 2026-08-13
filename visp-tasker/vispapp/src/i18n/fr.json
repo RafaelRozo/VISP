@@ -588,7 +588,8 @@
     "cancelled": "Annulé",
     "pending": "En attente",
     "approved": "Approuvé",
-    "rejected": "Refusé"
+    "rejected": "Refusé",
+    "optional": "facultatif"
   },
   "emergency": {
     "requestEmergency": "Demander un service d'urgence",
@@ -678,5 +679,17 @@
     "insuranceNeededTitle": "Assurance requise",
     "insuranceNeededBody": "Ce service exige une assurance responsabilité civile commerciale. Ajoutez votre police dans Vérification — dès que VISP la valide, le service se débloque tout seul.",
     "insuranceLock": "Assurance"
+  },
+  "cancelReason": {
+    "title": "Annuler ce travail",
+    "free": "Aucuns frais. Annuler ici ne vous coûte rien — VISP examine ce qui s'est passé.",
+    "whatHappened": "Que s'est-il passé ?",
+    "details": "Détails",
+    "notePlaceholder": "Dites-nous ce qui s'est passé",
+    "keep": "Garder le travail",
+    "confirm": "Annuler le travail",
+    "failed": "Annulation impossible. Réessayez.",
+    "openCustomer": "Il y a un problème — annuler ce travail",
+    "openProvider": "Je ne peux pas faire ce travail — annuler"
   }
 }

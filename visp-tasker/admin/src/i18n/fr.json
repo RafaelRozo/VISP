@@ -326,7 +326,14 @@
     "expired": "EXPIRÉE",
     "expiredCannotApprove": "Cette police est expirée — demandez-en une à jour au prestataire.",
     "rejectExperiencePrompt": "Pourquoi est-ce rejeté ? (ex. illisible, incomplet — pas un jugement sur ses compétences)",
-    "rejectInsurancePrompt": "Pourquoi la police est-elle rejetée ? Le prestataire le verra."
+    "rejectInsurancePrompt": "Pourquoi la police est-elle rejetée ? Le prestataire le verra.",
+    "tabCancellations": "Annulations",
+    "cancellationsHelp": "L'annulation a déjà eu lieu et elle était gratuite. Ce que vous décidez ici, c'est si le signalement doit affecter la note de la personne visée. Un signalement est du bruit ; le même code trois fois sur la même personne est un motif.",
+    "reportedBy": "Signalé par",
+    "upholdWithImpact": "Confirmer + affecter la note",
+    "upholdNoImpact": "Confirmer seulement",
+    "dismiss": "Rejeter",
+    "upholdPrompt": "Note pour le dossier (facultatif) :"
   },
   "promotions": {
     "title": "Promotions",

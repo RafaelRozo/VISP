@@ -26,6 +26,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, Field
 
 from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.job import (
@@ -102,6 +103,128 @@ async def create_job(
         )
 
     return JobOut.model_validate(job)
+
+
+# ---------------------------------------------------------------------------
+# Cancelación con motivo (migración 041)
+# ---------------------------------------------------------------------------
+
+
+class CancelWithReasonRequest(BaseModel):
+    """Motivo cerrado + texto. El código permite contar patrones; el texto explica."""
+
+    reasonCode: str
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+@router.get(
+    "/cancel-reasons",
+    summary="Cancellation reasons available to the caller",
+    description=(
+        "Devuelve los motivos según el rol. Son cerrados a propósito: con texto "
+        "libre no se pueden contar patrones, y detectar al reincidente es el "
+        "valor real de esto."
+    ),
+)
+async def list_cancel_reasons(
+    user: CurrentUser,
+    role: str = Query("customer", pattern=r"^(customer|provider)$"),
+) -> dict[str, Any]:
+    from src.services.cancellation_service import reasons_for
+
+    return {
+        "data": [
+            {"code": c, "label": l} for c, l in reasons_for(role).items()
+        ]
+    }
+
+
+@router.post(
+    "/{job_id}/cancel-with-reason",
+    summary="Cancel an assigned job with a reason, at no cost",
+    description=(
+        "Cancela sin penalización y deja un reporte para que un admin lo revise.\n\n"
+        "NO afecta la calificación de nadie por sí solo: eso lo decide el admin. "
+        "Aplicarlo automáticamente convertiría el reporte en un arma contra quien "
+        "no puede defenderse."
+    ),
+)
+async def cancel_with_reason(
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+    body: CancelWithReasonRequest,
+) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+
+    from src.models.job import Job as JobModel
+    from src.models.provider import ProviderProfile
+    from src.services import cancellation_service as cancel_svc
+
+    job = (
+        await db.execute(sa_select(JobModel).where(JobModel.id == job_id))
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+
+    # El rol se DERIVA del trabajo, no se acepta del cliente: si viniera en el
+    # payload, cualquiera podría reportar como la otra parte.
+    #
+    # El proveedor NO está en `jobs`: se resuelve por la asignación aceptada.
+    if job.customer_id == user.id:
+        role = "customer"
+    else:
+        from src.models.job import AssignmentStatus, JobAssignment
+
+        profile = (
+            await db.execute(
+                sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+            )
+        ).scalar_one_or_none()
+        asignado = None
+        if profile is not None:
+            asignado = (
+                await db.execute(
+                    sa_select(JobAssignment).where(
+                        JobAssignment.job_id == job.id,
+                        JobAssignment.provider_id == profile.id,
+                        JobAssignment.status.in_(
+                            [AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED]
+                        ),
+                    )
+                )
+            ).scalar_one_or_none()
+        if asignado is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not part of this job.",
+            )
+        role = "provider"
+
+    try:
+        report = await cancel_svc.cancel_with_report(
+            db,
+            job=job,
+            reported_by=user.id,
+            reporter_role=role,
+            reason_code=body.reasonCode,
+            note=body.note,
+        )
+    except (cancel_svc.CancellationNotAllowedError, cancel_svc.InvalidReasonCodeError) as exc:
+        # 400 y no 5xx: Cloudflare envuelve los 5xx y el usuario no vería el motivo.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    await db.commit()
+    return {
+        "data": {
+            "jobId": str(job.id),
+            "status": job.status.value,
+            "reportId": str(report.id),
+            # Se dice explícitamente que no hay cargo: es la duda inmediata de
+            # quien acaba de cancelar.
+            "charged": False,
+        }
+    }
 
 
 # ---------------------------------------------------------------------------

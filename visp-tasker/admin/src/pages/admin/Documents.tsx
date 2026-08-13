@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   adminService,
+  CancellationReport,
   ExperienceRecord,
   InsurancePolicyRow,
   PendingCredential,
@@ -45,7 +46,9 @@ export default function Documents() {
   // Tres colas de validación distintas. Viven juntas porque el trabajo del
   // validador es el mismo —mirar un documento y decidir— pero cada una escribe
   // en una tabla distinta y desbloquea cosas distintas.
-  const [tab, setTab] = useState<'credentials' | 'experience' | 'insurance'>('credentials');
+  const [tab, setTab] = useState<
+    'credentials' | 'experience' | 'insurance' | 'cancellations'
+  >('credentials');
 
   const qExperience = useQuery<ExperienceRecord[]>({
     queryKey: ['experience-records'],
@@ -57,6 +60,22 @@ export default function Documents() {
     queryKey: ['insurance-policies'],
     queryFn: () => adminService.insurancePolicies('pending_review'),
     enabled: tab === 'insurance',
+  });
+
+  const qCancellations = useQuery<CancellationReport[]>({
+    queryKey: ['cancellation-reports'],
+    queryFn: () => adminService.cancellationReports('PENDING'),
+    enabled: tab === 'cancellations',
+  });
+
+  const reviewCancel = useMutation({
+    mutationFn: (v: {
+      id: string;
+      status: 'UPHELD' | 'DISMISSED';
+      ratingImpact: boolean;
+      adminNote?: string;
+    }) => adminService.reviewCancellation(v.id, v),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cancellation-reports'] }),
   });
 
   const validateExp = useMutation({
@@ -164,7 +183,87 @@ export default function Documents() {
           {t('documents.tabInsurance')}
           {qInsurance.data?.length ? ` (${qInsurance.data.length})` : ''}
         </Pill>
+        <Pill active={tab === 'cancellations'} onClick={() => setTab('cancellations')}>
+          {t('documents.tabCancellations')}
+          {qCancellations.data?.length ? ` (${qCancellations.data.length})` : ''}
+        </Pill>
       </div>
+
+      {/* ── Cancelaciones con motivo ─────────────────────────────────── */}
+      {tab === 'cancellations' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p className="t-lede" style={{ margin: 0 }}>
+            {t('documents.cancellationsHelp')}
+          </p>
+          {qCancellations.isLoading ? (
+            <div className="t-lede">{t('common.loading')}</div>
+          ) : (qCancellations.data ?? []).length === 0 ? (
+            <div className="t-lede">{t('documents.noneToReview')}</div>
+          ) : (
+            (qCancellations.data ?? []).map((r) => (
+              <div key={r.id} className="t-card" style={{ padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {r.taskName}{' '}
+                      <span className="t-chip t-chip-mono" style={{ fontSize: 10 }}>
+                        {r.referenceNumber}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--t-text-3)', marginTop: 4 }}>
+                      {t('documents.reportedBy')} {r.reporterName} ({r.reporterRole}) ·{' '}
+                      <span className="t-chip t-chip-mono">{r.reasonCode}</span>
+                    </div>
+                    {r.note && (
+                      <div style={{ fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>
+                        “{r.note}”
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexShrink: 0 }}>
+                    {/* Confirmar CON impacto es la única vía por la que se toca la
+                        calificación de alguien. Nunca ocurre solo. */}
+                    <button
+                      className="t-btn t-btn-primary t-btn-sm"
+                      disabled={reviewCancel.isPending}
+                      onClick={() => {
+                        const note = prompt(t('documents.upholdPrompt')) ?? '';
+                        reviewCancel.mutate({
+                          id: r.id,
+                          status: 'UPHELD',
+                          ratingImpact: true,
+                          adminNote: note.trim() || undefined,
+                        });
+                      }}
+                    >
+                      {t('documents.upholdWithImpact')}
+                    </button>
+                    <button
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      disabled={reviewCancel.isPending}
+                      onClick={() =>
+                        reviewCancel.mutate({ id: r.id, status: 'UPHELD', ratingImpact: false })
+                      }
+                    >
+                      {t('documents.upholdNoImpact')}
+                    </button>
+                    <button
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      style={{ color: 'var(--t-danger)' }}
+                      disabled={reviewCancel.isPending}
+                      onClick={() =>
+                        reviewCancel.mutate({ id: r.id, status: 'DISMISSED', ratingImpact: false })
+                      }
+                    >
+                      {t('documents.dismiss')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
 
       {/* ── Cola de EXPERIENCIA (L1) ────────────────────────────────── */}
       {tab === 'experience' ? (

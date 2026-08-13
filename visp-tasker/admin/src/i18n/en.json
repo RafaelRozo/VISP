@@ -326,7 +326,14 @@
     "expired": "EXPIRED",
     "expiredCannotApprove": "This policy has already expired — ask the provider for a current one.",
     "rejectExperiencePrompt": "Why is it rejected? (e.g. illegible, incomplete — not a judgement of their skills)",
-    "rejectInsurancePrompt": "Why is the policy rejected? The provider will see this."
+    "rejectInsurancePrompt": "Why is the policy rejected? The provider will see this.",
+    "tabCancellations": "Cancellations",
+    "cancellationsHelp": "The cancellation already happened and it was free. What you decide here is whether the report should affect the reported party's rating. One report is noise; the same code three times about the same person is a pattern.",
+    "reportedBy": "Reported by",
+    "upholdWithImpact": "Uphold + affect rating",
+    "upholdNoImpact": "Uphold only",
+    "dismiss": "Dismiss",
+    "upholdPrompt": "Note for the record (optional):"
   },
   "promotions": {
     "title": "Promotions",

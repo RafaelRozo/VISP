@@ -439,3 +439,47 @@ class JobEscalation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             f"<JobEscalation(id={self.id}, job={self.job_id}, "
             f"type={self.escalation_type}, resolved={self.resolved})>"
         )
+
+
+class JobCancellationReport(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Cancelación con motivo tras la llegada (migración 041).
+
+    La cancelación en sí es GRATIS e inmediata. Lo que se guarda aquí es el
+    reporte, y lo que el admin decide al revisarlo es si debe afectar la
+    calificación del otro — nunca automáticamente.
+    """
+
+    __tablename__ = "job_cancellation_reports"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
+    )
+    reported_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    # 'customer' | 'provider'. El mismo código significa cosas distintas según
+    # quién lo reporte.
+    reporter_role: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    reason_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # PENDING | UPHELD | DISMISSED
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="PENDING"
+    )
+    # Solo lo pone el admin. Marcarlo automáticamente convertiría el reporte en un
+    # arma contra la calificación del otro.
+    rating_impact: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    admin_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<JobCancellationReport(job={self.job_id}, {self.reporter_role}, "
+            f"{self.reason_code}, {self.status})>"
+        )

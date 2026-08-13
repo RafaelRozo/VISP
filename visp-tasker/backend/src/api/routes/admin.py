@@ -1281,6 +1281,106 @@ async def reject_experience_record(
 
 
 # ---------------------------------------------------------------------------
+# Cancelaciones con motivo — cola de revisión (migración 041)
+# ---------------------------------------------------------------------------
+#
+# La cancelación ya ocurrió y fue GRATIS. Lo que se decide aquí es si el reporte
+# debe afectar la calificación del reportado.
+#
+# Por qué pasa por un humano: cancelación gratis + daño automático a la
+# calificación, a partir de un texto que nadie verifica, es un arma. Quien se
+# arrepiente escribe "llegó borracho", cancela sin coste y hunde a un proveedor
+# honesto que no puede defenderse. Con L0/L1 y pocos trabajos, un golpe así pesa
+# muchísimo.
+
+
+class CancellationReviewRequest(_CamelModel):
+    """UPHELD = se le da la razón a quien reporta. DISMISSED = sin fundamento."""
+
+    status: str = Field(pattern=r"^(UPHELD|DISMISSED)$")
+    rating_impact: bool = False
+    admin_note: Optional[str] = None
+
+
+@router.get("/cancellation-reports", summary="Cancellations pending review")
+async def list_cancellation_reports(
+    db: DBSession,
+    admin: CurrentAdmin,
+    status_filter: Optional[str] = None,
+) -> dict[str, Any]:
+    from src.models.job import Job, JobCancellationReport
+    from src.models.taxonomy import ServiceTask
+
+    stmt = (
+        select(JobCancellationReport, Job, ServiceTask, User)
+        .join(Job, Job.id == JobCancellationReport.job_id)
+        .join(ServiceTask, ServiceTask.id == Job.task_id)
+        .join(User, User.id == JobCancellationReport.reported_by)
+        .order_by(JobCancellationReport.created_at.desc())
+    )
+    if status_filter:
+        stmt = stmt.where(JobCancellationReport.status == status_filter.upper())
+
+    rows = (await db.execute(stmt)).all()
+    return {
+        "data": [
+            {
+                "id": str(r.id),
+                "jobId": str(r.job_id),
+                "referenceNumber": j.reference_number,
+                "taskName": t.name,
+                "reporterRole": r.reporter_role,
+                "reporterName": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+                "reasonCode": r.reason_code,
+                "note": r.note,
+                "status": r.status,
+                "ratingImpact": r.rating_impact,
+                "adminNote": r.admin_note,
+                "createdAt": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r, j, t, u in rows
+        ]
+    }
+
+
+@router.post("/cancellation-reports/{report_id}/review")
+async def review_cancellation_report(
+    db: DBSession,
+    admin: CurrentAdmin,
+    report_id: uuid.UUID,
+    body: CancellationReviewRequest,
+) -> dict[str, Any]:
+    from src.models.job import JobCancellationReport
+
+    report = (
+        await db.execute(
+            select(JobCancellationReport).where(JobCancellationReport.id == report_id)
+        )
+    ).scalar_one_or_none()
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Report not found."
+        )
+
+    report.status = body.status
+    # Un reporte DESESTIMADO no puede afectar a nadie, diga lo que diga el resto
+    # del formulario. Se fuerza aquí para que un descuido de la UI no penalice a
+    # quien acaba de ser exonerado.
+    report.rating_impact = body.rating_impact if body.status == "UPHELD" else False
+    report.admin_note = (body.admin_note or "").strip() or None
+    report.reviewed_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return {
+        "data": {
+            "id": str(report.id),
+            "status": report.status,
+            "ratingImpact": report.rating_impact,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
 # Promotions
 # ---------------------------------------------------------------------------
 

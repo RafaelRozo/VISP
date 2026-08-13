@@ -337,6 +337,22 @@ export interface InsurancePolicyRow {
   createdAt: string | null;
 }
 
+/** Cancelación con motivo pendiente de revisar. */
+export interface CancellationReport {
+  id: string;
+  jobId: string;
+  referenceNumber: string;
+  taskName: string;
+  reporterRole: 'customer' | 'provider';
+  reporterName: string;
+  reasonCode: string;
+  note: string | null;
+  status: 'PENDING' | 'UPHELD' | 'DISMISSED';
+  ratingImpact: boolean;
+  adminNote: string | null;
+  createdAt: string | null;
+}
+
 /** Ontario driver's licence classes. Only G2 and G are used in practice. */
 export const LICENSE_CLASSES = ['G1', 'G2', 'G', 'A', 'AR', 'D', 'B', 'C', 'E', 'F'] as const;
 export type LicenseClass = (typeof LICENSE_CLASSES)[number];
@@ -459,6 +475,24 @@ export const adminService = {
 
   rejectCredential: (id: string, note: string) =>
     apiPost<{ id: string; status: string }>(`/admin/credentials/${id}/reject`, { note }),
+
+  // ── Cancelaciones con motivo ──
+  // La cancelación ya ocurrió y fue gratis. Aquí se decide si el reporte debe
+  // afectar la calificación del reportado — nunca es automático.
+  cancellationReports: (status?: string) =>
+    apiGet<CancellationReport[]>(
+      '/admin/cancellation-reports',
+      status ? { status_filter: status } : undefined,
+    ),
+
+  reviewCancellation: (
+    id: string,
+    body: { status: 'UPHELD' | 'DISMISSED'; ratingImpact: boolean; adminNote?: string },
+  ) =>
+    apiPost<{ id: string; status: string; ratingImpact: boolean }>(
+      `/admin/cancellation-reports/${id}/review`,
+      body,
+    ),
 
   // ── Expediente de experiencia (L1) ──
   // La validación es DOCUMENTAL, no de competencia: se confirma que la evidencia
