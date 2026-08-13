@@ -52,6 +52,8 @@ interface TaskState {
   details: string;
   evidence: string[];
   extraNote: string;
+  /** Respuestas a las preguntas del servicio, indexadas por questionId. */
+  answers: Record<string, string>;
 
   // Loading flags
   isLoadingCategories: boolean;
@@ -81,6 +83,7 @@ interface TaskState {
   setFlexibleSchedule: (flexible: boolean) => void;
   setPriority: (priority: PriorityLevel) => void;
   setDetails: (details: string) => void;
+  setAnswer: (questionId: string, answer: string) => void;
   setExtraNote: (note: string) => void;
   addEvidence: (urls: string[]) => void;
   removeEvidence: (url: string) => void;
@@ -107,6 +110,7 @@ const initialBookingState = {
   details: '',
   evidence: [] as string[],
   extraNote: '',
+  answers: {} as Record<string, string>,
 };
 
 const initialState = {
@@ -270,6 +274,9 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
       details: state.details.trim() || undefined,
       evidence: state.evidence.length > 0 ? state.evidence : undefined,
       extraNote: state.extraNote.trim() || undefined,
+      answers: Object.entries(state.answers)
+        .filter(([, v]) => (v ?? '').trim() !== '')
+        .map(([questionId, answer]) => ({ questionId, answer: answer.trim() })),
     };
 
     set({ isSubmittingBooking: true, error: null });
@@ -292,6 +299,7 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
         details: '',
         evidence: [],
         extraNote: '',
+        answers: {},
       });
       return { bookingId: result.bookingId };
     } catch (err: unknown) {
@@ -325,6 +333,10 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
 
   setDetails: (details: string) => {
     set({ details });
+  },
+
+  setAnswer: (questionId: string, answer: string) => {
+    set({ answers: { ...getState().answers, [questionId]: answer } });
   },
 
   setExtraNote: (extraNote: string) => {

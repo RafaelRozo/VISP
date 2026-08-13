@@ -190,6 +190,15 @@ interface BackendTaskDetail extends BackendTask {
   requires_evidence?: boolean;
   details_prompt_en?: string | null;
   details_prompt_fr?: string | null;
+  questions?: {
+    id: string;
+    question_en: string;
+    question_fr?: string | null;
+    answer_type?: 'TEXT' | 'SINGLE_CHOICE';
+    options?: { en: string; fr?: string }[];
+    is_required?: boolean;
+    display_order?: number;
+  }[];
   // Detail endpoint returns nested category object instead of category_id
   category?: { id: string; slug: string; name: string; icon_url?: string | null };
 }
@@ -221,6 +230,15 @@ function mapTaskDetail(task: BackendTaskDetail): ServiceTaskDetail {
     requiresEvidence: task.requires_evidence ?? false,
     detailsPromptEn: task.details_prompt_en ?? null,
     detailsPromptFr: task.details_prompt_fr ?? null,
+    questions: (task.questions ?? []).map((q) => ({
+      id: q.id,
+      questionEn: q.question_en,
+      questionFr: q.question_fr ?? null,
+      answerType: q.answer_type ?? 'TEXT',
+      options: q.options ?? [],
+      isRequired: q.is_required ?? true,
+      displayOrder: q.display_order ?? 0,
+    })),
   };
 }
 
@@ -375,6 +393,8 @@ async function createBooking(
     details: request.details || undefined,
     evidence: (request.evidence && request.evidence.length > 0) ? request.evidence : undefined,
     extraNote: request.extraNote || undefined,
+    answers:
+      request.answers && request.answers.length > 0 ? request.answers : undefined,
   };
 
   console.log('[taskService] createBooking payload:', JSON.stringify(payload));

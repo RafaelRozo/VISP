@@ -77,6 +77,8 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     extraNote,
     setDetails,
     setExtraNote,
+    answers,
+    setAnswer,
     addEvidence,
     removeEvidence,
   } = useTaskStore();
@@ -96,9 +98,20 @@ export default function BookingDetailsScreen(): React.JSX.Element {
       'Describe the size and access for this service — rooms, area, floor, pets, how we get in.';
   }, [taskDetail?.detailsPromptEn, tr]);
 
+  const questions = useMemo(
+    () => [...(taskDetail?.questions ?? [])].sort((a, b) => a.displayOrder - b.displayOrder),
+    [taskDetail?.questions],
+  );
+
   const detailsMissing = requiresDetails && details.trim() === '';
   const evidenceMissing = requiresEvidence && evidence.length === 0;
-  const canContinue = !detailsMissing && !evidenceMissing && !uploading;
+  // Una obligatoria sin responder bloquea igual que los detalles: el backend la
+  // rechaza con 400, así que es mejor no dejar avanzar y perder el recorrido.
+  const unansweredRequired = questions.filter(
+    (q) => q.isRequired && (answers[q.id] ?? '').trim() === '',
+  );
+  const canContinue =
+    !detailsMissing && !evidenceMissing && unansweredRequired.length === 0 && !uploading;
 
   const handleAddPhotos = useCallback(async () => {
     const remaining = MAX_PHOTOS - evidence.length;
@@ -207,6 +220,89 @@ export default function BookingDetailsScreen(): React.JSX.Element {
             {details.length}/4000
           </Text>
         </View>
+
+        {/* ── Preguntas del servicio (migraciones 039/040) ───────────
+            Texto libre -> textarea. Opción cerrada -> botones de una sola
+            selección: en un móvil, tocar una opción es más rápido y menos
+            propenso a error que escribir, y la respuesta queda comparable. */}
+        {questions.length > 0 ? (
+          <>
+            <View style={styles.sectionGap} />
+            {questions.map((q) => {
+              const valor = answers[q.id] ?? '';
+              const falta = q.isRequired && valor.trim() === '';
+              return (
+                <View key={q.id} style={styles.questionBlock}>
+                  <Eyebrow>
+                    {q.questionEn.toUpperCase()}
+                    {q.isRequired ? ' *' : ''}
+                  </Eyebrow>
+
+                  {q.answerType === 'SINGLE_CHOICE' ? (
+                    <View style={styles.choiceRow}>
+                      {(q.options ?? []).map((opt) => {
+                        const activo = valor === opt.en;
+                        return (
+                          <Pressable
+                            key={opt.en}
+                            onPress={() => setAnswer(q.id, activo ? '' : opt.en)}
+                            style={[
+                              styles.choice,
+                              {
+                                borderColor: activo
+                                  ? t.violet
+                                  : falta
+                                    ? t.danger
+                                    : t.border,
+                                backgroundColor: activo ? t.violetDim : t.surface,
+                              },
+                            ]}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: activo }}
+                          >
+                            <Text
+                              style={[
+                                VispText.body,
+                                { color: activo ? t.text : t.text2 },
+                              ]}
+                            >
+                              {opt.en}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.inputNote,
+                        {
+                          color: t.text,
+                          backgroundColor: t.surface,
+                          borderColor: falta ? t.danger : t.border,
+                        },
+                      ]}
+                      value={valor}
+                      onChangeText={(txt) => setAnswer(q.id, txt)}
+                      placeholder={tr('bookingDetails.answerPlaceholder') || 'Your answer'}
+                      placeholderTextColor={t.text3}
+                      multiline
+                      maxLength={2000}
+                      textAlignVertical="top"
+                    />
+                  )}
+
+                  {falta ? (
+                    <Text style={[VispText.eyebrow, { color: t.danger, marginTop: 6 }]}>
+                      {tr('bookingDetails.answerRequired') || 'This answer is required.'}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </>
+        ) : null}
 
         {/* ── 2. Evidencia ──────────────────────────────────────────── */}
         <View style={styles.sectionGap} />
@@ -327,6 +423,14 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   sectionGap: { height: 26 },
+  questionBlock: { marginBottom: 18 },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  choice: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: VispRadius.pill,
+    borderWidth: 1,
+  },
   input: {
     borderWidth: 1,
     borderRadius: VispRadius.card,

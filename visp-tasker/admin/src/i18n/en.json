@@ -314,7 +314,19 @@
     "approveSuccess": "Document approved.",
     "rejectSuccess": "Document rejected.",
     "errorAction": "Could not save the action.",
-    "matchCount": "Showing {{shown}} of {{total}}"
+    "matchCount": "Showing {{shown}} of {{total}}",
+    "tabCredentials": "Credentials",
+    "tabExperience": "Experience (L1)",
+    "tabInsurance": "Insurance",
+    "experienceHelp": "Providers upload a CV, reference letters and photos of previous work to unlock Level 1. You are checking that the document is complete and legible — NOT judging whether they are good at the job.",
+    "insuranceHelp": "Verify the policy against the certificate: insurer, number, coverage and dates. Approving it unlocks every service that requires insurance for this provider.",
+    "noneToReview": "Nothing waiting for review.",
+    "validate": "Validate",
+    "approve": "Approve",
+    "expired": "EXPIRED",
+    "expiredCannotApprove": "This policy has already expired — ask the provider for a current one.",
+    "rejectExperiencePrompt": "Why is it rejected? (e.g. illegible, incomplete — not a judgement of their skills)",
+    "rejectInsurancePrompt": "Why is the policy rejected? The provider will see this."
   },
   "promotions": {
     "title": "Promotions",

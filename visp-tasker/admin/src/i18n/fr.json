@@ -314,7 +314,19 @@
     "approveSuccess": "Document approuvé.",
     "rejectSuccess": "Document rejeté.",
     "errorAction": "Impossible d'enregistrer l'action.",
-    "matchCount": "Affichage de {{shown}} sur {{total}}"
+    "matchCount": "Affichage de {{shown}} sur {{total}}",
+    "tabCredentials": "Titres",
+    "tabExperience": "Expérience (N1)",
+    "tabInsurance": "Assurance",
+    "experienceHelp": "Les prestataires téléversent un CV, des lettres de référence et des photos de travaux pour débloquer le niveau 1. Vous vérifiez que le document est complet et lisible — vous ne jugez PAS leurs compétences.",
+    "insuranceHelp": "Vérifiez la police avec le certificat : assureur, numéro, couverture et dates. L'approuver débloque tous les services exigeant une assurance pour ce prestataire.",
+    "noneToReview": "Rien à examiner.",
+    "validate": "Valider",
+    "approve": "Approuver",
+    "expired": "EXPIRÉE",
+    "expiredCannotApprove": "Cette police est expirée — demandez-en une à jour au prestataire.",
+    "rejectExperiencePrompt": "Pourquoi est-ce rejeté ? (ex. illisible, incomplet — pas un jugement sur ses compétences)",
+    "rejectInsurancePrompt": "Pourquoi la police est-elle rejetée ? Le prestataire le verra."
   },
   "promotions": {
     "title": "Promotions",

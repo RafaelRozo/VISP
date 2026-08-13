@@ -62,6 +62,7 @@ import {
 } from '../../types';
 import { get, post } from '../../services/apiClient';
 import { userService, resolveAvatarUrl } from '../../services/userService';
+import { providerService } from '../../services/providerService';
 import { useAuthStore } from '../../stores/authStore';
 import { useProviderStore } from '../../stores/providerStore';
 
@@ -122,6 +123,34 @@ export default function ProfileScreen(): React.JSX.Element {
   const [editFirst, setEditFirst] = useState('');
   const [editLast, setEditLast] = useState('');
   const [savingName, setSavingName] = useState(false);
+  // Modal de bio. Vive en Profile y NO en Verification a propósito: es lo que el
+  // proveedor dice de sí mismo, no un documento que VISP verifica. Ponerlo entre
+  // las credenciales sugeriría que VISP avala el texto.
+  const [bioOpen, setBioOpen] = useState(false);
+  const [bioText, setBioText] = useState('');
+  const [providerBio, setProviderBio] = useState<string | null>(null);
+  const [savingBio, setSavingBio] = useState(false);
+
+  const openEditBio = useCallback(() => {
+    setBioText(providerBio ?? '');
+    setBioOpen(true);
+  }, [providerBio]);
+
+  const saveBio = useCallback(async () => {
+    setSavingBio(true);
+    try {
+      await providerService.updateProfileSummary({ bio: bioText.trim() });
+      setProviderBio(bioText.trim());
+      setBioOpen(false);
+    } catch {
+      Alert.alert(
+        tr('common.error') || 'Error',
+        tr('profileScreen.bioSaveFailed') || 'Could not save your summary. Try again.',
+      );
+    } finally {
+      setSavingBio(false);
+    }
+  }, [bioText, tr]);
 
   const openEditName = useCallback(() => {
     setEditFirst(user?.firstName ?? '');
@@ -287,6 +316,24 @@ export default function ProfileScreen(): React.JSX.Element {
   useEffect(() => {
     fetchPaymentMethods();
   }, [fetchPaymentMethods]);
+
+  // Bio del proveedor. Si falla, el menú muestra el texto de "vacío" en vez de
+  // romper la pantalla entera de Perfil por un campo secundario.
+  useEffect(() => {
+    if (!isProvider) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const data = await get<{ bio?: string | null }>('/provider/profile');
+        if (vivo) setProviderBio(data?.bio ?? null);
+      } catch {
+        if (vivo) setProviderBio(null);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [isProvider]);
 
   const handleAddCard = useCallback(async () => {
     try {
@@ -489,6 +536,17 @@ export default function ProfileScreen(): React.JSX.Element {
                 onPress={() => navigation.navigate('ProviderOnboarding')}
               />
               <MenuItem
+                icon="user"
+                title={tr('profileScreen.aboutMe') || 'About me'}
+                sub={
+                  providerBio
+                    ? providerBio.slice(0, 60) + (providerBio.length > 60 ? '…' : '')
+                    : tr('profileScreen.aboutMeEmpty') || 'Customers see this before choosing you'
+                }
+                accent
+                onPress={openEditBio}
+              />
+              <MenuItem
                 icon="money"
                 title={tr('myPricesScreen.title') || 'My Prices'}
                 accent
@@ -597,6 +655,66 @@ export default function ProfileScreen(): React.JSX.Element {
                 disabled={savingName}
               >
                 {savingName ? (
+                  <AnimatedSpinner size={18} color={t.bg} />
+                ) : (
+                  <Text style={[VispText.chip, { color: t.bg }]}>{tr('common.save') || 'Save'}</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Bio del proveedor: resumen que el cliente lee en el Radar antes de
+          elegirlo. El backend (PATCH /provider/profile) existía desde julio sin
+          editor en la app. */}
+      <Modal visible={bioOpen} transparent animationType="fade" onRequestClose={() => setBioOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => !savingBio && setBioOpen(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.border }]} onPress={() => {}}>
+            <Text style={[VispText.headlineMid, { color: t.text, marginBottom: 6 }]}>
+              {tr('profileScreen.aboutMe') || 'About me'}
+            </Text>
+            <Text style={[VispText.body, { color: t.text3, marginBottom: 12 }]}>
+              {tr('profileScreen.aboutMeHelp') ||
+                'A short summary customers read before choosing you. Your experience, what you are good at, how you work.'}
+            </Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  color: t.text, borderColor: t.border, backgroundColor: t.deep,
+                  minHeight: 120, paddingTop: 12,
+                },
+              ]}
+              value={bioText}
+              onChangeText={setBioText}
+              placeholder={
+                tr('profileScreen.aboutMePlaceholder') ||
+                'e.g. Ten years doing residential cleaning in the GTA. I bring my own supplies and I am used to homes with pets.'
+              }
+              placeholderTextColor={t.text4}
+              editable={!savingBio}
+              multiline
+              maxLength={1000}
+              textAlignVertical="top"
+            />
+            <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 6, textAlign: 'right' }]}>
+              {bioText.length}/1000
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <Pressable
+                style={[styles.modalBtn, { borderColor: t.border, flex: 1 }]}
+                onPress={() => setBioOpen(false)}
+                disabled={savingBio}
+              >
+                <Text style={[VispText.chip, { color: t.text2 }]}>{tr('common.cancel') || 'Cancel'}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, { backgroundColor: t.text, borderColor: t.text, flex: 1, opacity: savingBio ? 0.6 : 1 }]}
+                onPress={saveBio}
+                disabled={savingBio}
+              >
+                {savingBio ? (
                   <AnimatedSpinner size={18} color={t.bg} />
                 ) : (
                   <Text style={[VispText.chip, { color: t.bg }]}>{tr('common.save') || 'Save'}</Text>

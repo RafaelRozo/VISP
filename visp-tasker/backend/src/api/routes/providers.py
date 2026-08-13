@@ -1415,6 +1415,35 @@ class ProviderProfilePatch(BaseModel):
     yearsExperience: Optional[int] = None
 
 
+@router.get("/profile", summary="Read provider profile summary (bio, years)")
+async def get_provider_profile_summary(
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    """Simétrico del PATCH. Existía el de escritura pero no el de lectura, así que
+    la app no podía precargar la bio en su editor."""
+    from sqlalchemy import select as sa_select
+
+    from src.models.provider import ProviderProfile
+
+    profile = (
+        await db.execute(
+            sa_select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have a provider profile.",
+        )
+    return {
+        "data": {
+            "bio": profile.bio,
+            "yearsExperience": profile.years_experience,
+        }
+    }
+
+
 @router.patch("/profile", summary="Update provider profile summary (bio, years)")
 async def update_provider_profile(
     db: DBSession,
@@ -1776,7 +1805,11 @@ async def get_service_catalog(
         ServiceCategory,
         ServiceTask,
     )
-    from src.services.provider_level_service import task_qualifies
+    from src.services.provider_level_service import (
+        provider_has_valid_insurance,
+        task_qualifies,
+        tasks_requiring_insurance,
+    )
 
     profile = (
         await db.execute(
@@ -1810,10 +1843,23 @@ async def get_service_catalog(
         )
     ).all()
 
+    # Gate de seguro POR SERVICIO. Se resuelve en DOS consultas para todo el
+    # catálogo (qué servicios lo exigen + si el proveedor tiene póliza), no una
+    # por servicio: son 147 servicios y esta pantalla se abre a menudo.
+    insurance_tasks = await tasks_requiring_insurance(db, [t.id for t, _ in rows])
+    has_insurance = (
+        await provider_has_valid_insurance(db, profile.id) if profile else False
+    )
+
     items: list[dict[str, Any]] = []
     for task, cat in rows:
         gated = cat.requires_credential
-        can_offer = task_qualifies(current_level, task.level, gated)
+        needs_insurance = task.id in insurance_tasks
+        # Sin póliza vigente NO se puede ofrecer un servicio que la exige. Se
+        # informa aquí además de bloquearlo al guardar, para que el proveedor
+        # entienda POR QUÉ está bloqueado en vez de ver un error al final.
+        insurance_missing = needs_insurance and not has_insurance
+        can_offer = task_qualifies(current_level, task.level, gated) and not insurance_missing
         if task.base_price_min_cents and task.base_price_max_cents:
             lo = task.base_price_min_cents // 100
             hi = task.base_price_max_cents // 100
@@ -1834,7 +1880,10 @@ async def get_service_catalog(
             "requiresCredential": gated,
             "helpMessageEn": cat.help_message_en,
             "helpMessageFr": cat.help_message_fr,
-            "locked": gated and not can_offer,
+            "locked": (gated and not can_offer) or insurance_missing,
+            # La app usa esto para explicar el candado y ofrecer subir la póliza.
+            "requiresInsurance": needs_insurance,
+            "insuranceMissing": insurance_missing,
         })
     return items
 
@@ -1900,7 +1949,11 @@ async def update_services(
 
     # 2. Fetch task definitions + their section (gating lives on the section now)
     from src.models.taxonomy import ServiceCategory
-    from src.services.provider_level_service import task_qualifies
+    from src.services.provider_level_service import (
+        provider_has_valid_insurance,
+        task_qualifies,
+        tasks_requiring_insurance,
+    )
 
     task_stmt = (
         sa_select(ServiceTask, ServiceCategory)
@@ -1909,6 +1962,13 @@ async def update_services(
     )
     rows = (await db.execute(task_stmt)).all()
 
+    # Gate de seguro. Se aplica también AQUÍ y no solo en el listado: el listado
+    # es informativo y un cliente podría mandar el POST directamente con un
+    # servicio bloqueado. La cualificación es lo que el matching lee, así que es
+    # el único sitio donde el gate cuenta de verdad.
+    insurance_tasks = await tasks_requiring_insurance(db, [t.id for t, _ in rows])
+    has_insurance = await provider_has_valid_insurance(db, provider_id)
+
     # 3. Create new qualifications. A service is just an "I offer this" checkbox;
     #    whether it's immediately active depends on the provider's level vs the
     #    SECTION's gating (section-based model, migration 029). Providers in a
@@ -1916,8 +1976,14 @@ async def update_services(
     #    section document is approved (which flips their level + re-grants).
     now = datetime.now(timezone.utc)
     for task, category in rows:
-        is_qualified = task_qualifies(
-            profile.current_level, task.level, category.requires_credential
+        # Un servicio que exige seguro sin póliza vigente se guarda como elegido
+        # pero NO cualificado: el proveedor lo ve en su lista con el motivo, y el
+        # matching no se lo ofrece. Al verificarse la póliza,
+        # `recompute_level_and_qualifications` lo activa solo.
+        insurance_ok = task.id not in insurance_tasks or has_insurance
+        is_qualified = (
+            task_qualifies(profile.current_level, task.level, category.requires_credential)
+            and insurance_ok
         )
         qual = ProviderTaskQualification(
             provider_id=provider_id,

@@ -359,7 +359,12 @@
     "stripeConnectContinueButton": "Continue Setup",
     "stripeConnectCheckButton": "Check Status",
     "stripeConnectError": "Could not start Stripe setup. Please try again.",
-    "companySection": "Company"
+    "companySection": "Company",
+    "aboutMe": "About me",
+    "aboutMeEmpty": "Customers see this before choosing you",
+    "aboutMeHelp": "A short summary customers read before choosing you. Your experience, what you are good at, how you work.",
+    "aboutMePlaceholder": "e.g. Ten years doing residential cleaning in the GTA. I bring my own supplies and I am used to homes with pets.",
+    "bioSaveFailed": "Could not save your summary. Try again."
   },
   "settings": {
     "notifications": "Notifications",
@@ -665,6 +670,13 @@
     "uploadFailedBody": "The photos could not be uploaded. Check your connection and try again.",
     "noteLabel": "Anything else",
     "noteHelp": "Optional. Anything that does not fit above — a nervous dog, a tricky gate.",
-    "notePlaceholder": "Optional note"
+    "notePlaceholder": "Optional note",
+    "answerPlaceholder": "Your answer",
+    "answerRequired": "This answer is required."
+  },
+  "serviceCatalog": {
+    "insuranceNeededTitle": "Insurance required",
+    "insuranceNeededBody": "This service requires commercial general liability insurance. Add your policy in Verification — once VISP verifies it, the service unlocks on its own.",
+    "insuranceLock": "Insurance"
   }
 }

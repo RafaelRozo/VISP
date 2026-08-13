@@ -305,6 +305,10 @@ export interface ServiceCatalogItem {
   requiresCredential: boolean;   // the section needs a document
   helpMessageEn: string | null;  // per-section upload instructions
   helpMessageFr: string | null;
+  /** El servicio exige seguro CGL (checkbox del admin). */
+  requiresInsurance?: boolean;
+  /** Lo exige y el proveedor no tiene póliza vigente: por eso está bloqueado. */
+  insuranceMissing?: boolean;
   locked: boolean;               // gated section not yet unlocked at this level
 }
 
@@ -556,6 +560,25 @@ export interface ServiceTaskDetail extends ServiceTask {
   /** Placeholder por servicio. Guía a describir escala y acceso, no a pedir extras. */
   detailsPromptEn?: string | null;
   detailsPromptFr?: string | null;
+  /** Preguntas que el cliente responde al reservar (migraciones 039/040). */
+  questions?: ServiceQuestion[];
+}
+
+/** Opción de una pregunta cerrada. EN y FR en el mismo objeto. */
+export interface ServiceQuestionOption {
+  en: string;
+  fr?: string;
+}
+
+export interface ServiceQuestion {
+  id: string;
+  questionEn: string;
+  questionFr?: string | null;
+  /** TEXT = textarea libre. SINGLE_CHOICE = elegir una de `options`. */
+  answerType: 'TEXT' | 'SINGLE_CHOICE';
+  options: ServiceQuestionOption[];
+  isRequired: boolean;
+  displayOrder: number;
 }
 
 export interface PredefinedNote {
@@ -593,6 +616,8 @@ export interface BookingRequest {
   details?: string;
   evidence?: string[];
   extraNote?: string;
+  /** [{questionId, answer}] — el backend valida contra la tabla de preguntas. */
+  answers?: { questionId: string; answer: string }[];
 }
 
 export interface AddressInfo {

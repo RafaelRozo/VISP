@@ -359,7 +359,12 @@
     "stripeConnectContinueButton": "Continuer la configuration",
     "stripeConnectCheckButton": "Vérifier le statut",
     "stripeConnectError": "Impossible de démarrer la configuration Stripe. Veuillez réessayer.",
-    "companySection": "Entreprise"
+    "companySection": "Entreprise",
+    "aboutMe": "À propos de moi",
+    "aboutMeEmpty": "Les clients le voient avant de vous choisir",
+    "aboutMeHelp": "Un court résumé que les clients lisent avant de vous choisir. Votre expérience, vos points forts, votre façon de travailler.",
+    "aboutMePlaceholder": "ex. Dix ans de ménage résidentiel dans le Grand Toronto. J'apporte mes produits et j'ai l'habitude des maisons avec animaux.",
+    "bioSaveFailed": "Impossible d'enregistrer votre résumé. Réessayez."
   },
   "settings": {
     "notifications": "Notifications",
@@ -665,6 +670,13 @@
     "uploadFailedBody": "Les photos n'ont pas pu être envoyées. Vérifiez votre connexion et réessayez.",
     "noteLabel": "Autre chose",
     "noteHelp": "Facultatif. Tout ce qui n'entre pas ci-dessus — un chien craintif, un portail difficile.",
-    "notePlaceholder": "Note facultative"
+    "notePlaceholder": "Note facultative",
+    "answerPlaceholder": "Votre réponse",
+    "answerRequired": "Cette réponse est obligatoire."
+  },
+  "serviceCatalog": {
+    "insuranceNeededTitle": "Assurance requise",
+    "insuranceNeededBody": "Ce service exige une assurance responsabilité civile commerciale. Ajoutez votre police dans Vérification — dès que VISP la valide, le service se débloque tout seul.",
+    "insuranceLock": "Assurance"
   }
 }

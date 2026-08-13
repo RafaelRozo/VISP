@@ -91,6 +91,46 @@ export const providerService = {
      * @param type Credential type (license, certification, etc.)
      * @param taskId Optional task ID to associate the credential with
      */
+    /**
+     * Sube un documento del EXPEDIENTE DE EXPERIENCIA (L1): CV, carta de
+     * recomendación o fotos de trabajos previos.
+     *
+     * Va al endpoint de experiencia, NO al de credenciales: son cosas distintas
+     * y el admin las valida en colas distintas. Antes la app mandaba los tres
+     * como un `portfolio` genérico y quien validaba veía tres tipos de documento
+     * etiquetados igual.
+     *
+     * Subir dos veces el mismo tipo REEMPLAZA el anterior y vuelve a PENDING.
+     */
+    uploadExperience: async (
+        file: { uri: string; type?: string; name?: string },
+        kind: 'resume' | 'recommendation_letter' | 'work_photos',
+        title?: string,
+    ): Promise<void> => {
+        const formData = new FormData();
+        formData.append('file', {
+            uri: file.uri,
+            type: file.type || 'image/jpeg',
+            name: file.name || 'evidence.jpg',
+        } as any);
+        formData.append('kind', kind);
+        if (title) formData.append('title', title);
+        await upload('/provider/experience', formData);
+    },
+
+    /** Documentos del expediente de experiencia y su estado de validación. */
+    getExperience: async (): Promise<
+        {
+            id: string;
+            kind: string;
+            title: string | null;
+            status: string;
+            rejectionReason: string | null;
+        }[]
+    > => {
+        return await get('/provider/experience');
+    },
+
     uploadCredential: async (
         file: any,
         type: string,

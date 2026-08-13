@@ -126,9 +126,23 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
     );
   }, [gateItem, language, t]);
 
-  const openGate = useCallback((item: ServiceCatalogItem) => {
-    setGateItem(item);
-  }, []);
+  const openGate = useCallback(
+    (item: ServiceCatalogItem) => {
+      // Un candado por SEGURO no se abre subiendo el documento de sección: hace
+      // falta la póliza, que se carga en Verification. Mandar al proveedor al
+      // popup equivocado lo dejaría subiendo archivos que no desbloquean nada.
+      if (item.insuranceMissing) {
+        Alert.alert(
+          t('serviceCatalog.insuranceNeededTitle') || 'Insurance required',
+          t('serviceCatalog.insuranceNeededBody') ||
+            'This service requires commercial general liability insurance. Add your policy in Verification — once VISP verifies it, the service unlocks on its own.',
+        );
+        return;
+      }
+      setGateItem(item);
+    },
+    [t],
+  );
 
   const uploadSectionDoc = useCallback(async () => {
     if (!gateItem) return;
@@ -255,7 +269,11 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
                   style={[styles.lockPill, { borderColor: Colors.primary + '60' }]}
                   accessibilityLabel="Locked — upload section document"
                 >
-                  <Text style={[styles.lockPillText, { color: Colors.primary }]}>🔒 Unlock</Text>
+                  <Text style={[styles.lockPillText, { color: Colors.primary }]}>
+                    {item.insuranceMissing
+                      ? `🔒 ${t('serviceCatalog.insuranceLock') || 'Insurance'}`
+                      : '🔒 Unlock'}
+                  </Text>
                 </TouchableOpacity>
               ) : (
                 <Switch

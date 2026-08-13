@@ -194,8 +194,19 @@ async def recompute_level_and_qualifications(
         )
     ).all()
 
+    # Gate de seguro por servicio. Va AQUÍ y no solo en las rutas porque esta
+    # función es la que corre cuando el admin aprueba o rechaza una póliza: si no
+    # lo mirara, aprobar el seguro no desbloquearía nada y rechazarlo dejaría los
+    # servicios abiertos. Es el punto donde se cierra el ciclo.
+    insurance_tasks = await tasks_requiring_insurance(db, [task.id for _, task, _ in rows])
+    has_insurance = await provider_has_valid_insurance(db, provider_id)
+
     for qual, task, category in rows:
-        should = task_qualifies(level, task.level, category.requires_credential)
+        insurance_ok = task.id not in insurance_tasks or has_insurance
+        should = (
+            task_qualifies(level, task.level, category.requires_credential)
+            and insurance_ok
+        )
         if qual.qualified != should:
             qual.qualified = should
             qual.qualified_at = now if should else None

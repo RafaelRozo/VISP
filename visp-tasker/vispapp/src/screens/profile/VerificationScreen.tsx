@@ -46,6 +46,11 @@ interface VerificationStep {
   description: string;
   credentialType: CredentialType | null;
   /**
+   * Cuando viene, el documento va al EXPEDIENTE DE EXPERIENCIA (L1) y no a
+   * credenciales: son colas de validación distintas en el admin.
+   */
+  experienceKind?: 'resume' | 'recommendation_letter' | 'work_photos';
+  /**
    * Level this document unlocks, or `null` when it is not tied to a level at all.
    * Two documents are levelless by design (client decision 2026-08-10):
    *   - the driver's licence, which every provider uploads as base ID;
@@ -72,6 +77,20 @@ const LEVEL_NAMES: Record<number, string> = {
 
 /** Highest level a provider can reach in the v1 beta. L2/L3 are on stand-by. */
 const MAX_LEVEL_V1 = 1;
+
+/** Traduce el estado de un documento del expediente al del paso visual. */
+function experienceStatus(
+  records: { kind: string; status: string }[],
+  kind: string,
+): VerificationStep['status'] {
+  const r = records.find((x) => x.kind === kind);
+  if (!r) return 'not_started';
+  const s = (r.status || '').toLowerCase();
+  if (s === 'validated') return 'completed';
+  if (s === 'rejected') return 'failed';
+  return 'in_progress';
+}
+
 
 function getStepStatusConfig(status: string): {
   label: string;
@@ -377,6 +396,15 @@ export default function VerificationScreen(): React.JSX.Element {
       setCredentials(data.credentials);
       setCurrentLevel(data.currentLevel);
 
+      // El expediente vive en otra tabla y otro endpoint: si falla, los pasos de
+      // experiencia salen como "no empezado" en vez de tumbar la pantalla.
+      let experience: { kind: string; status: string }[] = [];
+      try {
+        experience = await providerService.getExperience();
+      } catch {
+        experience = [];
+      }
+
       // Steps for the v1 beta (L0/L1 only — client decision 2026-08-10).
       // See visp-tasker/docs/plan-v1-l0-l1-ontario.md §7 WP1.
       const verificationSteps: VerificationStep[] = [
@@ -400,14 +428,39 @@ export default function VerificationScreen(): React.JSX.Element {
           tagLabel: 'All providers',
           status: getCredentialStepStatus(data.credentials, 'drivers_license'),
         },
+        // Expediente de experiencia (L1): TRES documentos distintos, no uno.
+        // Antes los tres se mandaban como un 'portfolio' genérico y quien
+        // validaba en el admin veía un CV, una carta y unas fotos etiquetados
+        // igual, sin poder distinguirlos.
         {
-          id: 'portfolio',
-          title: 'Portfolio / Work History',
+          id: 'exp_resume',
+          title: 'CV / Résumé',
           description:
-            'Show your experience with photos of completed work, references or training, together with your bio. VISP checks that the documents are complete and legitimate — this unlocks Level 1 for the categories you submit.',
-          credentialType: 'portfolio',
+            'Upload your CV. VISP checks that the document is complete and legible — it does not judge your skills.',
+          credentialType: null,
+          experienceKind: 'resume',
           requiredForLevel: 1,
-          status: getCredentialStepStatus(data.credentials, 'portfolio'),
+          status: experienceStatus(experience, 'resume'),
+        },
+        {
+          id: 'exp_letters',
+          title: 'Reference letters',
+          description:
+            'Letters of recommendation from previous clients or employers.',
+          credentialType: null,
+          experienceKind: 'recommendation_letter',
+          requiredForLevel: 1,
+          status: experienceStatus(experience, 'recommendation_letter'),
+        },
+        {
+          id: 'exp_photos',
+          title: 'Photos of previous work',
+          description:
+            'Pictures of jobs you have completed. They are what a customer looks at first.',
+          credentialType: null,
+          experienceKind: 'work_photos',
+          requiredForLevel: 1,
+          status: experienceStatus(experience, 'work_photos'),
         },
         {
           id: 'insurance',
@@ -513,14 +566,17 @@ export default function VerificationScreen(): React.JSX.Element {
       const asset = result.assets[0];
       setIsUploading(true);
       try {
-        await providerService.uploadCredential(
-          {
-            uri: asset.uri,
-            type: asset.mimeType,
-            name: asset.fileName,
-          },
-          step.credentialType,
-        );
+        const archivo = {
+          uri: asset.uri,
+          type: asset.mimeType,
+          // `fileName` puede venir null en iOS; el servicio espera string|undefined.
+          name: asset.fileName ?? undefined,
+        };
+        if (step.experienceKind) {
+          await providerService.uploadExperience(archivo, step.experienceKind, step.title);
+        } else if (step.credentialType) {
+          await providerService.uploadCredential(archivo, step.credentialType);
+        }
         Alert.alert(
           t('credentials.documentUploaded'),
           t('verification.uploadSuccess', { defaultValue: 'Your document has been submitted for review.' }),
@@ -538,7 +594,7 @@ export default function VerificationScreen(): React.JSX.Element {
 
   const handleStepAction = useCallback(
     (step: VerificationStep) => {
-      if (!step.credentialType) {
+      if (!step.credentialType && !step.experienceKind) {
         Alert.alert(step.title, step.description);
         return;
       }

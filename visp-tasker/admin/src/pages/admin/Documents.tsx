@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminService, PendingCredential, LICENSE_CLASSES } from '@/services/adminService';
+import {
+  adminService,
+  ExperienceRecord,
+  InsurancePolicyRow,
+  PendingCredential,
+  LICENSE_CLASSES,
+} from '@/services/adminService';
 import { Config } from '@/services/config';
 
 function resolveDocUrl(url: string | null): string | null {
@@ -35,6 +41,42 @@ export default function Documents() {
   const [credType, setCredType] = useState<string>('all');
   const [category, setCategory] = useState<string>('all');
   const [level, setLevel] = useState<LevelFilter>('all');
+
+  // Tres colas de validación distintas. Viven juntas porque el trabajo del
+  // validador es el mismo —mirar un documento y decidir— pero cada una escribe
+  // en una tabla distinta y desbloquea cosas distintas.
+  const [tab, setTab] = useState<'credentials' | 'experience' | 'insurance'>('credentials');
+
+  const qExperience = useQuery<ExperienceRecord[]>({
+    queryKey: ['experience-records'],
+    queryFn: () => adminService.experienceRecords('pending'),
+    enabled: tab === 'experience',
+  });
+
+  const qInsurance = useQuery<InsurancePolicyRow[]>({
+    queryKey: ['insurance-policies'],
+    queryFn: () => adminService.insurancePolicies('pending_review'),
+    enabled: tab === 'insurance',
+  });
+
+  const validateExp = useMutation({
+    mutationFn: (id: string) => adminService.validateExperience(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['experience-records'] }),
+  });
+  const rejectExp = useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      adminService.rejectExperience(id, note),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['experience-records'] }),
+  });
+  const approveIns = useMutation({
+    mutationFn: (id: string) => adminService.approveInsurance(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance-policies'] }),
+  });
+  const rejectIns = useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      adminService.rejectInsurance(id, note),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['insurance-policies'] }),
+  });
 
   const q = useQuery<PendingCredential[]>({
     queryKey: ['pending-credentials'],
@@ -109,6 +151,160 @@ export default function Documents() {
         <p className="t-lede" style={{ marginTop: 8 }}>{t('documents.subtitle')}</p>
       </div>
 
+      {/* Selector de cola */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Pill active={tab === 'credentials'} onClick={() => setTab('credentials')}>
+          {t('documents.tabCredentials')}
+        </Pill>
+        <Pill active={tab === 'experience'} onClick={() => setTab('experience')}>
+          {t('documents.tabExperience')}
+          {qExperience.data?.length ? ` (${qExperience.data.length})` : ''}
+        </Pill>
+        <Pill active={tab === 'insurance'} onClick={() => setTab('insurance')}>
+          {t('documents.tabInsurance')}
+          {qInsurance.data?.length ? ` (${qInsurance.data.length})` : ''}
+        </Pill>
+      </div>
+
+      {/* ── Cola de EXPERIENCIA (L1) ────────────────────────────────── */}
+      {tab === 'experience' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p className="t-lede" style={{ margin: 0 }}>
+            {t('documents.experienceHelp')}
+          </p>
+          {qExperience.isLoading ? (
+            <div className="t-lede">{t('common.loading')}</div>
+          ) : (qExperience.data ?? []).length === 0 ? (
+            <div className="t-lede">{t('documents.noneToReview')}</div>
+          ) : (
+            (qExperience.data ?? []).map((r) => {
+              const url = resolveDocUrl(r.documentUrl);
+              return (
+                <div key={r.id} className="t-card" style={{ padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{r.providerName}</div>
+                      <div style={{ fontSize: 12, color: 'var(--t-text-3)' }}>
+                        <span className="t-chip t-chip-mono">{r.kind}</span>
+                        {r.title ? ` · ${r.title}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      {url && (
+                        <a
+                          className="t-btn t-btn-ghost t-btn-sm"
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t('documents.openInNewTab')}
+                        </a>
+                      )}
+                      <button
+                        className="t-btn t-btn-primary t-btn-sm"
+                        disabled={validateExp.isPending}
+                        onClick={() => validateExp.mutate(r.id)}
+                      >
+                        {t('documents.validate')}
+                      </button>
+                      <button
+                        className="t-btn t-btn-ghost t-btn-sm"
+                        style={{ color: 'var(--t-danger)' }}
+                        disabled={rejectExp.isPending}
+                        onClick={() => {
+                          const note = prompt(t('documents.rejectExperiencePrompt'));
+                          if (note && note.trim()) {
+                            rejectExp.mutate({ id: r.id, note: note.trim() });
+                          }
+                        }}
+                      >
+                        {t('common.reject')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : null}
+
+      {/* ── Cola de PÓLIZAS ──────────────────────────────────────────── */}
+      {tab === 'insurance' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p className="t-lede" style={{ margin: 0 }}>
+            {t('documents.insuranceHelp')}
+          </p>
+          {qInsurance.isLoading ? (
+            <div className="t-lede">{t('common.loading')}</div>
+          ) : (qInsurance.data ?? []).length === 0 ? (
+            <div className="t-lede">{t('documents.noneToReview')}</div>
+          ) : (
+            (qInsurance.data ?? []).map((p) => {
+              const url = resolveDocUrl(p.documentUrl);
+              return (
+                <div key={p.id} className="t-card" style={{ padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{p.providerName}</div>
+                      <div style={{ fontSize: 12, color: 'var(--t-text-3)' }}>
+                        {p.insurerName} · {p.policyNumber} ·{' '}
+                        ${(p.coverageAmountCents / 100).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--t-text-3)' }}>
+                        {p.effectiveDate} → {p.expiryDate}
+                        {p.isExpired && (
+                          <span className="t-chip t-chip-mono t-chip-warn" style={{ marginLeft: 8 }}>
+                            {t('documents.expired')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      {url && (
+                        <a
+                          className="t-btn t-btn-ghost t-btn-sm"
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t('documents.openInNewTab')}
+                        </a>
+                      )}
+                      {/* Una póliza vencida no se puede aprobar: la API la rechaza
+                          con 400 y aprobarla abriría servicios sin cobertura real. */}
+                      <button
+                        className="t-btn t-btn-primary t-btn-sm"
+                        disabled={approveIns.isPending || p.isExpired}
+                        title={p.isExpired ? t('documents.expiredCannotApprove') : undefined}
+                        onClick={() => approveIns.mutate(p.id)}
+                      >
+                        {t('documents.approve')}
+                      </button>
+                      <button
+                        className="t-btn t-btn-ghost t-btn-sm"
+                        style={{ color: 'var(--t-danger)' }}
+                        disabled={rejectIns.isPending}
+                        onClick={() => {
+                          const note = prompt(t('documents.rejectInsurancePrompt'));
+                          if (note && note.trim()) {
+                            rejectIns.mutate({ id: p.id, note: note.trim() });
+                          }
+                        }}
+                      >
+                        {t('common.reject')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : null}
+
+      {tab !== 'credentials' ? null : (
+      <>
       {/* Search */}
       <div className="t-search">
         <SearchIcon />
@@ -392,6 +588,8 @@ export default function Documents() {
           </div>
         );
       })()}
+      </>
+      )}
     </div>
   );
 }

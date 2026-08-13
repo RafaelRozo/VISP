@@ -304,6 +304,39 @@ export interface CategoryUpsertBody {
   helpMessageFr?: string | null;
 }
 
+/** Documento del expediente de experiencia (L1) pendiente de validar. */
+export interface ExperienceRecord {
+  id: string;
+  providerId: string;
+  providerName: string;
+  kind: string;
+  title: string | null;
+  description: string | null;
+  documentUrl: string | null;
+  status: string;
+  rejectionReason: string | null;
+  categoryId: string | null;
+  submittedAt: string | null;
+}
+
+/** Póliza de seguro pendiente de verificar. */
+export interface InsurancePolicyRow {
+  id: string;
+  providerId: string;
+  providerName: string;
+  policyNumber: string;
+  insurerName: string;
+  policyType: string;
+  coverageAmountCents: number;
+  effectiveDate: string;
+  expiryDate: string;
+  /** La póliza ya venció: no debe aprobarse aunque esté pendiente. */
+  isExpired: boolean;
+  status: string;
+  documentUrl: string | null;
+  createdAt: string | null;
+}
+
 /** Ontario driver's licence classes. Only G2 and G are used in practice. */
 export const LICENSE_CLASSES = ['G1', 'G2', 'G', 'A', 'AR', 'D', 'B', 'C', 'E', 'F'] as const;
 export type LicenseClass = (typeof LICENSE_CLASSES)[number];
@@ -426,6 +459,35 @@ export const adminService = {
 
   rejectCredential: (id: string, note: string) =>
     apiPost<{ id: string; status: string }>(`/admin/credentials/${id}/reject`, { note }),
+
+  // ── Expediente de experiencia (L1) ──
+  // La validación es DOCUMENTAL, no de competencia: se confirma que la evidencia
+  // existe y es legible. Rechazar significa "ilegible o incompleto", nunca
+  // "no eres competente" — el copy que ve el proveedor debe reflejarlo.
+  experienceRecords: (status?: string) =>
+    apiGet<ExperienceRecord[]>(
+      '/admin/experience-records',
+      status ? { status_filter: status } : undefined,
+    ),
+
+  validateExperience: (id: string) =>
+    apiPost<{ id: string; status: string }>(`/admin/experience-records/${id}/validate`, {}),
+
+  rejectExperience: (id: string, note: string) =>
+    apiPost<{ id: string; status: string }>(`/admin/experience-records/${id}/reject`, { note }),
+
+  // ── Pólizas de seguro ──
+  insurancePolicies: (status?: string) =>
+    apiGet<InsurancePolicyRow[]>(
+      '/admin/insurance-policies',
+      status ? { status_filter: status } : undefined,
+    ),
+
+  approveInsurance: (id: string) =>
+    apiPost<{ id: string; status: string }>(`/admin/insurance-policies/${id}/approve`, {}),
+
+  rejectInsurance: (id: string, note: string) =>
+    apiPost<{ id: string; status: string }>(`/admin/insurance-policies/${id}/reject`, { note }),
 
   // ── Businesses (VISP for Business) validation ──
   listCompanies: (status?: string) =>
