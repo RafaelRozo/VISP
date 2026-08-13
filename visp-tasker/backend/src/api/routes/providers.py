@@ -437,6 +437,7 @@ async def list_offers(
             customer_details=offer["customer_details"],
             customer_evidence=offer["customer_evidence"],
             customer_extra_note=offer["customer_extra_note"],
+            customer_answers=offer["customer_answers"],
             distance_km=offer["distance_km"],
             offered_at=offer["offered_at"],
             offer_expires_at=offer["offer_expires_at"],
