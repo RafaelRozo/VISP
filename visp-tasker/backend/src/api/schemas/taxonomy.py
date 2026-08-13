@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -95,6 +95,21 @@ class TaskBrief(BaseModel):
     is_active: bool
 
 
+class TaskQuestionOut(BaseModel):
+    """Pregunta que el cliente responde al reservar."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    question_en: str
+    question_fr: Optional[str] = None
+    # 'TEXT' -> textarea libre. 'SINGLE_CHOICE' -> el cliente elige de `options`.
+    answer_type: str = "TEXT"
+    options: list[dict[str, Any]] = Field(default_factory=list)
+    is_required: bool = True
+    display_order: int = 0
+
+
 class TaskDetail(BaseModel):
     """Full task detail including regulatory flags and escalation keywords."""
 
@@ -135,6 +150,9 @@ class TaskDetail(BaseModel):
     requires_evidence: bool = False
     details_prompt_en: Optional[str] = None
     details_prompt_fr: Optional[str] = None
+    # Preguntas activas del servicio (migración 039). La app las pinta como
+    # textareas; las obligatorias bloquean la reserva si van vacías.
+    questions: list["TaskQuestionOut"] = Field(default_factory=list)
 
     # Display
     icon_url: Optional[str] = None

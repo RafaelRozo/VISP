@@ -203,6 +203,26 @@ export interface TaskCredentialRequirement {
   notes?: string | null;
 }
 
+/** Opción de una pregunta cerrada. EN y FR en el MISMO objeto para que no se
+ *  puedan desincronizar (dos arrays paralelos por posición sí se desincronizan). */
+export interface TaskQuestionOption {
+  en: string;
+  fr?: string;
+}
+
+/** Pregunta que el cliente responde al reservar. */
+export interface TaskQuestion {
+  /** Vacío en una pregunta recién añadida en el formulario. */
+  id?: string;
+  questionEn: string;
+  questionFr?: string | null;
+  /** TEXT = textarea libre. SINGLE_CHOICE = elige una de `options`. */
+  answerType: 'TEXT' | 'SINGLE_CHOICE';
+  options: TaskQuestionOption[];
+  isRequired: boolean;
+  displayOrder: number;
+}
+
 export interface TaxonomyTask {
   id: string;
   categoryId: string;
@@ -231,6 +251,10 @@ export interface TaxonomyTask {
    * si acepta el trabajo con su rango de precio.
    */
   requiresDetails: boolean;
+  /** Marca el requisito CGL del servicio. Por debajo NO es una columna: escribe
+   *  la fila de service_credential_requirements que ya lee el motor. */
+  requiresInsurance: boolean;
+  questions: TaskQuestion[];
   requiresEvidence: boolean;
   /**
    * Placeholder del campo de detalles para ESTE servicio. Es lo que mantiene el
@@ -306,6 +330,9 @@ export interface TaskUpsertBody {
   minQuantity?: number | null;
   escalationKeywords?: string[];
   requiresDetails?: boolean;
+  requiresInsurance?: boolean;
+  /** Cuando viene, REEMPLAZA el conjunto completo de preguntas del servicio. */
+  questions?: TaskQuestion[];
   requiresEvidence?: boolean;
   detailsPromptEn?: string | null;
   detailsPromptFr?: string | null;

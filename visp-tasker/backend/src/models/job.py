@@ -235,6 +235,13 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # cerrado y la de "el proveedor no decide el alcance".
     customer_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     customer_extra_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Respuestas a las preguntas del servicio (migración 039). Cada entrada es
+    # {questionId, question, answer}: se guarda el TEXTO de la pregunta además del
+    # id para que el job siga siendo legible si el admin la reescribe o la
+    # desactiva — hace falta para resolver una disputa meses después.
+    customer_answers_json: Mapped[Any] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), nullable=False
+    )
 
     # Photos
     #

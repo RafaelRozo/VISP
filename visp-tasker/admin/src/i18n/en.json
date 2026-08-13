@@ -202,7 +202,21 @@
     "detailsPromptPlaceholder": "e.g. How many rooms and bathrooms? Any pets? How do we get in?",
     "detailsPromptRequired": "A service that requires details also needs an English prompt — it is what steers the customer to describe the scale and access of THIS service instead of asking for extra work.",
     "detailsChip": "DETAILS",
-    "evidenceChip": "PHOTO"
+    "evidenceChip": "PHOTO",
+    "requiresInsurance": "This service requires insurance (CGL)",
+    "requiresInsuranceHelp": "The provider must have a verified, in-force policy in their profile before they can offer this service.",
+    "questionsTitle": "Questions for the customer",
+    "questionsHelp": "The customer answers these when booking and the provider reads them before accepting. Prefer predefined answers when you can: they are comparable across bookings and easier to read at a glance.",
+    "addQuestion": "Add a question",
+    "questionPlaceholder": "e.g. Describe the condition of the space",
+    "questionPlaceholderFr": "Same question in French (optional)",
+    "questionRequired": "Required",
+    "answerTypeText": "Free text",
+    "answerTypeChoice": "Predefined answers",
+    "addOption": "Add an option",
+    "optionPlaceholder": "e.g. Light cleaning",
+    "optionPlaceholderFr": "French (optional)",
+    "optionsTooFew": "A question with predefined answers needs at least two distinct options — otherwise the customer cannot answer it and the booking is blocked."
   },
   "filters": {
     "all": "All",

@@ -396,6 +396,7 @@ async def get_pending_offers(
             "customer_details": job.customer_details,
             "customer_evidence": job.customer_evidence_json or [],
             "customer_extra_note": job.customer_extra_note,
+            "customer_answers": job.customer_answers_json or [],
             "distance_km": distance_km,
             "offered_at": assignment.offered_at,
             "offer_expires_at": assignment.offer_expires_at,

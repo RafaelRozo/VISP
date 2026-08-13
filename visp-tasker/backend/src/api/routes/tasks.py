@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from src.api.deps import DBSession
 from src.api.schemas.taxonomy import (
+    TaskQuestionOut,
     PaginationMeta,
     TaskBrief,
     TaskDetail,
@@ -123,7 +124,27 @@ async def get_task(
             detail=f"Task with id '{task_id}' not found.",
         )
 
-    return TaskDetail.model_validate(task)
+    # Las preguntas van en su propia tabla, así que no llegan por
+    # `model_validate`: se cargan aparte. Solo las ACTIVAS — una desactivada no
+    # debe aparecer en reservas nuevas, aunque siga referenciada por jobs viejos.
+    from sqlalchemy import select as sa_select
+
+    from src.models.taxonomy import ServiceTaskQuestion
+
+    preguntas = (
+        await db.execute(
+            sa_select(ServiceTaskQuestion)
+            .where(
+                ServiceTaskQuestion.task_id == task_id,
+                ServiceTaskQuestion.is_active.is_(True),
+            )
+            .order_by(ServiceTaskQuestion.display_order)
+        )
+    ).scalars().all()
+
+    out = TaskDetail.model_validate(task)
+    out.questions = [TaskQuestionOut.model_validate(q) for q in preguntas]
+    return out
 
 
 # ---------------------------------------------------------------------------

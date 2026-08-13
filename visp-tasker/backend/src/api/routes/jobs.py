@@ -293,6 +293,7 @@ async def book_job(
                 customer_details=body.details,
                 customer_evidence=body.evidence,
                 customer_extra_note=body.extra_note,
+                customer_answers=body.answers,
             )
         except jobService.TaskNotFoundError as exc:
             raise HTTPException(

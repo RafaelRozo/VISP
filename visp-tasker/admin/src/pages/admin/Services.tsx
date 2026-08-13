@@ -13,6 +13,7 @@ import {
   SERVICE_LEVELS,
   ServiceLevel,
   TaskCredentialRequirement,
+  TaskQuestion,
   TaskUpsertBody,
   TaxonomyCategory,
   VERIFICATION_METHODS,
@@ -65,6 +66,9 @@ interface TaskFormState {
   requiresEvidence: boolean;
   detailsPromptEn: string;
   detailsPromptFr: string;
+  /** Requisito CGL del servicio: lo debe tener el PROVEEDOR, no el cliente. */
+  requiresInsurance: boolean;
+  questions: TaskQuestion[];
   displayOrder: number;
   isActive: boolean;
 }
@@ -130,6 +134,8 @@ const emptyTask = (categoryId: string): TaskFormState => ({
   requiresEvidence: false,
   detailsPromptEn: '',
   detailsPromptFr: '',
+  requiresInsurance: false,
+  questions: [],
   displayOrder: 0,
   isActive: true,
 });
@@ -510,6 +516,11 @@ export default function Services() {
                               requiresEvidence: tk.requiresEvidence ?? false,
                               detailsPromptEn: tk.detailsPromptEn ?? '',
                               detailsPromptFr: tk.detailsPromptFr ?? '',
+                              requiresInsurance: tk.requiresInsurance ?? false,
+                              questions: (tk.questions ?? []).map((q) => ({
+                                ...q,
+                                options: q.options ?? [],
+                              })),
                               displayOrder: tk.displayOrder,
                               isActive: tk.isActive,
                             })}
@@ -766,6 +777,18 @@ function TaskModal({
   const detailsPromptMissing =
     state.requiresDetails && state.detailsPromptEn.trim() === '';
 
+  // Espeja el 400 de la API: una pregunta cerrada necesita al menos DOS opciones
+  // distintas. Con menos, el cliente no puede contestarla y la reserva queda
+  // bloqueada sin que él pueda hacer nada — mejor no dejar guardar.
+  const questionOptionsInvalid = state.questions.some(
+    (q) =>
+      q.questionEn.trim() !== '' &&
+      q.answerType === 'SINGLE_CHOICE' &&
+      new Set(
+        (q.options ?? []).map((o) => o.en.trim()).filter((v) => v !== ''),
+      ).size < 2,
+  );
+
   const addRequirement = (code: string) => {
     if (!code || state.credentialRequirements.some((r) => r.code === code)) return;
     setState({
@@ -790,7 +813,7 @@ function TaskModal({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (credGateFails || detailsPromptMissing) return;
+    if (credGateFails || detailsPromptMissing || questionOptionsInvalid) return;
     onSubmit({
       categoryId: state.categoryId,
       slug: state.slug.trim(),
@@ -819,6 +842,23 @@ function TaskModal({
       requiresEvidence: state.requiresEvidence,
       detailsPromptEn: state.detailsPromptEn.trim() || null,
       detailsPromptFr: state.detailsPromptFr.trim() || null,
+      requiresInsurance: state.requiresInsurance,
+      // Se descartan las preguntas sin texto: una fila vacía olvidada en el
+      // formulario crearía una pregunta imposible de responder.
+      questions: state.questions
+        .filter((q) => q.questionEn.trim() !== '')
+        .map((q, i) => ({
+          ...q,
+          questionEn: q.questionEn.trim(),
+          questionFr: q.questionFr?.trim() || null,
+          displayOrder: i,
+          options:
+            q.answerType === 'SINGLE_CHOICE'
+              ? q.options
+                  .filter((o) => o.en.trim() !== '')
+                  .map((o) => ({ en: o.en.trim(), fr: o.fr?.trim() || undefined }))
+              : [],
+        })),
       displayOrder: state.displayOrder,
       isActive: state.isActive,
     });
@@ -1041,6 +1081,33 @@ function TaskModal({
               })}
             </select>
 
+            {/* El seguro es el requisito más frecuente, así que tiene checkbox
+                propio en vez de esconderse en el desplegable. Va en ESTE bloque
+                —y no en el de "lo que aporta el cliente"— porque es algo que
+                debe tener el PROVEEDOR para poder ofrecer el servicio.
+                Por debajo escribe la misma fila CGL de
+                service_credential_requirements: una sola fuente de verdad. */}
+            <label
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                fontSize: 13, paddingTop: 4, borderTop: '1px solid var(--t-border)',
+                marginTop: 4,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={state.requiresInsurance}
+                onChange={(e) => setState({ ...state, requiresInsurance: e.target.checked })}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                {t('services.requiresInsurance')}
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--t-text-3)' }}>
+                  {t('services.requiresInsuranceHelp')}
+                </span>
+              </span>
+            </label>
+
             {credGateFails && (
               <div style={{ fontSize: 12, color: 'var(--t-warn)' }}>
                 ⚠ {t('services.credentialGateBlocked')}
@@ -1119,6 +1186,197 @@ function TaskModal({
             )}
           </div>
 
+          {/* Preguntas del servicio (migraciones 039/040).
+              Dos tipos: texto libre (textarea, como los detalles) y opción
+              cerrada. La opción cerrada es preferible siempre que se pueda: una
+              respuesta de "Light/Normal/Heavy" es COMPARABLE entre reservas y el
+              proveedor la entiende de un vistazo; el texto libre no. */}
+          <div
+            style={{
+              border: '1px solid var(--t-border)',
+              borderRadius: 8, background: 'var(--t-deep)', padding: 14,
+              display: 'flex', flexDirection: 'column', gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, color: 'var(--t-text-2)' }}>
+              {t('services.questionsTitle')}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--t-text-3)', lineHeight: 1.5 }}>
+              {t('services.questionsHelp')}
+            </div>
+
+            {state.questions.map((q, qi) => {
+              const update = (patch: Partial<TaskQuestion>) =>
+                setState({
+                  ...state,
+                  questions: state.questions.map((x, i) =>
+                    i === qi ? { ...x, ...patch } : x,
+                  ),
+                });
+              const isChoice = q.answerType === 'SINGLE_CHOICE';
+              const opciones = q.options ?? [];
+              const pocasOpciones =
+                isChoice && opciones.filter((o) => o.en.trim() !== '').length < 2;
+
+              return (
+                <div
+                  key={q.id ?? `nueva-${qi}`}
+                  style={{
+                    border: '1px solid var(--t-border)', borderRadius: 8,
+                    padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span className="t-chip t-chip-mono" style={{ fontSize: 10 }}>
+                      {qi + 1}
+                    </span>
+                    <input
+                      className="t-input"
+                      style={{ flex: 1 }}
+                      value={q.questionEn}
+                      placeholder={t('services.questionPlaceholder')}
+                      onChange={(e) => update({ questionEn: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      style={{ color: 'var(--t-danger)' }}
+                      onClick={() =>
+                        setState({
+                          ...state,
+                          questions: state.questions.filter((_, i) => i !== qi),
+                        })
+                      }
+                    >
+                      {t('common.delete')}
+                    </button>
+                  </div>
+
+                  <input
+                    className="t-input"
+                    value={q.questionFr ?? ''}
+                    placeholder={t('services.questionPlaceholderFr')}
+                    onChange={(e) => update({ questionFr: e.target.value })}
+                  />
+
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                      className="t-input"
+                      style={{ width: 'auto' }}
+                      value={q.answerType}
+                      onChange={(e) => {
+                        const answerType = e.target.value as TaskQuestion['answerType'];
+                        update({
+                          answerType,
+                          // Al pasar a opción cerrada se siembran dos filas: una
+                          // pregunta cerrada con menos de dos opciones no se puede
+                          // responder y la API la rechaza.
+                          options:
+                            answerType === 'SINGLE_CHOICE' && opciones.length < 2
+                              ? [{ en: '' }, { en: '' }]
+                              : opciones,
+                        });
+                      }}
+                    >
+                      <option value="TEXT">{t('services.answerTypeText')}</option>
+                      <option value="SINGLE_CHOICE">{t('services.answerTypeChoice')}</option>
+                    </select>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={q.isRequired}
+                        onChange={(e) => update({ isRequired: e.target.checked })}
+                      />
+                      {t('services.questionRequired')}
+                    </label>
+                  </div>
+
+                  {isChoice && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {opciones.map((o, oi) => (
+                        <div key={oi} style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            className="t-input"
+                            style={{ flex: 1 }}
+                            value={o.en}
+                            placeholder={t('services.optionPlaceholder')}
+                            onChange={(e) =>
+                              update({
+                                options: opciones.map((x, i) =>
+                                  i === oi ? { ...x, en: e.target.value } : x,
+                                ),
+                              })
+                            }
+                          />
+                          <input
+                            className="t-input"
+                            style={{ flex: 1 }}
+                            value={o.fr ?? ''}
+                            placeholder={t('services.optionPlaceholderFr')}
+                            onChange={(e) =>
+                              update({
+                                options: opciones.map((x, i) =>
+                                  i === oi ? { ...x, fr: e.target.value } : x,
+                                ),
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="t-btn t-btn-ghost t-btn-sm"
+                            onClick={() =>
+                              update({ options: opciones.filter((_, i) => i !== oi) })
+                            }
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="t-btn t-btn-ghost t-btn-sm"
+                        style={{ alignSelf: 'flex-start' }}
+                        onClick={() => update({ options: [...opciones, { en: '' }] })}
+                      >
+                        + {t('services.addOption')}
+                      </button>
+                      {pocasOpciones && (
+                        <div style={{ fontSize: 12, color: 'var(--t-warn)' }}>
+                          ⚠ {t('services.optionsTooFew')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              className="t-btn t-btn-ghost t-btn-sm"
+              style={{ alignSelf: 'flex-start' }}
+              onClick={() =>
+                setState({
+                  ...state,
+                  questions: [
+                    ...state.questions,
+                    {
+                      questionEn: '',
+                      questionFr: '',
+                      answerType: 'TEXT',
+                      options: [],
+                      isRequired: true,
+                      displayOrder: state.questions.length,
+                    },
+                  ],
+                })
+              }
+            >
+              + {t('services.addQuestion')}
+            </button>
+          </div>
+
           {/* Flags — colapsados. El gate real vive ahora en los requisitos de
               credencial de arriba; estos flags quedan solo para el caso raro de
               un servicio que necesite marcar un atributo extra. */}
@@ -1168,7 +1426,9 @@ function TaskModal({
             <button
               type="submit"
               className="t-btn t-btn-primary"
-              disabled={submitting || credGateFails || detailsPromptMissing}
+              disabled={
+                submitting || credGateFails || detailsPromptMissing || questionOptionsInvalid
+              }
             >
               {submitting && <span className="t-spinner" />}
               {form.id ? t('common.save') : t('common.create')}

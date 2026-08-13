@@ -310,3 +310,50 @@ class ServiceCredentialRequirement(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return f"<ServiceCredentialRequirement(task={self.task_id}, code={self.code})>"
+
+
+class ServiceTaskQuestion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Pregunta que el admin define para un servicio (migración 039).
+
+    El cliente la responde en texto libre al reservar. Es SOPORTE DE DECISIÓN
+    para el proveedor —la lee antes de aceptar— y no altera servicio ni precio,
+    que salen del catálogo cerrado.
+
+    Se desactiva en vez de borrarse: las respuestas ya guardadas en
+    `jobs.customer_answers_json` siguen apuntando a este id.
+    """
+
+    __tablename__ = "service_task_questions"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("service_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    question_en: Mapped[str] = mapped_column(Text, nullable=False)
+    question_fr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # 'TEXT' (textarea libre) o 'SINGLE_CHOICE' (elige una de `options`).
+    # VARCHAR con CHECK en vez de enum de PG: añadir un tipo nuevo es un ALTER del
+    # CHECK, sin la migración aislada que exige ALTER TYPE ADD VALUE.
+    answer_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="TEXT"
+    )
+    # Solo para SINGLE_CHOICE: [{"en": "Light", "fr": "Léger"}, ...]. Los dos
+    # idiomas en el MISMO objeto para que no se desincronicen.
+    options: Mapped[Any] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
+    is_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    display_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<ServiceTaskQuestion({self.task_id}, {self.question_en[:40]!r})>"

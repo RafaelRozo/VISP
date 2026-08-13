@@ -52,6 +52,7 @@ from src.models.promotion import Promotion
 from src.models.provider import ProviderLevel, ProviderProfile
 from src.models.user import User
 from src.models.taxonomy import (
+    ServiceTaskQuestion,
     CredentialRequirement,
     ServiceCategory,
     ServiceCredentialRequirement,
@@ -1404,6 +1405,19 @@ class CategoryAdminUpdate(_CamelModel):
     help_message_fr: Optional[str] = None
 
 
+class TaskQuestionIn(_CamelModel):
+    """Pregunta del servicio. `id` vacío = alta; con valor = actualización."""
+
+    id: Optional[uuid.UUID] = None
+    question_en: str = Field(min_length=1, max_length=2000)
+    question_fr: Optional[str] = None
+    answer_type: str = Field(default="TEXT", pattern=r"^(TEXT|SINGLE_CHOICE)$")
+    # [{"en": "Light", "fr": "Léger"}, ...]. Solo para SINGLE_CHOICE.
+    options: list[dict[str, Any]] = Field(default_factory=list)
+    is_required: bool = True
+    display_order: int = 0
+
+
 class TaskCredentialRequirementIn(_CamelModel):
     """Un código de credencial exigido por un servicio.
 
@@ -1447,6 +1461,12 @@ class TaskAdminCreate(_CamelModel):
     requires_evidence: bool = False
     details_prompt_en: Optional[str] = None
     details_prompt_fr: Optional[str] = None
+    # Preguntas del servicio (migración 039). Reemplazan el conjunto completo.
+    questions: list[TaskQuestionIn] = Field(default_factory=list)
+    # Si TRUE, el servicio exige seguro CGL. Se traduce a una fila de
+    # `service_credential_requirements` con el código CGL: NO es una columna
+    # aparte, para que el motor tenga UNA sola fuente de requisitos.
+    requires_insurance: bool = False
     # Requisitos de credencial por servicio (gate de L2/L3).
     credential_requirements: list[TaskCredentialRequirementIn] = Field(default_factory=list)
 
@@ -1477,6 +1497,8 @@ class TaskAdminUpdate(_CamelModel):
     requires_evidence: Optional[bool] = None
     details_prompt_en: Optional[str] = None
     details_prompt_fr: Optional[str] = None
+    questions: Optional[list[TaskQuestionIn]] = None
+    requires_insurance: Optional[bool] = None
     # Cuando viene, REEMPLAZA el conjunto completo de requisitos del servicio.
     credential_requirements: Optional[list[TaskCredentialRequirementIn]] = None
 
@@ -1500,7 +1522,9 @@ def _parse_pricing_unit(value: Any) -> "PricingUnit":
 
 
 def _task_to_out(
-    t: ServiceTask, requirements: Optional[list[dict[str, Any]]] = None
+    t: ServiceTask,
+    requirements: Optional[list[dict[str, Any]]] = None,
+    questions: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     return {
         "credentialRequirements": requirements or [],
@@ -1523,6 +1547,10 @@ def _task_to_out(
         "basePriceMaxCents": t.base_price_max_cents,
         "estimatedDurationMin": t.estimated_duration_min,
         "escalationKeywords": t.escalation_keywords or [],
+        "requiresInsurance": any(
+            (r or {}).get("code") == _INSURANCE_CODE for r in (requirements or [])
+        ),
+        "questions": questions or [],
         "requiresDetails": t.requires_details,
         "requiresEvidence": t.requires_evidence,
         "detailsPromptEn": t.details_prompt_en,
@@ -1539,6 +1567,7 @@ def _category_to_out(
     c: ServiceCategory,
     tasks: Optional[list[ServiceTask]] = None,
     requirements: Optional[dict[uuid.UUID, list[dict[str, Any]]]] = None,
+    questions: Optional[dict[uuid.UUID, list[dict[str, Any]]]] = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": str(c.id),
@@ -1557,7 +1586,8 @@ def _category_to_out(
     }
     if tasks is not None:
         reqs = requirements or {}
-        out["tasks"] = [_task_to_out(t, reqs.get(t.id)) for t in tasks]
+        qs = questions or {}
+        out["tasks"] = [_task_to_out(t, reqs.get(t.id), qs.get(t.id)) for t in tasks]
         out["taskCount"] = len(tasks)
     return out
 
@@ -1575,6 +1605,7 @@ async def taxonomy_full(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
 
     all_task_ids = [t.id for c in cats for t in c.tasks]
     requirements = await _load_task_requirements(db, all_task_ids)
+    questions = await _load_task_questions(db, all_task_ids)
 
     data: list[dict[str, Any]] = []
     for c in cats:
@@ -1584,7 +1615,7 @@ async def taxonomy_full(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
             c.tasks,
             key=lambda t: (_level_value(t.level), t.name),
         )
-        data.append(_category_to_out(c, tasks_sorted, requirements))
+        data.append(_category_to_out(c, tasks_sorted, requirements, questions))
     return {"data": data}
 
 
@@ -1679,6 +1710,40 @@ def _parse_level(level: str) -> ProviderLevel:
 _CREDENTIAL_GATED_LEVELS = {ProviderLevel.LEVEL_2, ProviderLevel.LEVEL_3}
 
 
+async def _load_task_questions(
+    db: AsyncSession, task_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """Preguntas activas por servicio, en UNA query para todo el catálogo.
+
+    Cargarlas por servicio dentro del bucle haría 200+ consultas al abrir la
+    pantalla de Servicios.
+    """
+    if not task_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(ServiceTaskQuestion)
+            .where(
+                ServiceTaskQuestion.task_id.in_(task_ids),
+                ServiceTaskQuestion.is_active.is_(True),
+            )
+            .order_by(ServiceTaskQuestion.display_order)
+        )
+    ).scalars().all()
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for q in rows:
+        out.setdefault(q.task_id, []).append({
+            "id": str(q.id),
+            "questionEn": q.question_en,
+            "questionFr": q.question_fr,
+            "answerType": q.answer_type,
+            "options": q.options or [],
+            "isRequired": q.is_required,
+            "displayOrder": q.display_order,
+        })
+    return out
+
+
 async def _load_task_requirements(
     db: AsyncSession, task_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[dict[str, Any]]]:
@@ -1761,6 +1826,120 @@ async def _replace_task_requirements(
                 notes=(item.notes or None),
             )
         )
+
+
+# Código del catálogo que representa el seguro de responsabilidad civil. El
+# checkbox "requiere seguro" del admin escribe/borra ESTA fila en
+# `service_credential_requirements` en vez de usar una columna booleana aparte:
+# así el motor consulta un único sitio y no puede haber dos fuentes que se
+# contradigan (ver CLAUDE.md, regla 1).
+_INSURANCE_CODE = "CGL"
+
+
+async def _sync_insurance_requirement(
+    db: AsyncSession, task: ServiceTask, requires: bool
+) -> None:
+    """Enciende o apaga el requisito de seguro del servicio."""
+    existing = (
+        await db.execute(
+            select(ServiceCredentialRequirement).where(
+                ServiceCredentialRequirement.task_id == task.id,
+                ServiceCredentialRequirement.code == _INSURANCE_CODE,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if requires and existing is None:
+        db.add(
+            ServiceCredentialRequirement(
+                task_id=task.id, code=_INSURANCE_CODE, mandatory=True
+            )
+        )
+    elif not requires and existing is not None:
+        await db.delete(existing)
+
+
+def _clean_options(item: "TaskQuestionIn") -> list[dict[str, Any]]:
+    """Normaliza y valida las opciones de una pregunta cerrada.
+
+    Una pregunta de opción con menos de dos opciones es un callejón sin salida:
+    el cliente no podría contestarla y la reserva quedaría bloqueada sin que él
+    pueda hacer nada. Se rechaza aquí con un 400 claro además del CHECK de la BD.
+    """
+    if item.answer_type != "SINGLE_CHOICE":
+        return []
+    limpias: list[dict[str, Any]] = []
+    vistas: set[str] = set()
+    for o in item.options or []:
+        en = str((o or {}).get("en", "")).strip()
+        if not en or en in vistas:
+            continue
+        vistas.add(en)
+        fr = str((o or {}).get("fr", "")).strip()
+        limpias.append({"en": en, "fr": fr} if fr else {"en": en})
+    if len(limpias) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f'The question "{item.question_en}" is set to predefined answers, '
+                f"so it needs at least two distinct options."
+            ),
+        )
+    return limpias
+
+
+async def _replace_task_questions(
+    db: AsyncSession, task: ServiceTask, incoming: list["TaskQuestionIn"]
+) -> None:
+    """Sincroniza las preguntas del servicio con lo que manda el admin.
+
+    Las que desaparecen se DESACTIVAN, no se borran: las respuestas ya guardadas
+    en `jobs.customer_answers_json` apuntan a su id, y borrarlas dejaría jobs
+    históricos sin poder explicar a qué respondió el cliente.
+    """
+    actuales = {
+        q.id: q
+        for q in (
+            await db.execute(
+                select(ServiceTaskQuestion).where(
+                    ServiceTaskQuestion.task_id == task.id
+                )
+            )
+        ).scalars().all()
+    }
+
+    vistos: set[uuid.UUID] = set()
+    for idx, item in enumerate(incoming):
+        texto = (item.question_en or "").strip()
+        if not texto:
+            continue
+        if item.id and item.id in actuales:
+            q = actuales[item.id]
+            q.question_en = texto
+            q.question_fr = (item.question_fr or "").strip() or None
+            q.answer_type = item.answer_type
+            q.options = _clean_options(item)
+            q.is_required = item.is_required
+            q.display_order = item.display_order or idx
+            q.is_active = True
+            vistos.add(q.id)
+        else:
+            db.add(
+                ServiceTaskQuestion(
+                    task_id=task.id,
+                    question_en=texto,
+                    question_fr=(item.question_fr or "").strip() or None,
+                    answer_type=item.answer_type,
+                    options=_clean_options(item),
+                    is_required=item.is_required,
+                    display_order=item.display_order or idx,
+                    is_active=True,
+                )
+            )
+
+    for qid, q in actuales.items():
+        if qid not in vistos and q.is_active:
+            q.is_active = False
 
 
 def _assert_details_prompt(task: ServiceTask) -> None:
@@ -2063,6 +2242,8 @@ async def admin_create_task(
     try:
         await db.flush()
         await _replace_task_requirements(db, task, body.credential_requirements)
+        await _replace_task_questions(db, task, body.questions)
+        await _sync_insurance_requirement(db, task, body.requires_insurance)
         await db.commit()
         await db.refresh(task)
     except HTTPException:
@@ -2074,7 +2255,11 @@ async def admin_create_task(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Could not create service: {exc}",
         )
-    return {"data": _task_to_out(task, (await _load_task_requirements(db, [task.id])).get(task.id))}
+    return {"data": _task_to_out(
+        task,
+        (await _load_task_requirements(db, [task.id])).get(task.id),
+        (await _load_task_questions(db, [task.id])).get(task.id),
+    )}
 
 
 @router.patch("/taxonomy/tasks/{task_id}")
@@ -2092,8 +2277,10 @@ async def admin_update_task(
 
     payload = body.model_dump(exclude_unset=True)
 
-    # Los requisitos de credencial no son una columna: se manejan aparte.
+    # Estos tres no son columnas de `service_tasks`: se manejan aparte.
     payload.pop("credential_requirements", None)
+    payload.pop("questions", None)
+    payload.pop("requires_insurance", None)
 
     if "level" in payload and payload["level"] is not None:
         payload["level"] = _parse_level(payload["level"])
@@ -2120,6 +2307,10 @@ async def admin_update_task(
     try:
         if body.credential_requirements is not None:
             await _replace_task_requirements(db, task, body.credential_requirements)
+        if body.questions is not None:
+            await _replace_task_questions(db, task, body.questions)
+        if body.requires_insurance is not None:
+            await _sync_insurance_requirement(db, task, body.requires_insurance)
         await db.commit()
         await db.refresh(task)
     except HTTPException:
@@ -2128,7 +2319,11 @@ async def admin_update_task(
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Could not update service: {exc}")
-    return {"data": _task_to_out(task, (await _load_task_requirements(db, [task.id])).get(task.id))}
+    return {"data": _task_to_out(
+        task,
+        (await _load_task_requirements(db, [task.id])).get(task.id),
+        (await _load_task_questions(db, [task.id])).get(task.id),
+    )}
 
 
 @router.delete("/taxonomy/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -284,6 +284,7 @@ async def create_job(
     customer_details: str | None = None,
     customer_evidence: list[str] | None = None,
     customer_extra_note: str | None = None,
+    customer_answers: list[dict[str, Any]] | None = None,
 ) -> Job:
     """Create a new job with SLA snapshot from sla_profiles.
 
@@ -359,6 +360,60 @@ async def create_job(
             "The provider uses it to decide whether to accept the job."
         )
 
+    # Preguntas del servicio (migración 039). Se validan contra la tabla y NO
+    # contra lo que mande el cliente: si se confiara en el payload, bastaría con
+    # omitir una pregunta obligatoria para saltársela.
+    from src.models.taxonomy import ServiceTaskQuestion
+
+    preguntas = (
+        await db.execute(
+            select(ServiceTaskQuestion)
+            .where(
+                ServiceTaskQuestion.task_id == task.id,
+                ServiceTaskQuestion.is_active.is_(True),
+            )
+            .order_by(ServiceTaskQuestion.display_order)
+        )
+    ).scalars().all()
+
+    respuestas_por_id = {
+        str(a.get("questionId")): (a.get("answer") or "").strip()
+        for a in (customer_answers or [])
+        if isinstance(a, dict)
+    }
+
+    answers_json: list[dict[str, Any]] = []
+    for q in preguntas:
+        texto = respuestas_por_id.get(str(q.id), "")
+        if q.is_required and not texto:
+            raise BookingInputRequiredError(
+                f'This service needs an answer to: "{q.question_en}"'
+            )
+        if texto and q.answer_type == "SINGLE_CHOICE":
+            # La respuesta tiene que ser UNA de las opciones definidas. Sin esta
+            # comprobación, cerrar la pregunta en el admin no serviría de nada:
+            # bastaría con mandar cualquier texto por la API para saltársela, y se
+            # perdería justo lo que hace valiosa una opción cerrada — que sea
+            # comparable entre reservas.
+            validas = {
+                (o or {}).get("en", "") for o in (q.options or []) if isinstance(o, dict)
+            }
+            if texto not in validas:
+                raise BookingInputRequiredError(
+                    f'"{texto}" is not a valid answer to "{q.question_en}". '
+                    f'Choose one of: {", ".join(sorted(v for v in validas if v))}.'
+                )
+
+        if texto:
+            # Se guarda el TEXTO de la pregunta junto al id: si el admin la
+            # reescribe o la desactiva, el job sigue siendo legible tal como se
+            # reservó, que es lo que hace falta para resolver una disputa.
+            answers_json.append({
+                "questionId": str(q.id),
+                "question": q.question_en,
+                "answer": texto,
+            })
+
     # 2. Capture SLA snapshot (IMMUTABLE after this point)
     sla_snapshot = await _capture_sla_snapshot(
         db,
@@ -406,6 +461,7 @@ async def create_job(
         customer_details=details,
         customer_evidence_json=evidence,
         customer_extra_note=extra_note,
+        customer_answers_json=answers_json,
     )
 
     # 5. Apply schedule if provided

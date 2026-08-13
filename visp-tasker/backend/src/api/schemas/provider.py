@@ -187,6 +187,9 @@ class JobOfferOut(BaseModel):
     customer_details: Optional[str] = Field(default=None, alias="customerDetails")
     customer_evidence: list[str] = Field(default_factory=list, alias="customerEvidence")
     customer_extra_note: Optional[str] = Field(default=None, alias="customerExtraNote")
+    customer_answers: list[dict[str, Any]] = Field(
+        default_factory=list, alias="customerAnswers"
+    )
 
     # Offer metadata
     distance_km: Optional[float] = Field(default=None, alias="distanceKm")
@@ -386,6 +389,8 @@ class MobileJobCreateRequest(BaseModel):
     # URLs devueltas por POST /api/v1/jobs/booking-evidence. Máximo 5, validado en
     # el servicio.
     evidence: Optional[list[str]] = None
+    # Respuestas a las preguntas del servicio: [{questionId, answer}].
+    answers: Optional[list[dict[str, Any]]] = None
 
     # Optional address components
     city: Optional[str] = None

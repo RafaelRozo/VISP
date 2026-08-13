@@ -19,7 +19,7 @@
         "NSLocationWhenInUseUsageDescription": "VISP needs your location to find nearby service providers.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "VISP uses your location to track provider arrival and dispatch emergency services.",
         "NSCameraUsageDescription": "VISP needs camera access to capture job photos and credential documents.",
-        "NSPhotoLibraryUsageDescription": "VISP needs photo library access to upload credential documents."
+        "NSPhotoLibraryUsageDescription": "VISP needs photo library access so you can attach photos to a booking and upload your documents."
       },
       "bundleIdentifier": "com.droz.vispapp"
     },

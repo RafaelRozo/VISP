@@ -203,3 +203,57 @@ async def recompute_level_and_qualifications(
 
     await db.flush()
     return level
+
+
+# ---------------------------------------------------------------------------
+# Gate de seguro POR SERVICIO (migración 034 + checkbox del admin)
+# ---------------------------------------------------------------------------
+
+async def tasks_requiring_insurance(
+    db: AsyncSession, task_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """De los servicios dados, cuáles exigen seguro.
+
+    La fuente es `service_credential_requirements` cruzada con el `kind` del
+    código: NO hay un booleano `requires_insurance` en `service_tasks`. Eso es
+    deliberado — el checkbox del admin escribe esta misma fila, así que el motor
+    consulta un solo sitio y no puede haber dos fuentes contradiciéndose.
+
+    Se filtra por `kind = INSURANCE` y no por el código literal 'CGL' para que
+    añadir otro tipo de póliza al catálogo no exija tocar el motor.
+    """
+    if not task_ids:
+        return set()
+
+    from src.models.taxonomy import (
+        CredentialRequirement,
+        ServiceCredentialRequirement,
+    )
+
+    stmt = (
+        select(ServiceCredentialRequirement.task_id)
+        .join(
+            CredentialRequirement,
+            CredentialRequirement.code == ServiceCredentialRequirement.code,
+        )
+        .where(
+            ServiceCredentialRequirement.task_id.in_(task_ids),
+            # `kind` es columna de texto (no enum de Python); las etiquetas del
+            # enum de Postgres van en MAYÚSCULAS.
+            CredentialRequirement.kind == "INSURANCE",
+            CredentialRequirement.is_active.is_(True),
+        )
+    )
+    return {row[0] for row in (await db.execute(stmt)).all()}
+
+
+async def provider_has_valid_insurance(
+    db: AsyncSession, provider_id: uuid.UUID
+) -> bool:
+    """Póliza VERIFIED y vigente hoy.
+
+    Pendiente de revisión o vencida NO cuenta: si bastara con tener "una póliza",
+    subir cualquier PDF abriría los servicios que exigen seguro, que es justo lo
+    que el requisito existe para evitar.
+    """
+    return await _has_verified_insurance(db, provider_id, date.today())
