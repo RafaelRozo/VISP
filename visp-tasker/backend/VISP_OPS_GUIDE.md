@@ -279,7 +279,7 @@ docker exec visp-backend python3 -c "
 import asyncio
 import asyncpg
 asyncio.run(asyncpg.connect(
-    'postgresql://Droz:Droz.2026@192.168.1.94:5432/visp_tasker',
+    'postgresql://Droz:${PGPASSWORD}@192.168.1.94:5432/visp_prod',
     timeout=5
 ))
 print('✅ Conexión OK')

@@ -222,9 +222,18 @@ def estimate_quantity_for(task: ServiceTask) -> Decimal:
 
 
 def resolve_quantity(task: ServiceTask, job_quantity: Optional[Any]) -> Decimal:
-    """The quantity to price against: the customer-confirmed booking quantity
-    when the task allows it (PP4a), otherwise the catalog estimate."""
-    if job_quantity is not None and task.allows_quantity:
+    """The quantity to price against: whatever the job carries, otherwise the
+    catalog estimate.
+
+    No longer gated on ``task.allows_quantity`` (offers v2, 2026-08-19). That flag
+    answers "does the CUSTOMER type the quantity at booking?", which is only true for
+    PER_UNIT. Under the offer model ``job.quantity`` also carries the magnitude the
+    PROVIDER estimated when offering — the hours of an HOURLY job, the m² of a
+    PER_AREA one — and those tasks have ``allows_quantity = False``. Keeping the gate
+    would silently throw the accepted offer's magnitude away and reprice off the
+    catalog estimate: the customer would accept 8 h and get billed 2.
+    """
+    if job_quantity is not None:
         q = Decimal(str(job_quantity))
         if q > 0:
             return q

@@ -54,7 +54,8 @@
     "promotions": "Promotions",
     "users": "Utilisateurs",
     "admins": "Administrateurs",
-    "logout": "Déconnexion"
+    "logout": "Déconnexion",
+    "jobs": "Travaux et offres"
   },
   "users": {
     "title": "Gestion des utilisateurs",
@@ -216,7 +217,17 @@
     "addOption": "Ajouter une option",
     "optionPlaceholder": "ex. Nettoyage léger",
     "optionPlaceholderFr": "Français (facultatif)",
-    "optionsTooFew": "Une question à réponses prédéfinies exige au moins deux options distinctes — sinon le client ne peut pas répondre et la réservation est bloquée."
+    "optionsTooFew": "Une question à réponses prédéfinies exige au moins deux options distinctes — sinon le client ne peut pas répondre et la réservation est bloquée.",
+    "materialsEnabled": "Ce service nécessite des matériaux",
+    "materialsEnabledHelp": "Le prestataire les achète et le client rembourse la facture. Aucune taxe n'est ajoutée par-dessus et VISP ne prend aucune commission sur les matériaux.",
+    "materialsBudgetMin": "Budget min (CAD)",
+    "materialsBudgetMax": "Budget max (CAD)",
+    "materialsBudgetHelp": "Ce que le client peut autoriser lors de la réservation. Dépasser ce montant exige son accord.",
+    "materialsNoteEn": "Message pour le prestataire (EN)",
+    "materialsNoteFr": "Message pour le prestataire (FR)",
+    "materialsRangeRequired": "Un service avec matériaux a besoin d'une fourchette de budget : c'est ce que le client peut autoriser.",
+    "answerTypeImage": "Photo",
+    "questionMaterialsOnly": "Seulement si des matériaux sont demandés"
   },
   "filters": {
     "all": "Tous",
@@ -346,5 +357,37 @@
     "ends": "Fin",
     "redemptions": "Utilisations",
     "active": "Actif"
+  },
+  "jobs": {
+    "onlyOpen": "Seulement les travaux ouverts (offres en cours)",
+    "withoutOffers": "sans offre",
+    "reference": "Réf",
+    "service": "Service",
+    "customer": "Client",
+    "status": "Statut",
+    "offers": "Offres",
+    "materials": "Matériaux",
+    "total": "Total",
+    "empty": "Aucun travail.",
+    "catalogRange": "Fourchette du catalogue",
+    "details": "Détails du client",
+    "photo": "photo",
+    "offersReceived": "Offres",
+    "provider": "Prestataire",
+    "work": "Travail",
+    "rate": "Tarif",
+    "noOffers": "Aucune offre pour l'instant.",
+    "noRatesDiagnosis": "Aucun prestataire n'a fixé de prix pour ce service : personne ne peut donc offrir. C'est la cause, pas un bogue.",
+    "ratesButNoOffers": "prestataires ont un prix pour ce service et aucun n'a encore offert.",
+    "needsApproval": "au-dessus du budget, en attente de l'accord du client",
+    "receipt": "facture",
+    "voided": "annulée",
+    "void": "Annuler",
+    "voidReasonPrompt": "Pourquoi annuler cette facture ?",
+    "labour": "Main-d'œuvre",
+    "tax": "Taxe",
+    "fee": "Frais de service",
+    "commission": "Commission",
+    "payout": "Versement au prestataire"
   }
 }

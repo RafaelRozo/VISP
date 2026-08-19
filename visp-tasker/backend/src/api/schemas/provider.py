@@ -389,8 +389,16 @@ class MobileJobCreateRequest(BaseModel):
     # URLs devueltas por POST /api/v1/jobs/booking-evidence. Máximo 5, validado en
     # el servicio.
     evidence: Optional[list[str]] = None
-    # Respuestas a las preguntas del servicio: [{questionId, answer}].
+    # Respuestas a las preguntas del servicio: [{questionId, answer}]. En las de tipo
+    # IMAGE, `answer` es la URL que devolvió la subida de la foto.
     answers: Optional[list[dict[str, Any]]] = None
+
+    # Materiales (migración 043). El cliente decide si quiere que el proveedor los
+    # compre y cuánto autoriza; el rango lo fija el admin y lo valida `create_job`.
+    materials_requested: bool = Field(default=False, alias="materialsRequested")
+    materials_budget_cents: Optional[int] = Field(
+        default=None, alias="materialsBudgetCents", gt=0
+    )
 
     # Optional address components
     city: Optional[str] = None

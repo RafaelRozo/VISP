@@ -128,6 +128,7 @@ from src.api.routes import (  # noqa: E402
     jobs,
     matching,
     notifications,
+    offers,
     payments,
     pricing,
     proposals,
@@ -149,6 +150,11 @@ app.include_router(tasks.router, prefix=_prefix)
 app.include_router(consents.router, prefix=_prefix)
 app.include_router(verification.router, prefix=_prefix)
 app.include_router(jobs.router, prefix=_prefix)
+# Ofertas v2. El router de cliente cuelga de /jobs igual que `jobs`, pero sus rutas
+# son más específicas (/{job_id}/offers/...), así que el orden de registro no las
+# solapa. La bolsa del proveedor va bajo /provider, ver src/api/routes/offers.py.
+app.include_router(offers.router, prefix=_prefix)
+app.include_router(offers.provider_router, prefix=_prefix)
 app.include_router(providers.router, prefix=_prefix)
 app.include_router(provider_rates.router, prefix=_prefix)
 app.include_router(matching.router, prefix=_prefix)

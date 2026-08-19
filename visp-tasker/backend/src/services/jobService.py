@@ -46,7 +46,7 @@ from src.models.job import Job, JobPriority, JobStatus
 from src.models.provider import ProviderLevel
 from src.models.sla import SLAProfile
 from src.models.taxonomy import ServiceTask
-from src.services import service_zone_service
+from src.services import offerService, service_zone_service
 from src.services.jobStateManager import ActorType, validate_transition
 from src.services.pricingEngine import (
     HOURLY_RATES,
@@ -285,6 +285,8 @@ async def create_job(
     customer_evidence: list[str] | None = None,
     customer_extra_note: str | None = None,
     customer_answers: list[dict[str, Any]] | None = None,
+    materials_requested: bool = False,
+    materials_budget_cents: int | None = None,
 ) -> Job:
     """Create a new job with SLA snapshot from sla_profiles.
 
@@ -360,6 +362,34 @@ async def create_job(
             "The provider uses it to decide whether to accept the job."
         )
 
+    # 1d. Materiales (migración 043). Lo decide el CLIENTE, aunque el servicio los
+    # permita: si no los pide, la reserva se comporta igual que siempre.
+    #
+    # El presupuesto se acota al rango del admin por la misma razón que la tarifa del
+    # proveedor: sin tope, el campo se convierte en texto libre y el proveedor acaba
+    # gastando lo que quiera de un dinero que no es suyo.
+    want_materials = bool(materials_requested)
+    budget_cents: int | None = None
+    if want_materials:
+        if not task.materials_enabled:
+            raise BookingInputRequiredError(
+                "This service does not include materials."
+            )
+        if materials_budget_cents is None:
+            raise BookingInputRequiredError(
+                "Set how much the provider may spend on materials."
+            )
+        budget_cents = int(materials_budget_cents)
+        lo = task.materials_budget_min_cents
+        hi = task.materials_budget_max_cents
+        if (lo is not None and budget_cents < lo) or (
+            hi is not None and budget_cents > hi
+        ):
+            raise BookingInputRequiredError(
+                "The materials budget for this service must be between "
+                f"${(lo or 0) / 100:,.2f} and ${(hi or 0) / 100:,.2f}."
+            )
+
     # Preguntas del servicio (migración 039). Se validan contra la tabla y NO
     # contra lo que mande el cliente: si se confiara en el payload, bastaría con
     # omitir una pregunta obligatoria para saltársela.
@@ -384,6 +414,11 @@ async def create_job(
 
     answers_json: list[dict[str, Any]] = []
     for q in preguntas:
+        # Las preguntas de material solo cuentan si el cliente pidió material: "¿de
+        # qué color pinto?" no tiene sentido si compra su propia pintura, y exigirla
+        # bloquearía la reserva por algo que no aplica.
+        if q.materials_only and not want_materials:
+            continue
         texto = respuestas_por_id.get(str(q.id), "")
         if q.is_required and not texto:
             raise BookingInputRequiredError(
@@ -412,6 +447,10 @@ async def create_job(
                 "questionId": str(q.id),
                 "question": q.question_en,
                 "answer": texto,
+                # El tipo viaja con la respuesta: en IMAGE, `answer` es la URL de la
+                # foto y sin esto quien lo lea la pintaría como texto.
+                "answerType": q.answer_type,
+                "materialsOnly": q.materials_only,
             })
 
     # 2. Capture SLA snapshot (IMMUTABLE after this point)
@@ -462,6 +501,11 @@ async def create_job(
         customer_evidence_json=evidence,
         customer_extra_note=extra_note,
         customer_answers_json=answers_json,
+        # Materiales (migración 043)
+        materials_requested=want_materials,
+        materials_budget_cents=budget_cents,
+        # Ventana de ofertas: el trabajo se postea y admite ofertas 48 h.
+        offers_close_at=offerService.default_close_at(),
     )
 
     # 5. Apply schedule if provided

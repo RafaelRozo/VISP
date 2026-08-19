@@ -119,6 +119,20 @@ export default function AdminLayout() {
           </NavLink>
 
           <NavLink
+            to="/admin/jobs"
+            style={({ isActive }) => ({
+              ...navItemStyle,
+              color: isActive ? 'var(--t-text)' : 'var(--t-text-2)',
+              background: isActive ? 'var(--t-card)' : 'transparent',
+              borderLeft: isActive ? '2px solid var(--t-violet)' : '2px solid transparent',
+              paddingLeft: 10,
+            })}
+          >
+            <NavIcon name="jobs" />
+            <span>{t('nav.jobs', 'Jobs & offers')}</span>
+          </NavLink>
+
+          <NavLink
             to="/admin/promotions"
             style={({ isActive }) => ({
               ...navItemStyle,
@@ -201,7 +215,7 @@ export default function AdminLayout() {
   );
 }
 
-function NavIcon({ name }: { name: 'dashboard' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'users' }) {
+function NavIcon({ name }: { name: 'dashboard' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'users' | 'jobs' }) {
   const props = {
     width: 14,
     height: 14,
@@ -235,6 +249,13 @@ function NavIcon({ name }: { name: 'dashboard' | 'documents' | 'businesses' | 'p
           <polyline points="14,2 14,8 20,8" />
           <line x1="8" y1="13" x2="16" y2="13" />
           <line x1="8" y1="17" x2="14" y2="17" />
+        </svg>
+      );
+    case 'jobs':
+      return (
+        <svg {...props}>
+          <rect x="2" y="7" width="20" height="14" rx="2" />
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
         </svg>
       );
     case 'businesses':

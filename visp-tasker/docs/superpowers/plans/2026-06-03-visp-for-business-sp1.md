@@ -1,14 +1,17 @@
 # VISP for Business — SP1 (Backend Multi-Tenant Foundation) Implementation Plan
 
+> **Documento histórico.** La base de trabajo pasó a ser `visp_prod` (2026-08-14). Las instrucciones que citan `visp_prod` aquí se escribieron para la base vieja, y las credenciales se sacaron del texto: salen del `.env`.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the backend foundation for company tenants — models, migration, and base CRUD endpoints for `companies`, `company_members`, `company_documents`, `company_services`, `company_invites` — so companies can register, upload documents, be validated by admins, enable services, and invite collaborators.
 
-**Architecture:** Follow existing VISP backend conventions exactly. New raw-SQL migration `019` (against dev DB `Visp2026`), one new model module `company.py`, one Pydantic schema module, one service module, one user-facing router, and company-validation endpoints in the admin router. Collaborators reuse `provider_profiles`; payouts target the company's `stripe_account_id` (wiring deferred to SP4). Native PG enums store **uppercase member names** (matching `CredentialStatus`).
+**Architecture:** Follow existing VISP backend conventions exactly. New raw-SQL migration `019` (against dev DB `visp_prod`), one new model module `company.py`, one Pydantic schema module, one service module, one user-facing router, and company-validation endpoints in the admin router. Collaborators reuse `provider_profiles`; payouts target the company's `stripe_account_id` (wiring deferred to SP4). Native PG enums store **uppercase member names** (matching `CredentialStatus`).
 
 **Tech Stack:** Python 3.11, FastAPI, async SQLAlchemy 2.0 (`Mapped`/`mapped_column`), PostgreSQL (asyncpg), Pydantic v2, pytest (`mock_db` AsyncMock fixture).
 
-**Dev DB:** `postgresql+asyncpg://Droz:Droz.2026@192.168.1.94:5432/Visp2026` (full clone of `visp_tasker`). Apply migration here; never touch `visp_tasker`.
+**Dev DB:** `postgresql+asyncpg://Droz:${PGPASSWORD}@192.168.1.94:5432/visp_prod` (full clone of `visp_tasker`). Apply migration here; never touch `visp_tasker`.
 
 **Out of scope (SP4):** supervisor→collaborator assignment flow, payout routing inside the job lifecycle, any web/mobile UI.
 
@@ -142,11 +145,11 @@ CREATE INDEX ix_company_invites_code ON company_invites (code);
 COMMIT;
 ```
 
-- [ ] **Step 2: Apply the migration to Visp2026**
+- [ ] **Step 2: Apply the migration to visp_prod**
 
 Run:
 ```bash
-PGPASSWORD='Droz.2026' psql -h 192.168.1.94 -p 5432 -U Droz -d Visp2026 \
+PGPASSWORD="$PGPASSWORD" psql -h 192.168.1.94 -p 5432 -U Droz -d visp_prod \
   -v ON_ERROR_STOP=1 -f backend/migrations/019_visp_for_business.sql
 ```
 Expected: `BEGIN ... CREATE TYPE (x6) ... CREATE TABLE (x5) ... CREATE INDEX ... COMMIT` with no ERROR.
@@ -155,7 +158,7 @@ Expected: `BEGIN ... CREATE TYPE (x6) ... CREATE TABLE (x5) ... CREATE INDEX ...
 
 Run:
 ```bash
-PGPASSWORD='Droz.2026' psql -h 192.168.1.94 -U Droz -d Visp2026 -tA -c \
+PGPASSWORD="$PGPASSWORD" psql -h 192.168.1.94 -U Droz -d visp_prod -tA -c \
 "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE 'company%' ORDER BY 1;"
 ```
 Expected (5 lines): `companies, company_documents, company_invites, company_members, company_services`.
@@ -1190,16 +1193,16 @@ git commit -m "feat(b2b): admin company-validation endpoints (SP1/SP3 backend)"
 
 ---
 
-## Task 7: End-to-end smoke test against Visp2026
+## Task 7: End-to-end smoke test against visp_prod
 
-**Files:** none (manual verification). The user runs the backend pointed at `Visp2026`.
+**Files:** none (manual verification). The user runs the backend pointed at `visp_prod`.
 
-- [ ] **Step 1: Point a local backend at Visp2026 and start it**
+- [ ] **Step 1: Point a local backend at visp_prod and start it**
 
 Set the dev DB and run (the user does this, or in a scratch shell):
 ```bash
 cd backend
-DATABASE_URL='postgresql+asyncpg://Droz:Droz.2026@192.168.1.94:5432/Visp2026' \
+DATABASE_URL='postgresql+asyncpg://Droz:${PGPASSWORD}@192.168.1.94:5432/visp_prod' \
   uvicorn src.main:app --host 0.0.0.0 --port 8010
 ```
 Expected: server starts with no import errors.
@@ -1229,7 +1232,7 @@ git add -A && git commit -m "chore(b2b): SP1 smoke-test cleanup" || echo "nothin
 
 ## Notes for the implementer
 
-- **Backend deploy:** the user applies migrations and restarts the server. Do not deploy; list changed files. SP1 targets `Visp2026` only.
+- **Backend deploy:** the user applies migrations and restarts the server. Do not deploy; list changed files. SP1 targets `visp_prod` only.
 - **Enum values:** the PG enum labels are the UPPERCASE member *names* (e.g. `DRAFT`), set by SQLAlchemy from the member name; the Python `.value` (e.g. `"draft"`) is what the API returns to clients. Keep both in sync with the migration.
 - **No UI in SP1.** `/business` web (SP2) and `/console` UI (SP3) consume these endpoints later; the admin endpoints here are the SP3 backend.
 - **Payments:** `companies.stripe_account_id` exists but is unused until SP4 wires payout routing.

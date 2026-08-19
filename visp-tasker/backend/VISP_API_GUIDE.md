@@ -12,7 +12,7 @@ El backend FastAPI de VISP expone **~60 endpoints** organizados en **14 módulos
 
 ```env
 # -- Database (PostgreSQL) --
-DATABASE_URL=postgresql+asyncpg://Droz:Droz.2026@192.168.1.94:5432/visp_tasker
+DATABASE_URL=postgresql+asyncpg://Droz:${PGPASSWORD}@192.168.1.94:5432/visp_tasker
 SQL_ECHO=false
 
 # -- Redis --

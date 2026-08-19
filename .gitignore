@@ -47,11 +47,16 @@ skills-lock.json
 # Work-in-progress / scratch
 newdesign/
 
-# Local dev/test scripts — these embed dev DB credentials (host/user/password),
-# so they are kept local and must not be committed. Sanitize before ever tracking.
-visp-tasker/backend/scripts/smoke_*.py
+# Los smokes y la simulación de recorrido SÍ se versionan desde el 2026-08-19.
+#
+# Esta regla existía porque llevaban la contraseña de la BD escrita dentro. Ya no:
+# todos leen la conexión del `.env` (`settings.database_url`) y se niegan a correr si
+# no apunta a `visp_prod`. Son la única red de regresión del backend —21 scripts, y el
+# ciclo completo con Stripe— y tenerlos en una sola máquina era el riesgo real.
+#
+# Lo que sigue fuera son los seeds de demo, que sí llevan contraseñas de cuentas
+# sembradas dentro.
 visp-tasker/backend/scripts/seed_demo_*.py
-visp-tasker/backend/scripts/simulate_full_journey.py
 visp-tasker/backend/scripts/validate_*.py
 
 # Stray export at repo root

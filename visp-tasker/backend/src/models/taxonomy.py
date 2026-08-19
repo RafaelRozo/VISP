@@ -149,6 +149,23 @@ class ServiceTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     details_prompt_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     details_prompt_fr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Materiales (migración 043). El proveedor los compra y el cliente se los reembolsa.
+    # Lo activa el admin por servicio; el cliente decide en CADA reserva si los quiere.
+    # `materials_budget_*` acota lo que el cliente puede autorizar, igual que
+    # `base_price_*` acota la tarifa del proveedor. `materials_note_*` es el mensaje del
+    # admin PARA EL PROVEEDOR, que lo lee antes de ofertar.
+    materials_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    materials_budget_min_cents: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    materials_budget_max_cents: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    materials_note_en: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    materials_note_fr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Auto-escalation keywords (JSON array of strings)
     escalation_keywords: Mapped[Any] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), nullable=False
@@ -333,7 +350,16 @@ class ServiceTaskQuestion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     question_en: Mapped[str] = mapped_column(Text, nullable=False)
     question_fr: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # 'TEXT' (textarea libre) o 'SINGLE_CHOICE' (elige una de `options`).
+    # Solo se muestra —y solo se exige— cuando el cliente pidió material (mig. 043).
+    # El caso que lo pidió: "¿de qué color pinto?" no tiene sentido si el cliente compra
+    # su propia pintura.
+    materials_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+
+    # 'TEXT' (textarea libre), 'SINGLE_CHOICE' (elige una de `options`) o 'IMAGE'
+    # (la respuesta es una foto y `answer` guarda su URL — el color de pintura descrito
+    # con palabras no sirve, la foto de la pared sí).
     # VARCHAR con CHECK en vez de enum de PG: añadir un tipo nuevo es un ALTER del
     # CHECK, sin la migración aislada que exige ALTER TYPE ADD VALUE.
     answer_type: Mapped[str] = mapped_column(

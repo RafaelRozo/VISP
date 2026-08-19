@@ -2,7 +2,7 @@
 
 **Fuentes:** `docs/VISP STRUCTURING.pdf` (matriz categoría × nivel) + `docs/VISP_Worker_Progression_Requirements_Revised (1).docx` (requisitos de acceso por nivel).
 **Estado del análisis:** completo. **Estado de implementación:** no iniciado — este documento es el plan.
-**DB de trabajo:** `visp_prod` @ 192.168.1.94 (clon de Visp2026). Última migración: `030_provider_documents.sql`.
+**DB de trabajo:** `visp_prod` @ 192.168.1.94 (clon de visp_prod). Última migración: `030_provider_documents.sql`.
 
 ---
 
@@ -165,7 +165,7 @@ Orden acordado con Ricardo: **BD completa → admin (el cliente revisa y corrige
 | **7** | Matching | Matching por servicio en vez de por nivel global | ⬜ |
 | **8** | Admin-validación | Colas de evidencia L1 y credenciales L2/L3, verificación en registro oficial, BIN/OCN de empresa | ⬜ |
 | **9** | App | Onboarding L0 (18+, orientación, licencia); "My Services" por servicio; evidencia L1; credencial por servicio; badge "L2: Plumbing"; divulgación de riesgo | ⬜ |
-| **10** | Cutover | Aplicar 031–033 a `Visp2026`, backfill, smoke de producción | ⬜ |
+| **10** | Cutover | Aplicar 031–033 a `visp_prod`, backfill, smoke de producción | ⬜ |
 
 ### Fase 4 — Admin-catálogo (hecho)
 
@@ -263,7 +263,7 @@ Restaurar: `pg_restore -h 192.168.1.94 -U Droz -d <db> --clean --no-owner <dump>
 1. **Exigir empresa registrada para L3 (confirmado)** es correcto legalmente pero es una barrera de entrada fuerte: los 46 servicios L3 son los de mayor ticket y ningún proveedor individual puede tomarlos. **Acción recomendada antes del cutover:** medir cuántos proveedores reales tienen BIN/OCN y, si son pocos, planear el empuje de onboarding B2B en paralelo — si no, el catálogo L3 queda sin oferta.
 2. **Las 6 correcciones del cliente resolvieron lo más grave** (Lead Paint y Spray Foam a L3, Deck Construction se queda en L3, y 3 servicios con el scope estrechado en el propio nombre). Quedan 10 bajadas a L1 aceptadas por defecto — sobre todo `Window Replacement`, `Garage Door Replacement` y `Soffit & Fascia Replacement` — que siguen siendo trabajo en altura o de envolvente en un nivel donde VISP solo valida papeles, no competencia. Las dejo como están pero vale la pena una segunda pasada con criterio de **riesgo**.
 3. **`service_credential_requirements` es la pieza crítica.** El PDF ya trae los códigos por servicio (306A, 309A, ESA LEC, TSSA G1/G2, 308A/308R, 449A, 444B, BCIN, Smart Serve…). Si no se modela como tabla, el gate por servicio se vuelve un `if` gigante imposible de mantener. Vale la pena hacerlo bien de una vez.
-4. **Volumen del cambio.** 116 servicios cambian de nivel, 22 se desactivan, 7 se renombran, 2 se crean; todos los proveedores existentes hay que recalcularlos; matching, pricing, comisiones, SLA, admin y app se tocan. Esto no es un parche: son 3 migraciones y ~2 semanas de trabajo bien hecho. Recomiendo **congelar features nuevas** hasta cerrar la fase 4, y trabajar en `visp_prod` (no en `Visp2026`) hasta que el smoke pase completo.
+4. **Volumen del cambio.** 116 servicios cambian de nivel, 22 se desactivan, 7 se renombran, 2 se crean; todos los proveedores existentes hay que recalcularlos; matching, pricing, comisiones, SLA, admin y app se tocan. Esto no es un parche: son 3 migraciones y ~2 semanas de trabajo bien hecho. Recomiendo **congelar features nuevas** hasta cerrar la fase 4, y trabajar en `visp_prod` (no en `visp_prod`) hasta que el smoke pase completo.
 
 ---
 

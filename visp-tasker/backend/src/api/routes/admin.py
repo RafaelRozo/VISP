@@ -1401,6 +1401,187 @@ def _promo_to_out(p: Promotion) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Trabajos y ofertas — monitoreo (ofertas v2, 2026-08-19)
+#
+# Con el modelo de ofertas, el fallo más probable del sistema deja de ser un error
+# técnico y pasa a ser el silencio: el cliente postea y no le oferta nadie. Sin esta
+# vista no hay forma de contestar a un "no me llegó ninguna oferta" — ni de ver si el
+# problema es que nadie tiene tarifa puesta para ese servicio.
+# ---------------------------------------------------------------------------
+
+@router.get("/jobs", summary="Trabajos con el estado de sus ofertas")
+async def admin_list_jobs(
+    db: DBSession,
+    admin: CurrentAdmin,
+    status_filter: Optional[str] = None,
+    only_open: bool = False,
+    limit: int = 100,
+) -> dict[str, Any]:
+    from src.models.job import Job, JobStatus
+    from src.models.job_offer import JobOffer, OfferStatus
+    from src.models.taxonomy import ServiceTask
+
+    stmt = (
+        select(Job, ServiceTask, User)
+        .join(ServiceTask, ServiceTask.id == Job.task_id)
+        .join(User, User.id == Job.customer_id)
+        .order_by(Job.created_at.desc())
+        .limit(min(max(limit, 1), 500))
+    )
+    if only_open:
+        stmt = stmt.where(Job.status == JobStatus.PENDING_MATCH)
+    elif status_filter:
+        stmt = stmt.where(Job.status == status_filter.upper())
+
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return {"data": {"jobs": [], "count": 0}}
+
+    job_ids = [j.id for j, _, _ in rows]
+    # Recuento de ofertas por trabajo en UNA consulta: una por trabajo convertiría
+    # la pantalla en el cuello de botella del admin en cuanto haya volumen.
+    conteo: dict[Any, int] = {
+        jid: int(n)
+        for jid, n in (
+            await db.execute(
+                select(JobOffer.job_id, func.count(JobOffer.id))
+                .where(
+                    JobOffer.job_id.in_(job_ids),
+                    JobOffer.status == OfferStatus.PENDING,
+                )
+                .group_by(JobOffer.job_id)
+            )
+        ).all()
+    }
+
+    return {"data": {
+        "jobs": [{
+            "id": str(j.id),
+            "referenceNumber": j.reference_number,
+            "status": j.status.value,
+            "taskName": t.name,
+            "pricingUnit": t.pricing_unit.value if t.pricing_unit else None,
+            "customerName": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+            "city": j.service_city,
+            "requestedDate": j.requested_date.isoformat() if j.requested_date else None,
+            "offerCount": conteo.get(j.id, 0),
+            "offersCloseAt": j.offers_close_at.isoformat() if j.offers_close_at else None,
+            "quotedPriceCents": j.quoted_price_cents,
+            "totalChargedCents": j.total_charged_cents,
+            "materialsRequested": j.materials_requested,
+            "materialsBudgetCents": j.materials_budget_cents,
+            "materialsSpentCents": j.materials_spent_cents,
+            "createdAt": j.created_at.isoformat() if j.created_at else None,
+        } for j, t, u in rows],
+        "count": len(rows),
+    }}
+
+
+@router.get("/jobs/{job_id}", summary="Detalle del trabajo con sus ofertas")
+async def admin_job_detail(
+    db: DBSession, admin: CurrentAdmin, job_id: uuid.UUID
+) -> dict[str, Any]:
+    from src.models.job import Job
+    from src.models.job_offer import JobOffer
+    from src.models.provider import ProviderProfile
+    from src.models.provider_rate import ProviderServiceRate
+    from src.models.taxonomy import ServiceTask
+    from src.services import materialsService
+
+    job = await db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    task = await db.get(ServiceTask, job.task_id)
+
+    ofertas = (
+        await db.execute(
+            select(JobOffer, ProviderProfile, User)
+            .join(ProviderProfile, ProviderProfile.id == JobOffer.provider_id)
+            .join(User, User.id == ProviderProfile.user_id)
+            .where(JobOffer.job_id == job_id)
+            .order_by(JobOffer.created_at.asc())
+        )
+    ).all()
+
+    # Cuántos proveedores tienen tarifa para este servicio. Es EL dato para explicar
+    # un trabajo sin ofertas: casi siempre no es un fallo, es que nadie puso precio.
+    con_tarifa = (
+        await db.execute(
+            select(func.count(ProviderServiceRate.id)).where(
+                ProviderServiceRate.task_id == job.task_id,
+                ProviderServiceRate.is_active.is_(True),
+            )
+        )
+    ).scalar_one()
+
+    return {"data": {
+        "id": str(job.id),
+        "referenceNumber": job.reference_number,
+        "status": job.status.value,
+        "taskName": task.name if task else None,
+        "pricingUnit": task.pricing_unit.value if task and task.pricing_unit else None,
+        "catalogMinCents": task.base_price_min_cents if task else None,
+        "catalogMaxCents": task.base_price_max_cents if task else None,
+        "providersWithARate": int(con_tarifa),
+        "details": job.customer_details,
+        "extraNote": job.customer_extra_note,
+        "evidence": job.customer_evidence_json or [],
+        "answers": job.customer_answers_json or [],
+        "quantity": float(job.quantity) if job.quantity is not None else None,
+        "offersCloseAt": job.offers_close_at.isoformat() if job.offers_close_at else None,
+        "acceptedOfferId": str(job.accepted_offer_id) if job.accepted_offer_id else None,
+        "materials": {
+            "requested": job.materials_requested,
+            "budgetCents": job.materials_budget_cents,
+            "spentCents": job.materials_spent_cents,
+            "overageCents": materialsService.overage_cents(job),
+            "needsApproval": materialsService.needs_customer_approval(job),
+            "receipts": await materialsService.list_receipts(db, job_id),
+        },
+        "money": {
+            "subtotalCents": job.quoted_price_cents,
+            "serviceTaxCents": job.service_tax_cents,
+            "serviceFeeCents": job.service_fee_cents,
+            "commissionCents": job.commission_amount_cents,
+            "providerPayoutCents": job.provider_payout_cents,
+            "totalChargedCents": job.total_charged_cents,
+        },
+        "offers": [{
+            "offerId": str(o.id),
+            "providerName": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+            "providerId": str(o.provider_id),
+            "status": o.status,
+            "unit": o.unit.value,
+            "magnitude": float(o.magnitude),
+            "magnitudeSource": o.magnitude_source,
+            "rateCents": o.rate_cents,
+            "subtotalCents": o.subtotal_cents,
+            "totalCents": o.total_cents,
+            "message": o.message,
+            "createdAt": o.created_at.isoformat() if o.created_at else None,
+        } for o, p, u in ofertas],
+    }}
+
+
+@router.post("/material-receipts/{receipt_id}/void", summary="Anular una factura de material")
+async def admin_void_material_receipt(
+    db: DBSession, admin: CurrentAdmin, receipt_id: uuid.UUID, reason: str = ""
+) -> dict[str, Any]:
+    """Para disputas: la fila NO se borra, se marca anulada. El importe pudo haber
+    entrado ya en un cobro y el rastro tiene que quedar."""
+    from src.services import materialsService
+
+    try:
+        resumen = await materialsService.void_receipt(
+            db, receipt_id=receipt_id, reason=reason or "voided by admin"
+        )
+    except materialsService.ReceiptNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found.")
+    await db.commit()
+    return {"data": resumen}
+
+
 @router.get("/promotions")
 async def list_promotions(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
     rows = (await db.execute(select(Promotion).order_by(Promotion.created_at.desc()))).scalars().all()
@@ -1511,11 +1692,15 @@ class TaskQuestionIn(_CamelModel):
     id: Optional[uuid.UUID] = None
     question_en: str = Field(min_length=1, max_length=2000)
     question_fr: Optional[str] = None
-    answer_type: str = Field(default="TEXT", pattern=r"^(TEXT|SINGLE_CHOICE)$")
+    # IMAGE (migración 043): la respuesta es una foto y `answer` guarda su URL. El
+    # caso que lo pidió es el color de pintura — descrito con palabras no sirve.
+    answer_type: str = Field(default="TEXT", pattern=r"^(TEXT|SINGLE_CHOICE|IMAGE)$")
     # [{"en": "Light", "fr": "Léger"}, ...]. Solo para SINGLE_CHOICE.
     options: list[dict[str, Any]] = Field(default_factory=list)
     is_required: bool = True
     display_order: int = 0
+    # Solo se muestra —y solo se exige— si el cliente pidió material.
+    materials_only: bool = False
 
 
 class TaskCredentialRequirementIn(_CamelModel):
@@ -1561,6 +1746,14 @@ class TaskAdminCreate(_CamelModel):
     requires_evidence: bool = False
     details_prompt_en: Optional[str] = None
     details_prompt_fr: Optional[str] = None
+    # Materiales (migración 043): el proveedor los compra y el cliente se los
+    # reembolsa. El rango acota lo que el cliente puede autorizar; la nota es el
+    # mensaje del admin PARA EL PROVEEDOR, que lo lee antes de ofertar.
+    materials_enabled: bool = False
+    materials_budget_min_cents: Optional[int] = None
+    materials_budget_max_cents: Optional[int] = None
+    materials_note_en: Optional[str] = None
+    materials_note_fr: Optional[str] = None
     # Preguntas del servicio (migración 039). Reemplazan el conjunto completo.
     questions: list[TaskQuestionIn] = Field(default_factory=list)
     # Si TRUE, el servicio exige seguro CGL. Se traduce a una fila de
@@ -1597,6 +1790,11 @@ class TaskAdminUpdate(_CamelModel):
     requires_evidence: Optional[bool] = None
     details_prompt_en: Optional[str] = None
     details_prompt_fr: Optional[str] = None
+    materials_enabled: Optional[bool] = None
+    materials_budget_min_cents: Optional[int] = None
+    materials_budget_max_cents: Optional[int] = None
+    materials_note_en: Optional[str] = None
+    materials_note_fr: Optional[str] = None
     questions: Optional[list[TaskQuestionIn]] = None
     requires_insurance: Optional[bool] = None
     # Cuando viene, REEMPLAZA el conjunto completo de requisitos del servicio.
@@ -1655,6 +1853,11 @@ def _task_to_out(
         "requiresEvidence": t.requires_evidence,
         "detailsPromptEn": t.details_prompt_en,
         "detailsPromptFr": t.details_prompt_fr,
+        "materialsEnabled": t.materials_enabled,
+        "materialsBudgetMinCents": t.materials_budget_min_cents,
+        "materialsBudgetMaxCents": t.materials_budget_max_cents,
+        "materialsNoteEn": t.materials_note_en,
+        "materialsNoteFr": t.materials_note_fr,
         "iconUrl": t.icon_url,
         "displayOrder": t.display_order,
         "isActive": t.is_active,
@@ -2021,6 +2224,7 @@ async def _replace_task_questions(
             q.options = _clean_options(item)
             q.is_required = item.is_required
             q.display_order = item.display_order or idx
+            q.materials_only = item.materials_only
             q.is_active = True
             vistos.add(q.id)
         else:
@@ -2033,6 +2237,7 @@ async def _replace_task_questions(
                     options=_clean_options(item),
                     is_required=item.is_required,
                     display_order=item.display_order or idx,
+                    materials_only=item.materials_only,
                     is_active=True,
                 )
             )
@@ -2061,6 +2266,53 @@ def _assert_details_prompt(task: ServiceTask) -> None:
                 "A service that requires details also needs 'detailsPromptEn': it is "
                 "what tells the customer to describe the scale and access of THIS "
                 "service instead of asking for extra work."
+            ),
+        )
+
+
+def _assert_materials(task: ServiceTask) -> None:
+    """Guardarraíles del material, evaluados sobre el estado RESULTANTE.
+
+    Existen en la base como CHECK, pero un CHECK saltando desde el admin sale como
+    500 y Cloudflare lo envuelve en su página: quien está cargando el catálogo vería
+    un fallo sin explicación. Aquí se convierte en un 400 que dice qué falta.
+    """
+    if not task.materials_enabled:
+        return
+    lo = task.materials_budget_min_cents
+    hi = task.materials_budget_max_cents
+    if lo is None or hi is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "A service with materials needs a budget range: it is what the "
+                "customer can authorise and what bounds the provider's spending."
+            ),
+        )
+    if lo < 0 or lo > hi:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The materials budget minimum cannot be above the maximum.",
+        )
+
+
+def _assert_price_range(task: ServiceTask) -> None:
+    """Un servicio activo sin rango no se puede mostrar ni acotar la tarifa del
+    proveedor: no habría contra qué validar. Mismo motivo que arriba para atajarlo
+    aquí en vez de dejar saltar el CHECK como 500."""
+    lo = task.base_price_min_cents
+    hi = task.base_price_max_cents
+    if lo is not None and hi is not None and lo > hi:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The minimum price cannot be above the maximum.",
+        )
+    if task.is_active and (lo is None or hi is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "An active service needs a price range: the customer sees it as the "
+                "hourly (or per-unit) range, and it is what bounds the provider's rate."
             ),
         )
 
@@ -2328,6 +2580,11 @@ async def admin_create_task(
         requires_evidence=body.requires_evidence,
         details_prompt_en=(body.details_prompt_en or None),
         details_prompt_fr=(body.details_prompt_fr or None),
+        materials_enabled=body.materials_enabled,
+        materials_budget_min_cents=body.materials_budget_min_cents,
+        materials_budget_max_cents=body.materials_budget_max_cents,
+        materials_note_en=(body.materials_note_en or None),
+        materials_note_fr=(body.materials_note_fr or None),
         min_quantity=body.min_quantity if body.min_quantity is not None else 1,
         escalation_keywords=body.escalation_keywords,
         icon_url=body.icon_url,
@@ -2337,6 +2594,8 @@ async def admin_create_task(
     # Guardarraíl: L2/L3 sin requisitos = servicio que nadie puede tomar nunca.
     await _assert_credential_gate(db, task, body.credential_requirements)
     _assert_details_prompt(task)
+    _assert_materials(task)
+    _assert_price_range(task)
 
     db.add(task)
     try:
@@ -2403,6 +2662,8 @@ async def admin_update_task(
     # L2/L3 sin requisitos lo dejaría inalcanzable para todo proveedor.
     await _assert_credential_gate(db, task, body.credential_requirements)
     _assert_details_prompt(task)
+    _assert_materials(task)
+    _assert_price_range(task)
 
     try:
         if body.credential_requirements is not None:

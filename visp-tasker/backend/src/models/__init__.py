@@ -79,6 +79,14 @@ from .pricing import (
 # -- 011: Price Proposals --
 from .price_proposal import PriceProposal
 
+# -- 042/043: Ofertas de trabajo y facturas de material --
+from .job_offer import (
+    JobMaterialReceipt,
+    JobOffer,
+    MagnitudeSource,
+    OfferStatus,
+)
+
 # -- 011: Tips --
 from .tip import Tip
 
@@ -193,6 +201,10 @@ __all__ = [
     "CommissionSchedule",
     # Price Proposals
     "PriceProposal",
+    "JobOffer",
+    "JobMaterialReceipt",
+    "OfferStatus",
+    "MagnitudeSource",
     # Tips
     "Tip",
     # Reviews

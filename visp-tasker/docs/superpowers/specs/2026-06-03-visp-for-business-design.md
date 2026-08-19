@@ -1,8 +1,11 @@
 # VISP for Business — Design Spec
 
+> **Documento histórico.** La base de trabajo pasó a ser `visp_prod` (2026-08-14). Las instrucciones que citan `visp_prod` aquí se escribieron para la base vieja, y las credenciales se sacaron del texto: salen del `.env`.
+
+
 **Date:** 2026-06-03
 **Status:** Approved (overall decomposition + SP1 foundation). SP2–SP4 are high-level here; each gets its own spec before implementation.
-**Dev database:** `Visp2026` on `192.168.1.94:5432` (separate from production `visp_tasker`; all SP1 schema changes target Visp2026 until promoted).
+**Dev database:** `visp_prod` on `192.168.1.94:5432` (separate from production `visp_tasker`; all SP1 schema changes target visp_prod until promoted).
 
 ## 1. Goal
 
@@ -25,7 +28,7 @@ The work is too large for one spec. It is split into sub-projects, built in orde
 - A **collaborator reuses the existing `provider_profiles`** machinery (level, matching, credentials) but is **scoped to the services the company enabled**.
 - **Payouts go to the company's Stripe Connect account.** Collaborators have **no individual `stripe_account_id`**; when a company job is paid, the transfer targets `companies.stripe_account_id`. This reuses the existing Stripe Connect v2 onboarding flow, applied to the company instead of an individual.
 
-## 4. SP1 — data model (new tables, target DB `Visp2026`)
+## 4. SP1 — data model (new tables, target DB `visp_prod`)
 
 Mirror existing conventions: UUID PKs via `gen_random_uuid()`, `created_at`/`updated_at`, async SQLAlchemy models under `backend/src/models/`, raw SQL migration under `backend/migrations/`.
 
@@ -64,7 +67,7 @@ Under `/api/v1`, standard-user auth unless noted. Exact shapes finalized in the 
 - Document review: reuse `ProviderCredential` status pattern + admin `Documents` page approve/reject-with-note UX.
 - File upload: `backend/src/services/file_service.py`.
 - Company Stripe Connect: reuse the v2 onboarding (`connectV2Service.py`) applied to a company.
-- Migrations: raw SQL in `backend/migrations/` (next sequential number), applied to `Visp2026`.
+- Migrations: raw SQL in `backend/migrations/` (next sequential number), applied to `visp_prod`.
 - Backend deploy: user applies migration / restarts; Claude lists changed files.
 
 ## 9. Open items for the implementation plan

@@ -18,7 +18,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://Droz:Droz.2026@192.168.1.94:5432/visp_tasker
+      # Sin valor por defecto A PROPÓSITO. Antes traía clavada `visp_tasker`, que es
+      # una base de junio: un despliegue que se apoyara en ese valor arrancaría contra
+      # datos de hace meses sin dar ningún error. La base viva es `visp_prod` y la URL
+      # tiene que venir del entorno o del .env del servidor.
+      - DATABASE_URL=${DATABASE_URL:?falta DATABASE_URL (visp_prod) en el entorno}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:-visp-dev-secret-change-me-in-production}
       - DEBUG=${DEBUG:-true}

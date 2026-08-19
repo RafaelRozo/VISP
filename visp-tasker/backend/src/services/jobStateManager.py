@@ -65,6 +65,12 @@ VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     },
     JobStatus.PENDING_MATCH: {
         JobStatus.MATCHED,
+        # Ofertas v2: el cliente elige una oferta y el trabajo queda agendado sin
+        # pasar por MATCHED ni PENDING_APPROVAL. Esos dos estados servían al flujo
+        # viejo —un proveedor "se interesaba" y el cliente lo aprobaba después—, que
+        # las ofertas reemplazan: cuando el cliente acepta, ya vio precio, duración y
+        # proveedor, así que no queda nada que aprobar.
+        JobStatus.SCHEDULED,
         JobStatus.CANCELLED_BY_CUSTOMER,
         JobStatus.CANCELLED_BY_SYSTEM,
     },

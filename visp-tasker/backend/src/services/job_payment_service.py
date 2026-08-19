@@ -158,6 +158,14 @@ async def authorize_job(
     if not total or total <= 0:
         raise JobNotPriceableError(str(job.id))
 
+    # El material todavía no está comprado cuando se autoriza (esto corre al aceptar
+    # la oferta), así que el techo retenido tiene que incluir el presupuesto que el
+    # cliente aprobó. Sin esto la captura final se queda corta y hay que pedir una
+    # segunda autorización con el trabajo ya hecho. Ver materialsService §9 del plan.
+    from src.services import materialsService
+
+    total += materialsService.authorization_extra_cents(job)
+
     destination = await _resolve_destination_account(db, job)
     if not destination:
         raise ProviderNotPayableError(str(job.id))
@@ -233,6 +241,20 @@ async def capture_job(
 
     # See authorize_job: platform keeps commission + customer-covered service_fee.
     fee = (job.commission_amount_cents or 0) + (job.service_fee_cents or 0)
+
+    # Gate propio del MATERIAL, aparte del gate general de sobrecoste.
+    #
+    # Hace falta porque el techo autorizado ya lleva el presupuesto dentro y encima el
+    # colchón del 30%: un proveedor podría gastar bastante por encima de lo que el
+    # cliente aprobó sin que `actual` llegue a superar `ceiling`, y se le cobraría sin
+    # preguntarle. La regla es que pasarse del presupuesto SIEMPRE lo aprueba el
+    # cliente, no que quepa en el colchón.
+    from src.services import materialsService
+
+    if materialsService.needs_customer_approval(job):
+        raise OverageApprovalRequiredError(
+            job.materials_spent_cents or 0, job.materials_budget_cents or 0
+        )
 
     # Overage gate.
     if actual > ceiling and not job.overage_approved_at:

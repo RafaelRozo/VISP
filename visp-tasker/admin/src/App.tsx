@@ -16,6 +16,7 @@ import RedeemReset from '@/pages/auth/RedeemReset';
 import AdminLayout from '@/components/AdminLayout';
 import Dashboard from '@/pages/admin/Dashboard';
 import Documents from '@/pages/admin/Documents';
+import Jobs from '@/pages/admin/Jobs';
 import Businesses from '@/pages/admin/Businesses';
 import Services from '@/pages/admin/Services';
 import Users from '@/pages/admin/Users';
@@ -82,6 +83,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="services" element={<Services />} />
         <Route path="documents" element={<Documents />} />
+        <Route path="jobs" element={<Jobs />} />
         <Route path="businesses" element={<Businesses />} />
         <Route
           path="users"

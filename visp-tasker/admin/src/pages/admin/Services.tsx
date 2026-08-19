@@ -68,6 +68,16 @@ interface TaskFormState {
   detailsPromptFr: string;
   /** Requisito CGL del servicio: lo debe tener el PROVEEDOR, no el cliente. */
   requiresInsurance: boolean;
+  /**
+   * Materiales: el proveedor los compra y el cliente se los reembolsa. El rango
+   * (en DÓLARES en el formulario) acota lo que el cliente puede autorizar; la nota
+   * es el mensaje para el PROVEEDOR, que la lee antes de ofertar.
+   */
+  materialsEnabled: boolean;
+  materialsBudgetMin: string;
+  materialsBudgetMax: string;
+  materialsNoteEn: string;
+  materialsNoteFr: string;
   questions: TaskQuestion[];
   displayOrder: number;
   isActive: boolean;
@@ -135,6 +145,11 @@ const emptyTask = (categoryId: string): TaskFormState => ({
   detailsPromptEn: '',
   detailsPromptFr: '',
   requiresInsurance: false,
+  materialsEnabled: false,
+  materialsBudgetMin: '',
+  materialsBudgetMax: '',
+  materialsNoteEn: '',
+  materialsNoteFr: '',
   questions: [],
   displayOrder: 0,
   isActive: true,
@@ -517,9 +532,15 @@ export default function Services() {
                               detailsPromptEn: tk.detailsPromptEn ?? '',
                               detailsPromptFr: tk.detailsPromptFr ?? '',
                               requiresInsurance: tk.requiresInsurance ?? false,
+                              materialsEnabled: tk.materialsEnabled ?? false,
+                              materialsBudgetMin: centsToInput(tk.materialsBudgetMinCents),
+                              materialsBudgetMax: centsToInput(tk.materialsBudgetMaxCents),
+                              materialsNoteEn: tk.materialsNoteEn ?? '',
+                              materialsNoteFr: tk.materialsNoteFr ?? '',
                               questions: (tk.questions ?? []).map((q) => ({
                                 ...q,
                                 options: q.options ?? [],
+                                materialsOnly: q.materialsOnly ?? false,
                               })),
                               displayOrder: tk.displayOrder,
                               isActive: tk.isActive,
@@ -843,6 +864,13 @@ function TaskModal({
       detailsPromptEn: state.detailsPromptEn.trim() || null,
       detailsPromptFr: state.detailsPromptFr.trim() || null,
       requiresInsurance: state.requiresInsurance,
+      materialsEnabled: state.materialsEnabled,
+      // Solo se mandan si el material está activo: un rango olvidado de una vez que
+      // se probó el checkbox no debe quedar guardado en un servicio sin material.
+      materialsBudgetMinCents: state.materialsEnabled ? inputToCents(state.materialsBudgetMin) : null,
+      materialsBudgetMaxCents: state.materialsEnabled ? inputToCents(state.materialsBudgetMax) : null,
+      materialsNoteEn: state.materialsEnabled ? state.materialsNoteEn.trim() || null : null,
+      materialsNoteFr: state.materialsEnabled ? state.materialsNoteFr.trim() || null : null,
       // Se descartan las preguntas sin texto: una fila vacía olvidada en el
       // formulario crearía una pregunta imposible de responder.
       questions: state.questions
@@ -852,6 +880,9 @@ function TaskModal({
           questionEn: q.questionEn.trim(),
           questionFr: q.questionFr?.trim() || null,
           displayOrder: i,
+          // Una pregunta de material en un servicio sin material no se mostraría
+          // nunca; se degrada a pregunta normal en vez de quedar invisible.
+          materialsOnly: state.materialsEnabled ? (q.materialsOnly ?? false) : false,
           options:
             q.answerType === 'SINGLE_CHOICE'
               ? q.options
@@ -1115,6 +1146,102 @@ function TaskModal({
             )}
           </div>
 
+          {/* MATERIALES (migración 043). El proveedor los compra y el cliente se los
+              reembolsa. El rango acota lo que el cliente puede autorizar al reservar
+              — mismo criterio que el rango de precio con la tarifa del proveedor —
+              y la nota es el mensaje que el PROVEEDOR lee antes de ofertar.
+              El material no lleva impuesto encima ni paga comisión de VISP. */}
+          <div
+            style={{
+              border: `1px solid ${
+                state.materialsEnabled &&
+                (state.materialsBudgetMin.trim() === '' || state.materialsBudgetMax.trim() === '')
+                  ? 'var(--t-warn)'
+                  : 'var(--t-border)'
+              }`,
+              borderRadius: 8, background: 'var(--t-deep)', padding: 14,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}
+          >
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={state.materialsEnabled}
+                onChange={(e) => setState({ ...state, materialsEnabled: e.target.checked })}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <strong style={{ color: 'var(--t-text-1)' }}>
+                  {t('services.materialsEnabled') || 'This service needs materials'}
+                </strong>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--t-text-3)' }}>
+                  {t('services.materialsEnabledHelp') ||
+                    'The provider buys them and the customer reimburses the receipt. No tax is added on top and VISP takes no commission on materials.'}
+                </span>
+              </span>
+            </label>
+
+            {state.materialsEnabled && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label className="t-label">
+                      {t('services.materialsBudgetMin') || 'Budget min (CAD)'}
+                    </label>
+                    <input
+                      type="number" step="0.01" min="0" className="t-input"
+                      value={state.materialsBudgetMin}
+                      onChange={(e) => setState({ ...state, materialsBudgetMin: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="t-label">
+                      {t('services.materialsBudgetMax') || 'Budget max (CAD)'}
+                    </label>
+                    <input
+                      type="number" step="0.01" min="0" className="t-input"
+                      value={state.materialsBudgetMax}
+                      onChange={(e) => setState({ ...state, materialsBudgetMax: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--t-text-3)' }}>
+                  {t('services.materialsBudgetHelp') ||
+                    'What the customer may authorise when booking. Spending above it needs their approval.'}
+                </div>
+
+                <div>
+                  <label className="t-label">
+                    {t('services.materialsNoteEn') || 'Message for the provider (EN)'}
+                  </label>
+                  <textarea
+                    className="t-input" rows={2}
+                    placeholder="Buy matte paint, keep the receipt."
+                    value={state.materialsNoteEn}
+                    onChange={(e) => setState({ ...state, materialsNoteEn: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="t-label">
+                    {t('services.materialsNoteFr') || 'Message for the provider (FR)'}
+                  </label>
+                  <textarea
+                    className="t-input" rows={2}
+                    value={state.materialsNoteFr}
+                    onChange={(e) => setState({ ...state, materialsNoteFr: e.target.value })}
+                  />
+                </div>
+
+                {(state.materialsBudgetMin.trim() === '' || state.materialsBudgetMax.trim() === '') && (
+                  <div style={{ fontSize: 12, color: 'var(--t-warn)' }}>
+                    ⚠ {t('services.materialsRangeRequired') ||
+                      'A service with materials needs a budget range: it is what the customer can authorise.'}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
           {/* Qué debe aportar el CLIENTE al reservar (migración 038).
               Distinto del bloque de arriba: eso es lo que debe tener el
               PROVEEDOR. Esto es la información con la que el proveedor decide si
@@ -1280,6 +1407,9 @@ function TaskModal({
                     >
                       <option value="TEXT">{t('services.answerTypeText')}</option>
                       <option value="SINGLE_CHOICE">{t('services.answerTypeChoice')}</option>
+                      {/* IMAGEN: la respuesta es una foto. El caso que lo pidió es el
+                          color de pintura — descrito con palabras no sirve. */}
+                      <option value="IMAGE">{t('services.answerTypeImage') || 'Photo'}</option>
                     </select>
 
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
@@ -1290,6 +1420,19 @@ function TaskModal({
                       />
                       {t('services.questionRequired')}
                     </label>
+
+                    {/* Solo tiene sentido si el servicio lleva material: la pregunta
+                        se muestra y se exige únicamente cuando el cliente lo pide. */}
+                    {state.materialsEnabled && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={q.materialsOnly ?? false}
+                          onChange={(e) => update({ materialsOnly: e.target.checked })}
+                        />
+                        {t('services.questionMaterialsOnly') || 'Only when materials are requested'}
+                      </label>
+                    )}
                   </div>
 
                   {isChoice && (

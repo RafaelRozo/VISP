@@ -54,7 +54,8 @@
     "promotions": "Promotions",
     "users": "Users",
     "admins": "Admins",
-    "logout": "Log out"
+    "logout": "Log out",
+    "jobs": "Jobs & offers"
   },
   "users": {
     "title": "User management",
@@ -216,7 +217,17 @@
     "addOption": "Add an option",
     "optionPlaceholder": "e.g. Light cleaning",
     "optionPlaceholderFr": "French (optional)",
-    "optionsTooFew": "A question with predefined answers needs at least two distinct options — otherwise the customer cannot answer it and the booking is blocked."
+    "optionsTooFew": "A question with predefined answers needs at least two distinct options — otherwise the customer cannot answer it and the booking is blocked.",
+    "materialsEnabled": "This service needs materials",
+    "materialsEnabledHelp": "The provider buys them and the customer reimburses the receipt. No tax is added on top and VISP takes no commission on materials.",
+    "materialsBudgetMin": "Budget min (CAD)",
+    "materialsBudgetMax": "Budget max (CAD)",
+    "materialsBudgetHelp": "What the customer may authorise when booking. Spending above it needs their approval.",
+    "materialsNoteEn": "Message for the provider (EN)",
+    "materialsNoteFr": "Message for the provider (FR)",
+    "materialsRangeRequired": "A service with materials needs a budget range: it is what the customer can authorise.",
+    "answerTypeImage": "Photo",
+    "questionMaterialsOnly": "Only when materials are requested"
   },
   "filters": {
     "all": "All",
@@ -346,5 +357,37 @@
     "ends": "Ends",
     "redemptions": "Redemptions",
     "active": "Active"
+  },
+  "jobs": {
+    "onlyOpen": "Only open jobs (taking offers)",
+    "withoutOffers": "with no offers yet",
+    "reference": "Ref",
+    "service": "Service",
+    "customer": "Customer",
+    "status": "Status",
+    "offers": "Offers",
+    "materials": "Materials",
+    "total": "Total",
+    "empty": "No jobs.",
+    "catalogRange": "Catalog range",
+    "details": "Customer details",
+    "photo": "photo",
+    "offersReceived": "Offers",
+    "provider": "Provider",
+    "work": "Work",
+    "rate": "Rate",
+    "noOffers": "No offers yet.",
+    "noRatesDiagnosis": "No provider has set a price for this service, so nobody can offer. That is the cause, not a bug.",
+    "ratesButNoOffers": "providers have a price for this service and none has offered yet.",
+    "needsApproval": "over budget, awaiting customer approval",
+    "receipt": "receipt",
+    "voided": "voided",
+    "void": "Void",
+    "voidReasonPrompt": "Why is this receipt being voided?",
+    "labour": "Labour",
+    "tax": "Tax",
+    "fee": "Service fee",
+    "commission": "Commission",
+    "payout": "Provider payout"
   }
 }

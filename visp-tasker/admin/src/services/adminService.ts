@@ -216,11 +216,17 @@ export interface TaskQuestion {
   id?: string;
   questionEn: string;
   questionFr?: string | null;
-  /** TEXT = textarea libre. SINGLE_CHOICE = elige una de `options`. */
-  answerType: 'TEXT' | 'SINGLE_CHOICE';
+  /**
+   * TEXT = textarea libre. SINGLE_CHOICE = elige una de `options`.
+   * IMAGE = la respuesta es una foto (el color de pintura descrito con palabras
+   * no sirve; la foto de la pared sí).
+   */
+  answerType: 'TEXT' | 'SINGLE_CHOICE' | 'IMAGE';
   options: TaskQuestionOption[];
   isRequired: boolean;
   displayOrder: number;
+  /** Solo se muestra —y solo se exige— si el cliente pidió material. */
+  materialsOnly?: boolean;
 }
 
 export interface TaxonomyTask {
@@ -264,6 +270,17 @@ export interface TaxonomyTask {
    */
   detailsPromptEn: string | null;
   detailsPromptFr: string | null;
+  /**
+   * Materiales (migración 043): el proveedor los compra y el cliente se los
+   * reembolsa. El rango acota lo que el cliente puede autorizar al reservar; la
+   * nota es el mensaje del admin PARA EL PROVEEDOR, que la lee antes de ofertar.
+   * El material no lleva impuesto encima ni paga comisión.
+   */
+  materialsEnabled: boolean;
+  materialsBudgetMinCents: number | null;
+  materialsBudgetMaxCents: number | null;
+  materialsNoteEn: string | null;
+  materialsNoteFr: string | null;
   iconUrl: string | null;
   displayOrder: number;
   isActive: boolean;
@@ -385,6 +402,12 @@ export interface TaskUpsertBody {
   requiresEvidence?: boolean;
   detailsPromptEn?: string | null;
   detailsPromptFr?: string | null;
+  /** Materiales: ver TaxonomyTask. El rango es obligatorio si materialsEnabled. */
+  materialsEnabled?: boolean;
+  materialsBudgetMinCents?: number | null;
+  materialsBudgetMaxCents?: number | null;
+  materialsNoteEn?: string | null;
+  materialsNoteFr?: string | null;
   iconUrl?: string | null;
   displayOrder?: number;
   isActive?: boolean;
@@ -433,6 +456,88 @@ export interface Promotion {
   createdAt: string;
 }
 
+/** Fila de la lista de trabajos del admin (ofertas v2). */
+export interface AdminJobRow {
+  id: string;
+  referenceNumber: string | null;
+  status: string;
+  taskName: string;
+  pricingUnit: string | null;
+  customerName: string;
+  city: string | null;
+  requestedDate: string | null;
+  /** Ofertas vivas. Un trabajo abierto con 0 es el caso que hay que investigar. */
+  offerCount: number;
+  offersCloseAt: string | null;
+  quotedPriceCents: number | null;
+  totalChargedCents: number | null;
+  materialsRequested: boolean;
+  materialsBudgetCents: number | null;
+  materialsSpentCents: number | null;
+  createdAt: string | null;
+}
+
+export interface AdminJobOffer {
+  offerId: string;
+  providerName: string;
+  providerId: string;
+  status: string;
+  unit: string;
+  magnitude: number;
+  magnitudeSource: string;
+  rateCents: number;
+  subtotalCents: number;
+  totalCents: number;
+  message: string | null;
+  createdAt: string | null;
+}
+
+export interface AdminJobDetail {
+  id: string;
+  referenceNumber: string | null;
+  status: string;
+  taskName: string | null;
+  pricingUnit: string | null;
+  catalogMinCents: number | null;
+  catalogMaxCents: number | null;
+  /** Cuántos proveedores tienen tarifa para este servicio. Es EL dato para
+   *  explicar un trabajo sin ofertas: casi siempre nadie ha puesto precio. */
+  providersWithARate: number;
+  details: string | null;
+  extraNote: string | null;
+  evidence: string[];
+  answers: { question: string; answer: string; answerType?: string }[];
+  quantity: number | null;
+  offersCloseAt: string | null;
+  acceptedOfferId: string | null;
+  materials: {
+    requested: boolean;
+    budgetCents: number | null;
+    spentCents: number | null;
+    overageCents: number;
+    needsApproval: boolean;
+    receipts: {
+      receiptId: string;
+      amountCents: number;
+      fileUrl: string;
+      merchant: string | null;
+      note: string | null;
+      voided: boolean;
+      voidReason: string | null;
+      createdAt: string | null;
+    }[];
+  };
+  money: {
+    subtotalCents: number | null;
+    serviceTaxCents: number | null;
+    serviceFeeCents: number | null;
+    commissionCents: number | null;
+    providerPayoutCents: number | null;
+    totalChargedCents: number | null;
+  };
+  offers: AdminJobOffer[];
+}
+
 export const adminService = {
   login: (email: string, password: string) =>
     apiPost<{ user: AdminUser; tokens: AdminTokens }>('/admin/auth/login', { email, password }),
@@ -440,6 +545,19 @@ export const adminService = {
   me: () => apiGet<AdminUser>('/admin/me'),
 
   dashboardStats: () => apiGet<DashboardStats>('/admin/dashboard/stats'),
+
+  // Trabajos y ofertas (ofertas v2)
+  listJobs: (params: { onlyOpen?: boolean; statusFilter?: string; limit?: number } = {}) =>
+    apiGet<{ jobs: AdminJobRow[]; count: number }>('/admin/jobs', {
+      only_open: params.onlyOpen ? 'true' : undefined,
+      status_filter: params.statusFilter,
+      limit: params.limit,
+    }),
+
+  jobDetail: (jobId: string) => apiGet<AdminJobDetail>(`/admin/jobs/${jobId}`),
+
+  voidMaterialReceipt: (receiptId: string, reason: string) =>
+    apiPost<unknown>(`/admin/material-receipts/${receiptId}/void?reason=${encodeURIComponent(reason)}`, {}),
 
   dashboardCharts: (period: '7d' | '30d' | '90d' = '30d') =>
     apiGet<DashboardCharts>('/admin/dashboard/charts', { period }),

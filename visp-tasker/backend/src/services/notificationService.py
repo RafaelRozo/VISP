@@ -307,6 +307,116 @@ def _format_price(amount_cents: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Ofertas v2 (migración 042)
+#
+# Reusan los tipos JOB_OFFERED y JOB_ACCEPTED que ya existen en vez de añadir
+# valores nuevos: `notification_type` es un enum de Postgres y ampliarlo exige una
+# migración aislada (ALTER TYPE ADD VALUE), que ya nos costó las migraciones 031 y
+# 035. Los tipos siguen describiendo bien lo que pasa.
+# ---------------------------------------------------------------------------
+
+async def notify_offer_received(
+    job_id: uuid.UUID,
+    offer_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Avisa al CLIENTE de que le llegó una oferta, con el nombre y el total."""
+    from src.models.job_offer import JobOffer
+    from src.models.provider import ProviderProfile
+    from src.models.user import User
+
+    offer = await db.get(JobOffer, offer_id)
+    job = await db.get(Job, job_id)
+    if offer is None or job is None:
+        return False
+
+    name = "A provider"
+    profile = await db.get(ProviderProfile, offer.provider_id)
+    if profile is not None:
+        usr = await db.get(User, profile.user_id)
+        if usr is not None:
+            name = usr.display_name or f"{usr.first_name} {usr.last_name}".strip() or name
+
+    return await _send_to_user(
+        job.customer_id,
+        "New offer received",
+        f"{name} offered {_format_price(offer.total_cents)} for your job.",
+        NotificationType.JOB_OFFERED,
+        {
+            "jobId": str(job_id),
+            "offerId": str(offer_id),
+            "totalCents": offer.total_cents,
+            "deepLink": f"visp://jobs/{job_id}/offers",
+        },
+        db,
+    )
+
+
+async def notify_offer_accepted(
+    job_id: uuid.UUID,
+    offer_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Avisa al PROVEEDOR GANADOR de que el cliente eligió su oferta."""
+    from src.models.job_offer import JobOffer
+    from src.models.provider import ProviderProfile
+
+    offer = await db.get(JobOffer, offer_id)
+    if offer is None:
+        return False
+    profile = await db.get(ProviderProfile, offer.provider_id)
+    if profile is None:
+        return False
+
+    return await _send_to_user(
+        profile.user_id,
+        "Your offer was accepted",
+        f"The customer accepted your {_format_price(offer.total_cents)} offer. "
+        "The job is scheduled.",
+        NotificationType.JOB_ACCEPTED,
+        {"jobId": str(job_id), "offerId": str(offer_id), "deepLink": f"visp://jobs/{job_id}"},
+        db,
+    )
+
+
+async def notify_offers_closed(job_id: uuid.UUID, db: AsyncSession) -> int:
+    """Avisa a los proveedores que NO ganaron.
+
+    Sin este aviso se quedan esperando por un trabajo que ya tiene dueño, y ese
+    silencio es lo que hace que un proveedor deje de ofertar.
+    """
+    from sqlalchemy import select as _select
+
+    from src.models.job_offer import JobOffer, OfferStatus
+    from src.models.provider import ProviderProfile
+
+    losers = (
+        await db.execute(
+            _select(JobOffer).where(
+                JobOffer.job_id == job_id,
+                JobOffer.status == OfferStatus.REJECTED,
+            )
+        )
+    ).scalars().all()
+
+    sent = 0
+    for offer in losers:
+        profile = await db.get(ProviderProfile, offer.provider_id)
+        if profile is None:
+            continue
+        ok = await _send_to_user(
+            profile.user_id,
+            "Job taken",
+            "The customer chose another provider for that job.",
+            NotificationType.JOB_OFFERED,
+            {"jobId": str(job_id), "offerId": str(offer.id)},
+            db,
+        )
+        sent += 1 if ok else 0
+    return sent
+
+
+# ---------------------------------------------------------------------------
 # Public API -- Job lifecycle notifications
 # ---------------------------------------------------------------------------
 

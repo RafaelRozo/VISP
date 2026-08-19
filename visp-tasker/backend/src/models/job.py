@@ -270,6 +270,39 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     cancellation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Ofertas (migración 042). El trabajo se postea y los proveedores ofertan; el
+    # customer elige entre las que recibe. `accepted_offer_id` queda NULL mientras el
+    # trabajo sigue abierto.
+    accepted_offer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("job_offers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    offers_close_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Materiales (migración 043). Lo decide el CLIENTE al reservar aunque el servicio lo
+    # permita: si no los pide, la reserva se comporta igual que siempre.
+    #
+    # El material se reembolsa ÍNTEGRO al proveedor: no paga comisión y no se le aplica
+    # impuesto encima, porque la tienda ya cobró el suyo dentro del importe de la
+    # factura. Ver docs/plan-ofertas-v2.md §9.
+    materials_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    materials_budget_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    materials_spent_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    # Aprobación del exceso sobre el presupuesto de MATERIAL. Distinta de
+    # `overage_approved_at`, que es el exceso de la mano de obra: son dos excesos y el
+    # cliente puede aceptar uno y rechazar el otro.
+    materials_overage_approved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Relationships
     customer: Mapped["User"] = relationship(
         "User", back_populates="customer_jobs", foreign_keys=[customer_id]
@@ -289,6 +322,20 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     tips: Mapped[list["Tip"]] = relationship("Tip", back_populates="job")
     reviews: Mapped[list["Review"]] = relationship("Review", back_populates="job")
+    # foreign_keys explícito: hay DOS caminos entre jobs y job_offers (la lista de
+    # ofertas y la que ganó), y sin esto SQLAlchemy no sabe cuál usar en cada lado.
+    offers: Mapped[list["JobOffer"]] = relationship(
+        "JobOffer",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        foreign_keys="JobOffer.job_id",
+    )
+    accepted_offer: Mapped[Optional["JobOffer"]] = relationship(
+        "JobOffer", foreign_keys=[accepted_offer_id], post_update=True
+    )
+    material_receipts: Mapped[list["JobMaterialReceipt"]] = relationship(
+        "JobMaterialReceipt", back_populates="job", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return (

@@ -417,6 +417,8 @@ async def book_job(
                 customer_evidence=body.evidence,
                 customer_extra_note=body.extra_note,
                 customer_answers=body.answers,
+                materials_requested=body.materials_requested,
+                materials_budget_cents=body.materials_budget_cents,
             )
         except jobService.TaskNotFoundError as exc:
             raise HTTPException(
@@ -447,50 +449,46 @@ async def book_job(
         except (jobService.JobNotFoundError, jobService.InvalidTransitionError):
             pass  # Stay in DRAFT if transition fails
 
-        # Attempt price estimation
+        # El trabajo nace SIN PRECIO (ofertas v2, 2026-08-19).
+        #
+        # Antes se estampaba aquí el punto medio del rango del catálogo como
+        # `quoted_price_cents`. Ya no: bajo el modelo de ofertas nadie sabe todavía
+        # cuánto cuesta el trabajo, porque el precio es `tarifa del proveedor ×
+        # magnitud` y ninguna de las dos existe hasta que llega una oferta. Dejar un
+        # número inventado en el job sería un precio que el cliente puede llegar a ver
+        # y que nadie va a cobrar.
+        #
+        # Lo que sí se devuelve es el RANGO DEL CATÁLOGO con su unidad, que es lo que
+        # la app muestra ("70–90 CAD/h"). En los servicios por ítem se multiplica por
+        # la cantidad, porque ahí sí es un total de verdad.
+        from sqlalchemy import select as _select
+        from src.models.taxonomy import PricingUnit, ServiceTask
+
+        task_row = (
+            await db.execute(
+                _select(ServiceTask).where(ServiceTask.id == job.task_id)
+            )
+        ).scalar_one_or_none()
+
+        min_cents = task_row.base_price_min_cents if task_row else None
+        max_cents = task_row.base_price_max_cents if task_row else None
+        if (
+            task_row is not None
+            and task_row.pricing_unit == PricingUnit.PER_UNIT
+            and job.quantity
+            and min_cents is not None
+            and max_cents is not None
+        ):
+            min_cents = int(Decimal(min_cents) * job.quantity)
+            max_cents = int(Decimal(max_cents) * job.quantity)
+
         estimated_price = EstimatedPriceOut(
-            min_cents=job.quoted_price_cents or 0,
-            max_cents=job.quoted_price_cents or 0,
+            min_cents=min_cents or 0,
+            max_cents=max_cents or 0,
             currency=job.currency,
             is_emergency=job.is_emergency,
             dynamic_multiplier=None,
         )
-
-        # Try to calculate from the pricing engine
-        try:
-            from src.services.pricingEngine import calculate_price as calc_price
-
-            estimate = await calc_price(
-                db,
-                task_id=job.task_id,
-                latitude=job.service_latitude,
-                longitude=job.service_longitude,
-                requested_date=job.requested_date,
-                is_emergency=job.is_emergency,
-                country=job.service_country,
-            )
-            estimated_price = EstimatedPriceOut(
-                min_cents=estimate.final_price_min_cents,
-                max_cents=estimate.final_price_max_cents,
-                currency=estimate.currency,
-                is_emergency=estimate.is_emergency,
-                dynamic_multiplier=estimate.dynamic_multiplier,
-            )
-
-            # Update the job with the quoted price (midpoint of range = same as customer estimate)
-            midpoint_cents = (estimate.final_price_min_cents + estimate.final_price_max_cents) // 2
-            job.quoted_price_cents = midpoint_cents
-            job.commission_rate = estimate.commission_rate_default
-            job.commission_amount_cents = int(
-                Decimal(str(midpoint_cents))
-                * estimate.commission_rate_default
-            )
-            job.provider_payout_cents = (
-                midpoint_cents - job.commission_amount_cents
-            )
-            await db.flush()
-        except Exception as exc:
-            logger.warning("Price estimation failed for job %s: %s", job.id, exc)
 
         # Broadcast OFFERED assignments to ALL qualified providers.
         # The job stays in PENDING_MATCH — it only transitions when a
@@ -1142,199 +1140,6 @@ async def update_provider_location(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/jobs/{job_id}/approve-provider -- Customer approves provider
-# ---------------------------------------------------------------------------
-# (approve-provider and reject-provider endpoints defined below after
-#  get_pending_provider)
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/jobs/{job_id}/pending-provider  -- Provider info for approval
-# ---------------------------------------------------------------------------
-
-@router.get(
-    "/{job_id}/pending-provider",
-    summary="Get provider info for customer approval",
-    description=(
-        "Returns the provider's public info for the customer to review "
-        "before approving or rejecting."
-    ),
-)
-async def get_pending_provider(
-    db: DBSession,
-    user: CurrentUser,
-    job_id: uuid.UUID,
-) -> dict[str, Any]:
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
-    from src.models.provider import ProviderProfile
-    from src.models.user import User
-
-    # Load job (must be owned by customer)
-    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
-    job = (await db.execute(job_stmt)).scalar_one_or_none()
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status != JobStatus.PENDING_APPROVAL:
-        return {"data": None}
-
-    # Find accepted assignment
-    asgn_stmt = select(JobAssignment).where(
-        JobAssignment.job_id == job_id,
-        JobAssignment.status == AssignmentStatus.ACCEPTED,
-    )
-    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
-    if assignment is None:
-        return {"data": None}
-
-    # Load provider profile + user
-    prov_stmt = (
-        select(ProviderProfile)
-        .options(selectinload(ProviderProfile.user))
-        .where(ProviderProfile.id == assignment.provider_id)
-    )
-    provider = (await db.execute(prov_stmt)).scalar_one_or_none()
-    if provider is None:
-        return {"data": None}
-
-    user_record = provider.user
-
-    # Compute avg rating from reviews
-    from src.models.review import Review as _Review
-    from sqlalchemy import func as _func
-    _avg_stmt = select(_func.avg(_Review.overall_rating)).where(
-        _Review.reviewee_id == provider.user_id
-    )
-    _avg_raw = (await db.execute(_avg_stmt)).scalar()
-    _prov_rating = round(float(_avg_raw), 2) if _avg_raw else None
-
-    # PP4: the provider's own price for this job (set when they accepted). The
-    # quote breakdown (rate + estimated quantity) lets the customer see exactly
-    # what this provider charges before approving.
-    from src.services import provider_rate_service
-
-    _quote = await provider_rate_service.get_provider_quote_for_job(
-        db, provider.id, job.task_id, job_quantity=job.quantity
-    )
-
-    return {"data": {
-        "providerId": str(provider.id),
-        "displayName": (
-            user_record.display_name
-            or f"{user_record.first_name} {user_record.last_name}"
-            if user_record else "Unknown"
-        ),
-        "level": int(provider.current_level.value) if provider.current_level else 1,
-        "yearsExperience": provider.years_experience,
-        "rating": _prov_rating,
-        "profilePhotoUrl": user_record.avatar_url if user_record else None,
-        "bio": provider.bio,
-        "quotedPriceCents": job.quoted_price_cents,
-        "rateCents": _quote["rate_cents"] if _quote else None,
-        "pricingUnit": _quote["unit"] if _quote else None,
-        "estimatedQuantity": _quote["quantity"] if _quote else None,
-        # PP3 tax line + PP4c service fee (snapshotted when the provider accepted).
-        "serviceTaxCents": job.service_tax_cents,
-        "taxJurisdiction": job.tax_jurisdiction,
-        "serviceFeeCents": job.service_fee_cents,
-        "totalChargedCents": job.total_charged_cents,
-    }}
-
-
-# ---------------------------------------------------------------------------
-# POST /api/v1/jobs/{job_id}/approve-provider  -- Customer approves provider
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/{job_id}/approve-provider",
-    summary="Approve the matched provider",
-    description=(
-        "Customer approves the provider. Transitions job to PROVIDER_ACCEPTED "
-        "so the provider can begin traveling to the service location."
-    ),
-)
-async def approve_provider(
-    db: DBSession,
-    user: CurrentUser,
-    job_id: uuid.UUID,
-) -> dict[str, Any]:
-    from sqlalchemy import select
-    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
-
-    # Must be owned by this customer
-    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
-    job = (await db.execute(job_stmt)).scalar_one_or_none()
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status != JobStatus.PENDING_APPROVAL:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job is not pending approval (current: {job.status.value})",
-        )
-
-    # Transition job to PROVIDER_ACCEPTED
-    job.status = JobStatus.PROVIDER_ACCEPTED
-
-    await db.commit()
-    logger.info("Customer %s approved provider for job %s", user.id, job_id)
-
-    return {"data": {"ok": True, "status": job.status.value}}
-
-
-# ---------------------------------------------------------------------------
-# POST /api/v1/jobs/{job_id}/reject-provider  -- Customer rejects provider
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/{job_id}/reject-provider",
-    summary="Reject the matched provider",
-    description=(
-        "Customer rejects the provider. The job goes back to PENDING_MATCH "
-        "and the assignment is marked DECLINED so matching can retry."
-    ),
-)
-async def reject_provider(
-    db: DBSession,
-    user: CurrentUser,
-    job_id: uuid.UUID,
-) -> dict[str, Any]:
-    from sqlalchemy import select
-    from src.models.job import Job, JobStatus, JobAssignment, AssignmentStatus
-
-    # Must be owned by this customer
-    job_stmt = select(Job).where(Job.id == job_id, Job.customer_id == user.id)
-    job = (await db.execute(job_stmt)).scalar_one_or_none()
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status != JobStatus.PENDING_APPROVAL:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Job is not pending approval (current: {job.status.value})",
-        )
-
-    # Mark the accepted assignment as DECLINED
-    asgn_stmt = select(JobAssignment).where(
-        JobAssignment.job_id == job_id,
-        JobAssignment.status == AssignmentStatus.ACCEPTED,
-    )
-    assignment = (await db.execute(asgn_stmt)).scalar_one_or_none()
-    if assignment:
-        assignment.status = AssignmentStatus.DECLINED
-
-    # Send job back to PENDING_MATCH for re-matching
-    job.status = JobStatus.PENDING_MATCH
-
-    await db.commit()
-    logger.info("Customer %s rejected provider for job %s", user.id, job_id)
-
-    return {"data": {"ok": True, "status": job.status.value}}
-
-
-# ---------------------------------------------------------------------------
 # POST /api/v1/jobs/{job_id}/rating  -- Customer submits job rating
 # ---------------------------------------------------------------------------
 
@@ -1650,115 +1455,3 @@ async def approve_overage(
     await db.commit()
     logger.info("Customer %s approved overage for job %s", user.id, job_id)
     return {"data": {"ok": True, "overageApprovedAt": job.overage_approved_at.isoformat()}}
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/jobs/{job_id}/available-providers
-#   Provider-set-pricing model: after booking, show the customer which qualified
-#   providers are available in their zone and EACH provider's own price for this
-#   task (level-agnostic). Empty list => no one available now → the job stays in
-#   the queue and providers send offers (the existing accept/reject flow).
-# ---------------------------------------------------------------------------
-
-@router.get(
-    "/{job_id}/available-providers",
-    summary="Available providers in the customer's zone with their prices",
-    description=(
-        "Runs matching for the job and returns each qualified provider with "
-        "their own rate for this task (or null if they price per-job). Drives "
-        "the post-booking map; an empty list means fall back to the offer queue."
-    ),
-)
-async def available_providers(
-    db: DBSession,
-    user: CurrentUser,
-    job_id: uuid.UUID,
-) -> dict[str, Any]:
-    from sqlalchemy import func, select
-    from src.models.job import Job
-    from src.models.provider import ProviderProfile
-    from src.models.review import Review, ReviewStatus
-    from src.models.taxonomy import ServiceTask
-    from src.services import provider_rate_service
-    from src.services.matchingEngine import find_matching_providers
-
-    job = (
-        await db.execute(select(Job).where(Job.id == job_id, Job.customer_id == user.id))
-    ).scalar_one_or_none()
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    task = (
-        await db.execute(select(ServiceTask).where(ServiceTask.id == job.task_id))
-    ).scalar_one_or_none()
-
-    try:
-        match = await find_matching_providers(db, job, max_results=20)
-        matches = match.get("matches", [])
-    except Exception as exc:  # noqa: BLE001 — never 500 the map; fall back to empty
-        logger.warning("available_providers matching failed for job %s: %s", job_id, exc)
-        matches = []
-
-    # Enrich the matched providers with the profile bits the customer needs to
-    # decide (bio, experience) and their published-review rating. Batched so we
-    # don't fan out a query per provider.
-    provider_ids = [m["provider_id"] for m in matches]
-    prof_by_id: dict[uuid.UUID, ProviderProfile] = {}
-    rating_by_user: dict[uuid.UUID, tuple[float, int]] = {}
-    if provider_ids:
-        prof_rows = (
-            await db.execute(
-                select(ProviderProfile).where(ProviderProfile.id.in_(provider_ids))
-            )
-        ).scalars().all()
-        prof_by_id = {p.id: p for p in prof_rows}
-        user_ids = [p.user_id for p in prof_rows]
-        if user_ids:
-            rating_rows = (
-                await db.execute(
-                    select(
-                        Review.reviewee_id,
-                        func.avg(Review.overall_rating),
-                        func.count(Review.id),
-                    )
-                    .where(
-                        Review.reviewee_id.in_(user_ids),
-                        Review.status == ReviewStatus.PUBLISHED,
-                    )
-                    .group_by(Review.reviewee_id)
-                )
-            ).all()
-            rating_by_user = {
-                uid: (float(avg), int(cnt)) for uid, avg, cnt in rating_rows
-            }
-
-    providers: list[dict[str, Any]] = []
-    for m in matches:
-        quote = await provider_rate_service.get_provider_quote_for_job(
-            db, m["provider_id"], job.task_id, job_quantity=job.quantity
-        )
-        prof = prof_by_id.get(m["provider_id"])
-        rating = rating_by_user.get(prof.user_id) if prof else None
-        providers.append({
-            "providerId": str(m["provider_id"]),
-            "displayName": m.get("display_name") or "Provider",
-            "level": int(m["current_level"]) if m.get("current_level") else None,
-            "distanceKm": round(float(m["distance_km"]), 1) if m.get("distance_km") is not None else None,
-            "rateCents": quote["rate_cents"] if quote else None,
-            "pricingUnit": quote["unit"] if quote else (task.pricing_unit.value if task else None),
-            "quotedPriceCents": quote["subtotal_cents"] if quote else None,
-            # Customer-facing profile summary (null-safe for brand-new providers).
-            "rating": round(rating[0], 1) if rating else None,
-            "reviewCount": rating[1] if rating else 0,
-            "yearsExperience": prof.years_experience if prof else None,
-            "bio": prof.bio if prof else None,
-        })
-
-    return {"data": {
-        "providers": providers,
-        "count": len(providers),
-        # The catalog range the customer sees up front (level guardrail).
-        "catalogMinCents": task.base_price_min_cents if task else None,
-        "catalogMaxCents": task.base_price_max_cents if task else None,
-        "pricingUnit": task.pricing_unit.value if task else None,
-    }}
