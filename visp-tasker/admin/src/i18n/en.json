@@ -388,6 +388,7 @@
     "tax": "Tax",
     "fee": "Service fee",
     "commission": "Commission",
-    "payout": "Provider payout"
+    "payout": "Provider payout",
+    "customerBudget": "customer budgeted"
   }
 }

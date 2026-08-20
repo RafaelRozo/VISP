@@ -91,6 +91,10 @@ class DuplicateOfferError(OfferError):
     pass
 
 
+class MaterialsQuoteRequiredError(OfferError):
+    """El trabajo pide material y la oferta no lo cotiza, o no explica el importe."""
+
+
 class OfferNotFoundError(OfferError):
     pass
 
@@ -172,13 +176,17 @@ async def quote_offer(
     provider: ProviderProfile,
     rate: ProviderServiceRate,
     magnitude: Decimal,
+    materials_cents: int = 0,
 ) -> dict[str, Any]:
     """Desglose de la oferta para mostrar.
 
-    OJO: aquí NO entra el material. El presupuesto de material lo autoriza el cliente
-    y es el mismo para todas las ofertas, así que vive en el job y se muestra aparte;
-    meterlo en el total de cada oferta haría creer que una es más cara que otra por
-    algo que no depende del proveedor.
+    El material SÍ entra en el total desde la migración 045: lo cotiza el proveedor en
+    su propia oferta, así que sí distingue una oferta de otra y el cliente tiene que
+    verlo sumado antes de elegir.
+
+    Lo que NO cambia: el material no lleva impuesto encima —la tienda ya cobró el
+    suyo— y no paga comisión. El fee de servicio sí se calcula sobre el total con el
+    material dentro, porque es el coste de Stripe y Stripe cobra sobre lo que se cobra.
     """
     subtotal = provider_rate_service.compute_quote_cents(rate, task, magnitude)
     registered = await _seller_is_tax_registered(db, provider)
@@ -186,14 +194,16 @@ async def quote_offer(
         db, subtotal, job.service_province_state, registered
     )
     tax_cents = tax["service_tax_cents"]
-    fee_cents = fee_service.compute_service_fee_cents(subtotal + tax_cents)
+    materiales = max(0, int(materials_cents or 0))
+    fee_cents = fee_service.compute_service_fee_cents(subtotal + tax_cents + materiales)
     return {
         "subtotal_cents": subtotal,
         "service_tax_cents": tax_cents,
         "tax_rate": tax["tax_rate"],
         "tax_label": tax.get("label"),
+        "materials_cents": materiales,
         "service_fee_cents": fee_cents,
-        "total_cents": subtotal + tax_cents + fee_cents,
+        "total_cents": subtotal + tax_cents + materiales + fee_cents,
     }
 
 
@@ -306,7 +316,11 @@ async def list_open_jobs(
             # Material: el proveedor lo compra y se le reembolsa íntegro. Lo ve antes
             # de ofertar porque adelanta dinero de su bolsillo y eso pesa en su decisión.
             "materialsRequested": job.materials_requested,
+            # El presupuesto del cliente es una REFERENCIA: le dice al proveedor que
+            # hay que comprar y cuánto tenía pensado. Quien pone el importe que se
+            # cobra es el proveedor, en su oferta, y tiene que justificarlo.
             "materialsBudgetCents": job.materials_budget_cents,
+            "materialsQuoteRequired": job.materials_requested,
             "materialsNote": task.materials_note_en,
             # Su propia tarifa. Sin tarifa no puede ofertar.
             "myRateCents": rate.rate_cents if rate else None,
@@ -324,9 +338,14 @@ async def create_offer(
     provider_id: uuid.UUID,
     magnitude: Optional[Any] = None,
     message: Optional[str] = None,
+    materials_cents: Optional[int] = None,
+    materials_note: Optional[str] = None,
 ) -> JobOffer:
-    """El proveedor oferta. El precio NO viene del cliente ni del cuerpo de la
-    petición: sale de su tarifa de perfil."""
+    """El proveedor oferta.
+
+    Su TARIFA no viene del cuerpo de la petición: sale de su perfil, ya validada
+    contra el rango del catálogo. Lo que sí aporta es la magnitud (las horas, los m²)
+    y, si el trabajo lleva material, cuánto costará y por qué."""
     job = await db.get(Job, job_id)
     if job is None:
         raise JobNotFoundError(str(job_id))
@@ -386,8 +405,25 @@ async def create_offer(
         raise NotInvitedError(str(provider_id))
 
     value, source = resolve_magnitude(task, job, magnitude)
+
+    # Material: solo cuenta si el CLIENTE lo pidió en este trabajo. Si no, se ignora
+    # lo que venga, para que nadie cuele un cargo por material en un trabajo donde el
+    # cliente no aceptó ninguno.
+    if job.materials_requested:
+        materiales = int(materials_cents or 0)
+        if materiales <= 0:
+            raise MaterialsQuoteRequiredError("amount")
+        nota = (materials_note or "").strip()
+        if not nota:
+            # La justificación es obligatoria: es lo único que le permite al cliente
+            # juzgar si el importe es razonable o le están inflando la compra.
+            raise MaterialsQuoteRequiredError("note")
+    else:
+        materiales, nota = 0, None
+
     quote = await quote_offer(
-        db, job=job, task=task, provider=provider, rate=rate, magnitude=value
+        db, job=job, task=task, provider=provider, rate=rate, magnitude=value,
+        materials_cents=materiales,
     )
 
     offer = JobOffer(
@@ -402,6 +438,8 @@ async def create_offer(
         tax_rate=quote["tax_rate"],
         service_fee_cents=quote["service_fee_cents"],
         total_cents=quote["total_cents"],
+        materials_cents=materiales,
+        materials_note=nota,
         message=(message or None),
         status=OfferStatus.PENDING,
         expires_at=job.offers_close_at,
@@ -548,6 +586,11 @@ async def list_offers(
             "subtotalCents": o.subtotal_cents,
             "serviceTaxCents": o.service_tax_cents,
             "serviceFeeCents": o.service_fee_cents,
+            # Material cotizado por ESTE proveedor, con su porqué. Va aparte del
+            # subtotal a propósito: no lleva impuesto encima ni paga comisión, y
+            # verlo sumado haría pensar lo contrario.
+            "materialsCents": o.materials_cents,
+            "materialsNote": o.materials_note,
             "totalCents": o.total_cents,
             "message": o.message,
             "createdAt": o.created_at.isoformat() if o.created_at else None,
@@ -592,6 +635,12 @@ async def accept_offer(
     # ACCEPTED, y así lo leen el pago, el matching y la cancelación. Se marca abajo.
     job.quantity = offer.magnitude
     job.accepted_offer_id = offer.id
+
+    # El material cotizado en la oferta pasa a ser EL TECHO ACORDADO. Aceptar la
+    # oferta es aprobarlo: el cliente vio el importe y su porqué antes de elegir. El
+    # presupuesto que él puso al reservar se queda como referencia y deja de mandar.
+    if job.materials_requested:
+        job.materials_estimate_cents = offer.materials_cents
 
     offer.status = OfferStatus.ACCEPTED
     offer.responded_at = now

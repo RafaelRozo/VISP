@@ -97,6 +97,15 @@ class JobOffer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     total_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
+    # Material cotizado por el proveedor (migración 045). Quien sabe lo que cuesta la
+    # pintura es quien la va a comprar, no el cliente: el presupuesto del cliente solo
+    # le avisa de que hay que comprar y cuánto tenía pensado. El cliente ve este
+    # importe y su porqué ANTES de elegir, y su aceptación es la aprobación.
+    materials_cents: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    materials_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(

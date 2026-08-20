@@ -388,6 +388,7 @@
     "tax": "Taxe",
     "fee": "Frais de service",
     "commission": "Commission",
-    "payout": "Versement au prestataire"
+    "payout": "Versement au prestataire",
+    "customerBudget": "budget du client"
   }
 }

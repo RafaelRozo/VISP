@@ -425,15 +425,57 @@ async def run() -> None:
             # El ejemplo de Ricardo: mano de obra 240, material 85.50. El material NO
             # lleva impuesto encima ni paga comisión, y se le devuelve integro al
             # proveedor.
-            step("F1", "el proveedor gana el trabajo con material y sube su factura")
-            r = await client.get(f"{API}/jobs/{mat_job_id}/offers", headers=hdr_c)
-            check(r.status_code == 200, f"offers: {r.status_code}")
+            step("F1", "el proveedor cotiza el MATERIAL en su oferta, con justificación")
             await client.put(f"{API}/provider/rates/{mat_task_id}", headers=hdr_a,
                              json={"rate_cents": rate_a})
+
+            # Sin importe de material -> 400
             r = await client.post(f"{API}/provider/open-jobs/{mat_job_id}/offer",
                                   headers=hdr_a, json={"magnitude": 3})
+            check(r.status_code == 400, f"esperaba 400 sin material, dio {r.status_code}")
+            check(r.json()["detail"]["missing"] == "amount", "codigo inesperado")
+
+            # Con importe pero sin explicar por qué -> 400
+            r = await client.post(f"{API}/provider/open-jobs/{mat_job_id}/offer",
+                                  headers=hdr_a,
+                                  json={"magnitude": 3, "materialsCents": 15000})
+            check(r.status_code == 400, f"esperaba 400 sin justificación, dio {r.status_code}")
+            check(r.json()["detail"]["missing"] == "note", "codigo inesperado")
+            print("        -> 400 sin importe y 400 sin justificación")
+
+            # Ojo: 150 está POR ENCIMA de los 100 que presupuestó el cliente. Se acepta
+            # a propósito: el presupuesto del cliente es una referencia, y quien sabe lo
+            # que cuesta la pintura es quien la va a comprar. El cliente lo ve con su
+            # porqué y decide.
+            r = await client.post(
+                f"{API}/provider/open-jobs/{mat_job_id}/offer", headers=hdr_a,
+                json={"magnitude": 3, "materialsCents": 15000,
+                      "materialsNote": "La pintura mate de esa marca sale a 150."})
             check(r.status_code == 201, f"oferta material: {r.status_code}: {r.text}")
             oid = r.json()["data"]["offerId"]
+            od = r.json()["data"]
+            mano_obra_prev = rate_a * 3
+            check(od["materialsCents"] == 15000, "el material no quedó en la oferta")
+            # Comprobación EXACTA contra la fila: total = mano de obra + impuesto +
+            # material + fee. Una comprobación con `or` que casi siempre se cumple
+            # parece cobertura y no lo es.
+            fila = await conn.fetchrow(
+                "SELECT subtotal_cents s, service_tax_cents t, materials_cents m, "
+                "service_fee_cents f, total_cents tot FROM job_offers WHERE id=$1",
+                uuid.UUID(oid))
+            check(fila["tot"] == fila["s"] + fila["t"] + fila["m"] + fila["f"],
+                  f"total {fila['tot']} != {fila['s']}+{fila['t']}+{fila['m']}+{fila['f']}")
+            check(fila["m"] == 15000, "el material no se guardó en la oferta")
+            print(f"        -> oferta: 3h x {rate_a}c = {mano_obra_prev}c + material 15000c "
+                  f"= total {od['totalCents']}c")
+
+            step("F1b", "el cliente ve el material y su porqué ANTES de aceptar")
+            r = await client.get(f"{API}/jobs/{mat_job_id}/offers", headers=hdr_c)
+            check(r.status_code == 200, f"offers: {r.status_code}")
+            of = next(o for o in r.json()["data"]["offers"] if o["offerId"] == oid)
+            check(of["materialsCents"] == 15000, "el cliente no ve el importe del material")
+            check("150" in (of["materialsNote"] or ""), "el cliente no ve la justificación")
+            print(f"        -> ve 'material {of['materialsCents']}c' y \"{of['materialsNote']}\"")
             r = await client.post(f"{API}/jobs/{mat_job_id}/offers/{oid}/accept", headers=hdr_c)
             check(r.status_code == 200, f"accept material: {r.status_code}: {r.text}")
 
@@ -470,19 +512,33 @@ async def run() -> None:
             print(f"        -> payout proveedor {desp['pay']}c "
                   f"(= {mano_obra} - {desp['com']} + 8550)")
 
-            step("F3", "pasarse del presupuesto exige aprobacion del cliente")
+            step("F2b", "el exceso se mide contra la OFERTA, no contra el presupuesto")
+            # Gastados 85.50 de los 150 que el proveedor cotizó. Bajo el modelo viejo
+            # esto ya se habría pasado de los 100 del cliente y estaría pidiendo
+            # aprobación; ahora no, porque el cliente aceptó 150.
+            estado = await client.get(f"{API}/jobs/{mat_job_id}/materials", headers=hdr_c)
+            check(estado.status_code == 200, f"materials: {estado.status_code}")
+            e = estado.json()["data"]
+            check(e["agreedCents"] == 15000, f"acordado {e['agreedCents']} != 15000")
+            check(e["budgetCents"] == 10000, "el presupuesto del cliente debe conservarse")
+            check(e["needsApproval"] is False,
+                  "85.50 está dentro de los 150 acordados y no debería pedir aprobación")
+            print(f"        -> gastado 85.50 de 150 acordados (el cliente presupuestó 100): sin fricción")
+
+            step("F3", "pasarse de LO ACORDADO exige aprobacion del cliente")
             r = await client.post(
                 f"{API}/provider/jobs/{mat_job_id}/materials",
                 headers=hdr_a,
-                data={"amountCents": 5000, "merchant": "Rona"},
+                data={"amountCents": 8000, "merchant": "Rona"},
                 files={"file": ("factura2.jpg", b"factura-2", "image/jpeg")})
             check(r.status_code == 201, f"factura 2: {r.status_code}: {r.text}")
             d = r.json()["data"]
-            check(d["materials_spent_cents"] == 13550, "suma de facturas mal")
-            check(d["materials_overage_cents"] == 3550,
-                  f"exceso {d['materials_overage_cents']} != 13550-10000")
+            check(d["materials_spent_cents"] == 16550, "suma de facturas mal")
+            check(d["materials_agreed_cents"] == 15000, "el techo acordado cambió")
+            check(d["materials_overage_cents"] == 1550,
+                  f"exceso {d['materials_overage_cents']} != 16550-15000")
             check(d["needs_customer_approval"] is True, "deberia pedir aprobacion")
-            print(f"        -> gastado 135.50 sobre 100 de presupuesto: pide aprobacion")
+            print("        -> gastado 165.50 sobre 150 acordados: pide aprobacion")
 
             step("F4", "el cobro se bloquea hasta que el cliente aprueba")
             from src.models.job import Job as _Job

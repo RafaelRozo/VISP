@@ -111,11 +111,29 @@ async def spent_cents(db: AsyncSession, job_id: uuid.UUID) -> int:
     return int(total or 0)
 
 
-def overage_cents(job: Job) -> int:
-    """Cuánto se ha pasado del presupuesto. 0 si va dentro."""
+def agreed_cents(job: Job) -> int:
+    """El techo acordado para el material.
+
+    Es lo que el PROVEEDOR cotizó en la oferta que el cliente aceptó (migración 045),
+    no lo que el cliente escribió al reservar. El cliente vio ese importe con su
+    justificación antes de elegir, así que aceptarlo fue aprobarlo; su presupuesto
+    inicial era solo una indicación para que el proveedor supiera a qué atenerse.
+
+    Se cae al presupuesto del cliente en los trabajos anteriores a la 045, que no
+    tienen estimación de oferta.
+    """
     if not job.materials_requested:
         return 0
-    return max(0, (job.materials_spent_cents or 0) - (job.materials_budget_cents or 0))
+    if job.materials_estimate_cents is not None:
+        return job.materials_estimate_cents
+    return job.materials_budget_cents or 0
+
+
+def overage_cents(job: Job) -> int:
+    """Cuánto se ha pasado de lo acordado. 0 si va dentro."""
+    if not job.materials_requested:
+        return 0
+    return max(0, (job.materials_spent_cents or 0) - agreed_cents(job))
 
 
 def needs_customer_approval(job: Job) -> bool:
@@ -150,7 +168,10 @@ async def recompute_totals(db: AsyncSession, job: Job) -> dict[str, Any]:
     await db.flush()
     return {
         "materials_spent_cents": gastado,
+        # `budget` = lo que dijo el cliente (referencia). `agreed` = lo que cotizó el
+        # proveedor y el cliente aceptó, que es el techo real.
         "materials_budget_cents": job.materials_budget_cents,
+        "materials_agreed_cents": agreed_cents(job),
         "materials_overage_cents": overage_cents(job),
         "needs_customer_approval": needs_customer_approval(job),
         "subtotal_cents": subtotal,
@@ -271,5 +292,5 @@ def authorization_extra_cents(job: Job) -> int:
     """
     if not job.materials_requested:
         return 0
-    pendiente = (job.materials_budget_cents or 0) - (job.materials_spent_cents or 0)
+    pendiente = agreed_cents(job) - (job.materials_spent_cents or 0)
     return max(0, pendiente)

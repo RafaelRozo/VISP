@@ -120,7 +120,9 @@ export default function Jobs() {
                 </td>
                 <td style={{ fontSize: 12 }}>
                   {j.materialsRequested
-                    ? `${formatMoney(j.materialsSpentCents)} / ${formatMoney(j.materialsBudgetCents)}`
+                    ? `${formatMoney(j.materialsSpentCents)} / ${formatMoney(
+                        j.materialsAgreedCents ?? j.materialsBudgetCents,
+                      )}`
                     : '—'}
                 </td>
                 <td style={{ textAlign: 'right', fontSize: 13 }}>
@@ -232,7 +234,20 @@ export default function Jobs() {
                         {' '}({o.magnitudeSource})
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>{formatMoney(o.rateCents)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {formatMoney(o.rateCents)}
+                      {/* El material va cotizado por el proveedor y con su porqué:
+                          es lo que el cliente necesita para juzgar si el importe
+                          es razonable o le están inflando la compra. */}
+                      {o.materialsCents > 0 && (
+                        <span
+                          style={{ display: 'block', fontSize: 11, color: 'var(--t-text-3)' }}
+                          title={o.materialsNote ?? undefined}
+                        >
+                          + {formatMoney(o.materialsCents)} {t('jobs.materials') || 'materials'}
+                        </span>
+                      )}
+                    </td>
                     <td style={{ textAlign: 'right' }}>{formatMoney(o.totalCents)}</td>
                     <td>
                       <span
@@ -261,8 +276,14 @@ export default function Jobs() {
           {detail.data.materials.requested && (
             <div>
               <strong style={{ fontSize: 13 }}>
+                {/* Gastado contra lo ACORDADO en la oferta, no contra el presupuesto
+                    que puso el cliente: ese era solo una indicación para el proveedor. */}
                 {t('jobs.materials') || 'Materials'} — {formatMoney(detail.data.materials.spentCents)}{' '}
-                / {formatMoney(detail.data.materials.budgetCents)}
+                / {formatMoney(detail.data.materials.agreedCents)}
+                <span style={{ fontWeight: 400, color: 'var(--t-text-3)' }}>
+                  {' '}({t('jobs.customerBudget') || 'customer budgeted'}{' '}
+                  {formatMoney(detail.data.materials.budgetCents)})
+                </span>
                 {detail.data.materials.needsApproval && (
                   <span style={{ color: 'var(--t-warn)' }}>
                     {' '}⚠ {t('jobs.needsApproval') || 'over budget, awaiting customer approval'}

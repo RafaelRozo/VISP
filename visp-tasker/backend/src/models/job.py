@@ -290,7 +290,14 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     materials_requested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    # Lo que dijo el CLIENTE al reservar. Informativo: le indica al proveedor que hay
+    # que comprar material y cuánto tenía pensado. NO es el techo del cobro.
     materials_budget_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    # Lo que cotizó el PROVEEDOR en la oferta aceptada (migración 045). Este sí es el
+    # techo acordado: es contra este número contra el que se mide el exceso.
+    materials_estimate_cents: Mapped[Optional[int]] = mapped_column(
         BigInteger, nullable=True
     )
     materials_spent_cents: Mapped[int] = mapped_column(

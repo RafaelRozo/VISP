@@ -291,12 +291,28 @@ compre materiales?"**. Si dice que no, la reserva sigue **exactamente como hoy**
 que sí, pone su presupuesto (dentro del rango del admin) y responde las preguntas de
 material.
 
+**Ese presupuesto es INFORMATIVO** (cambio del 2026-08-20, migración 045): le dice al
+proveedor que hay que comprar y cuánto tenía pensado el cliente. No es el techo del cobro.
+
 ### Proveedor
 
-Antes de ofertar ve: que el servicio lleva material, **el presupuesto autorizado**, el
-mensaje del admin y las respuestas del cliente (la foto del color incluida). Al terminar
-el trabajo **sube la factura y declara cuánto pagó** (`job_material_receipts`, una fila
-por compra: la pintura en una tienda y los rodillos en otra es el caso normal).
+Antes de ofertar ve: que el servicio lleva material, **el presupuesto que indicó el
+cliente**, el mensaje del admin y las respuestas del cliente (la foto del color incluida).
+
+**Al ofertar cotiza el material él mismo, con justificación obligatoria**: junto a su
+tiempo ("8 h × $45 = $360") pone el importe ("material $150") y por qué ("la pintura mate
+de esa marca sale a 150"). Quien sabe lo que cuesta el material es quien lo va a comprar;
+un presupuesto puesto a ojo por el cliente o dejaba al proveedor comprando de su bolsillo
+o le daba un cheque en blanco. El cliente ve importe y motivo **antes de elegir**, y su
+aceptación **es** la aprobación de ese importe.
+
+**El techo acordado pasa a ser lo que cotizó el proveedor**, no lo que presupuestó el
+cliente: `jobs.materials_estimate_cents` se copia de la oferta ganadora y es contra ese
+número contra el que se mide el exceso al subir las facturas.
+
+Al terminar el trabajo **sube la factura y declara cuánto pagó**
+(`job_material_receipts`, una fila por compra: la pintura en una tienda y los rodillos en
+otra es el caso normal).
 
 ### Las tres reglas del dinero
 
@@ -305,10 +321,11 @@ por compra: la pintura en una tienda y los rodillos en otra es el caso normal).
    otra vez es cobrarle al cliente dos veces el impuesto del mismo bote.
 2. **VISP no cobra comisión sobre el material.** Es un reembolso, no ingreso del
    proveedor. La comisión se sigue calculando solo sobre el subtotal de mano de obra.
-3. **Pasarse del presupuesto exige aprobación del cliente.** Hasta el techo se cobra sin
+3. **Pasarse de lo acordado exige aprobación del cliente.** Hasta el techo se cobra sin
    fricción; el exceso se aprueba aparte, reusando el mecanismo de sobrecoste que ya
    existe. Es un campo distinto del sobrecoste de mano de obra: son dos excesos y el
-   cliente puede aceptar uno y rechazar el otro.
+   cliente puede aceptar uno y rechazar el otro. Desde la 045 el techo es **lo que
+   cotizó el proveedor**, no lo que presupuestó el cliente.
 
 Reparto resultante:
 

@@ -56,6 +56,21 @@ class CreateOfferIn(BaseModel):
     )
     message: Optional[str] = Field(default=None, max_length=1000)
 
+    # Material (migración 045). Obligatorios —los dos— cuando el trabajo lleva
+    # material: el importe porque quien sabe lo que cuesta es quien lo compra, y la
+    # justificación porque es lo único que le permite al cliente juzgar si 150 es
+    # razonable. Se ignoran en los trabajos donde el cliente no pidió material.
+    materials_cents: Optional[int] = Field(
+        default=None, alias="materialsCents", gt=0,
+        description="Lo que costará el material, en centavos.",
+    )
+    materials_note: Optional[str] = Field(
+        default=None, alias="materialsNote", max_length=1000,
+        description="Por qué ese importe.",
+    )
+
+    model_config = {"populate_by_name": True}
+
 
 async def _provider_id(db: DBSession, user: CurrentUser) -> uuid.UUID:
     try:
@@ -98,6 +113,8 @@ async def create_offer(
             provider_id=provider_id,
             magnitude=payload.magnitude,
             message=payload.message,
+            materials_cents=payload.materials_cents,
+            materials_note=payload.materials_note,
         )
     except offerService.JobNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found.")
@@ -142,6 +159,20 @@ async def create_offer(
                 "message": "You already have an offer on this job.",
             },
         )
+    except offerService.MaterialsQuoteRequiredError as exc:
+        falta = str(exc)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "materials_quote_required",
+                "message": (
+                    "Tell the customer what the materials will cost."
+                    if falta == "amount"
+                    else "Explain what that materials cost covers."
+                ),
+                "missing": falta,
+            },
+        )
 
     await db.commit()
     await db.refresh(offer)
@@ -164,6 +195,8 @@ async def create_offer(
             "rateCents": offer.rate_cents,
             "subtotalCents": offer.subtotal_cents,
             "serviceTaxCents": offer.service_tax_cents,
+            "materialsCents": offer.materials_cents,
+            "materialsNote": offer.materials_note,
             "totalCents": offer.total_cents,
             "status": offer.status,
             "expiresAt": offer.expires_at.isoformat() if offer.expires_at else None,
@@ -352,7 +385,10 @@ async def customer_list_materials(
         raise HTTPException(status_code=404, detail="Job not found.")
     return {"data": {
         "materialsRequested": job.materials_requested,
+        # `budgetCents` = lo que el cliente dijo al reservar (referencia).
+        # `agreedCents` = lo que cotizó el proveedor y el cliente aceptó: el techo.
         "budgetCents": job.materials_budget_cents,
+        "agreedCents": materialsService.agreed_cents(job),
         "spentCents": job.materials_spent_cents,
         "overageCents": materialsService.overage_cents(job),
         "needsApproval": materialsService.needs_customer_approval(job),

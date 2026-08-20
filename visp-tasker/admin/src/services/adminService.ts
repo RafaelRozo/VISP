@@ -472,7 +472,9 @@ export interface AdminJobRow {
   quotedPriceCents: number | null;
   totalChargedCents: number | null;
   materialsRequested: boolean;
+  /** Lo que dijo el cliente (referencia) vs. lo que cotizó el proveedor (techo). */
   materialsBudgetCents: number | null;
+  materialsAgreedCents: number | null;
   materialsSpentCents: number | null;
   createdAt: string | null;
 }
@@ -487,6 +489,9 @@ export interface AdminJobOffer {
   magnitudeSource: string;
   rateCents: number;
   subtotalCents: number;
+  /** Material cotizado por este proveedor, con su justificación. */
+  materialsCents: number;
+  materialsNote: string | null;
   totalCents: number;
   message: string | null;
   createdAt: string | null;
@@ -512,7 +517,10 @@ export interface AdminJobDetail {
   acceptedOfferId: string | null;
   materials: {
     requested: boolean;
+    /** Lo que dijo el CLIENTE al reservar: referencia, no techo. */
     budgetCents: number | null;
+    /** Lo que cotizó el PROVEEDOR en la oferta aceptada: ese sí es el techo. */
+    agreedCents: number;
     spentCents: number | null;
     overageCents: number;
     needsApproval: boolean;

@@ -1470,7 +1470,10 @@ async def admin_list_jobs(
             "quotedPriceCents": j.quoted_price_cents,
             "totalChargedCents": j.total_charged_cents,
             "materialsRequested": j.materials_requested,
+            # El techo real es lo que cotizó el proveedor en la oferta aceptada; el
+            # presupuesto del cliente era solo la indicación con la que se posteó.
             "materialsBudgetCents": j.materials_budget_cents,
+            "materialsAgreedCents": j.materials_estimate_cents,
             "materialsSpentCents": j.materials_spent_cents,
             "createdAt": j.created_at.isoformat() if j.created_at else None,
         } for j, t, u in rows],
@@ -1533,7 +1536,10 @@ async def admin_job_detail(
         "acceptedOfferId": str(job.accepted_offer_id) if job.accepted_offer_id else None,
         "materials": {
             "requested": job.materials_requested,
+            # budget = lo que dijo el cliente. agreed = lo que cotizó el proveedor en
+            # la oferta aceptada, que es el techo contra el que se mide el exceso.
             "budgetCents": job.materials_budget_cents,
+            "agreedCents": materialsService.agreed_cents(job),
             "spentCents": job.materials_spent_cents,
             "overageCents": materialsService.overage_cents(job),
             "needsApproval": materialsService.needs_customer_approval(job),
@@ -1557,6 +1563,8 @@ async def admin_job_detail(
             "magnitudeSource": o.magnitude_source,
             "rateCents": o.rate_cents,
             "subtotalCents": o.subtotal_cents,
+            "materialsCents": o.materials_cents,
+            "materialsNote": o.materials_note,
             "totalCents": o.total_cents,
             "message": o.message,
             "createdAt": o.created_at.isoformat() if o.created_at else None,
