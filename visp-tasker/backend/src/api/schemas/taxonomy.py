@@ -104,10 +104,13 @@ class TaskQuestionOut(BaseModel):
     question_en: str
     question_fr: Optional[str] = None
     # 'TEXT' -> textarea libre. 'SINGLE_CHOICE' -> el cliente elige de `options`.
+    # 'IMAGE' -> la respuesta es una foto y `answer` lleva su URL (migración 043).
     answer_type: str = "TEXT"
     options: list[dict[str, Any]] = Field(default_factory=list)
     is_required: bool = True
     display_order: int = 0
+    # Solo se muestra —y solo se exige— si el cliente pide material.
+    materials_only: bool = False
 
 
 class TaskDetail(BaseModel):
@@ -153,6 +156,16 @@ class TaskDetail(BaseModel):
     # Preguntas activas del servicio (migración 039). La app las pinta como
     # textareas; las obligatorias bloquean la reserva si van vacías.
     questions: list["TaskQuestionOut"] = Field(default_factory=list)
+
+    # Materiales (migración 043). La app necesita saber si puede ofrecer la pregunta
+    # de "¿quieres que compre los materiales?" y entre qué importes puede moverse el
+    # presupuesto; sin esto tendría que adivinarlo y el rechazo llegaría del backend
+    # al final del recorrido.
+    materials_enabled: bool = False
+    materials_budget_min_cents: Optional[int] = None
+    materials_budget_max_cents: Optional[int] = None
+    materials_note_en: Optional[str] = None
+    materials_note_fr: Optional[str] = None
 
     # Display
     icon_url: Optional[str] = None

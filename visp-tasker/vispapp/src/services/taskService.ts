@@ -194,11 +194,19 @@ interface BackendTaskDetail extends BackendTask {
     id: string;
     question_en: string;
     question_fr?: string | null;
-    answer_type?: 'TEXT' | 'SINGLE_CHOICE';
+    answer_type?: 'TEXT' | 'SINGLE_CHOICE' | 'IMAGE';
     options?: { en: string; fr?: string }[];
     is_required?: boolean;
     display_order?: number;
+    materials_only?: boolean;
   }[];
+  // Materiales (migración 043): el proveedor los compra y el cliente se los
+  // reembolsa. El rango acota lo que el cliente puede indicar al reservar.
+  materials_enabled?: boolean;
+  materials_budget_min_cents?: number | null;
+  materials_budget_max_cents?: number | null;
+  materials_note_en?: string | null;
+  materials_note_fr?: string | null;
   // Detail endpoint returns nested category object instead of category_id
   category?: { id: string; slug: string; name: string; icon_url?: string | null };
 }
@@ -238,7 +246,13 @@ function mapTaskDetail(task: BackendTaskDetail): ServiceTaskDetail {
       options: q.options ?? [],
       isRequired: q.is_required ?? true,
       displayOrder: q.display_order ?? 0,
+      materialsOnly: q.materials_only ?? false,
     })),
+    materialsEnabled: task.materials_enabled ?? false,
+    materialsBudgetMinCents: task.materials_budget_min_cents ?? null,
+    materialsBudgetMaxCents: task.materials_budget_max_cents ?? null,
+    materialsNoteEn: task.materials_note_en ?? null,
+    materialsNoteFr: task.materials_note_fr ?? null,
   };
 }
 
@@ -395,6 +409,10 @@ async function createBooking(
     extraNote: request.extraNote || undefined,
     answers:
       request.answers && request.answers.length > 0 ? request.answers : undefined,
+    // Materiales (migración 043). El presupuesto se lo enseñamos al proveedor como
+    // referencia; el importe que se cobra lo cotiza él en su oferta.
+    materialsRequested: request.materialsRequested || undefined,
+    materialsBudgetCents: request.materialsBudgetCents || undefined,
   };
 
   console.log('[taskService] createBooking payload:', JSON.stringify(payload));
@@ -484,6 +502,7 @@ async function getActiveJobs(): Promise<Job[]> {
     hourlyRateCents: j.hourlyRateCents ?? j.hourly_rate_cents ?? null,
     actualDurationMinutes: j.actualDurationMinutes ?? j.actual_duration_minutes ?? null,
     estimatedDurationMinutes: j.estimatedDurationMinutes ?? j.estimated_duration_minutes ?? null,
+    offersCloseAt: j.offersCloseAt ?? j.offers_close_at ?? null,
     createdAt: j.createdAt,
     updatedAt: j.createdAt,
   }));
@@ -562,42 +581,14 @@ async function queueJob(jobId: string): Promise<void> {
 }
 
 // ──────────────────────────────────────────────
-// Customer Provider Approval
+// Ofertas v2 — el cliente elige entre ofertas
+//
+// Aquí vivían `getPendingProvider`, `approveProvider`, `rejectProvider` y
+// `getAvailableProviders`. Los cuatro endpoints se eliminaron del backend el
+// 2026-08-19: el cliente ya no elige proveedor de un mapa ni aprueba al primero
+// que aceptó, sino que recibe ofertas y elige una. Eso vive ahora en
+// `src/services/offerService.ts`.
 // ──────────────────────────────────────────────
-
-interface PendingProviderInfo {
-  providerId: string;
-  displayName: string;
-  level: number;
-  yearsExperience: number | null;
-  rating: number | null;
-  profilePhotoUrl: string | null;
-  bio: string | null;
-  // PP4 — the provider's own price for this job (null when they use catalog
-  // pricing or the task is custom-quote).
-  quotedPriceCents: number | null;
-  rateCents: number | null;
-  pricingUnit: string | null;
-  estimatedQuantity: number | null;
-  // PP3 tax + PP4c service fee snapshot (what the customer actually pays).
-  serviceTaxCents: number | null;
-  taxJurisdiction: string | null;
-  serviceFeeCents: number | null;
-  totalChargedCents: number | null;
-}
-
-async function getPendingProvider(jobId: string): Promise<PendingProviderInfo | null> {
-  const resp = await apiClient.get<{ data: PendingProviderInfo | null }>(`/jobs/${jobId}/pending-provider`);
-  return resp.data?.data ?? null;
-}
-
-async function approveProvider(jobId: string): Promise<void> {
-  await apiClient.post(`/jobs/${jobId}/approve-provider`);
-}
-
-async function rejectProvider(jobId: string): Promise<void> {
-  await apiClient.post(`/jobs/${jobId}/reject-provider`);
-}
 
 // ── PP5-3/4 — payment authorize / capture / overage ──────────────────────
 interface AuthorizePaymentResult {
@@ -671,37 +662,6 @@ async function approveOverage(jobId: string): Promise<void> {
   await apiClient.post(`/jobs/${jobId}/approve-overage`);
 }
 
-// ── Provider-set-pricing: available providers in zone w/ their prices ──────
-export interface AvailableProvider {
-  providerId: string;
-  displayName: string;
-  level: number | null;
-  distanceKm: number | null;
-  rateCents: number | null;       // the provider's own rate (null = prices per-job)
-  pricingUnit: string | null;
-  quotedPriceCents: number | null; // estimate for this job at their rate
-  rating: number | null;           // avg published rating (null = no reviews yet)
-  reviewCount: number;             // number of published reviews
-  yearsExperience: number | null;
-  bio: string | null;
-}
-
-export interface AvailableProvidersResult {
-  providers: AvailableProvider[];
-  count: number;
-  catalogMinCents: number | null;  // the level guardrail range the customer sees
-  catalogMaxCents: number | null;
-  pricingUnit: string | null;
-}
-
-/** Qualified providers in the customer's zone for a booked job, each with their
- * own price. Empty => none available now → job waits for offers (existing flow). */
-async function getAvailableProviders(jobId: string): Promise<AvailableProvidersResult> {
-  const resp = await apiClient.get<{ data: AvailableProvidersResult }>(
-    `/jobs/${jobId}/available-providers`,
-  );
-  return resp.data.data;
-}
 
 /** Cancel a job as the customer. The backend maps this to
  * `cancelled_by_customer` and the state machine guards it (only allowed before
@@ -724,13 +684,9 @@ export const taskService = {
   getJobDetail,
   getJobTracking,
   queueJob,
-  getPendingProvider,
-  approveProvider,
-  rejectProvider,
   authorizePayment,
   capturePayment,
   approveOverage,
-  getAvailableProviders,
   cancelJob,
 };
 

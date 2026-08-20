@@ -164,6 +164,9 @@ export interface Job {
   hourlyRateCents: number | null;
   actualDurationMinutes: number | null;
   estimatedDurationMinutes: number | null;
+  /** Cierre de la ventana de ofertas (48 h). NULL en trabajos anteriores al
+   *  modelo de ofertas. Es lo que define si un trabajo abierto sigue vivo. */
+  offersCloseAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -203,6 +206,8 @@ export type RootStackParamList = {
   CompanyAssignments: undefined;
   CategoryDetail: { categoryId: string; categoryName: string };
   JobDetail: { jobId: string };
+  /** Ofertas recibidas. Alcanzable desde My Jobs y desde el flujo de reserva. */
+  Offers: { jobId: string; taskName?: string };
   JobTracking: { jobId: string };
   EmergencyFlow: undefined;
   Chat: { jobId: string; otherUserName: string };
@@ -562,6 +567,19 @@ export interface ServiceTaskDetail extends ServiceTask {
   detailsPromptFr?: string | null;
   /** Preguntas que el cliente responde al reservar (migraciones 039/040). */
   questions?: ServiceQuestion[];
+  /**
+   * Materiales (migración 043). Si está activo, al reservar se le pregunta al
+   * cliente si quiere que el proveedor los compre y cuánto tenía pensado gastar.
+   *
+   * Ese importe es una REFERENCIA para el proveedor, no el techo del cobro: quien
+   * cotiza el material —con justificación— es el proveedor en su oferta, porque es
+   * quien lo va a comprar y sabe lo que cuesta.
+   */
+  materialsEnabled?: boolean;
+  materialsBudgetMinCents?: number | null;
+  materialsBudgetMaxCents?: number | null;
+  materialsNoteEn?: string | null;
+  materialsNoteFr?: string | null;
 }
 
 /** Opción de una pregunta cerrada. EN y FR en el mismo objeto. */
@@ -574,11 +592,17 @@ export interface ServiceQuestion {
   id: string;
   questionEn: string;
   questionFr?: string | null;
-  /** TEXT = textarea libre. SINGLE_CHOICE = elegir una de `options`. */
-  answerType: 'TEXT' | 'SINGLE_CHOICE';
+  /**
+   * TEXT = textarea libre. SINGLE_CHOICE = elegir una de `options`.
+   * IMAGE = la respuesta es una foto y se guarda su URL (el color de pintura
+   * descrito con palabras no sirve; la foto de la pared sí).
+   */
+  answerType: 'TEXT' | 'SINGLE_CHOICE' | 'IMAGE';
   options: ServiceQuestionOption[];
   isRequired: boolean;
   displayOrder: number;
+  /** Solo se muestra —y solo se exige— si el cliente pide material. */
+  materialsOnly?: boolean;
 }
 
 export interface PredefinedNote {
@@ -618,6 +642,13 @@ export interface BookingRequest {
   extraNote?: string;
   /** [{questionId, answer}] — el backend valida contra la tabla de preguntas. */
   answers?: { questionId: string; answer: string }[];
+  /**
+   * Materiales (migración 043). El presupuesto es una REFERENCIA que verá el
+   * proveedor, no el techo del cobro: quien cotiza el material —con
+   * justificación— es él, en su oferta.
+   */
+  materialsRequested?: boolean;
+  materialsBudgetCents?: number;
 }
 
 export interface AddressInfo {
@@ -811,6 +842,8 @@ export type CustomerFlowParamList = {
   BookingDetails: { task: BookingTaskSummary };
   Booking: { task: BookingTaskSummary };
   Matching: { jobId: string; taskName: string };
+  /** Ofertas recibidas para un trabajo posteado. El cliente elige una aquí. */
+  Offers: { jobId: string; taskName?: string };
   JobTracking: { jobId: string };
   Rating: { jobId: string; taskName: string; finalPrice: number };
   Tip: { jobId: string; taskName: string; finalPrice: number; providerName?: string };

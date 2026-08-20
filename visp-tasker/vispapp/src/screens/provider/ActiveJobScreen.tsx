@@ -57,6 +57,8 @@ import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono }
 import { AnimatedSpinner } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
 import { Job, JobStatus, ProviderTabParamList, ScheduledJob } from '../../types';
+import * as ImagePicker from 'expo-image-picker';
+import { offerService, type MaterialReceipt } from '../../services/offerService';
 
 // Idempotent — JobTrackingScreen may also call this; Mapbox swallows duplicates.
 MapboxGL.setAccessToken(Config.mapboxAccessToken);
@@ -430,9 +432,94 @@ export default function ActiveJobScreen(): React.JSX.Element {
 
   const [isUpdating, setIsUpdating] = useState(false);
   const [legalAcknowledged, setLegalAcknowledged] = useState(false);
+
+  // ── Material (migraciones 043/045) ──────────────────────────────────────
+  // El proveedor compra y adelanta el dinero; la factura es lo ÚNICO que separa
+  // un gasto real de un número escrito a mano, y sin ella no se le reembolsa.
+  const [materials, setMaterials] = useState<{
+    requested: boolean;
+    agreedCents: number | null;
+    spentCents: number;
+  } | null>(null);
+  const [receipts, setReceipts] = useState<MaterialReceipt[]>([]);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+
+  const loadMaterials = useCallback(async (id: string) => {
+    try {
+      const [estado, lista] = await Promise.all([
+        offerService.getProviderJobMaterials(id),
+        offerService.listProviderReceipts(id),
+      ]);
+      setMaterials(estado);
+      setReceipts(lista);
+    } catch {
+      // Un fallo aquí no puede impedir trabajar: la sección simplemente no sale.
+    }
+  }, []);
+
+  const handleAddReceipt = useCallback(async () => {
+    const job = activeJob;
+    if (!job) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        tr('activeJob.photoPermTitle') || 'Photo access needed',
+        tr('activeJob.photoPermBody') || 'Allow photo access to attach the receipt.',
+      );
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.6,
+    });
+    if (picked.canceled || picked.assets.length === 0) return;
+
+    // El importe se pide aparte: la foto prueba QUÉ se compró, pero lo que se
+    // reembolsa es lo que el proveedor declara, y tiene que poder corregirlo.
+    Alert.prompt?.(
+      tr('activeJob.receiptAmountTitle') || 'How much did you pay?',
+      tr('activeJob.receiptAmountBody') || 'Enter the total on the receipt, in dollars.',
+      [
+        { text: tr('common.cancel') || 'Cancel', style: 'cancel' },
+        {
+          text: tr('common.save') || 'Save',
+          onPress: async (valor?: string) => {
+            const monto = Math.round(parseFloat((valor || '').replace(',', '.')) * 100);
+            if (!Number.isFinite(monto) || monto <= 0) {
+              Alert.alert(tr('activeJob.receiptAmountInvalid') || 'Enter a valid amount.');
+              return;
+            }
+            setUploadingReceipt(true);
+            try {
+              await offerService.uploadMaterialReceipt(job.id, {
+                amountCents: monto,
+                fileUri: picked.assets[0].uri,
+              });
+              await loadMaterials(job.id);
+            } catch {
+              Alert.alert(
+                tr('activeJob.receiptFailedTitle') || 'Could not upload the receipt',
+                tr('activeJob.receiptFailedBody') || 'Check your connection and try again.',
+              );
+            } finally {
+              setUploadingReceipt(false);
+            }
+          },
+        },
+      ],
+      'plain-text',
+      '',
+      'decimal-pad',
+    );
+  }, [activeJob, loadMaterials, tr]);
   const [activeTab, setActiveTab] = useState<TabKey>('today');
 
   const jobId = route.params?.jobId;
+
+  useEffect(() => {
+    if (activeJob?.id) loadMaterials(activeJob.id);
+  }, [activeJob?.id, loadMaterials]);
 
   useEffect(() => {
     if (jobId && (!activeJob || activeJob.id !== jobId)) {
@@ -490,6 +577,40 @@ export default function ActiveJobScreen(): React.JSX.Element {
       return;
     }
 
+    // Cerrar un trabajo con material sin haber subido la factura significa
+    // regalar ese dinero: el reembolso sale de las facturas, no del acuerdo. Se
+    // avisa y se deja seguir — puede que la haya subido desde otro sitio o que
+    // decida no cobrarlo—, pero nunca en silencio.
+    if (
+      action.next === 'completed' &&
+      materials?.requested &&
+      receipts.filter((r) => !r.voided).length === 0
+    ) {
+      Alert.alert(
+        tr('activeJob.noReceiptTitle') || 'No receipt uploaded',
+        tr('activeJob.noReceiptBody') ||
+          "This job includes materials you paid for. Without a receipt you won't be reimbursed.",
+        [
+          { text: tr('activeJob.addReceipt') || 'Add receipt', onPress: handleAddReceipt },
+          {
+            text: tr('activeJob.completeAnyway') || 'Complete anyway',
+            style: 'destructive',
+            onPress: async () => {
+              setIsUpdating(true);
+              try {
+                await completeJob(activeJob.id);
+                navigation.goBack();
+              } finally {
+                setIsUpdating(false);
+              }
+            },
+          },
+          { text: tr('common.cancel') || 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
+
     const confirmMessage =
       action.next === 'completed'
         ? 'Confirm that the job is complete. The customer will be notified and payment will be processed.'
@@ -514,7 +635,8 @@ export default function ActiveJobScreen(): React.JSX.Element {
         },
       },
     ]);
-  }, [activeJob, startNavigation, arriveAtJob, completeJob, doArrive, navigation, legalAcknowledged]);
+  }, [activeJob, startNavigation, arriveAtJob, completeJob, doArrive, navigation,
+      legalAcknowledged, materials, receipts, handleAddReceipt, tr]);
 
   // ── Open deep view ──
   const handleOpenJob = useCallback(
@@ -597,6 +719,88 @@ export default function ActiveJobScreen(): React.JSX.Element {
                   isLoading={isUpdating}
                   isNext
                 />
+                {/* ── Material (migraciones 043/045) ─────────────────
+                    El proveedor adelanta el dinero de su bolsillo, así que esto
+                    va EN el trabajo en curso y no escondido en un menú: la
+                    factura es lo único que separa un gasto real de un número
+                    escrito a mano, y sin ella no hay reembolso. */}
+                {materials?.requested ? (
+                  <View
+                    style={{
+                      marginTop: 12,
+                      padding: 14,
+                      borderRadius: VispRadius.card,
+                      borderWidth: 1,
+                      borderColor: t.violetLine,
+                      backgroundColor: t.violetDim,
+                    }}
+                  >
+                    <Eyebrow color={t.violet}>
+                      {(tr('activeJob.materials') || 'Materials').toUpperCase()}
+                    </Eyebrow>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        marginTop: 8,
+                      }}
+                    >
+                      <Text style={[VispText.body, { color: t.text2 }]}>
+                        {tr('activeJob.materialsSpent') || 'Spent'}
+                      </Text>
+                      <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                        ${(materials.spentCents / 100).toFixed(2)}
+                        {materials.agreedCents != null ? (
+                          <Text style={{ color: t.text3 }}>
+                            {` / $${(materials.agreedCents / 100).toFixed(2)}`}
+                          </Text>
+                        ) : null}
+                      </Text>
+                    </View>
+
+                    {/* Pasarse de lo acordado no se bloquea, pero se dice: lo tendrá
+                        que aprobar el cliente antes de que se cobre. */}
+                    {materials.agreedCents != null &&
+                    materials.spentCents > materials.agreedCents ? (
+                      <Text style={[VispText.eyebrow, { color: t.danger, marginTop: 6 }]}>
+                        {tr('activeJob.materialsOver') ||
+                          'Above what you quoted — the customer has to approve the difference.'}
+                      </Text>
+                    ) : null}
+
+                    {receipts
+                      .filter((r) => !r.voided)
+                      .map((r) => (
+                        <Text
+                          key={r.receiptId}
+                          style={[VispText.eyebrow, { color: t.text3, marginTop: 6 }]}
+                        >
+                          {`$${(r.amountCents / 100).toFixed(2)}`}
+                          {r.merchant ? ` · ${r.merchant}` : ''}
+                        </Text>
+                      ))}
+
+                    <MotionPressable
+                      onPress={handleAddReceipt}
+                      disabled={uploadingReceipt}
+                      style={{
+                        marginTop: 12,
+                        paddingVertical: 10,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: t.violet,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={[VispText.chip, { color: t.violet }]}>
+                        {uploadingReceipt
+                          ? tr('common.loading') || 'Uploading…'
+                          : tr('activeJob.addReceipt') || '+ Add receipt'}
+                      </Text>
+                    </MotionPressable>
+                  </View>
+                ) : null}
+
                 {/* Cancelar con motivo. Solo con un trabajo asignado: antes de eso
                     no hay contraparte a la que reportar. */}
                 <MotionPressable

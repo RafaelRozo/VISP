@@ -49,6 +49,7 @@ import {
 } from '../../components/visp';
 import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
 import taskService from '../../services/taskService';
+import { offerService } from '../../services/offerService';
 import { paymentService } from '../../services/paymentService';
 import { useAuthStore } from '../../stores/authStore';
 import type { Job, RootStackParamList } from '../../types';
@@ -60,10 +61,30 @@ const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 
 // A job still waiting for a provider whose scheduled time has already passed is
 // shown as "expired" (vencido) — nobody picked it up in time.
+/**
+ * Un trabajo abierto está muerto cuando ya no puede recibir ofertas.
+ *
+ * Se mira la VENTANA DE OFERTAS (48 h desde que se posteó), no la hora de servicio
+ * que pidió el cliente. Antes se usaba la hora pedida y eso marcaba como caducado
+ * un trabajo recién creado: si alguien reservaba a las 15:36 para "hoy a la 1 PM"
+ * —cosa que el selector permitía— nacía etiquetado EXPIRED. El selector ya no deja
+ * elegir horas pasadas, pero el criterio seguía siendo el equivocado: mientras la
+ * ventana siga abierta, el trabajo está vivo y puede llegarle una oferta.
+ *
+ * Los trabajos anteriores al modelo de ofertas no tienen ventana; para esos se cae
+ * a la regla de las 48 h desde su creación, que es lo que habrían tenido.
+ */
 function isExpiredJob(job: Job): boolean {
   if (!PENDING_STATUSES.includes(job.status)) return false;
-  if (!job.scheduledAt) return false;
-  return new Date(job.scheduledAt).getTime() < Date.now();
+
+  if (job.offersCloseAt) {
+    return new Date(job.offersCloseAt).getTime() < Date.now();
+  }
+  if (job.createdAt) {
+    const VENTANA_MS = 48 * 60 * 60 * 1000;
+    return new Date(job.createdAt).getTime() + VENTANA_MS < Date.now();
+  }
+  return false;
 }
 
 // ──────────────────────────────────────────────
@@ -319,8 +340,10 @@ function MyJobsScreen(): React.JSX.Element {
         Alert.alert(tr('homeScreen.waitingForProvider'), tr('homeScreen.waitingMessage'));
         return;
       }
-      if (job.status === 'pending_approval') {
-        Alert.alert(tr('myJobs.providerReview'), tr('myJobs.reviewProviderInfo'));
+      if (job.status === 'pending_match') {
+        // Con ofertas esperando, el destino útil es la pantalla de ofertas; sin
+        // ellas, el trabajo aún no tiene nada que enseñar.
+        navigation.navigate('Offers', { jobId: job.id });
         return;
       }
       navigation.navigate('JobTracking', { jobId: job.id });
@@ -328,77 +351,31 @@ function MyJobsScreen(): React.JSX.Element {
     [navigation, tr],
   );
 
-  // Provider info cache for pending_approval jobs
-  const [providerInfoMap, setProviderInfoMap] = useState<Record<string, any>>({});
+  // Cuántas ofertas tiene cada trabajo abierto (ofertas v2, 2026-08-20).
+  //
+  // Antes aquí se cargaba "el proveedor que aceptó" para que el cliente lo
+  // aprobara. Ya no hay tal cosa: el trabajo recibe VARIAS ofertas y el cliente
+  // elige. Lo que hace falta en la lista es saber si ya hay alguna esperando.
+  const [offerCounts, setOfferCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    const pendingApprovalJobs = jobs.filter((j) => j.status === 'pending_approval');
-    pendingApprovalJobs.forEach(async (job) => {
-      if (providerInfoMap[job.id]) return;
+    const abiertos = jobs.filter((j) => j.status === 'pending_match');
+    abiertos.forEach(async (job) => {
+      if (offerCounts[job.id] != null) return;
       try {
-        const info = await taskService.getPendingProvider(job.id);
-        if (info) setProviderInfoMap((prev) => ({ ...prev, [job.id]: info }));
+        const res = await offerService.listOffers(job.id);
+        setOfferCounts((prev) => ({ ...prev, [job.id]: res.count }));
       } catch {
-        // ignore
+        // Un fallo aquí no puede tumbar la lista: se queda sin el contador.
       }
     });
-  }, [jobs, providerInfoMap]);
+  }, [jobs, offerCounts]);
 
-  const handleApproveProvider = useCallback(
-    async (jobId: string) => {
-      try {
-        await taskService.approveProvider(jobId);
-      } catch {
-        Alert.alert(tr('common.error'), tr('myJobs.failedApprove'));
-        return;
-      }
-
-      // PP5-3 — place the manual-capture hold (total × 1.30) on the customer's
-      // saved card. Non-blocking: the provider is already approved; if there's
-      // no card or the hold fails, surface a prompt but keep the job scheduled.
-      let held = false;
-      try {
-        if (stripeCustomerId) {
-          const { methods } = await paymentService.listPaymentMethods(stripeCustomerId);
-          if (methods.length > 0) {
-            const res = await taskService.authorizePayment(jobId, methods[0].id);
-            held = res.status === 'requires_capture';
-          }
-        }
-      } catch {
-        held = false;
-      }
-
-      if (held) {
-        Alert.alert(tr('myJobs.approved'), tr('myJobs.holdPlaced'));
-      } else {
-        Alert.alert(tr('myJobs.approved'), tr('myJobs.holdPending'));
-      }
-      fetchJobs(true);
-    },
-    [fetchJobs, tr, stripeCustomerId],
-  );
-
-  const handleRejectProvider = useCallback(
+  const handleViewOffers = useCallback(
     (jobId: string) => {
-      Alert.alert(tr('myJobs.rejectProvider'), tr('myJobs.rejectConfirm'), [
-        { text: tr('common.cancel'), style: 'cancel' },
-        {
-          text: tr('myJobs.reject'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await taskService.rejectProvider(jobId);
-              Alert.alert(tr('myJobs.providerRejected'), tr('myJobs.findAnother'));
-              fetchJobs(true);
-            } catch {
-              Alert.alert(tr('common.error'), tr('myJobs.failedReject'));
-            }
-          },
-        },
-      ]);
+      navigation.navigate('Offers', { jobId });
     },
-    [fetchJobs, tr],
+    [navigation],
   );
 
   const handleCancelJob = useCallback(
@@ -435,9 +412,9 @@ function MyJobsScreen(): React.JSX.Element {
     (item: Job) => {
       const isPending = PENDING_STATUSES.includes(item.status);
       const expired = isExpiredJob(item);
-      const isPendingApproval = item.status === 'pending_approval';
+      const isOpen = item.status === 'pending_match';
       const accent = isAccentStatus(item.status);
-      const providerInfo = providerInfoMap[item.id];
+      const offerCount = offerCounts[item.id] ?? 0;
       const labelKey = statusLabelKey(item.status);
       const statusText = expired
         ? (tr('myJobs.expired') || 'Expired').toUpperCase()
@@ -517,110 +494,37 @@ function MyJobsScreen(): React.JSX.Element {
               ) : null}
             </View>
 
-            {/* Pending approval — provider preview + actions */}
-            {isPendingApproval && providerInfo ? (
-              <View style={[styles.providerCard, { borderTopColor: t.border, backgroundColor: t.violetDim }]}>
-                <Eyebrow color={t.violet}>{tr('myJobs.wantsToAccept').toUpperCase()}</Eyebrow>
-                <View style={styles.providerRow}>
-                  <View style={[styles.providerLevel, { backgroundColor: t.violet }]}>
-                    <Text style={{ fontFamily: FontSansBold, color: t.bg, fontSize: 13, fontWeight: '800' }}>
-                      L{providerInfo.level}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[VispText.bodyStrong, { color: t.text }]} numberOfLines={1}>
-                      {providerInfo.displayName}
-                    </Text>
-                    {providerInfo.yearsExperience ? (
-                      <Text style={[VispText.body, { color: t.text2, fontSize: 12, marginTop: 2 }]} numberOfLines={1}>
-                        {providerInfo.yearsExperience} {tr('myJobs.yearsExperience')}
-                      </Text>
-                    ) : null}
-                  </View>
+            {/* Ofertas recibidas (ofertas v2, 2026-08-20).
+
+                Aquí vivía la tarjeta de "un proveedor quiere tu trabajo,
+                apruébalo o recházalo". Ese flujo desapareció: el trabajo recibe
+                VARIAS ofertas y el cliente compara y elige en su propia pantalla.
+                Aprobar al primero que llegaba era decidir sin alternativas. */}
+            {isOpen && offerCount > 0 ? (
+              <Pressable
+                onPress={() => handleViewOffers(item.id)}
+                style={[styles.providerCard, { borderTopColor: t.border, backgroundColor: t.violetDim }]}
+              >
+                <Eyebrow color={t.violet}>
+                  {(tr('myJobs.offersReceived') || 'Offers received').toUpperCase()}
+                </Eyebrow>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                  <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                    {offerCount} {offerCount === 1
+                      ? (tr('myJobs.offerSingular') || 'offer')
+                      : (tr('myJobs.offerPlural') || 'offers')}
+                  </Text>
+                  <Text style={[VispText.chip, { color: t.violet }]}>
+                    {(tr('myJobs.viewOffers') || 'Compare and choose')} →
+                  </Text>
                 </View>
-
-                {/* PP4 — the provider's own offered price for this job */}
-                {providerInfo.rateCents != null ? (
-                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
-                    <Eyebrow color={t.text3}>{tr('myJobs.offeredPrice')}</Eyebrow>
-                    <Text style={{ fontFamily: FontMono, fontSize: 14, fontWeight: '700', color: t.text, marginTop: 4 }}>
-                      ${(providerInfo.rateCents / 100).toFixed(2)}/{tr(`myPricesScreen.unit.${providerInfo.pricingUnit}`) || providerInfo.pricingUnit}
-                      {providerInfo.quotedPriceCents != null
-                        ? `   →   $${(providerInfo.quotedPriceCents / 100).toFixed(2)}`
-                        : ''}
-                    </Text>
-                    {providerInfo.estimatedQuantity != null ? (
-                      <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 3 }]}>
-                        {tr('myJobs.estimatedQty')} · ~{providerInfo.estimatedQuantity} {tr(`myPricesScreen.unit.${providerInfo.pricingUnit}`) || ''}
-                      </Text>
-                    ) : null}
-                  </View>
-                ) : providerInfo.quotedPriceCents != null ? (
-                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
-                    <Eyebrow color={t.text3}>{tr('myJobs.offeredPrice')}</Eyebrow>
-                    <Text style={{ fontFamily: FontMono, fontSize: 15, fontWeight: '700', color: t.text, marginTop: 4 }}>
-                      ${(providerInfo.quotedPriceCents / 100).toFixed(2)}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {/* PP4c — full price breakdown: Servicio + Impuesto + Tarifa de servicio = Total */}
-                {providerInfo.totalChargedCents != null ? (
-                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <Text style={[VispText.eyebrow, { color: t.text3 }]}>{tr('myJobs.priceServicio')}</Text>
-                      <Text style={{ fontFamily: FontMono, fontSize: 13, color: t.text2 }}>
-                        ${((providerInfo.quotedPriceCents ?? 0) / 100).toFixed(2)}
-                      </Text>
-                    </View>
-                    {providerInfo.serviceTaxCents ? (
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
-                        <Text style={[VispText.eyebrow, { color: t.text3 }]}>
-                          {tr('myJobs.priceTax')}{providerInfo.taxJurisdiction ? ` (${providerInfo.taxJurisdiction})` : ''}
-                        </Text>
-                        <Text style={{ fontFamily: FontMono, fontSize: 13, color: t.text2 }}>
-                          ${(providerInfo.serviceTaxCents / 100).toFixed(2)}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {providerInfo.serviceFeeCents ? (
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
-                        <Text style={[VispText.eyebrow, { color: t.text3 }]}>{tr('myJobs.priceServiceFee')}</Text>
-                        <Text style={{ fontFamily: FontMono, fontSize: 13, color: t.text2 }}>
-                          ${(providerInfo.serviceFeeCents / 100).toFixed(2)}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }}>
-                      <Text style={[VispText.eyebrow, { color: t.text, fontWeight: '700' }]}>{tr('myJobs.priceTotal')}</Text>
-                      <Text style={{ fontFamily: FontMono, fontSize: 15, fontWeight: '700', color: t.text }}>
-                        ${(providerInfo.totalChargedCents / 100).toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                ) : null}
-
-                <View style={styles.approvalButtons}>
-                  <Pressable
-                    onPress={() => handleRejectProvider(item.id)}
-                    style={[styles.approveBtn, { borderColor: t.borderStrong, backgroundColor: 'transparent' }]}
-                  >
-                    <Text style={[VispText.chip, { color: t.danger }]}>{tr('myJobs.reject')}</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleApproveProvider(item.id)}
-                    style={[styles.approveBtn, { backgroundColor: t.text, borderColor: t.text }]}
-                  >
-                    <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 13 }]}>{tr('myJobs.approve')}</Text>
-                  </Pressable>
-                </View>
-              </View>
+              </Pressable>
             ) : null}
           </Card>
         </MotionPressable>
       );
     },
-    [handleApproveProvider, handleJobPress, handleRejectProvider, providerInfoMap, t, tr],
+    [handleJobPress, handleViewOffers, offerCounts, t, tr],
   );
 
   // ── Completed / drafts row renderer ──────

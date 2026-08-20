@@ -19,6 +19,7 @@ import {
   ServiceCatalogItem,
 } from '../types';
 import { get, post, patch } from '../services/apiClient';
+import { offerService, type OpenJob, type SubmitOfferInput } from '../services/offerService';
 
 // ---------------------------------------------------------------------------
 // State shape
@@ -32,7 +33,7 @@ interface ProviderState {
 
   // Active work
   activeJob: Job | null;
-  pendingOffers: JobOffer[];
+  pendingOffers: OpenJob[];
 
   // Earnings
   earnings: EarningsSummary;
@@ -73,7 +74,7 @@ interface ProviderState {
   fetchSchedule: () => Promise<void>;
   toggleOnline: () => Promise<void>;
   toggleOnCall: () => Promise<void>;
-  acceptOffer: (offerId: string) => Promise<void>;
+  submitOffer: (jobId: string, input: SubmitOfferInput) => Promise<void>;
   declineOffer: (offerId: string) => Promise<void>;
   updateJobStatus: (jobId: string, status: JobStatus) => Promise<void>;
   startNavigation: (jobId: string) => Promise<void>;
@@ -82,7 +83,7 @@ interface ProviderState {
   fetchActiveJob: (jobId: string) => Promise<void>;
   setOfferFilter: (category: string | null, maxDistance: number | null) => void;
   setOfferSort: (sortBy: 'distance' | 'price' | 'expiry') => void;
-  getFilteredOffers: () => JobOffer[];
+  getFilteredOffers: () => OpenJob[];
   fetchServiceCatalog: () => Promise<void>;
   submitPriceProposal: (jobId: string, priceCents: number, description?: string) => Promise<void>;
   clearError: () => void;
@@ -159,7 +160,7 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
       const dashboard = await get<{
         profile: ProviderProfile;
         activeJob: Job | null;
-        pendingOffers: JobOffer[];
+        pendingOffers: OpenJob[];
         earnings: EarningsSummary;
         performanceScore: number;
       }>('/provider/dashboard');
@@ -188,11 +189,13 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
   },
 
   fetchOffers: async () => {
+    // Ofertas v2 (2026-08-20): la bolsa es /provider/open-jobs. El proveedor ya no
+    // "acepta" un trabajo — lo lee y OFERTA, aportando cuánto tarda y, si lleva
+    // material, cuánto costará y por qué.
     set({ isLoadingOffers: true, error: null });
     try {
-      const response = await get<{ items: JobOffer[] }>('/provider/offers');
-      const offers = response?.items ?? (Array.isArray(response) ? response : []);
-      set({ pendingOffers: offers, isLoadingOffers: false });
+      const openJobs = await offerService.listOpenJobs();
+      set({ pendingOffers: openJobs, isLoadingOffers: false });
     } catch (err: unknown) {
       console.error('[fetchOffers] ERROR:', err);
       set({
@@ -371,21 +374,19 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
     }
   },
 
-  acceptOffer: async (jobId: string) => {
+  submitOffer: async (jobId: string, input: SubmitOfferInput) => {
     set({ error: null });
     try {
-      // Backend returns {assignment: AssignmentOut}, not a Job object
-      await post(`/provider/offers/${jobId}/accept`);
+      await offerService.submitOffer(jobId, input);
+      // El trabajo sale de la bolsa: ya se ofertó y no se puede ofertar dos veces.
       set((state) => ({
         pendingOffers: state.pendingOffers.filter((o) => o.jobId !== jobId),
       }));
-      // Refresh dashboard, schedule, and offers so the accepted job
-      // shows up in the correct tab (Schedule) rather than disappearing.
       getState().fetchDashboard();
-      getState().fetchSchedule();
     } catch (err: unknown) {
-      console.error('[acceptOffer] ERROR:', err);
+      console.error('[submitOffer] ERROR:', err);
       set({ error: extractErrorMessage(err) });
+      throw err; // la pantalla necesita saberlo para no cerrar el formulario
     }
   },
 
@@ -469,50 +470,16 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
     set({ offerSortBy: sortBy });
   },
 
-  getFilteredOffers: (): JobOffer[] => {
+  getFilteredOffers: (): OpenJob[] => {
+    // Los filtros por categoría, distancia y precio se apoyaban en campos que la
+    // bolsa nueva no trae (`task.categoryName`, `distanceKm`, `pricing`). Se
+    // ordena por lo único que importa ahora: primero los que se pueden ofertar.
+    // Un filtro que miente sobre datos inexistentes es peor que no tenerlo.
     const state = getState();
-    let offers = [...state.pendingOffers];
-
-    if (state.offerFilterCategory) {
-      offers = offers.filter(
-        (o) => o.task.categoryName === state.offerFilterCategory,
-      );
-    }
-
-    if (state.offerFilterMaxDistance !== null) {
-      offers = offers.filter(
-        (o) =>
-          o.distanceKm !== undefined &&
-          o.distanceKm <= (state.offerFilterMaxDistance ?? Infinity),
-      );
-    }
-
-    switch (state.offerSortBy) {
-      case 'distance':
-        offers.sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999));
-        break;
-      case 'price':
-        offers.sort(
-          (a, b) =>
-            (b.pricing.estimatedPayoutCents ?? 0) -
-            (a.pricing.estimatedPayoutCents ?? 0),
-        );
-        break;
-      case 'expiry':
-      default:
-        offers.sort((a, b) => {
-          const aExp = a.offerExpiresAt
-            ? new Date(a.offerExpiresAt).getTime()
-            : Infinity;
-          const bExp = b.offerExpiresAt
-            ? new Date(b.offerExpiresAt).getTime()
-            : Infinity;
-          return aExp - bExp;
-        });
-        break;
-    }
-
-    return offers;
+    return [...state.pendingOffers].sort((a, b) => {
+      if (a.canOffer !== b.canOffer) return a.canOffer ? -1 : 1;
+      return 0;
+    });
   },
 
   fetchServiceCatalog: async () => {

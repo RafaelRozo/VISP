@@ -84,7 +84,6 @@ export default function DashboardScreen(): React.JSX.Element {
     fetchDashboard,
     toggleOnline,
     toggleOnCall,
-    acceptOffer,
     declineOffer,
   } = useProviderStore();
 
@@ -376,51 +375,34 @@ export default function DashboardScreen(): React.JSX.Element {
             </Text>
           </TouchableOpacity>
         </View>
-        {offers.slice(0, 3).map((offer) => (
-          <View key={offer.assignmentId}>
+        {/* Resumen de la bolsa (ofertas v2, 2026-08-20).
+
+            Antes aquí se aceptaba o rechazaba un trabajo desde el dashboard. Ya no
+            se puede: ofertar exige aportar tiempo y, si lleva material, importe y
+            justificación. Eso no cabe en una tarjeta de resumen, así que el
+            dashboard solo enseña qué hay y lleva a la bolsa. */}
+        {offers.slice(0, 3).map((job) => (
+          <TouchableOpacity
+            key={job.jobId}
+            onPress={() => navigation.navigate('JobsTab')}
+            activeOpacity={0.7}
+          >
             <GlassCard variant="standard" style={styles.offerCard}>
-              <JobCard
-                taskName={offer.task.name}
-                categoryName={offer.task.categoryName ?? 'Service'}
-                customerArea={offer.serviceCity ?? offer.serviceAddress}
-                distanceKm={offer.distanceKm ?? 0}
-                estimatedPrice={offer.pricing.quotedPriceCents ? offer.pricing.quotedPriceCents / 100 : 0}
-                level={(parseInt(offer.task.level.replace(/\D/g, ''), 10) || 1) as ServiceLevel}
-                status="pending"
-                scheduledAt={null}
-                slaDeadline={null}
-                onPress={() => navigation.navigate('JobsTab')}
-              />
+              <Text style={styles.offerTitle}>{job.serviceName}</Text>
+              <Text style={styles.offerMeta}>
+                {[
+                  job.city,
+                  job.requestedDate,
+                  job.materialsRequested ? t('jobOffers.materialsNeeded') || 'Materials needed' : null,
+                  job.canOffer
+                    ? null
+                    : t('jobOffers.setRateShort') || 'Set your price first',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
             </GlassCard>
-            {/* Accept / Decline buttons */}
-            <View style={styles.offerActions}>
-              <GlassButton
-                title={t('jobOffers.reject')}
-                variant="outline"
-                style={styles.declineButton}
-                onPress={() => {
-                  Alert.alert(
-                    t('jobOffers.reject'),
-                    `${t('jobOffers.reject')} ${offer.task.name}?`,
-                    [
-                      { text: t('common.cancel'), style: 'cancel' },
-                      {
-                        text: t('jobOffers.reject'),
-                        style: 'destructive',
-                        onPress: () => declineOffer(offer.jobId),
-                      },
-                    ],
-                  );
-                }}
-              />
-              <GlassButton
-                title={t('jobOffers.accept')}
-                variant="glow"
-                style={styles.acceptButton}
-                onPress={() => acceptOffer(offer.jobId)}
-              />
-            </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
     );
@@ -988,6 +970,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   // Offer cards
+  offerTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#FFFFFF',
+  },
+  offerMeta: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 4,
+  },
   offerCard: {
     marginHorizontal: 16,
     marginBottom: 4,

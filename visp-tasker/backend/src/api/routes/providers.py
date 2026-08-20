@@ -490,6 +490,12 @@ async def get_job_detail(
         "level": 1, # default level fallback
         "startedAt": job.started_at.isoformat() if job.started_at else None,
         "completedAt": job.completed_at.isoformat() if job.completed_at else None,
+        # Materiales (migración 043/045). El proveedor los necesita AQUÍ, en el
+        # trabajo en curso: es donde tiene que acordarse de subir la factura antes
+        # de cerrar, y sin factura no hay reembolso.
+        "materialsRequested": job.materials_requested,
+        "materialsAgreedCents": job.materials_estimate_cents,
+        "materialsSpentCents": job.materials_spent_cents,
     }}
 
 

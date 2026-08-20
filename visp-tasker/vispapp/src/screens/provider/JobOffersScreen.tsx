@@ -54,7 +54,9 @@ import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono }
 import { GlassInput, GlassButton } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
-import { JobOffer } from '../../types';
+import { Image, ScrollView } from 'react-native';
+import { magnitudeLabel, type OpenJob, type SubmitOfferInput } from '../../services/offerService';
+import { resolveUploadUrl } from '../../services/userService';
 
 // ──────────────────────────────────────────────
 // MotionPressable
@@ -159,250 +161,252 @@ function useOfferTimer(expiresAt: string | undefined) {
 }
 
 // ──────────────────────────────────────────────
-// Price proposal modal (preserved, restyled to editorial)
+// Tarjeta de trabajo abierto + formulario de oferta
+//
+// Aquí vivían `ProposalModal` (proponer un precio) y `OfferCard` (aceptar o
+// rechazar un trabajo). Los dos desaparecen con el modelo de ofertas: el proveedor
+// ya no acepta un trabajo con el precio puesto por el catálogo, ni negocia aparte.
+// Lee el trabajo y OFERTA — su tarifa sale del perfil, y lo que aporta es cuánto
+// tarda y, si lleva material, cuánto costará y por qué.
 // ──────────────────────────────────────────────
 
-interface ProposalModalProps {
-  visible: boolean;
-  offer: JobOffer | null;
-  onClose: () => void;
-  onSubmit: (priceCents: number, description: string) => void;
-  isSubmitting: boolean;
-}
-
-function ProposalModal({
-  visible,
-  offer,
-  onClose,
-  onSubmit,
-  isSubmitting,
-}: ProposalModalProps): React.JSX.Element {
-  const t = useVispTheme();
-  const { t: tr } = useTranslation();
-  const [priceText, setPriceText] = useState('');
-  const [description, setDescription] = useState('');
-
-  useEffect(() => {
-    if (visible) {
-      setPriceText('');
-      setDescription('');
-    }
-  }, [visible]);
-
-  const guidePrice = offer?.pricing.quotedPriceCents
-    ? formatPrice(offer.pricing.quotedPriceCents)
-    : null;
-
-  const handleSubmit = () => {
-    const dollars = parseFloat(priceText);
-    if (isNaN(dollars) || dollars <= 0) {
-      Alert.alert(tr('jobOffers.invalidPrice'), tr('jobOffers.enterValidAmount'));
-      return;
-    }
-    onSubmit(Math.round(dollars * 100), description);
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={[modalStyles.overlay, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
-        <View
-          style={[
-            modalStyles.content,
-            { backgroundColor: t.surface, borderColor: t.border, borderTopWidth: 1 },
-          ]}
-        >
-          <Text style={[VispText.headlineMid, { color: t.text }]}>
-            {tr('jobOffers.proposePrice')}
-          </Text>
-          {offer ? (
-            <Text style={[VispText.body, { color: t.text2, marginTop: 4 }]}>
-              {offer.task.name}
-            </Text>
-          ) : null}
-          {guidePrice ? (
-            <View
-              style={[
-                modalStyles.guideContainer,
-                { backgroundColor: t.violetDim, borderColor: t.violetLine },
-              ]}
-            >
-              <Text style={[VispText.body, { color: t.violet, fontSize: 13 }]}>
-                Guide range: {guidePrice}
-              </Text>
-            </View>
-          ) : null}
-
-          <GlassInput
-            label="Your Proposed Price ($)"
-            value={priceText}
-            onChangeText={setPriceText}
-            placeholder="e.g. 250.00"
-            keyboardType="decimal-pad"
-            autoFocus
-            containerStyle={modalStyles.inputSpacing}
-          />
-
-          <GlassInput
-            label="Description (optional)"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Explain your pricing..."
-            multiline
-            numberOfLines={3}
-            containerStyle={modalStyles.inputSpacing}
-          />
-
-          <View style={modalStyles.actions}>
-            <GlassButton
-              title="Cancel"
-              variant="outline"
-              onPress={onClose}
-              disabled={isSubmitting}
-              style={modalStyles.actionBtn}
-            />
-            <GlassButton
-              title="Submit Proposal"
-              variant="glow"
-              onPress={handleSubmit}
-              loading={isSubmitting}
-              disabled={isSubmitting}
-              style={modalStyles.actionBtn}
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ──────────────────────────────────────────────
-// Offer card
-// ──────────────────────────────────────────────
-
-interface OfferCardProps {
-  offer: JobOffer;
-  onAccept: (jobId: string) => void;
+interface OpenJobCardProps {
+  job: OpenJob;
+  onSubmit: (jobId: string, input: SubmitOfferInput) => Promise<void>;
   onDecline: (jobId: string) => void;
-  onPropose: (offer: JobOffer) => void;
   isProcessing: boolean;
 }
 
-function OfferCard({ offer, onAccept, onDecline, onPropose, isProcessing }: OfferCardProps): React.JSX.Element {
+function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProps): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
-  const timer = useOfferTimer(offer.offerExpiresAt);
-  const negotiated = isNegotiatedLevel(offer.task.level);
-  const levelNum = getLevelNum(offer.task.level);
-  const hot = timer.minutes < 5 && !timer.isExpired;
 
-  const meta = [
-    formatDistance(offer.distanceKm),
-    offer.requestedTimeStart
-      ? new Date(offer.requestedTimeStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toUpperCase()
-      : 'FLEXIBLE',
-    offer.sla?.completionTimeMin ? `${offer.sla.completionTimeMin} MIN` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const [open, setOpen] = useState(false);
+  const [magnitude, setMagnitude] = useState('');
+  const [materials, setMaterials] = useState('');
+  const [materialsNote, setMaterialsNote] = useState('');
+  const [message, setMessage] = useState('');
 
-  const matchPct = offer.task.level ? `${Math.min(99, 70 + levelNum * 6)}%` : null;
-  const priceLabel = formatPrice(offer.pricing.quotedPriceCents ?? offer.pricing.estimatedPayoutCents);
+  const needsMagnitude = job.magnitudeSource === 'PROVIDER';
+  const needsMaterials = job.materialsRequested;
+  const unidad = magnitudeLabel(job.pricingUnit);
 
-  const handleAccept = useCallback(() => {
-    const totalPrice = formatPrice(offer.pricing.quotedPriceCents);
-    const yourPay = formatPrice(offer.pricing.estimatedPayoutCents);
-    Alert.alert(
-      tr('jobOffers.accept'),
-      `Accept "${offer.task.name}"?\n\nTotal: ${totalPrice}\nYour Pay: ${yourPay}`,
-      [
-        { text: tr('common.cancel'), style: 'cancel' },
-        { text: tr('jobOffers.accept'), onPress: () => onAccept(offer.jobId) },
-      ],
-    );
-  }, [offer, onAccept, tr]);
+  // Total en vivo, para que el proveedor vea lo que va a cobrar mientras teclea y
+  // no tenga que hacer la cuenta de cabeza.
+  const magnitudeNum = needsMagnitude
+    ? parseFloat(magnitude || '0')
+    : (job.customerQuantity ?? 1);
+  const materialsNum = parseFloat(materials || '0');
+  const manoObra = (job.myRateCents ?? 0) * (Number.isFinite(magnitudeNum) ? magnitudeNum : 0);
+  const total = manoObra + (Number.isFinite(materialsNum) ? materialsNum * 100 : 0);
 
-  const handleDecline = useCallback(() => {
-    Alert.alert(tr('jobOffers.reject'), `${tr('jobOffers.reject')}?`, [
-      { text: tr('common.cancel'), style: 'cancel' },
-      {
-        text: tr('jobOffers.reject'),
-        style: 'destructive',
-        onPress: () => onDecline(offer.jobId),
-      },
-    ]);
-  }, [offer.jobId, onDecline, tr]);
+  const puedeEnviar =
+    job.canOffer &&
+    !isProcessing &&
+    (!needsMagnitude || (Number.isFinite(magnitudeNum) && magnitudeNum > 0)) &&
+    (!needsMaterials ||
+      (Number.isFinite(materialsNum) && materialsNum > 0 && materialsNote.trim() !== ''));
+
+  const enviar = useCallback(async () => {
+    if (!puedeEnviar) return;
+    await onSubmit(job.jobId, {
+      magnitude: needsMagnitude ? magnitudeNum : undefined,
+      materialsCents: needsMaterials ? Math.round(materialsNum * 100) : undefined,
+      materialsNote: needsMaterials ? materialsNote.trim() : undefined,
+      message: message.trim() || undefined,
+    });
+  }, [
+    puedeEnviar, onSubmit, job.jobId, needsMagnitude, magnitudeNum,
+    needsMaterials, materialsNum, materialsNote, message,
+  ]);
 
   return (
-    <View
-      style={[
-        cardStyles.card,
-        {
-          backgroundColor: t.card,
-          borderColor: hot ? t.violetLine : t.border,
-        },
-      ]}
-    >
-      {hot ? <View style={[cardStyles.hotBar, { backgroundColor: t.violet }]} /> : null}
+    <View style={[cardStyles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+      {/* ── Qué es y dónde ─────────────────────────────── */}
+      <Text style={[VispText.bodyStrong, { color: t.text }]}>{job.serviceName}</Text>
+      <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 3 }]}>
+        {[job.city, job.requestedDate, job.requestedTimeStart?.slice(0, 5)]
+          .filter(Boolean)
+          .join(' · ')}
+      </Text>
 
-      <View style={cardStyles.row}>
-        <View style={[cardStyles.iconBox, { backgroundColor: t.deep, borderColor: t.border }]}>
-          <Icon name={iconForCategory(offer.task.categoryName)} size={16} color={t.text2} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 14 }]} numberOfLines={1}>
-            {offer.task.name}
-          </Text>
-          <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 3 }]} numberOfLines={1}>
-            {meta}
-          </Text>
-        </View>
-        <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
-          <Text style={{ fontFamily: FontMono, fontSize: 14, fontWeight: '700', color: t.text }}>
-            {priceLabel}
-          </Text>
-          {matchPct ? (
-            <Text
-              style={{
-                fontFamily: FontMono,
-                fontSize: 9,
-                color: hot ? t.violet : t.text3,
-                letterSpacing: 0.8,
-                marginTop: 2,
-              }}
-            >
-              {matchPct} MATCH
+      {/* ── Lo que escribió y fotografió el cliente ──────
+          Es soporte de decisión: se lee ANTES de ofertar, que es justo el punto. */}
+      {job.details ? (
+        <Text style={[VispText.body, { color: t.text2, marginTop: 10 }]} numberOfLines={4}>
+          {job.details}
+        </Text>
+      ) : null}
+      {job.evidence.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={cardStyles.thumbs}>
+          {job.evidence.map((url) => (
+            <Image
+              key={url}
+              source={{ uri: resolveUploadUrl(url) ?? url }}
+              style={cardStyles.thumb}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      {job.answers.length > 0 ? (
+        <View style={{ marginTop: 8, gap: 4 }}>
+          {job.answers.map((a, i) => (
+            <Text key={i} style={[VispText.eyebrow, { color: t.text3 }]}>
+              {a.question}: <Text style={{ color: t.text2 }}>{
+                a.answerType === 'IMAGE' ? (tr('jobOffers.photoAnswer') || 'photo attached') : a.answer
+              }</Text>
             </Text>
-          ) : null}
-        </View>
-      </View>
-
-      {offer.isEmergency ? (
-        <View style={cardStyles.emergencyRow}>
-          <Chip accent>EMERGENCY · {timer.isExpired ? 'EXPIRED' : `${String(timer.minutes).padStart(2, '0')}:${String(timer.seconds).padStart(2, '0')}`}</Chip>
+          ))}
         </View>
       ) : null}
 
-      <View style={[cardStyles.actionsRow, { borderTopColor: t.border }]}>
-        <MotionPressable
-          onPress={negotiated ? () => onPropose(offer) : handleAccept}
-          disabled={isProcessing || timer.isExpired}
-          style={{ flex: 1 }}
-        >
-          <View style={[cardStyles.primaryBtn, { backgroundColor: t.text }]}>
-            <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 12.5 }]}>
-              {timer.isExpired
-                ? tr('common.cancelled') || 'Expired'
-                : negotiated
-                  ? `${tr('jobOffers.proposePrice') || 'Propose'} · ${priceLabel}`
-                  : `${tr('jobOffers.accept') || 'Apply'} · ${priceLabel}`}
+      {/* ── Material ─────────────────────────────────────
+          Se muestra siempre que el trabajo lo lleve, y ANTES de ofertar: el
+          proveedor adelanta dinero de su bolsillo y eso pesa en su decisión. */}
+      {needsMaterials ? (
+        <View style={[cardStyles.materials, { borderColor: t.violetLine, backgroundColor: t.violetDim }]}>
+          <Eyebrow color={t.violet}>
+            {(tr('jobOffers.materialsNeeded') || 'Materials needed').toUpperCase()}
+          </Eyebrow>
+          {job.materialsNote ? (
+            <Text style={[VispText.body, { color: t.text2, marginTop: 6 }]}>
+              {job.materialsNote}
+            </Text>
+          ) : null}
+          {job.materialsBudgetCents != null ? (
+            <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 6 }]}>
+              {(tr('jobOffers.customerBudget') ||
+                'The customer had about ${budget} in mind — you quote what it really costs.')
+                .replace('${budget}', `$${(job.materialsBudgetCents / 100).toFixed(2)}`)}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* ── Sin tarifa no se puede ofertar ──────────────── */}
+      {!job.canOffer && !job.alreadyOffered ? (
+        <Text style={[VispText.eyebrow, { color: t.danger, marginTop: 12 }]}>
+          {tr('jobOffers.setRateFirst') ||
+            'Set your price for this service in My Prices before you can offer.'}
+        </Text>
+      ) : null}
+      {job.alreadyOffered ? (
+        <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 12 }]}>
+          {tr('jobOffers.alreadyOffered') || 'You already sent an offer for this job.'}
+        </Text>
+      ) : null}
+
+      {/* ── Formulario ─────────────────────────────────── */}
+      {open && job.canOffer ? (
+        <View style={{ marginTop: 14, gap: 10 }}>
+          {needsMagnitude ? (
+            <View>
+              <Eyebrow color={t.text3}>
+                {(tr('jobOffers.howLong') || `How many ${unidad}?`).toUpperCase()}
+              </Eyebrow>
+              <GlassInput
+                value={magnitude}
+                onChangeText={setMagnitude}
+                onChange={(e) => setMagnitude(e.nativeEvent.text)}
+                placeholder={unidad === 'hours' ? '8' : '80'}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          ) : (
+            <Text style={[VispText.eyebrow, { color: t.text3 }]}>
+              {(tr('jobOffers.fixedWork') || 'The customer set this: {n} {unit}')
+                .replace('{n}', String(job.customerQuantity ?? 1))
+                .replace('{unit}', unidad)}
+            </Text>
+          )}
+
+          {needsMaterials ? (
+            <>
+              <View>
+                <Eyebrow color={t.text3}>
+                  {(tr('jobOffers.materialsCost') || 'Materials cost').toUpperCase()}
+                </Eyebrow>
+                <GlassInput
+                  value={materials}
+                  onChangeText={setMaterials}
+                  onChange={(e) => setMaterials(e.nativeEvent.text)}
+                  placeholder="150"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View>
+                <Eyebrow color={t.text3}>
+                  {(tr('jobOffers.materialsWhy') || 'What is it for?').toUpperCase()}
+                </Eyebrow>
+                {/* Obligatoria: es lo único que le permite al cliente juzgar si el
+                    importe es razonable, y sin ella el backend rechaza la oferta. */}
+                <GlassInput
+                  value={materialsNote}
+                  onChangeText={setMaterialsNote}
+                  onChange={(e) => setMaterialsNote(e.nativeEvent.text)}
+                  placeholder={
+                    tr('jobOffers.materialsWhyHint') || 'Matte paint for that brand runs $150'
+                  }
+                  multiline
+                />
+              </View>
+            </>
+          ) : null}
+
+          <View>
+            <Eyebrow color={t.text3}>
+              {(tr('jobOffers.messageOptional') || 'Message (optional)').toUpperCase()}
+            </Eyebrow>
+            <GlassInput
+              value={message}
+              onChangeText={setMessage}
+              onChange={(e) => setMessage(e.nativeEvent.text)}
+              placeholder={tr('jobOffers.messageHint') || 'I bring my own equipment.'}
+              multiline
+            />
+          </View>
+
+          {/* La cuenta, a la vista mientras teclea. */}
+          <View style={[cardStyles.totalBox, { borderTopColor: t.border }]}>
+            <Text style={[VispText.eyebrow, { color: t.text3 }]}>
+              {`${Number.isFinite(magnitudeNum) ? magnitudeNum : 0} × $${((job.myRateCents ?? 0) / 100).toFixed(2)}`}
+              {materialsNum > 0 ? ` + $${materialsNum.toFixed(2)} ${tr('jobOffers.materials') || 'materials'}` : ''}
+            </Text>
+            <Text style={[VispText.bodyStrong, { color: t.text }]}>
+              ${(total / 100).toFixed(2)}
             </Text>
           </View>
-        </MotionPressable>
-        <MotionPressable onPress={handleDecline} disabled={isProcessing || timer.isExpired}>
-          <View style={[cardStyles.secondaryBtn, { borderColor: t.borderStrong }]}>
-            <Text style={[VispText.chip, { color: t.text2 }]}>{tr('jobOffers.reject') || 'DECLINE'}</Text>
-          </View>
-        </MotionPressable>
+        </View>
+      ) : null}
+
+      {/* ── Acciones ───────────────────────────────────── */}
+      <View style={cardStyles.actions}>
+        {!job.alreadyOffered ? (
+          <MotionPressable
+            onPress={() => onDecline(job.jobId)}
+            style={[cardStyles.btnGhost, { borderColor: t.border }]}
+          >
+            <Text style={[VispText.chip, { color: t.text2 }]}>
+              {tr('jobOffers.notInterested') || 'Not interested'}
+            </Text>
+          </MotionPressable>
+        ) : null}
+        {job.canOffer ? (
+          <MotionPressable
+            onPress={() => (open ? enviar() : setOpen(true))}
+            disabled={open && !puedeEnviar}
+            style={[
+              cardStyles.btnPrimary,
+              { backgroundColor: t.violet, opacity: open && !puedeEnviar ? 0.5 : 1 },
+            ]}
+          >
+            <Text style={[VispText.chip, { color: '#FFFFFF' }]}>
+              {open
+                ? tr('jobOffers.sendOffer') || 'Send offer'
+                : tr('jobOffers.makeOffer') || 'Make an offer'}
+            </Text>
+          </MotionPressable>
+        ) : null}
       </View>
     </View>
   );
@@ -455,6 +459,48 @@ const cardStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // ── Tarjeta de trabajo abierto (ofertas v2) ──
+  // flexGrow:0 obligatorio: un ScrollView horizontal sin él se expande y se come
+  // el espacio vertical de la tarjeta. Lo detecta scripts/audit_layout.py.
+  thumbs: { marginTop: 10, flexGrow: 0 },
+  thumb: { width: 64, height: 64, borderRadius: 8, marginRight: 8 },
+  materials: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+  },
+  totalBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'transparent',
+  },
+  btnGhost: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnPrimary: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 // ──────────────────────────────────────────────
@@ -467,11 +513,10 @@ export default function JobOffersScreen(): React.JSX.Element {
   const {
     isLoadingOffers,
     fetchOffers,
-    acceptOffer,
+    submitOffer,
     declineOffer,
     getFilteredOffers,
     pendingOffers,
-    submitPriceProposal,
     earnings,
     weeklyEarnings,
     providerProfile,
@@ -481,8 +526,6 @@ export default function JobOffersScreen(): React.JSX.Element {
   const user = useAuthStore((s) => s.user);
 
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [proposalOffer, setProposalOffer] = useState<JobOffer | null>(null);
-  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
 
   useEffect(() => {
     fetchOffers();
@@ -494,16 +537,30 @@ export default function JobOffersScreen(): React.JSX.Element {
     [pendingOffers, getFilteredOffers],
   );
 
-  const handleAccept = useCallback(
-    async (jobId: string) => {
+  const handleSubmitOffer = useCallback(
+    async (jobId: string, input: SubmitOfferInput) => {
       setProcessingId(jobId);
       try {
-        await acceptOffer(jobId);
+        await submitOffer(jobId, input);
+        Alert.alert(
+          tr('jobOffers.offerSentTitle') || 'Offer sent',
+          tr('jobOffers.offerSentBody') ||
+            "The customer will compare it with the others and decide. We'll let you know.",
+        );
+      } catch (err: unknown) {
+        // El backend explica QUÉ falta (importe de material, justificación,
+        // tarifa sin poner). Repetirlo tal cual evita el "algo salió mal".
+        const detail = (err as { response?: { data?: { detail?: { message?: string } } } })
+          ?.response?.data?.detail;
+        Alert.alert(
+          tr('jobOffers.offerFailedTitle') || 'Could not send the offer',
+          detail?.message || tr('common.errorGeneric') || 'Please try again.',
+        );
       } finally {
         setProcessingId(null);
       }
     },
-    [acceptOffer],
+    [submitOffer, tr],
   );
 
   const handleDecline = useCallback(
@@ -516,27 +573,6 @@ export default function JobOffersScreen(): React.JSX.Element {
       }
     },
     [declineOffer],
-  );
-
-  const handlePropose = useCallback((offer: JobOffer) => {
-    setProposalOffer(offer);
-  }, []);
-
-  const handleSubmitProposal = useCallback(
-    async (priceCents: number, description: string) => {
-      if (!proposalOffer) return;
-      setIsSubmittingProposal(true);
-      try {
-        await submitPriceProposal(proposalOffer.jobId, priceCents, description);
-        Alert.alert(tr('common.success'), tr('jobOffers.proposePrice'));
-        setProposalOffer(null);
-      } catch {
-        Alert.alert(tr('common.error'), tr('common.tryAgain'));
-      } finally {
-        setIsSubmittingProposal(false);
-      }
-    },
-    [proposalOffer, submitPriceProposal, tr],
   );
 
   // Provider header data
@@ -568,19 +604,19 @@ export default function JobOffersScreen(): React.JSX.Element {
   const dollars = Number(d).toLocaleString();
 
   const renderOffer = useCallback(
-    ({ item }: { item: JobOffer }) => (
-      <OfferCard
-        offer={item}
-        onAccept={handleAccept}
+    ({ item }: { item: OpenJob }) => (
+      <OpenJobCard
+        job={item}
+        onSubmit={handleSubmitOffer}
         onDecline={handleDecline}
-        onPropose={handlePropose}
         isProcessing={processingId === item.jobId}
       />
     ),
-    [handleAccept, handleDecline, handlePropose, processingId],
+    [handleSubmitOffer, handleDecline, processingId],
   );
 
-  const keyExtractor = useCallback((item: JobOffer) => item.assignmentId, []);
+  // La bolsa no tiene assignmentId: la clave es el trabajo.
+  const keyExtractor = useCallback((item: OpenJob) => item.jobId, []);
 
   return (
     <Screen>
@@ -717,13 +753,6 @@ export default function JobOffersScreen(): React.JSX.Element {
         }
       />
 
-      <ProposalModal
-        visible={proposalOffer !== null}
-        offer={proposalOffer}
-        onClose={() => setProposalOffer(null)}
-        onSubmit={handleSubmitProposal}
-        isSubmitting={isSubmittingProposal}
-      />
     </Screen>
   );
 }

@@ -26,6 +26,7 @@ import TaskSelectionScreen from '../screens/customer/TaskSelectionScreen';
 import BookingDetailsScreen from '../screens/customer/BookingDetailsScreen';
 import BookingScreen from '../screens/customer/BookingScreen';
 import MatchingScreen from '../screens/customer/MatchingScreen';
+import OffersScreen from '../screens/customer/OffersScreen';
 import JobTrackingScreen from '../screens/customer/JobTrackingScreen';
 import RatingScreen from '../screens/customer/RatingScreen';
 import TipScreen from '../screens/customer/TipScreen';
@@ -101,6 +102,11 @@ function CustomerNavigator({ initialCategoryId, initialCategoryName }: CustomerN
           headerShown: false,
           gestureEnabled: false,
         }}
+      />
+      <Stack.Screen
+        name="Offers"
+        component={OffersScreen}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="JobTracking"

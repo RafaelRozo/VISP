@@ -36,6 +36,7 @@ import { Shadows } from '../../theme/shadows';
 import LevelBadge from '../../components/LevelBadge';
 import { Config } from '../../services/config';
 import taskService from '../../services/taskService';
+import { offerService, type MaterialsState } from '../../services/offerService';
 import companyService from '../../services/companyService';
 import type {
   CustomerFlowParamList,
@@ -131,6 +132,55 @@ function JobTrackingScreen(): React.JSX.Element {
   // Additive: name of the company collaborator assigned to this job (VISP for
   // Business). Null when the job is not a company assignment / not yet assigned.
   const [collaboratorName, setCollaboratorName] = useState<string | null>(null);
+
+  // ── Material (migraciones 043/045) ──────────────────────────────────────
+  // Se consulta aquí, en el seguimiento, porque es donde el cliente está
+  // mirando mientras el trabajo ocurre: si el proveedor se pasa de lo que
+  // cotizó, tiene que poder aprobarlo ANTES de que el cobro se bloquee.
+  const [materials, setMaterials] = useState<MaterialsState | null>(null);
+  const [approvingMaterials, setApprovingMaterials] = useState(false);
+
+  const loadMaterials = useCallback(async () => {
+    try {
+      const estado = await offerService.getMaterials(jobId);
+      setMaterials(estado.materialsRequested ? estado : null);
+    } catch {
+      // Sin material o sin permiso: la sección no se pinta y ya.
+    }
+  }, [jobId]);
+
+  useEffect(() => {
+    loadMaterials();
+  }, [loadMaterials]);
+
+  const handleApproveMaterials = useCallback(() => {
+    if (!materials) return;
+    Alert.alert(
+      t('tracking.materialsApproveTitle') || 'Approve the extra?',
+      (t('tracking.materialsApproveBody') ||
+        'The provider spent {spent} on materials, {over} more than the {agreed} they quoted.')
+        .replace('{spent}', `$${(materials.spentCents / 100).toFixed(2)}`)
+        .replace('{over}', `$${(materials.overageCents / 100).toFixed(2)}`)
+        .replace('{agreed}', `$${(materials.agreedCents / 100).toFixed(2)}`),
+      [
+        { text: t('common.cancel') || 'Cancel', style: 'cancel' },
+        {
+          text: t('tracking.materialsApprove') || 'Approve',
+          onPress: async () => {
+            setApprovingMaterials(true);
+            try {
+              await offerService.approveMaterialsOverage(jobId);
+              await loadMaterials();
+            } catch {
+              Alert.alert(t('tracking.materialsApproveFailed') || 'Could not approve. Try again.');
+            } finally {
+              setApprovingMaterials(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [materials, jobId, loadMaterials, t]);
 
   // Set header title
   useEffect(() => {
@@ -446,6 +496,58 @@ function JobTrackingScreen(): React.JSX.Element {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* ── Material (migraciones 043/045) ──────────────────────
+              Va ARRIBA del todo cuando hace falta aprobar algo: el cobro queda
+              bloqueado hasta que el cliente decide, y enterrarlo abajo sería
+              dejar el trabajo en el limbo sin que nadie sepa por qué. */}
+          {materials ? (
+            <View style={styles.section}>
+              <GlassCard variant={materials.needsApproval ? 'elevated' : 'standard'}>
+                <Text style={[styles.providerName, { color: theme.textPrimary }]}>
+                  {t('tracking.materials') || 'Materials'}
+                </Text>
+                <Text style={[styles.providerMeta, { color: theme.textSecondary, marginTop: 6 }]}>
+                  {(t('tracking.materialsSpent') || '{spent} spent of the {agreed} quoted')
+                    .replace('{spent}', `$${(materials.spentCents / 100).toFixed(2)}`)
+                    .replace('{agreed}', `$${(materials.agreedCents / 100).toFixed(2)}`)}
+                </Text>
+
+                {materials.receipts
+                  .filter((r) => !r.voided)
+                  .map((r) => (
+                    <Text
+                      key={r.receiptId}
+                      style={[styles.providerMeta, { color: theme.textSecondary, marginTop: 4 }]}
+                    >
+                      {`$${(r.amountCents / 100).toFixed(2)}`}
+                      {r.merchant ? ` · ${r.merchant}` : ''}
+                    </Text>
+                  ))}
+
+                {materials.needsApproval ? (
+                  <>
+                    <Text style={[styles.providerMeta, { color: Colors.emergencyRed, marginTop: 10 }]}>
+                      {(t('tracking.materialsOver') ||
+                        '{over} above what you agreed. Nothing is charged until you approve it.')
+                        .replace('{over}', `$${(materials.overageCents / 100).toFixed(2)}`)}
+                    </Text>
+                    <GlassButton
+                      title={
+                        approvingMaterials
+                          ? t('common.loading') || 'Working…'
+                          : t('tracking.materialsApprove') || 'Approve the extra'
+                      }
+                      variant="glow"
+                      onPress={handleApproveMaterials}
+                      disabled={approvingMaterials}
+                      style={{ marginTop: 12 }}
+                    />
+                  </>
+                ) : null}
+              </GlassCard>
+            </View>
+          ) : null}
+
           {/* Provider Card */}
           <View style={styles.section}>
             <GlassCard variant="dark">

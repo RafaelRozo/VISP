@@ -87,7 +87,27 @@
     "details": "Details",
     "location": "Location",
     "distance": "Distance",
-    "price": "Price"
+    "price": "Price",
+    "makeOffer": "Make an offer",
+    "sendOffer": "Send offer",
+    "notInterested": "Not interested",
+    "howLong": "How long will it take?",
+    "fixedWork": "The customer set this: {n} {unit}",
+    "materialsNeeded": "Materials needed",
+    "materialsCost": "Materials cost",
+    "materialsWhy": "What is it for?",
+    "materialsWhyHint": "Matte paint for that brand runs $150",
+    "materials": "materials",
+    "customerBudget": "The customer had about ${budget} in mind — you quote what it really costs.",
+    "messageOptional": "Message (optional)",
+    "messageHint": "I bring my own equipment.",
+    "setRateFirst": "Set your price for this service in My Prices before you can offer.",
+    "setRateShort": "Set your price first",
+    "alreadyOffered": "You already sent an offer for this job.",
+    "photoAnswer": "photo attached",
+    "offerSentTitle": "Offer sent",
+    "offerSentBody": "The customer will compare it with the others and decide. We'll let you know.",
+    "offerFailedTitle": "Could not send the offer"
   },
   "myPricesScreen": {
     "title": "My Prices",
@@ -478,7 +498,11 @@
     "priceTotal": "Total",
     "holdPlaced": "Provider approved. A hold was placed on your card; you're only charged the final amount when the job is done.",
     "holdPending": "Provider approved. Add a payment method to authorize the job — you're charged when it's done.",
-    "job": "Job"
+    "job": "Job",
+    "offersReceived": "Offers received",
+    "offerSingular": "offer",
+    "offerPlural": "offers",
+    "viewOffers": "Compare and choose"
   },
   "credentials": {
     "noCredentials": "No Credentials",
@@ -589,7 +613,8 @@
     "pending": "Pending",
     "approved": "Approved",
     "rejected": "Rejected",
-    "optional": "optional"
+    "optional": "optional",
+    "errorGeneric": "Please try again."
   },
   "emergency": {
     "requestEmergency": "Request Emergency Service",
@@ -673,7 +698,14 @@
     "noteHelp": "Optional. Anything that does not fit above — a nervous dog, a tricky gate.",
     "notePlaceholder": "Optional note",
     "answerPlaceholder": "Your answer",
-    "answerRequired": "This answer is required."
+    "answerRequired": "This answer is required.",
+    "materialsLabel": "Materials",
+    "materialsAsk": "I need the provider to buy the materials",
+    "materialsHelp": "They buy them, keep the receipt, and you reimburse what they paid.",
+    "materialsBudget": "Your budget",
+    "materialsBudgetRange": "Enter an amount between ${min} and ${max}.",
+    "materialsBudgetNote": "This tells providers what you had in mind. Each one will quote the real materials cost in their offer, with a reason — you decide then.",
+    "answerPhoto": "+ Add a photo"
   },
   "serviceCatalog": {
     "insuranceNeededTitle": "Insurance required",
@@ -691,5 +723,56 @@
     "failed": "Could not cancel. Try again.",
     "openCustomer": "Something is wrong — cancel this job",
     "openProvider": "Can't do this job — cancel"
+  },
+  "offers": {
+    "title": "Offers",
+    "eyebrowWaiting": "§ Waiting for offers",
+    "emptyTitle": "No offers yet.",
+    "emptyBody": "Providers in your area are seeing your job. We will notify you as offers come in.",
+    "emptyRange": "Typical range for this service: {range}",
+    "newProvider": "New provider",
+    "jobsDone": "jobs done",
+    "work": "Work",
+    "rate": "Rate",
+    "labour": "Labour",
+    "tax": "Tax",
+    "materials": "Materials",
+    "serviceFee": "Service fee",
+    "total": "Total",
+    "accept": "Accept",
+    "decline": "Decline",
+    "acceptTitle": "Accept this offer?",
+    "acceptBody": "{name} will do the job for {total}. The other offers will be closed.",
+    "acceptFailedTitle": "Could not accept",
+    "acceptFailedBody": "That offer is no longer available. Pick another one.",
+    "rejectFailed": "Could not discard that offer.",
+    "loadFailedTitle": "Could not load offers",
+    "loadFailedBody": "Check your connection and try again.",
+    "materialsBudgetNote": "You said you had about {budget} in mind for materials. Each provider quotes what it will really cost."
+  },
+  "activeJob": {
+    "materials": "Materials",
+    "materialsSpent": "Spent",
+    "materialsOver": "Above what you quoted — the customer has to approve the difference.",
+    "addReceipt": "+ Add receipt",
+    "receiptAmountTitle": "How much did you pay?",
+    "receiptAmountBody": "Enter the total on the receipt, in dollars.",
+    "receiptAmountInvalid": "Enter a valid amount.",
+    "receiptFailedTitle": "Could not upload the receipt",
+    "receiptFailedBody": "Check your connection and try again.",
+    "photoPermTitle": "Photo access needed",
+    "photoPermBody": "Allow photo access to attach the receipt.",
+    "noReceiptTitle": "No receipt uploaded",
+    "noReceiptBody": "This job includes materials you paid for. Without a receipt you won't be reimbursed.",
+    "completeAnyway": "Complete anyway"
+  },
+  "tracking": {
+    "materials": "Materials",
+    "materialsSpent": "{spent} spent of the {agreed} quoted",
+    "materialsOver": "{over} above what you agreed. Nothing is charged until you approve it.",
+    "materialsApprove": "Approve the extra",
+    "materialsApproveTitle": "Approve the extra?",
+    "materialsApproveBody": "The provider spent {spent} on materials, {over} more than the {agreed} they quoted.",
+    "materialsApproveFailed": "Could not approve. Try again."
   }
 }

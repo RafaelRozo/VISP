@@ -54,6 +54,15 @@ interface TaskState {
   extraNote: string;
   /** Respuestas a las preguntas del servicio, indexadas por questionId. */
   answers: Record<string, string>;
+  /**
+   * Materiales (migración 043). Lo decide el CLIENTE aunque el servicio lo permita.
+   *
+   * El presupuesto es una REFERENCIA para el proveedor —le dice que hay que comprar
+   * y cuánto tenía pensado el cliente—, no el techo del cobro: quien cotiza el
+   * material, con justificación, es el proveedor en su oferta.
+   */
+  materialsRequested: boolean;
+  materialsBudget: string;
 
   // Loading flags
   isLoadingCategories: boolean;
@@ -84,6 +93,8 @@ interface TaskState {
   setPriority: (priority: PriorityLevel) => void;
   setDetails: (details: string) => void;
   setAnswer: (questionId: string, answer: string) => void;
+  setMaterialsRequested: (requested: boolean) => void;
+  setMaterialsBudget: (budget: string) => void;
   setExtraNote: (note: string) => void;
   addEvidence: (urls: string[]) => void;
   removeEvidence: (url: string) => void;
@@ -111,6 +122,8 @@ const initialBookingState = {
   evidence: [] as string[],
   extraNote: '',
   answers: {} as Record<string, string>,
+  materialsRequested: false,
+  materialsBudget: '',
 };
 
 const initialState = {
@@ -277,6 +290,11 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
       answers: Object.entries(state.answers)
         .filter(([, v]) => (v ?? '').trim() !== '')
         .map(([questionId, answer]) => ({ questionId, answer: answer.trim() })),
+      materialsRequested: state.materialsRequested,
+      // El input está en dólares; la API habla siempre en centavos.
+      materialsBudgetCents: state.materialsRequested
+        ? Math.round(parseFloat(state.materialsBudget || '0') * 100) || undefined
+        : undefined,
     };
 
     set({ isSubmittingBooking: true, error: null });
@@ -300,6 +318,8 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
         evidence: [],
         extraNote: '',
         answers: {},
+        materialsRequested: false,
+        materialsBudget: '',
       });
       return { bookingId: result.bookingId };
     } catch (err: unknown) {
@@ -337,6 +357,16 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
 
   setAnswer: (questionId: string, answer: string) => {
     set({ answers: { ...getState().answers, [questionId]: answer } });
+  },
+
+  setMaterialsRequested: (materialsRequested: boolean) => {
+    // Al desmarcarlo se limpia el presupuesto: dejar un importe colgando de un
+    // "no quiero materiales" es justo el dato que después nadie entiende.
+    set({ materialsRequested, materialsBudget: materialsRequested ? getState().materialsBudget : '' });
+  },
+
+  setMaterialsBudget: (materialsBudget: string) => {
+    set({ materialsBudget });
   },
 
   setExtraNote: (extraNote: string) => {

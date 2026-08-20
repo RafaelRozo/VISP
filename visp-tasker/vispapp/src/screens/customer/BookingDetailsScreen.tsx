@@ -81,12 +81,27 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     setAnswer,
     addEvidence,
     removeEvidence,
+    materialsRequested,
+    materialsBudget,
+    setMaterialsRequested,
+    setMaterialsBudget,
   } = useTaskStore();
 
   const [uploading, setUploading] = useState(false);
 
   const requiresDetails = taskDetail?.requiresDetails ?? false;
   const requiresEvidence = taskDetail?.requiresEvidence ?? false;
+
+  // ── Materiales (migración 043) ──────────────────────────────────────────
+  // El servicio los permite, pero quien decide es el cliente en CADA reserva. Si
+  // dice que no, la reserva se comporta exactamente como siempre.
+  const materialsEnabled = taskDetail?.materialsEnabled ?? false;
+  const budgetMin = (taskDetail?.materialsBudgetMinCents ?? 0) / 100;
+  const budgetMax = (taskDetail?.materialsBudgetMaxCents ?? 0) / 100;
+  const budgetValue = parseFloat(materialsBudget || '');
+  const budgetOutOfRange =
+    materialsRequested &&
+    (!Number.isFinite(budgetValue) || budgetValue < budgetMin || budgetValue > budgetMax);
 
   // El prompt del propio servicio es lo que orienta al cliente a describir
   // ESCALA Y ACCESO en vez de pedir tareas nuevas. Si el admin no puso uno, se
@@ -98,9 +113,15 @@ export default function BookingDetailsScreen(): React.JSX.Element {
       'Describe the size and access for this service — rooms, area, floor, pets, how we get in.';
   }, [taskDetail?.detailsPromptEn, tr]);
 
+  // Las preguntas de material solo aparecen —y solo se exigen— si el cliente pidió
+  // material: "¿de qué color pinto?" no tiene sentido si compra su propia pintura,
+  // y exigirla bloquearía la reserva por algo que no aplica.
   const questions = useMemo(
-    () => [...(taskDetail?.questions ?? [])].sort((a, b) => a.displayOrder - b.displayOrder),
-    [taskDetail?.questions],
+    () =>
+      [...(taskDetail?.questions ?? [])]
+        .filter((q) => !q.materialsOnly || materialsRequested)
+        .sort((a, b) => a.displayOrder - b.displayOrder),
+    [taskDetail?.questions, materialsRequested],
   );
 
   const detailsMissing = requiresDetails && details.trim() === '';
@@ -111,7 +132,11 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     (q) => q.isRequired && (answers[q.id] ?? '').trim() === '',
   );
   const canContinue =
-    !detailsMissing && !evidenceMissing && unansweredRequired.length === 0 && !uploading;
+    !detailsMissing &&
+    !evidenceMissing &&
+    unansweredRequired.length === 0 &&
+    !budgetOutOfRange &&
+    !uploading;
 
   const handleAddPhotos = useCallback(async () => {
     const remaining = MAX_PHOTOS - evidence.length;
@@ -159,6 +184,48 @@ export default function BookingDetailsScreen(): React.JSX.Element {
       setUploading(false);
     }
   }, [evidence.length, addEvidence, tr]);
+
+  /**
+   * Foto como respuesta a una pregunta de tipo IMAGE.
+   *
+   * Reusa la subida de evidencia en vez de tener su propio endpoint: es el mismo
+   * archivo, la misma validación de tamaño y la misma carpeta. Lo único distinto
+   * es dónde se guarda la URL — aquí, como respuesta a la pregunta.
+   */
+  const handleAnswerPhoto = useCallback(
+    async (questionId: string) => {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          tr('bookingDetails.permTitle') || 'Photo access needed',
+          tr('bookingDetails.permBody') ||
+            'Allow photo access to attach pictures of the job.',
+        );
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        quality: PICKER_QUALITY,
+      });
+      if (result.canceled || result.assets.length === 0) return;
+
+      setUploading(true);
+      try {
+        const [url] = await taskService.uploadBookingEvidence([result.assets[0].uri]);
+        if (url) setAnswer(questionId, url);
+      } catch {
+        Alert.alert(
+          tr('bookingDetails.uploadFailedTitle') || 'Upload failed',
+          tr('bookingDetails.uploadFailedBody') ||
+            'The photos could not be uploaded. Check your connection and try again.',
+        );
+      } finally {
+        setUploading(false);
+      }
+    },
+    [setAnswer, tr],
+  );
 
   const handleContinue = useCallback(() => {
     if (!canContinue) return;
@@ -221,6 +288,102 @@ export default function BookingDetailsScreen(): React.JSX.Element {
           </Text>
         </View>
 
+        {/* ── Materiales (migración 043) ─────────────────────────────
+            Va ANTES de las preguntas a propósito: activarlo hace aparecer las
+            preguntas de material (el color de la pintura), y al revés no tendría
+            sentido. Si el cliente dice que no, la reserva sigue como siempre. */}
+        {materialsEnabled ? (
+          <>
+            <View style={styles.sectionGap} />
+            <Eyebrow>
+              {(tr('bookingDetails.materialsLabel') || 'Materials').toUpperCase()}
+            </Eyebrow>
+
+            <Pressable
+              onPress={() => setMaterialsRequested(!materialsRequested)}
+              style={[
+                styles.materialsToggle,
+                {
+                  borderColor: materialsRequested ? t.violet : t.border,
+                  backgroundColor: materialsRequested ? t.violetDim : t.surface,
+                },
+              ]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: materialsRequested }}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    borderColor: materialsRequested ? t.violet : t.border,
+                    backgroundColor: materialsRequested ? t.violet : 'transparent',
+                  },
+                ]}
+              >
+                {materialsRequested ? (
+                  <Text style={styles.checkboxMark}>✓</Text>
+                ) : null}
+              </View>
+              <View style={styles.materialsToggleText}>
+                <Text style={[VispText.body, { color: t.text }]}>
+                  {tr('bookingDetails.materialsAsk') ||
+                    'I need the provider to buy the materials'}
+                </Text>
+                <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 4 }]}>
+                  {tr('bookingDetails.materialsHelp') ||
+                    'They buy them, keep the receipt, and you reimburse what they paid.'}
+                </Text>
+              </View>
+            </Pressable>
+
+            {materialsRequested ? (
+              <>
+                {/* El mensaje que escribió el admin para ESTE servicio. */}
+                {taskDetail?.materialsNoteEn ? (
+                  <Text style={[VispText.body, { color: t.text3, marginTop: 10 }]}>
+                    {taskDetail.materialsNoteEn}
+                  </Text>
+                ) : null}
+
+                <Text style={[VispText.eyebrow, { color: t.text2, marginTop: 14 }]}>
+                  {(tr('bookingDetails.materialsBudget') || 'Your budget').toUpperCase()}
+                  {`  ·  $${budgetMin} – $${budgetMax}`}
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: t.text,
+                      backgroundColor: t.surface,
+                      borderColor: budgetOutOfRange ? t.danger : t.border,
+                      marginTop: 6,
+                    },
+                  ]}
+                  value={materialsBudget}
+                  onChangeText={setMaterialsBudget}
+                  placeholder={`${budgetMin}`}
+                  placeholderTextColor={t.text3}
+                  keyboardType="decimal-pad"
+                  maxLength={8}
+                />
+                {/* Que quede claro que esto NO es el precio: el proveedor cotizará
+                    el material en su oferta, con su justificación, y el cliente
+                    decidirá entonces. Sin esta línea, un cliente que ponga 100 y
+                    reciba una oferta de 150 pensará que le cambiaron el trato. */}
+                <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 8 }]}>
+                  {budgetOutOfRange
+                    ? (tr('bookingDetails.materialsBudgetRange') ||
+                        'Enter an amount between ${min} and ${max}.')
+                        .replace('${min}', `$${budgetMin}`)
+                        .replace('${max}', `$${budgetMax}`)
+                    : tr('bookingDetails.materialsBudgetNote') ||
+                      'This tells providers what you had in mind. Each one will quote the real materials cost in their offer, with a reason — you decide then.'}
+                </Text>
+              </>
+            ) : null}
+          </>
+        ) : null}
+
         {/* ── Preguntas del servicio (migraciones 039/040) ───────────
             Texto libre -> textarea. Opción cerrada -> botones de una sola
             selección: en un móvil, tocar una opción es más rápido y menos
@@ -272,6 +435,35 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                         );
                       })}
                     </View>
+                  ) : q.answerType === 'IMAGE' ? (
+                    /* Pregunta de FOTO. El caso que la pidió es el color de
+                       pintura: descrito con palabras no sirve, la foto de la pared
+                       sí. Se sube igual que la evidencia y se guarda la URL como
+                       respuesta. */
+                    <Pressable
+                      onPress={() => handleAnswerPhoto(q.id)}
+                      disabled={uploading}
+                      style={[
+                        styles.photoAnswer,
+                        {
+                          borderColor: falta ? t.danger : t.border,
+                          backgroundColor: t.surface,
+                        },
+                      ]}
+                    >
+                      {valor ? (
+                        <Image
+                          source={{ uri: resolveUploadUrl(valor) ?? valor }}
+                          style={styles.photoAnswerImg}
+                        />
+                      ) : (
+                        <Text style={[VispText.body, { color: t.text3 }]}>
+                          {uploading
+                            ? tr('common.loading') || 'Uploading…'
+                            : tr('bookingDetails.answerPhoto') || '+ Add a photo'}
+                        </Text>
+                      )}
+                    </Pressable>
                   ) : (
                     <TextInput
                       style={[
@@ -424,6 +616,38 @@ const styles = StyleSheet.create({
   },
   sectionGap: { height: 26 },
   questionBlock: { marginBottom: 18 },
+  // Materiales
+  materialsToggle: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  materialsToggleText: { flex: 1 },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxMark: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  // Respuesta de tipo foto
+  photoAnswer: {
+    height: 96,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  photoAnswerImg: { width: '100%', height: '100%' },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   choice: {
     paddingHorizontal: 14,

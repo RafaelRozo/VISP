@@ -42,6 +42,7 @@ import { GlassCard, GlassButton } from '../../components/glass';
 import { Screen } from '../../components/visp';
 import LevelBadge from '../../components/LevelBadge';
 import { taskService, PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
+import { unitSuffix } from '../../services/offerService';
 import { paymentService } from '../../services/paymentService';
 import { patch } from '../../services/apiClient';
 import { useAuthStore } from '../../stores/authStore';
@@ -84,15 +85,6 @@ function formatDisplayTime(time?: string): string {
   const ampm = h >= 12 ? 'PM' : 'AM';
   const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${displayHour}:${(m ?? 0).toString().padStart(2, '0')} ${ampm}`;
-}
-
-/** Format minutes to "2h" or "1h 30m" */
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rem = minutes % 60;
-  if (rem === 0) return `${hours}h`;
-  return `${hours}h ${rem}m`;
 }
 
 // ──────────────────────────────────────────────
@@ -351,16 +343,15 @@ function BookingScreen(): React.JSX.Element {
                     {LEVEL_LABELS[task.level]}
                   </Text>
                 </View>
+                {/* La DURACIÓN salió de aquí (ofertas v2, 2026-08-20). La estimación
+                    del catálogo era una media que no describía este trabajo, y ahora
+                    quien dice cuánto tarda es el proveedor en su oferta: enseñar un
+                    número nuestro al lado del suyo solo genera discusiones. */}
                 <View style={styles.metaItem}>
-                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Duration</Text>
-                  <Text style={[styles.metaValue, { color: theme.textPrimary }]}>
-                    {formatDuration(task.estimatedDurationMinutes)}
-                  </Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Estimate</Text>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Rate</Text>
                   <Text style={[styles.metaValue, { color: Colors.primary }]}>
                     ${task.priceRangeMin} - ${task.priceRangeMax}
+                    <Text style={styles.metaUnit}>{unitSuffix(pricingUnit)}</Text>
                   </Text>
                 </View>
               </View>
@@ -645,61 +636,44 @@ function BookingScreen(): React.JSX.Element {
             )}
           </View>
 
-          {/* ── Pricing Model Info ────────────────── */}
+          {/* ── Precio ─────────────────────────────
+              Una sola tarjeta, sin ramas por nivel (ofertas v2, 2026-08-20).
+              Antes había tres —"time-based", "negociado", "emergencia"— y las tres
+              enseñaban un TOTAL estimado. Ya no existe tal cosa al reservar: el
+              total es `tarifa del proveedor × su estimación`, y ninguna de las dos
+              se conoce hasta que llega una oferta. Lo único honesto que se puede
+              mostrar aquí es el rango del catálogo con su unidad. */}
           <View style={styles.section}>
             <GlassCard variant="elevated" style={styles.estimateCardBorder}>
-              {task.level <= 2 ? (
-                <View style={styles.estimateContent}>
-                  <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>Time-Based Pricing</Text>
-                  <Text style={styles.estimatePrice}>
-                    ${task.priceRangeMin} - ${task.priceRangeMax}/hr
-                  </Text>
+              <View style={styles.estimateContent}>
+                <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>
+                  Price range
+                </Text>
+                <Text style={styles.estimatePrice}>
+                  ${task.priceRangeMin} - ${task.priceRangeMax}
+                  <Text style={styles.estimateUnit}>{unitSuffix(pricingUnit)}</Text>
+                </Text>
+
+                {/* En los servicios por ítem el rango SÍ se puede convertir en un
+                    total, porque la cantidad la puso el cliente. */}
+                {allowsQuantity && quantity > 1 ? (
                   <View style={styles.estimateDetailRow}>
-                    <Text style={[styles.estimateDetailLabel, { color: theme.textSecondary }]}>Est. Duration</Text>
+                    <Text style={[styles.estimateDetailLabel, { color: theme.textSecondary }]}>
+                      {quantity} × range
+                    </Text>
                     <Text style={[styles.estimateDetailValue, { color: theme.textPrimary }]}>
-                      {formatDuration(task.estimatedDurationMinutes)}
+                      ${(task.priceRangeMin * quantity).toFixed(2)} - $
+                      {(task.priceRangeMax * quantity).toFixed(2)}
                     </Text>
                   </View>
-                  <View style={styles.estimateDetailRow}>
-                    <Text style={[styles.estimateDetailLabel, { color: theme.textSecondary }]}>Est. Total</Text>
-                    <Text style={[styles.estimateDetailValue, { color: theme.textPrimary }]}>
-                      ${task.estimatedPrice > 0
-                        ? task.estimatedPrice.toFixed(2)
-                        : `${task.priceRangeMin} - ${task.priceRangeMax}`}
-                    </Text>
-                  </View>
-                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
-                    You are billed based on actual time worked at the provider's
-                    hourly rate. Final amount may differ from the estimate.
-                  </Text>
-                </View>
-              ) : task.level === 3 ? (
-                <View style={styles.estimateContent}>
-                  <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>Negotiated Pricing</Text>
-                  <Text style={styles.estimatePrice}>
-                    ${task.priceRangeMin} - ${task.priceRangeMax}
-                  </Text>
-                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
-                    This service requires a price agreement with your provider.
-                    The guide range above is for reference. Your provider will
-                    submit a proposal after reviewing the job details.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.estimateContent}>
-                  <Text style={[styles.estimateLabel, { color: Colors.emergencyRed }]}>
-                    Emergency Pricing
-                  </Text>
-                  <Text style={[styles.estimatePrice, { color: Colors.emergencyRed }]}>
-                    ${task.priceRangeMin} - ${task.priceRangeMax}
-                  </Text>
-                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
-                    Emergency service. Guide range shown above. Additional
-                    emergency surcharges, after-hours fees, and minimum charges
-                    may apply. Your provider will submit a proposal.
-                  </Text>
-                </View>
-              )}
+                ) : null}
+
+                <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
+                  Providers who work in your area will send you offers with their
+                  own price and how long they need. You pick the one you want —
+                  nothing is charged until you accept an offer.
+                </Text>
+              </View>
             </GlassCard>
           </View>
 
@@ -710,13 +684,13 @@ function BookingScreen(): React.JSX.Element {
         {/* ── Confirm Booking CTA ────────────────── */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>
-              {task.estimatedPrice > 0 ? 'Estimated' : 'Range'}
-            </Text>
+            {/* Siempre RANGO, nunca "estimado": un total en el botón de confirmar
+                se lee como el precio que se va a cobrar, y aquí todavía no hay
+                precio — lo pondrá la oferta que el cliente elija. */}
+            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Range</Text>
             <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
-              {task.estimatedPrice > 0
-                ? `$${task.estimatedPrice.toFixed(2)}`
-                : `$${task.priceRangeMin} - $${task.priceRangeMax}`}
+              {`$${task.priceRangeMin} - $${task.priceRangeMax}`}
+              <Text style={styles.ctaPriceUnit}>{unitSuffix(pricingUnit)}</Text>
             </Text>
           </View>
           <GlassButton
@@ -834,6 +808,12 @@ const styles = StyleSheet.create({
     ...Typography.footnote,
     color: '#FFFFFF',
     fontWeight: FontWeight.semiBold as '600',
+  },
+  /** Sufijo de unidad ("/hr", "/item"): más pequeño y apagado que la cifra. */
+  metaUnit: {
+    ...Typography.caption1,
+    fontWeight: FontWeight.regular as '400',
+    opacity: 0.75,
   },
 
   // Review Cards (address, schedule, priority)
@@ -978,6 +958,11 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     marginBottom: Spacing.sm,
   },
+  estimateUnit: {
+    fontSize: FontSize.callout,
+    fontWeight: FontWeight.regular as '400',
+    opacity: 0.8,
+  },
   estimateDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1038,6 +1023,11 @@ const styles = StyleSheet.create({
     fontSize: FontSize.title2,
     fontWeight: FontWeight.bold as '700',
     color: '#FFFFFF',
+  },
+  ctaPriceUnit: {
+    fontSize: FontSize.footnote,
+    fontWeight: FontWeight.regular as '400',
+    opacity: 0.7,
   },
   confirmButtonStyle: {
     minWidth: 180,

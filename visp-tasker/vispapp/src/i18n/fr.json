@@ -87,7 +87,27 @@
     "details": "Détails",
     "location": "Lieu",
     "distance": "Distance",
-    "price": "Prix"
+    "price": "Prix",
+    "makeOffer": "Faire une offre",
+    "sendOffer": "Envoyer l'offre",
+    "notInterested": "Pas intéressé",
+    "howLong": "Combien de temps faut-il ?",
+    "fixedWork": "Le client l'a fixé : {n} {unit}",
+    "materialsNeeded": "Matériaux nécessaires",
+    "materialsCost": "Coût des matériaux",
+    "materialsWhy": "À quoi ça correspond ?",
+    "materialsWhyHint": "La peinture mate de cette marque coûte 150 $",
+    "materials": "matériaux",
+    "customerBudget": "Le client avait prévu environ {budget} $ — vous chiffrez le coût réel.",
+    "messageOptional": "Message (facultatif)",
+    "messageHint": "J'apporte mon propre équipement.",
+    "setRateFirst": "Fixez votre prix pour ce service dans Mes prix avant de pouvoir offrir.",
+    "setRateShort": "Fixez d'abord votre prix",
+    "alreadyOffered": "Vous avez déjà envoyé une offre pour ce travail.",
+    "photoAnswer": "photo jointe",
+    "offerSentTitle": "Offre envoyée",
+    "offerSentBody": "Le client la comparera aux autres et décidera. Nous vous tiendrons au courant.",
+    "offerFailedTitle": "Impossible d'envoyer l'offre"
   },
   "myPricesScreen": {
     "title": "Mes tarifs",
@@ -478,7 +498,11 @@
     "priceTotal": "Total",
     "holdPlaced": "Prestataire approuvé. Une autorisation a été placée sur votre carte; vous n'êtes débité du montant final qu'à la fin du travail.",
     "holdPending": "Prestataire approuvé. Ajoutez un moyen de paiement pour autoriser le travail — vous êtes débité une fois terminé.",
-    "job": "Travail"
+    "job": "Travail",
+    "offersReceived": "Offres reçues",
+    "offerSingular": "offre",
+    "offerPlural": "offres",
+    "viewOffers": "Comparer et choisir"
   },
   "credentials": {
     "noCredentials": "Aucune accréditation",
@@ -589,7 +613,8 @@
     "pending": "En attente",
     "approved": "Approuvé",
     "rejected": "Refusé",
-    "optional": "facultatif"
+    "optional": "facultatif",
+    "errorGeneric": "Veuillez réessayer."
   },
   "emergency": {
     "requestEmergency": "Demander un service d'urgence",
@@ -673,7 +698,14 @@
     "noteHelp": "Facultatif. Tout ce qui n'entre pas ci-dessus — un chien craintif, un portail difficile.",
     "notePlaceholder": "Note facultative",
     "answerPlaceholder": "Votre réponse",
-    "answerRequired": "Cette réponse est obligatoire."
+    "answerRequired": "Cette réponse est obligatoire.",
+    "materialsLabel": "Matériaux",
+    "materialsAsk": "Je veux que le prestataire achète les matériaux",
+    "materialsHelp": "Il les achète, garde la facture, et vous lui remboursez ce qu'il a payé.",
+    "materialsBudget": "Votre budget",
+    "materialsBudgetRange": "Saisissez un montant entre ${min} et ${max}.",
+    "materialsBudgetNote": "Cela indique aux prestataires ce que vous aviez prévu. Chacun chiffrera le coût réel dans son offre, avec une justification — vous déciderez ensuite.",
+    "answerPhoto": "+ Ajouter une photo"
   },
   "serviceCatalog": {
     "insuranceNeededTitle": "Assurance requise",
@@ -691,5 +723,56 @@
     "failed": "Annulation impossible. Réessayez.",
     "openCustomer": "Il y a un problème — annuler ce travail",
     "openProvider": "Je ne peux pas faire ce travail — annuler"
+  },
+  "offers": {
+    "title": "Offres",
+    "eyebrowWaiting": "§ En attente d'offres",
+    "emptyTitle": "Aucune offre pour l'instant.",
+    "emptyBody": "Les prestataires de votre secteur voient votre demande. Nous vous préviendrons dès qu'une offre arrive.",
+    "emptyRange": "Fourchette habituelle pour ce service : {range}",
+    "newProvider": "Nouveau prestataire",
+    "jobsDone": "travaux réalisés",
+    "work": "Travail",
+    "rate": "Tarif",
+    "labour": "Main-d'œuvre",
+    "tax": "Taxe",
+    "materials": "Matériaux",
+    "serviceFee": "Frais de service",
+    "total": "Total",
+    "accept": "Accepter",
+    "decline": "Refuser",
+    "acceptTitle": "Accepter cette offre ?",
+    "acceptBody": "{name} fera le travail pour {total}. Les autres offres seront fermées.",
+    "acceptFailedTitle": "Impossible d'accepter",
+    "acceptFailedBody": "Cette offre n'est plus disponible. Choisissez-en une autre.",
+    "rejectFailed": "Impossible d'écarter cette offre.",
+    "loadFailedTitle": "Impossible de charger les offres",
+    "loadFailedBody": "Vérifiez votre connexion et réessayez.",
+    "materialsBudgetNote": "Vous aviez prévu environ {budget} pour les matériaux. Chaque prestataire chiffre ce que cela coûtera vraiment."
+  },
+  "activeJob": {
+    "materials": "Matériaux",
+    "materialsSpent": "Dépensé",
+    "materialsOver": "Au-dessus de votre devis — le client doit approuver la différence.",
+    "addReceipt": "+ Ajouter une facture",
+    "receiptAmountTitle": "Combien avez-vous payé ?",
+    "receiptAmountBody": "Saisissez le total de la facture, en dollars.",
+    "receiptAmountInvalid": "Saisissez un montant valide.",
+    "receiptFailedTitle": "Impossible d'envoyer la facture",
+    "receiptFailedBody": "Vérifiez votre connexion et réessayez.",
+    "photoPermTitle": "Accès aux photos requis",
+    "photoPermBody": "Autorisez l'accès aux photos pour joindre la facture.",
+    "noReceiptTitle": "Aucune facture envoyée",
+    "noReceiptBody": "Ce travail comprend des matériaux que vous avez payés. Sans facture, vous ne serez pas remboursé.",
+    "completeAnyway": "Terminer quand même"
+  },
+  "tracking": {
+    "materials": "Matériaux",
+    "materialsSpent": "{spent} dépensés sur les {agreed} chiffrés",
+    "materialsOver": "{over} de plus que convenu. Rien n'est facturé tant que vous n'approuvez pas.",
+    "materialsApprove": "Approuver le supplément",
+    "materialsApproveTitle": "Approuver le supplément ?",
+    "materialsApproveBody": "Le prestataire a dépensé {spent} en matériaux, soit {over} de plus que les {agreed} chiffrés.",
+    "materialsApproveFailed": "Impossible d'approuver. Réessayez."
   }
 }

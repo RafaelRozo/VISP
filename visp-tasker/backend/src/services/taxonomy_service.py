@@ -434,10 +434,36 @@ async def get_time_slots(
 ) -> list[dict]:
     """Generate available time slots for a given task and date.
 
-    Currently returns standard business hours (08:00 - 20:00).
-    Future evolution: Query `provider_availability` and `provider_task_qualifications`
-    to return only slots where at least one qualified provider is available.
+    Horario estándar 08:00-20:00. Las horas YA PASADAS del día de hoy salen como no
+    disponibles (2026-08-20): antes se devolvían todas con `available: True` sin
+    mirar el reloj, y un cliente que reservaba a las 15:36 podía elegir la 1 PM del
+    mismo día. El trabajo nacía con la hora pedida en el pasado — imposible de
+    cumplir— y la app lo pintaba como caducado nada más crearlo.
+
+    La hora se compara en **America/Toronto**, no en UTC. El servidor corre en UTC y
+    Ontario va 4-5 horas por detrás: filtrar por la hora UTC borraría media jornada
+    de golpe. Cuando VISP abra zonas en otros husos, esto tiene que salir de la zona
+    de servicio del cliente, no de una constante.
+
+    Evolución futura: consultar `provider_availability` y
+    `provider_task_qualifications` para devolver solo las horas con algún proveedor
+    calificado disponible.
     """
+    from datetime import date as _date, datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    _TZ_SERVICIO = ZoneInfo("America/Toronto")
+    ahora = _dt.now(_TZ_SERVICIO)
+
+    try:
+        dia = _date.fromisoformat(date_str)
+    except (TypeError, ValueError):
+        # Fecha ilegible: se devuelve el día entero en vez de reventar. La reserva
+        # se valida igualmente en el backend.
+        dia = None
+
+    es_hoy = dia == ahora.date()
+
     slots = []
     # Standard 8 AM to 8 PM schedule
     for hour in range(8, 20):
@@ -449,12 +475,16 @@ async def get_time_slots(
         ampm = "AM" if hour < 12 else "PM"
         label = f"{h}:00 {ampm}"
 
+        # La hora en curso también se descarta: si son las 15:36, "3:00 PM" ya
+        # empezó y nadie puede llegar a tiempo.
+        pasada = es_hoy and hour <= ahora.hour
+
         slots.append({
             "id": start,
             "label": label,
             "startTime": start,
             "endTime": end,
-            "available": True,  # Assume available for now
+            "available": not pasada,
         })
 
     return slots

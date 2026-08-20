@@ -645,6 +645,12 @@ async def get_active_jobs(
             ).isoformat()
         else:
             item["scheduledAt"] = None
+        # Cierre de la ventana de ofertas (migración 042). Es lo que de verdad
+        # define si un trabajo abierto sigue vivo: pasadas las 48 h sin que nadie
+        # oferte, ya no va a pasar nada y el cliente tiene que saberlo.
+        item["offersCloseAt"] = (
+            j.offers_close_at.isoformat() if j.offers_close_at else None
+        )
         items.append(item)
 
     return {
@@ -1038,12 +1044,66 @@ async def mobile_update_job_status(
             detail=f"Unknown status '{body.status}'.",
         )
 
-    # Determine actor type from user roles
-    actor_type = "customer"
-    if user.role_provider:
-        actor_type = "provider"
+    # Quién actúa se decide por su RELACIÓN CON ESTE TRABAJO, no por sus roles.
+    #
+    # Antes se miraba `user.role_provider`, y eso rompía a cualquier cuenta con rol
+    # "both": al cancelar SU PROPIA reserva se la clasificaba como proveedor, se
+    # intentaba `cancelled_by_provider` y la máquina de estados lo rechazaba con un
+    # 409 — correctamente, porque un proveedor no puede cancelar un trabajo que
+    # nunca le asignaron. El usuario solo veía "error al eliminar".
+    #
+    # Ser proveedor en la plataforma y ser EL proveedor de este trabajo son cosas
+    # distintas; solo la segunda decide qué transición toca.
+    from sqlalchemy import select as _select
+
+    from src.models.job import AssignmentStatus, Job, JobAssignment
+
+    _job = (
+        await db.execute(_select(Job).where(Job.id == job_id))
+    ).scalar_one_or_none()
+    if _job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found.",
+        )
+
+    es_cliente = _job.customer_id == user.id
+    es_proveedor_del_trabajo = False
+    if not es_cliente:
+        from src.models.provider import ProviderProfile
+
+        prov = (
+            await db.execute(
+                _select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+            )
+        ).scalars().first()
+        if prov is not None:
+            es_proveedor_del_trabajo = (
+                await db.execute(
+                    _select(JobAssignment.id)
+                    .where(
+                        JobAssignment.job_id == job_id,
+                        JobAssignment.provider_id == prov.id,
+                        JobAssignment.status.in_(
+                            [AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED]
+                        ),
+                    )
+                    .limit(1)
+                )
+            ).scalars().first() is not None
+
     if user.role_admin:
         actor_type = "admin"
+    elif es_cliente:
+        actor_type = "customer"
+    elif es_proveedor_del_trabajo:
+        actor_type = "provider"
+    else:
+        # Ni dueño ni asignado: no tiene nada que hacer aquí.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not part of this job.",
+        )
 
     # Special case: cancellation
     if body.status == "cancelled":
