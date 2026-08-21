@@ -649,6 +649,13 @@ export interface BookingRequest {
    */
   materialsRequested?: boolean;
   materialsBudgetCents?: number;
+  /**
+   * PER_CONTRACT: la tarifa/hora que ofrece EL CLIENTE. Es la inversión del resto
+   * del catálogo, donde el precio lo pone el proveedor. Acotada por el rango del
+   * admin igual que la tarifa del proveedor: cambia a quién acota, no la
+   * protección.
+   */
+  customerRateCents?: number;
 }
 
 export interface AddressInfo {

@@ -107,7 +107,10 @@
     "photoAnswer": "photo jointe",
     "offerSentTitle": "Offre envoyée",
     "offerSentBody": "Le client la comparera aux autres et décidera. Nous vous tiendrons au courant.",
-    "offerFailedTitle": "Impossible d'envoyer l'offre"
+    "offerFailedTitle": "Impossible d'envoyer l'offre",
+    "acceptContract": "Accepter",
+    "contractOffer": "Le client fixe ce prix",
+    "contractCancelNote": "Si le travail s'arrête avant la fin, chaque heure commencée vous est payée."
   },
   "myPricesScreen": {
     "title": "Mes tarifs",
@@ -705,7 +708,10 @@
     "materialsBudget": "Votre budget",
     "materialsBudgetRange": "Saisissez un montant entre ${min} et ${max}.",
     "materialsBudgetNote": "Cela indique aux prestataires ce que vous aviez prévu. Chacun chiffrera le coût réel dans son offre, avec une justification — vous déciderez ensuite.",
-    "answerPhoto": "+ Ajouter une photo"
+    "answerPhoto": "+ Ajouter une photo",
+    "contractRate": "Votre tarif horaire",
+    "contractRateRange": "Proposez entre ${min} et ${max} de l'heure.",
+    "contractRateHelp": "Ici c'est vous qui fixez le prix. Les prestataires qui travaillent à ce tarif accepteront — vous choisissez qui."
   },
   "serviceCatalog": {
     "insuranceNeededTitle": "Assurance requise",
@@ -764,7 +770,9 @@
     "photoPermBody": "Autorisez l'accès aux photos pour joindre la facture.",
     "noReceiptTitle": "Aucune facture envoyée",
     "noReceiptBody": "Ce travail comprend des matériaux que vous avez payés. Sans facture, vous ne serez pas remboursé.",
-    "completeAnyway": "Terminer quand même"
+    "completeAnyway": "Terminer quand même",
+    "contractCancelTitle": "Annuler ce contrat ?",
+    "contractCancelBody": "Vous avez travaillé {worked}. {hours} heures commencées seront facturées : {total}."
   },
   "tracking": {
     "materials": "Matériaux",

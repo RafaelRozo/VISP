@@ -85,12 +85,25 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     materialsBudget,
     setMaterialsRequested,
     setMaterialsBudget,
+    contractRate,
+    setContractRate,
   } = useTaskStore();
 
   const [uploading, setUploading] = useState(false);
 
   const requiresDetails = taskDetail?.requiresDetails ?? false;
   const requiresEvidence = taskDetail?.requiresEvidence ?? false;
+
+  // ── Contrato por horas (migración 046) ──────────────────────────────────
+  // La inversión del modelo: aquí el precio lo pone EL CLIENTE. El rango del admin
+  // sigue mandando, solo que ahora acota lo que él puede ofrecer.
+  const isContract = (taskDetail?.pricingUnit ?? '').toUpperCase() === 'PER_CONTRACT';
+  const rateMin = (taskDetail?.priceRangeMin ?? 0);
+  const rateMax = (taskDetail?.priceRangeMax ?? 0);
+  const rateValue = parseFloat(contractRate || '');
+  const rateOutOfRange =
+    isContract &&
+    (!Number.isFinite(rateValue) || rateValue < rateMin || rateValue > rateMax);
 
   // ── Materiales (migración 043) ──────────────────────────────────────────
   // El servicio los permite, pero quien decide es el cliente en CADA reserva. Si
@@ -132,6 +145,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     (q) => q.isRequired && (answers[q.id] ?? '').trim() === '',
   );
   const canContinue =
+    !rateOutOfRange &&
     !detailsMissing &&
     !evidenceMissing &&
     unansweredRequired.length === 0 &&
@@ -287,6 +301,46 @@ export default function BookingDetailsScreen(): React.JSX.Element {
             {details.length}/4000
           </Text>
         </View>
+
+        {/* ── Contrato por horas (migración 046) ──────────────────────
+            La INVERSIÓN del modelo: aquí el precio lo pone el cliente y el
+            proveedor solo acepta. Va lo primero porque es lo que define el trato:
+            todo lo demás —detalles, fotos— es contexto de algo ya acordado. */}
+        {isContract ? (
+          <>
+            <Eyebrow>
+              {(tr('bookingDetails.contractRate') || 'Your hourly rate').toUpperCase()}
+              {`  ·  $${rateMin} – $${rateMax}`}
+            </Eyebrow>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  color: t.text,
+                  backgroundColor: t.surface,
+                  borderColor: rateOutOfRange ? t.danger : t.border,
+                  marginTop: 6,
+                },
+              ]}
+              value={contractRate}
+              onChangeText={setContractRate}
+              placeholder={`${rateMin}`}
+              placeholderTextColor={t.text3}
+              keyboardType="decimal-pad"
+              maxLength={8}
+            />
+            <Text style={[VispText.eyebrow, { color: rateOutOfRange ? t.danger : t.text3, marginTop: 8 }]}>
+              {rateOutOfRange
+                ? (tr('bookingDetails.contractRateRange') ||
+                    'Offer between ${min} and ${max} per hour.')
+                    .replace('${min}', `$${rateMin}`)
+                    .replace('${max}', `$${rateMax}`)
+                : tr('bookingDetails.contractRateHelp') ||
+                  'You set the price for this one. Providers who work at that rate will accept — you choose who.'}
+            </Text>
+            <View style={styles.sectionGap} />
+          </>
+        ) : null}
 
         {/* ── Materiales (migración 043) ─────────────────────────────
             Va ANTES de las preguntas a propósito: activarlo hace aparecer las

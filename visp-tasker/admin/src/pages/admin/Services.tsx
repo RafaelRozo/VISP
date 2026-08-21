@@ -995,8 +995,22 @@ function TaskModal({
                 <option value="per_linear_m">Per linear meter (ml)</option>
                 <option value="per_visit">Per visit (flat)</option>
                 <option value="flat_package">Flat package</option>
+                {/* PER_CONTRACT invierte el modelo: el precio lo pone el CLIENTE
+                    dentro del rango y el proveedor solo acepta. Sin decirlo aquí,
+                    quien carga el catálogo no puede adivinarlo. */}
+                <option value="per_contract">Per contract (customer sets the rate)</option>
                 <option value="custom_quote">Custom quote</option>
               </select>
+              {/* El rango cambia de significado en esta unidad: deja de acotar la
+                  tarifa del proveedor y pasa a acotar lo que puede ofrecer el
+                  cliente. Quien carga el catálogo tiene que saberlo antes de
+                  escribir los números de arriba. */}
+              {state.pricingUnit === 'per_contract' ? (
+                <div style={{ fontSize: 12, color: 'var(--t-warn)', marginTop: 6 }}>
+                  {t('services.perContractHelp') ||
+                    'In this unit the CUSTOMER sets the hourly rate (within the range above) and the hours; providers only accept. Cancelling mid-job charges the full hours started.'}
+                </div>
+              ) : null}
             </div>
             <div>
               <label className="t-label">{t('services.minQuantity') || 'Min quantity'}</label>

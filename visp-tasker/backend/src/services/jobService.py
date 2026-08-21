@@ -287,6 +287,7 @@ async def create_job(
     customer_answers: list[dict[str, Any]] | None = None,
     materials_requested: bool = False,
     materials_budget_cents: int | None = None,
+    customer_rate_cents: int | None = None,
 ) -> Job:
     """Create a new job with SLA snapshot from sla_profiles.
 
@@ -361,6 +362,43 @@ async def create_job(
             "This service needs at least one photo before it can be booked. "
             "The provider uses it to decide whether to accept the job."
         )
+
+    # 1c-bis. PER_CONTRACT (migraciones 046/047): aquí el PRECIO LO PONE EL CLIENTE.
+    #
+    # Es la inversión del resto del catálogo. El cliente publica "pago $22/h,
+    # necesito un helper 8 horas" y el proveedor solo acepta; por eso el precio se
+    # valida AQUÍ, al crear el trabajo, y no cuando alguien oferta — cuando el
+    # proveedor lo ve, el trato ya tiene que estar cerrado.
+    #
+    # El rango del admin sigue mandando, solo que ahora acota lo que puede ofrecer
+    # el cliente en vez de la tarifa del proveedor. Sin esta validación, el rango
+    # dejaría de proteger nada en esta unidad.
+    from src.models.taxonomy import PricingUnit as _PU
+
+    tarifa_cliente: int | None = None
+    if task.pricing_unit == _PU.PER_CONTRACT:
+        if not customer_rate_cents or customer_rate_cents <= 0:
+            raise BookingInputRequiredError(
+                "Set the hourly rate you are offering for this contract."
+            )
+        lo = task.base_price_min_cents
+        hi = task.base_price_max_cents
+        if (lo is not None and customer_rate_cents < lo) or (
+            hi is not None and customer_rate_cents > hi
+        ):
+            raise BookingInputRequiredError(
+                "The hourly rate for this service must be between "
+                f"${(lo or 0) / 100:,.2f} and ${(hi or 0) / 100:,.2f}."
+            )
+        if quantity is None or Decimal(str(quantity)) <= 0:
+            raise BookingInputRequiredError(
+                "Tell us how many hours you need."
+            )
+        tarifa_cliente = int(customer_rate_cents)
+    elif customer_rate_cents:
+        # Un precio de cliente en un servicio donde manda la tarifa del proveedor
+        # competiría en silencio con ella. Se ignora en vez de guardarse.
+        tarifa_cliente = None
 
     # 1d. Materiales (migración 043). Lo decide el CLIENTE, aunque el servicio los
     # permita: si no los pide, la reserva se comporta igual que siempre.
@@ -504,6 +542,8 @@ async def create_job(
         # Materiales (migración 043)
         materials_requested=want_materials,
         materials_budget_cents=budget_cents,
+        # PER_CONTRACT: el precio que puso el cliente (NULL en el resto).
+        customer_rate_cents=tarifa_cliente,
         # Ventana de ofertas: el trabajo se postea y admite ofertas 48 h.
         offers_close_at=offerService.default_close_at(),
     )
@@ -518,7 +558,10 @@ async def create_job(
     # 5b. Customer-confirmed quantity (PP4a). Only honoured for tasks that allow
     # it; clamped to the task's min_quantity. Ignored otherwise (reprice then
     # falls back to the catalog estimate).
-    if quantity is not None and task.allows_quantity:
+    # En PER_CONTRACT las HORAS las pone el cliente y son la esencia del trato, así
+    # que entran aunque `allows_quantity` sea falso: ese flag solo está en TRUE en
+    # los servicios por ítem desde la migración 042.
+    if quantity is not None and (task.allows_quantity or task.pricing_unit == _PU.PER_CONTRACT):
         q = Decimal(str(quantity))
         if q > 0:
             min_q = task.min_quantity or Decimal(1)

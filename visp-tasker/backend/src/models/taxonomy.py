@@ -39,6 +39,10 @@ class PricingUnit(str, enum.Enum):
     PER_VISIT = "per_visit"
     FLAT_PACKAGE = "flat_package"
     CUSTOM_QUOTE = "custom_quote"
+    # La INVERSIÓN del modelo (migración 046): aquí el precio y las horas los pone
+    # el CLIENTE al publicar y el proveedor solo acepta. El rango del admin acota
+    # lo que el cliente puede ofrecer, no la tarifa del proveedor.
+    PER_CONTRACT = "per_contract"
 
 
 class ServiceCategory(UUIDPrimaryKeyMixin, TimestampMixin, Base):

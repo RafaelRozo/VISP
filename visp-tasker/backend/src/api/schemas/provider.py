@@ -395,6 +395,11 @@ class MobileJobCreateRequest(BaseModel):
 
     # Materiales (migración 043). El cliente decide si quiere que el proveedor los
     # compre y cuánto autoriza; el rango lo fija el admin y lo valida `create_job`.
+    # PER_CONTRACT (migración 046): la tarifa/hora que ofrece EL CLIENTE. En el
+    # resto del catálogo no se usa — ahí el precio es del proveedor.
+    customer_rate_cents: Optional[int] = Field(
+        default=None, alias="customerRateCents", gt=0
+    )
     materials_requested: bool = Field(default=False, alias="materialsRequested")
     materials_budget_cents: Optional[int] = Field(
         default=None, alias="materialsBudgetCents", gt=0

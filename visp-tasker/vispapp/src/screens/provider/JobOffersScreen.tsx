@@ -187,8 +187,11 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
   const [materialsNote, setMaterialsNote] = useState('');
   const [message, setMessage] = useState('');
 
-  const needsMagnitude = job.magnitudeSource === 'PROVIDER';
-  const needsMaterials = job.materialsRequested;
+  // En un contrato el trato ya está cerrado: el cliente puso precio y horas. El
+  // proveedor no aporta magnitud ni cotiza material — acepta o no acepta.
+  const isContract = job.isContract;
+  const needsMagnitude = !isContract && job.magnitudeSource === 'PROVIDER';
+  const needsMaterials = !isContract && job.materialsRequested;
   const unidad = magnitudeLabel(job.pricingUnit);
 
   // Total en vivo, para que el proveedor vea lo que va a cobrar mientras teclea y
@@ -197,7 +200,9 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
     ? parseFloat(magnitude || '0')
     : (job.customerQuantity ?? 1);
   const materialsNum = parseFloat(materials || '0');
-  const manoObra = (job.myRateCents ?? 0) * (Number.isFinite(magnitudeNum) ? magnitudeNum : 0);
+  // En un contrato la tarifa es la del cliente; en el resto, la del perfil.
+  const tarifa = isContract ? (job.customerRateCents ?? 0) : (job.myRateCents ?? 0);
+  const manoObra = tarifa * (Number.isFinite(magnitudeNum) ? magnitudeNum : 0);
   const total = manoObra + (Number.isFinite(materialsNum) ? materialsNum * 100 : 0);
 
   const puedeEnviar =
@@ -257,6 +262,24 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
               }</Text>
             </Text>
           ))}
+        </View>
+      ) : null}
+
+      {/* ── El trato, en un contrato ─────────────────────
+          El precio ya está puesto: se enseña arriba y grande, porque es lo único
+          que el proveedor tiene que decidir. */}
+      {isContract ? (
+        <View style={[cardStyles.materials, { borderColor: t.violetLine, backgroundColor: t.violetDim }]}>
+          <Eyebrow color={t.violet}>
+            {(tr('jobOffers.contractOffer') || 'The customer sets this price').toUpperCase()}
+          </Eyebrow>
+          <Text style={[VispText.bodyStrong, { color: t.text, marginTop: 6 }]}>
+            {`$${((job.customerRateCents ?? 0) / 100).toFixed(2)}/h × ${job.customerQuantity ?? 0} h = $${(manoObra / 100).toFixed(2)}`}
+          </Text>
+          <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 6 }]}>
+            {tr('jobOffers.contractCancelNote') ||
+              'If the job is cut short, you are paid for every hour started.'}
+          </Text>
         </View>
       ) : null}
 
@@ -369,7 +392,7 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
           {/* La cuenta, a la vista mientras teclea. */}
           <View style={[cardStyles.totalBox, { borderTopColor: t.border }]}>
             <Text style={[VispText.eyebrow, { color: t.text3 }]}>
-              {`${Number.isFinite(magnitudeNum) ? magnitudeNum : 0} × $${((job.myRateCents ?? 0) / 100).toFixed(2)}`}
+              {`${Number.isFinite(magnitudeNum) ? magnitudeNum : 0} × $${(tarifa / 100).toFixed(2)}`}
               {materialsNum > 0 ? ` + $${materialsNum.toFixed(2)} ${tr('jobOffers.materials') || 'materials'}` : ''}
             </Text>
             <Text style={[VispText.bodyStrong, { color: t.text }]}>
@@ -393,17 +416,19 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
         ) : null}
         {job.canOffer ? (
           <MotionPressable
-            onPress={() => (open ? enviar() : setOpen(true))}
-            disabled={open && !puedeEnviar}
+            onPress={() => (isContract || open ? enviar() : setOpen(true))}
+            disabled={(open && !puedeEnviar) || (isContract && !job.canOffer)}
             style={[
               cardStyles.btnPrimary,
               { backgroundColor: t.violet, opacity: open && !puedeEnviar ? 0.5 : 1 },
             ]}
           >
             <Text style={[VispText.chip, { color: '#FFFFFF' }]}>
-              {open
-                ? tr('jobOffers.sendOffer') || 'Send offer'
-                : tr('jobOffers.makeOffer') || 'Make an offer'}
+              {isContract
+                ? tr('jobOffers.acceptContract') || 'Accept'
+                : open
+                  ? tr('jobOffers.sendOffer') || 'Send offer'
+                  : tr('jobOffers.makeOffer') || 'Make an offer'}
             </Text>
           </MotionPressable>
         ) : null}

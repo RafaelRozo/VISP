@@ -250,6 +250,35 @@ def compute_quote_cents(
     return subtotal
 
 
+def customer_quote_for_contract(
+    task: ServiceTask, job: Any
+) -> Optional[dict[str, Any]]:
+    """Cotización de un servicio PER_CONTRACT, donde el precio lo pone EL CLIENTE.
+
+    Es la inversión del resto del catálogo: aquí no se busca la tarifa del proveedor
+    porque no es suya. El cliente publicó "pago $22/h, necesito 8 horas" y el
+    proveedor aceptó ese trato; cobrar su tarifa de perfil sería cobrar un precio que
+    nadie acordó.
+
+    Devuelve None si el trabajo no trae precio de cliente — dato imposible en un
+    PER_CONTRACT creado por la app, pero posible en uno tocado a mano.
+    """
+    rate = getattr(job, "customer_rate_cents", None)
+    if not rate or rate <= 0:
+        return None
+    horas = getattr(job, "quantity", None)
+    horas = Decimal(str(horas)) if horas else Decimal(1)
+    if horas <= 0:
+        horas = Decimal(1)
+    return {
+        "rate_cents": int(rate),
+        "unit": PricingUnit.PER_CONTRACT.value,
+        "quantity": float(horas),
+        "subtotal_cents": int(Decimal(rate) * horas),
+        "priced_by": "customer",
+    }
+
+
 async def get_provider_quote_for_job(
     db: AsyncSession,
     provider_id: uuid.UUID,
@@ -330,6 +359,16 @@ async def reprice_job_to_provider_rate(
     active fixed rate for the task or the task is custom-quote. Mutates the job
     in place; the caller commits.
     """
+    # PER_CONTRACT: el precio lo puso EL CLIENTE al publicar y el proveedor lo
+    # aceptó. No se mira ninguna tarifa de perfil — ni la suya ni la de su empresa—
+    # porque el trato ya estaba cerrado antes de que él llegara.
+    task_pc = await db.get(ServiceTask, job.task_id)
+    if task_pc is not None and task_pc.pricing_unit == PricingUnit.PER_CONTRACT:
+        quote_pc = customer_quote_for_contract(task_pc, job)
+        if quote_pc is not None:
+            return await _seal_quote_on_job(db, job, provider_id, quote_pc)
+        return None
+
     # A company member's job is priced from the COMPANY's rate (set on the web),
     # not the member's own; independents use their self-set rate.
     from src.services import company_service
@@ -349,6 +388,33 @@ async def reprice_job_to_provider_rate(
         )
     if quote is None:
         return None
+
+    return await _seal_quote_on_job(db, job, provider_id, quote)
+
+
+async def _seal_quote_on_job(
+    db: AsyncSession, job: Any, provider_id: uuid.UUID, quote: dict[str, Any]
+) -> dict[str, Any]:
+    """Sella una cotización sobre el job: subtotal, comisión, impuesto, fee, total y
+    evento de auditoría.
+
+    Es el tramo común de los dos modelos de precio —la tarifa del proveedor y el
+    precio que pone el cliente en PER_CONTRACT— y por eso vive aparte: duplicarlo
+    era la forma segura de que un día la comisión se calculara de dos maneras
+    distintas según por dónde entrara el trabajo.
+
+    El proveedor que se queda el trabajo y su empresa se resuelven AQUÍ y no se
+    reciben como parámetros: son datos derivados de `provider_id`, y pasarlos desde
+    fuera abre la puerta a que un camino los calcule y otro no.
+    """
+    from src.services import company_service
+
+    accepting = await db.get(ProviderProfile, provider_id)
+    company_id = (
+        await company_service.get_member_company_id(db, accepting.user_id)
+        if accepting is not None
+        else None
+    )
 
     subtotal = quote["subtotal_cents"]
     job.quoted_price_cents = subtotal

@@ -39,7 +39,13 @@ export interface OpenJob {
   materialsBudgetCents: number | null;
   materialsQuoteRequired: boolean;
   materialsNote: string | null;
-  /** Su propia tarifa. Sin tarifa no puede ofertar. */
+  /**
+   * Contrato por horas: el precio y las horas los puso el CLIENTE y el proveedor
+   * solo acepta. No cotiza nada y no necesita tarifa propia para el servicio.
+   */
+  isContract: boolean;
+  customerRateCents: number | null;
+  /** Su propia tarifa. NULL en un contrato, donde el precio no es suyo. */
   myRateCents: number | null;
   canOffer: boolean;
   alreadyOffered: boolean;

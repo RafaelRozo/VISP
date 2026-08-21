@@ -413,6 +413,8 @@ async function createBooking(
     // referencia; el importe que se cobra lo cotiza él en su oferta.
     materialsRequested: request.materialsRequested || undefined,
     materialsBudgetCents: request.materialsBudgetCents || undefined,
+    // PER_CONTRACT: el precio que pone el cliente. NULL en el resto del catálogo.
+    customerRateCents: request.customerRateCents || undefined,
   };
 
   console.log('[taskService] createBooking payload:', JSON.stringify(payload));

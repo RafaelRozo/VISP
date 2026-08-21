@@ -200,6 +200,12 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     hourly_rate_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Tarifa/hora que puso EL CLIENTE al publicar (solo PER_CONTRACT, migración 047).
+    # Distinta de `hourly_rate_cents`, que se rellena al repreciar contra la tarifa
+    # del PROVEEDOR: aquí el precio existe antes de que haya proveedor.
+    customer_rate_cents: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
     actual_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     proposed_price_cents: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     price_agreed_at: Mapped[Optional[datetime]] = mapped_column(

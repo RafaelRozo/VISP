@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Optional
 
 from sqlalchemy import func, select
@@ -119,11 +120,20 @@ async def cancel_with_report(
             "explains the cancellation."
         )
 
-    # 1. Liberar el dinero. La cancelación es gratis, así que un hold vivo tiene
-    #    que soltarse: si no, el cliente ve su tarjeta retenida por un trabajo que
-    #    no existe. Best-effort — un fallo de Stripe no debe impedir que alguien
-    #    salga de una situación incómoda.
-    await _release_hold(job)
+    # 1. El dinero.
+    #
+    # LA REGLA GENERAL SIGUE SIENDO QUE CANCELAR ES GRATIS (migración 041): se
+    # suelta el hold entero y nadie paga. Nadie debería estar discutiendo de dinero
+    # mientras se siente inseguro.
+    #
+    # LA EXCEPCIÓN, Y ES UNA SOLA: en los contratos por horas (PER_CONTRACT), si el
+    # trabajo YA EMPEZÓ se cobran las horas trabajadas. No es una vuelta atrás de
+    # aquella decisión: es que aquí parte del trabajo ya se hizo. El helper puso 4
+    # horas de su vida y nadie se las devuelve. Cancelar ANTES de empezar sigue
+    # siendo gratis también en esta unidad.
+    cobro = await _bill_contract_time(db, job)
+    if cobro is None:
+        await _release_hold(job)
 
     # 2. Cancelar el trabajo.
     job.status = (
@@ -152,6 +162,107 @@ async def cancel_with_report(
         job.id, reporter_role, reason_code, report.id,
     )
     return report
+
+
+async def _bill_contract_time(db: AsyncSession, job: Job) -> Optional[dict]:
+    """Cobra las horas trabajadas al cancelar un contrato a mitad.
+
+    Devuelve ``None`` cuando no aplica —no es un contrato, o el trabajo aún no había
+    empezado— y entonces el llamador suelta el hold como siempre.
+
+    EL REDONDEO: horas completas EMPEZADAS (decisión de Ricardo, 2026-08-21).
+    4 h 10 min se cobran como 5 h. Es lo que se usa en trabajo por horas y, de paso,
+    protege al proveedor al que cancelan a los diez minutos de llegar: cobra 1 hora
+    en vez de nada. Nunca se cobra más de las horas contratadas — si el reloj se
+    pasó, el trato era ese.
+
+    Da igual QUIÉN cancele. Si el proveedor se va a las 4 h, esas 4 h las trabajó;
+    si el cliente lo echa a las 5 h, también. El tiempo trabajado no cambia según de
+    quién fuera la decisión, y meter aquí un castigo convertiría el motivo de la
+    cancelación en una negociación de dinero.
+    """
+    from math import ceil
+
+    from src.models.taxonomy import PricingUnit, ServiceTask
+    from src.services import job_payment_service, provider_rate_service
+
+    task = await db.get(ServiceTask, job.task_id)
+    if task is None or task.pricing_unit != PricingUnit.PER_CONTRACT:
+        return None
+    if job.started_at is None:
+        # Aún no había empezado: no hay tiempo que pagar, cancelar es gratis.
+        return None
+
+    ahora = datetime.now(timezone.utc)
+    inicio = job.started_at
+    if inicio.tzinfo is None:
+        inicio = inicio.replace(tzinfo=timezone.utc)
+
+    minutos = max(0, int((ahora - inicio).total_seconds() // 60))
+    horas = max(1, ceil(minutos / 60))
+    contratadas = int(job.quantity or horas)
+    horas = min(horas, contratadas) if contratadas > 0 else horas
+
+    tarifa = job.customer_rate_cents or 0
+    if tarifa <= 0:
+        logger.warning("Job %s es PER_CONTRACT sin tarifa de cliente; no se cobra.", job.id)
+        return None
+
+    # Se recalcula el trabajo como si se hubiera contratado por las horas hechas y
+    # se sella con la misma función que el resto del sistema: comisión por nivel,
+    # impuesto por provincia, fee de servicio y evento de auditoría.
+    job.quantity = Decimal(horas)
+    job.actual_duration_minutes = minutos
+
+    asignado = await _assigned_provider_id(db, job.id)
+    if asignado is None:
+        logger.warning("Job %s cancelado sin proveedor asignado; no se cobra.", job.id)
+        return None
+
+    quote = await provider_rate_service.reprice_job_to_provider_rate(db, job, asignado)
+    if quote is None:
+        return None
+
+    # Capturar SOLO lo trabajado del hold que ya estaba retenido. El resto se
+    # libera solo: Stripe suelta la diferencia al capturar por debajo del techo.
+    try:
+        await job_payment_service.capture_job(
+            db, job, final_total_cents=job.total_charged_cents
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Que el cobro falle no puede atrapar a nadie en un trabajo del que se
+        # quiere salir. Queda el importe sellado en el job para resolverlo a mano.
+        logger.error("Job %s: cobro parcial falló (%s). Sigue la cancelación.", job.id, exc)
+
+    logger.info(
+        "Job %s cancelado a mitad: %s min -> %s h cobradas a %sc/h = %sc",
+        job.id, minutos, horas, tarifa, job.quoted_price_cents,
+    )
+    return {
+        "billed_hours": horas,
+        "worked_minutes": minutos,
+        "rate_cents": tarifa,
+        "subtotal_cents": job.quoted_price_cents,
+        "total_charged_cents": job.total_charged_cents,
+    }
+
+
+async def _assigned_provider_id(db: AsyncSession, job_id) -> Optional[uuid.UUID]:
+    """El proveedor que hace el trabajo. Vive en `job_assignments`, no en `jobs`."""
+    from src.models.job import AssignmentStatus, JobAssignment
+
+    return (
+        await db.execute(
+            select(JobAssignment.provider_id)
+            .where(
+                JobAssignment.job_id == job_id,
+                JobAssignment.status.in_(
+                    [AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED]
+                ),
+            )
+            .limit(1)
+        )
+    ).scalars().first()
 
 
 async def _release_hold(job: Job) -> None:

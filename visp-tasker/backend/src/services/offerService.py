@@ -111,9 +111,17 @@ def magnitude_source_for(unit: PricingUnit) -> str:
     """Quién debe poner la magnitud para esta unidad."""
     if unit in _PROVIDER_ESTIMATED:
         return MagnitudeSource.PROVIDER
-    if unit == PricingUnit.PER_UNIT:
+    # PER_CONTRACT: el cliente pone las HORAS y también el precio. El proveedor no
+    # aporta nada al trato — acepta o no acepta.
+    if unit in (PricingUnit.PER_UNIT, PricingUnit.PER_CONTRACT):
         return MagnitudeSource.CUSTOMER
     return MagnitudeSource.FLAT
+
+
+def is_contract(unit: PricingUnit) -> bool:
+    """En los contratos el precio ya viene puesto por el cliente y el proveedor solo
+    acepta: ni cotiza, ni necesita tener tarifa para el servicio."""
+    return unit == PricingUnit.PER_CONTRACT
 
 
 def resolve_magnitude(
@@ -174,7 +182,7 @@ async def quote_offer(
     job: Job,
     task: ServiceTask,
     provider: ProviderProfile,
-    rate: ProviderServiceRate,
+    rate: Optional[ProviderServiceRate],
     magnitude: Decimal,
     materials_cents: int = 0,
 ) -> dict[str, Any]:
@@ -188,7 +196,12 @@ async def quote_offer(
     suyo— y no paga comisión. El fee de servicio sí se calcula sobre el total con el
     material dentro, porque es el coste de Stripe y Stripe cobra sobre lo que se cobra.
     """
-    subtotal = provider_rate_service.compute_quote_cents(rate, task, magnitude)
+    # En un contrato el subtotal sale del precio del CLIENTE, no de la tarifa del
+    # proveedor: aceptar es aceptar ese trato, y cobrar otra cifra sería cambiarlo.
+    if rate is None:
+        subtotal = int(Decimal(job.customer_rate_cents or 0) * magnitude)
+    else:
+        subtotal = provider_rate_service.compute_quote_cents(rate, task, magnitude)
     registered = await _seller_is_tax_registered(db, provider)
     tax = await tax_service.compute_tax(
         db, subtotal, job.service_province_state, registered
@@ -301,6 +314,10 @@ async def list_open_jobs(
             "pricingUnit": task.pricing_unit.value,
             # Qué tiene que aportar el proveedor para poder ofertar.
             "magnitudeSource": source,
+            # En un contrato el trato ya está cerrado: precio y horas los puso el
+            # cliente. La app enseña "Aceptar" en vez del formulario de oferta.
+            "isContract": task.pricing_unit == PricingUnit.PER_CONTRACT,
+            "customerRateCents": job.customer_rate_cents,
             "customerQuantity": float(job.quantity) if job.quantity is not None else None,
             # Lo que el cliente escribió y fotografió. Es soporte de decisión: se ve
             # ANTES de ofertar, que es justo el punto de la regla del catálogo cerrado.
@@ -324,7 +341,8 @@ async def list_open_jobs(
             "materialsNote": task.materials_note_en,
             # Su propia tarifa. Sin tarifa no puede ofertar.
             "myRateCents": rate.rate_cents if rate else None,
-            "canOffer": rate is not None and existing is None,
+            "canOffer": (rate is not None or task.pricing_unit == PricingUnit.PER_CONTRACT)
+            and existing is None,
             "alreadyOffered": existing is not None,
             "offersCloseAt": job.offers_close_at.isoformat() if job.offers_close_at else None,
         })
@@ -388,17 +406,23 @@ async def create_offer(
     if task is None:
         raise JobNotFoundError(str(job.task_id))
 
-    rate = (
-        await db.execute(
-            select(ProviderServiceRate).where(
-                ProviderServiceRate.provider_id == provider_id,
-                ProviderServiceRate.task_id == job.task_id,
-                ProviderServiceRate.is_active.is_(True),
+    # En un contrato el precio lo puso el cliente, así que NO se le exige tarifa al
+    # proveedor: exigírsela dejaría fuera a todo el mundo en la unidad donde su
+    # tarifa no pinta nada.
+    contrato = is_contract(task.pricing_unit)
+    rate = None
+    if not contrato:
+        rate = (
+            await db.execute(
+                select(ProviderServiceRate).where(
+                    ProviderServiceRate.provider_id == provider_id,
+                    ProviderServiceRate.task_id == job.task_id,
+                    ProviderServiceRate.is_active.is_(True),
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if rate is None:
-        raise NoRateError(str(job.task_id))
+        ).scalar_one_or_none()
+        if rate is None:
+            raise NoRateError(str(job.task_id))
 
     provider = await db.get(ProviderProfile, provider_id)
     if provider is None:
@@ -430,7 +454,7 @@ async def create_offer(
         job_id=job_id,
         provider_id=provider_id,
         unit=task.pricing_unit,
-        rate_cents=rate.rate_cents,
+        rate_cents=(rate.rate_cents if rate is not None else int(job.customer_rate_cents or 0)),
         magnitude=value,
         magnitude_source=source,
         subtotal_cents=quote["subtotal_cents"],

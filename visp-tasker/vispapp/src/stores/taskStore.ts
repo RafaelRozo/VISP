@@ -63,6 +63,8 @@ interface TaskState {
    */
   materialsRequested: boolean;
   materialsBudget: string;
+  /** PER_CONTRACT: tarifa/hora que ofrece el cliente (en DÓLARES en el formulario). */
+  contractRate: string;
 
   // Loading flags
   isLoadingCategories: boolean;
@@ -95,6 +97,7 @@ interface TaskState {
   setAnswer: (questionId: string, answer: string) => void;
   setMaterialsRequested: (requested: boolean) => void;
   setMaterialsBudget: (budget: string) => void;
+  setContractRate: (rate: string) => void;
   setExtraNote: (note: string) => void;
   addEvidence: (urls: string[]) => void;
   removeEvidence: (url: string) => void;
@@ -124,6 +127,7 @@ const initialBookingState = {
   answers: {} as Record<string, string>,
   materialsRequested: false,
   materialsBudget: '',
+  contractRate: '',
 };
 
 const initialState = {
@@ -291,6 +295,9 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
         .filter(([, v]) => (v ?? '').trim() !== '')
         .map(([questionId, answer]) => ({ questionId, answer: answer.trim() })),
       materialsRequested: state.materialsRequested,
+      customerRateCents: state.contractRate
+        ? Math.round(parseFloat(state.contractRate) * 100) || undefined
+        : undefined,
       // El input está en dólares; la API habla siempre en centavos.
       materialsBudgetCents: state.materialsRequested
         ? Math.round(parseFloat(state.materialsBudget || '0') * 100) || undefined
@@ -320,6 +327,7 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
         answers: {},
         materialsRequested: false,
         materialsBudget: '',
+        contractRate: '',
       });
       return { bookingId: result.bookingId };
     } catch (err: unknown) {
@@ -367,6 +375,10 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
 
   setMaterialsBudget: (materialsBudget: string) => {
     set({ materialsBudget });
+  },
+
+  setContractRate: (contractRate: string) => {
+    set({ contractRate });
   },
 
   setExtraNote: (extraNote: string) => {

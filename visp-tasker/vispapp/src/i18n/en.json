@@ -107,7 +107,10 @@
     "photoAnswer": "photo attached",
     "offerSentTitle": "Offer sent",
     "offerSentBody": "The customer will compare it with the others and decide. We'll let you know.",
-    "offerFailedTitle": "Could not send the offer"
+    "offerFailedTitle": "Could not send the offer",
+    "acceptContract": "Accept",
+    "contractOffer": "The customer sets this price",
+    "contractCancelNote": "If the job is cut short, you are paid for every hour started."
   },
   "myPricesScreen": {
     "title": "My Prices",
@@ -705,7 +708,10 @@
     "materialsBudget": "Your budget",
     "materialsBudgetRange": "Enter an amount between ${min} and ${max}.",
     "materialsBudgetNote": "This tells providers what you had in mind. Each one will quote the real materials cost in their offer, with a reason — you decide then.",
-    "answerPhoto": "+ Add a photo"
+    "answerPhoto": "+ Add a photo",
+    "contractRate": "Your hourly rate",
+    "contractRateRange": "Offer between ${min} and ${max} per hour.",
+    "contractRateHelp": "You set the price for this one. Providers who work at that rate will accept — you choose who."
   },
   "serviceCatalog": {
     "insuranceNeededTitle": "Insurance required",
@@ -764,7 +770,9 @@
     "photoPermBody": "Allow photo access to attach the receipt.",
     "noReceiptTitle": "No receipt uploaded",
     "noReceiptBody": "This job includes materials you paid for. Without a receipt you won't be reimbursed.",
-    "completeAnyway": "Complete anyway"
+    "completeAnyway": "Complete anyway",
+    "contractCancelTitle": "Cancel this contract?",
+    "contractCancelBody": "You have worked {worked}. {hours} started hours will be charged: {total}."
   },
   "tracking": {
     "materials": "Materials",
