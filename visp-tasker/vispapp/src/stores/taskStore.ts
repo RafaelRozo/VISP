@@ -64,6 +64,8 @@ interface TaskState {
   materialsBudget: string;
   /** PER_CONTRACT: tarifa/hora que ofrece el cliente (en DÓLARES en el formulario). */
   contractRate: string;
+  /** PER_CONTRACT: cuántas horas necesita el cliente. */
+  contractHours: string;
 
   // Loading flags
   isLoadingCategories: boolean;
@@ -95,6 +97,7 @@ interface TaskState {
   setMaterialsRequested: (requested: boolean) => void;
   setMaterialsBudget: (budget: string) => void;
   setContractRate: (rate: string) => void;
+  setContractHours: (hours: string) => void;
   setExtraNote: (note: string) => void;
   addEvidence: (urls: string[]) => void;
   removeEvidence: (url: string) => void;
@@ -124,6 +127,7 @@ const initialBookingState = {
   materialsRequested: false,
   materialsBudget: '',
   contractRate: '',
+  contractHours: '',
 };
 
 const initialState = {
@@ -268,6 +272,7 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
         .filter(([, v]) => (v ?? '').trim() !== '')
         .map(([questionId, answer]) => ({ questionId, answer: answer.trim() })),
       materialsRequested: state.materialsRequested,
+      quantity: state.contractHours ? parseFloat(state.contractHours) || undefined : undefined,
       customerRateCents: state.contractRate
         ? Math.round(parseFloat(state.contractRate) * 100) || undefined
         : undefined,
@@ -301,6 +306,7 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
         materialsRequested: false,
         materialsBudget: '',
         contractRate: '',
+        contractHours: '',
       });
       return { bookingId: result.bookingId };
     } catch (err: unknown) {
@@ -348,6 +354,10 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
 
   setMaterialsBudget: (materialsBudget: string) => {
     set({ materialsBudget });
+  },
+
+  setContractHours: (contractHours: string) => {
+    set({ contractHours });
   },
 
   setContractRate: (contractRate: string) => {

@@ -62,7 +62,26 @@
     "pendingOffers": "Pending Offers",
     "setupServices": "Complete Your Profile",
     "setupText": "You're almost there! Select your services, upload your credentials, and start earning. Verified providers get 3x more job offers.",
-    "selectMyServices": "Get Started"
+    "selectMyServices": "Get Started",
+    "customerView": "How customers see you",
+    "noRatingYet": "★ No rating yet",
+    "jobsDone": "{n} jobs done",
+    "oneJobDone": "1 job done",
+    "bioEmpty": "You have not written a bio yet. It is the first thing customers read when they compare offers.",
+    "firstJobHint": "Ratings start after your first completed job. Until then, a clear bio and a fair price are what win offers.",
+    "verifiedTitle": "Verified",
+    "verifiedMsg": "You can offer on jobs for the services you set up.",
+    "inReviewTitle": "In review",
+    "inReviewMsg": "We are checking your documents. We will let you know as soon as it is done.",
+    "toL1Title": "Get verified to receive more work",
+    "toL1Msg": "Send us this and we verify your profile. It is your documents we check, not your skill.",
+    "stepBio": "Write your bio",
+    "stepBioHint": "The first thing a customer reads on your offer.",
+    "stepPortfolio": "Add 3 photos of your work",
+    "stepPortfolioSome": "{n} of 3 uploaded.",
+    "stepPortfolioHint": "Past jobs, before and after — whatever shows the work.",
+    "stepServices": "Pick your services and set your price",
+    "stepServicesHint": "You cannot receive jobs without them."
   },
   "jobOffers": {
     "title": "Jobs",
@@ -387,7 +406,10 @@
     "aboutMeEmpty": "Customers see this before choosing you",
     "aboutMeHelp": "A short summary customers read before choosing you. Your experience, what you are good at, how you work.",
     "aboutMePlaceholder": "e.g. Ten years doing residential cleaning in the GTA. I bring my own supplies and I am used to homes with pets.",
-    "bioSaveFailed": "Could not save your summary. Try again."
+    "bioSaveFailed": "Could not save your summary. Try again.",
+    "discardTitle": "Discard changes?",
+    "discardBody": "Your summary has not been saved.",
+    "discard": "Discard"
   },
   "settings": {
     "notifications": "Notifications",
@@ -714,7 +736,14 @@
     "answerPhoto": "+ Add a photo",
     "contractRate": "Your hourly rate",
     "contractRateRange": "Offer between ${min} and ${max} per hour.",
-    "contractRateHelp": "You set the price for this one. Providers who work at that rate will accept — you choose who."
+    "contractRateHelp": "You set the price for this one. Providers who work at that rate will accept — you choose who.",
+    "questionsLabel": "About the job",
+    "questionsHelp": "The provider needs these to size the job. Short answers are fine.",
+    "optional": "Optional",
+    "detailsPlaceholder": "e.g. 3 bedrooms on the second floor, side gate, one small dog.",
+    "contractHours": "Hours you need",
+    "contractHoursRequired": "Say how many hours you need.",
+    "contractHoursHelp": "Total: {total}. Cancel partway and you only pay the hours worked."
   },
   "serviceCatalog": {
     "insuranceNeededTitle": "Insurance required",
@@ -757,7 +786,11 @@
     "rejectFailed": "Could not discard that offer.",
     "loadFailedTitle": "Could not load offers",
     "loadFailedBody": "Check your connection and try again.",
-    "materialsBudgetNote": "You said you had about {budget} in mind for materials. Each provider quotes what it will really cost."
+    "materialsBudgetNote": "You said you had about {budget} in mind for materials. Each provider quotes what it will really cost.",
+    "noCardTitle": "Add a payment method",
+    "noCardBody": "The job is scheduled. Add a card in your profile so we can hold the amount before the work starts.",
+    "holdFailedTitle": "Could not hold the amount",
+    "holdFailedBody": "The job is scheduled. We will try again before the work starts."
   },
   "activeJob": {
     "materials": "Materials",
@@ -785,5 +818,20 @@
     "materialsApproveTitle": "Approve the extra?",
     "materialsApproveBody": "The provider spent {spent} on materials, {over} more than the {agreed} they quoted.",
     "materialsApproveFailed": "Could not approve. Try again."
+  },
+  "posted": {
+    "eyebrowSending": "Posting",
+    "eyebrowDone": "Job posted",
+    "sending": "Sending it to providers in your area…",
+    "reachHint": "Providers who do this service can see it now.",
+    "step1": "Posted",
+    "step2": "Offers arrive",
+    "step3": "You choose",
+    "explain": "Each one sends an offer with their price and how long they need. You compare them and pick the one you want.",
+    "window": "Offers stay open for two days.",
+    "noCharge": "Nothing is charged until you accept an offer.",
+    "viewJobs": "View my jobs",
+    "backHome": "Back to home",
+    "disclaimer": "VISP acts as a platform intermediary only. Providers are independent service professionals."
   }
 }

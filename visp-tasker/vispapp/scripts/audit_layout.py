@@ -15,6 +15,23 @@ Busca patrones CONCRETOS y verificables, no opiniones de diseño:
 
  4. `alignItems: 'center'` en el contentContainer de un ScrollView horizontal
     (centra verticalmente y delata una caja más alta de lo previsto).
+
+ 5. La reserva pierde campos: `createBooking({...})` sin alguno de los campos
+    que el cliente rellena en "More info".
+    Pasó el 2026-08-21 y llegó al dispositivo: la pantalla de confirmación
+    armaba su propia petición sin details/evidence/answers/extraNote/materiales
+    /tarifa de contrato, así que TODO lo que el cliente escribía se perdía. No
+    lo detecta TypeScript —los campos son opcionales en `BookingRequest`— ni los
+    smokes de backend, porque el backend estaba bien: era la app la que no los
+    mandaba. Solo revienta si el servicio EXIGE foto, y entonces rechaza la
+    reserva justo después de que el cliente subiera la foto.
+
+ 6. Clave de traducción usada en el código que no existe en en.json.
+    Esta librería NO devuelve vacío cuando falta una clave: devuelve el literal
+    `[missing "en.x.y" translation]`. Por eso el patrón `t('x.y') || 'Fallback'`
+    —que se usa en toda la app— NUNCA cae al respaldo, y la pantalla sale llena
+    de corchetes. Pasó en el panel del proveedor el 2026-08-21: llegó al
+    dispositivo así. Es HIGH porque se ve, es feo y no lo detecta TypeScript.
 """
 
 import json
@@ -135,6 +152,101 @@ for f in sorted(ROOT.rglob("*.tsx")):
             add("scroll-no-bottom-pad", "MED", f, line_of(txt, m.start()),
                 f"contentContainer '{key}' sin paddingBottom -> el último "
                 f"elemento queda bajo la tab bar")
+
+# --------------------------------------- 5. la reserva no pierde campos
+CAMPOS_RESERVA = [
+    "details",
+    "evidence",
+    "extraNote",
+    "answers",
+    "materialsRequested",
+    "customerRateCents",
+    "quantity",
+]
+
+for ruta in sorted(ROOT.rglob("*.tsx")):
+    try:
+        texto = ruta.read_text(encoding="utf-8")
+    except OSError:
+        continue
+    m = re.search(r"createBooking\(\s*\{", texto)
+    if not m:
+        continue
+    # Recorta el objeto literal contando llaves desde la de apertura.
+    inicio = texto.index("{", m.start())
+    prof, fin = 0, inicio
+    for i in range(inicio, min(len(texto), inicio + 8000)):
+        if texto[i] == "{":
+            prof += 1
+        elif texto[i] == "}":
+            prof -= 1
+            if prof == 0:
+                fin = i
+                break
+    objeto = texto[inicio:fin]
+    # Acepta tanto `campo: valor` como la forma abreviada `campo,`.
+    faltantes = [
+        c for c in CAMPOS_RESERVA
+        if not re.search(rf"\b{c}\s*[:,\n]", objeto)
+    ]
+    if faltantes:
+        findings.append({
+            "sev": "HIGH",
+            "kind": "booking-payload-incompleto",
+            "file": str(ruta.relative_to(ROOT)),
+            "line": texto.count("\n", 0, m.start()) + 1,
+            "detail": "createBooking() no envía: " + ", ".join(faltantes)
+                      + " -> lo que el cliente puso en 'More info' se pierde",
+        })
+
+# ------------------------------------------------- 6. claves de traducción
+I18N = Path(__file__).resolve().parent.parent / "src" / "i18n"
+
+
+def _tiene(datos: dict, clave: str) -> bool:
+    nodo = datos
+    for parte in clave.split("."):
+        if not isinstance(nodo, dict) or parte not in nodo:
+            return False
+        nodo = nodo[parte]
+    return True
+
+
+_en_path = I18N / "en.json"
+if _en_path.exists():
+    _en = json.loads(_en_path.read_text(encoding="utf-8"))
+    _fr_path = I18N / "fr.json"
+    _fr = json.loads(_fr_path.read_text(encoding="utf-8")) if _fr_path.exists() else {}
+
+    # Solo las llamadas SIN defaultValue: con defaultValue la librería sí resuelve.
+    _llamada = re.compile(r"\bt\w*\(\s*'([a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+)'\s*\)")
+
+    for ruta in sorted(list(ROOT.rglob("*.tsx")) + list(ROOT.rglob("*.ts"))):
+        try:
+            texto = ruta.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for m in _llamada.finditer(texto):
+            clave = m.group(1)
+            linea = texto.count("\n", 0, m.start()) + 1
+            rel = str(ruta.relative_to(ROOT))
+            if not _tiene(_en, clave):
+                findings.append({
+                    "sev": "HIGH",
+                    "kind": "i18n-missing-en",
+                    "file": rel,
+                    "line": linea,
+                    "detail": f'"{clave}" no está en en.json -> la pantalla mostrará '
+                              f'[missing "en.{clave}" translation]',
+                })
+            elif not _tiene(_fr, clave):
+                findings.append({
+                    "sev": "MED",
+                    "kind": "i18n-missing-fr",
+                    "file": rel,
+                    "line": linea,
+                    "detail": f'"{clave}" existe en inglés pero no en fr.json',
+                })
 
 # ---------------------------------------------------------------- salida
 order = {"HIGH": 0, "MED": 1, "LOW": 2}

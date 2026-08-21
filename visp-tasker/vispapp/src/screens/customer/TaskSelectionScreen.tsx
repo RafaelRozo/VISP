@@ -726,7 +726,12 @@ function TaskSelectionScreen(): React.JSX.Element {
         </ScrollView>
 
         {/* Confirm booking CTA */}
-        <View style={styles.ctaContainer}>
+        <View
+          style={[
+            styles.ctaContainer,
+            { backgroundColor: theme.surface, borderTopColor: theme.border },
+          ]}
+        >
           {taskDetail ? (
             <View style={styles.ctaPriceInfo}>
               <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Range</Text>

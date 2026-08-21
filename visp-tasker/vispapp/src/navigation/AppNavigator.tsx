@@ -128,24 +128,6 @@ const placeholderStyles = StyleSheet.create({
 // Screen options
 // ---------------------------------------------------------------------------
 
-// Static defaults (used by navigators that can't use hooks directly)
-const SCREEN_OPTIONS = {
-  headerStyle: {
-    backgroundColor: 'rgba(10, 10, 30, 0.80)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  headerTintColor: '#FFFFFF',
-  headerTitleStyle: {
-    fontWeight: '600' as const,
-    color: '#FFFFFF',
-  },
-  headerShadowVisible: false,
-  contentStyle: {
-    backgroundColor: Colors.background,
-  },
-};
-
 const TAB_OPTIONS = {
   tabBarStyle: {
     ...GlassStyles.tabBar,
@@ -498,10 +480,11 @@ function ProviderJobStackNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function AuthNavigator(): React.JSX.Element {
+  const opts = useThemedScreenOptions();
   return (
     <AuthStack.Navigator
       screenOptions={{
-        ...SCREEN_OPTIONS,
+        ...opts,
         headerShown: false,
       }}
     >
@@ -596,6 +579,7 @@ function ProviderTabNavigator(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 export default function AppNavigator(): React.JSX.Element {
+  const opts = useThemedScreenOptions();
   const { isAuthenticated, isRestoring, user, activeMode } = useAuthStore();
   const userRole = user?.role ?? 'customer';
   // For 'both' users, the active tab navigator is dictated by activeMode.
@@ -680,7 +664,7 @@ export default function AppNavigator(): React.JSX.Element {
     <NavigationContainer ref={navigationRef}>
       <RootStack.Navigator
         screenOptions={{
-          ...SCREEN_OPTIONS,
+          ...opts,
           headerShown: false,
         }}
       >
@@ -713,7 +697,7 @@ export default function AppNavigator(): React.JSX.Element {
               component={ChatScreen}
               options={({ route }) => ({
                 headerShown: true,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
               })}
             />
@@ -722,7 +706,7 @@ export default function AppNavigator(): React.JSX.Element {
               component={JobTrackingScreen}
               options={{
                 headerShown: true,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: 'Job Status',
                 headerBackTitle: 'Back',
               }}
@@ -736,7 +720,7 @@ export default function AppNavigator(): React.JSX.Element {
                 // stack salían DOS títulos y doble safe-area arriba. El botón de
                 // volver lo aporta ScreenTitle vía onBack.
                 headerShown: false,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: 'Company jobs',
                 headerBackTitle: 'Back',
               }}
@@ -747,7 +731,7 @@ export default function AppNavigator(): React.JSX.Element {
               options={{
                 // Ídem: ScreenTitle ya titula y aporta el volver vía onBack.
                 headerShown: false,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: 'My assignments',
                 headerBackTitle: 'Back',
               }}
@@ -764,7 +748,7 @@ export default function AppNavigator(): React.JSX.Element {
               component={ChatScreen}
               options={({ route }) => ({
                 headerShown: true,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
               })}
             />
@@ -785,7 +769,7 @@ export default function AppNavigator(): React.JSX.Element {
                 // stack salían DOS títulos y doble safe-area arriba. El botón de
                 // volver lo aporta ScreenTitle vía onBack.
                 headerShown: false,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: 'Company jobs',
                 headerBackTitle: 'Back',
               }}
@@ -796,7 +780,7 @@ export default function AppNavigator(): React.JSX.Element {
               options={{
                 // Ídem: ScreenTitle ya titula y aporta el volver vía onBack.
                 headerShown: false,
-                ...SCREEN_OPTIONS,
+                ...opts,
                 title: 'My assignments',
                 headerBackTitle: 'Back',
               }}

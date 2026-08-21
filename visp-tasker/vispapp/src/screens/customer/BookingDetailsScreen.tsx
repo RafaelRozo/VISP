@@ -87,6 +87,8 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     setMaterialsBudget,
     contractRate,
     setContractRate,
+    contractHours,
+    setContractHours,
   } = useTaskStore();
 
   const [uploading, setUploading] = useState(false);
@@ -104,6 +106,12 @@ export default function BookingDetailsScreen(): React.JSX.Element {
   const rateOutOfRange =
     isContract &&
     (!Number.isFinite(rateValue) || rateValue < rateMin || rateValue > rateMax);
+
+  // Las HORAS las pone el cliente, no el proveedor. Es la otra mitad del trato:
+  // "pago 25/h" no es una oferta hasta que dice por cuántas horas. Sin este
+  // campo el proveedor solo podía aceptar un trabajo de duración desconocida.
+  const hoursValue = parseFloat(contractHours || '');
+  const hoursInvalid = isContract && (!Number.isFinite(hoursValue) || hoursValue <= 0);
 
   // ── Materiales (migración 043) ──────────────────────────────────────────
   // El servicio los permite, pero quien decide es el cliente en CADA reserva. Si
@@ -150,6 +158,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
   );
   const canContinue =
     !rateOutOfRange &&
+    !hoursInvalid &&
     !detailsMissing &&
     !evidenceMissing &&
     unansweredRequired.length === 0 &&
@@ -340,6 +349,39 @@ export default function BookingDetailsScreen(): React.JSX.Element {
               keyboardType="decimal-pad"
               maxLength={8}
             />
+            <Eyebrow style={{ marginTop: 18 }}>
+              {(tr('bookingDetails.contractHours') || 'Hours you need').toUpperCase()}
+            </Eyebrow>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  color: t.text,
+                  backgroundColor: t.surface,
+                  borderColor: hoursInvalid ? t.danger : t.border,
+                  marginTop: 6,
+                },
+              ]}
+              value={contractHours}
+              onChangeText={setContractHours}
+              placeholder="8"
+              placeholderTextColor={t.text3}
+              keyboardType="decimal-pad"
+              maxLength={5}
+            />
+            <Text style={[VispText.body, { color: hoursInvalid ? t.danger : t.text2, marginTop: 8 }]}>
+              {hoursInvalid
+                ? tr('bookingDetails.contractHoursRequired') || 'Say how many hours you need.'
+                : (tr('bookingDetails.contractHoursHelp') ||
+                    'Total: {total}. Cancel partway and you only pay the hours worked.')
+                    .replace(
+                      '{total}',
+                      Number.isFinite(rateValue) && Number.isFinite(hoursValue)
+                        ? `$${(rateValue * hoursValue).toFixed(2)}`
+                        : '—',
+                    )}
+            </Text>
+
             <Text style={[VispText.eyebrow, { color: rateOutOfRange ? t.danger : t.text2, marginTop: 8 }]}>
               {rateOutOfRange
                 ? (tr('bookingDetails.contractRateRange') ||

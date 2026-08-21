@@ -46,6 +46,7 @@ import { unitSuffix } from '../../services/offerService';
 import { paymentService } from '../../services/paymentService';
 import { patch } from '../../services/apiClient';
 import { useAuthStore } from '../../stores/authStore';
+import { useTaskStore } from '../../stores/taskStore';
 import type { CustomerFlowParamList, UserDefaultAddress } from '../../types';
 
 // ──────────────────────────────────────────────
@@ -97,6 +98,19 @@ function BookingScreen(): React.JSX.Element {
   const route = useRoute<BookingRouteProp>();
   const navigation = useNavigation<BookingNavProp>();
   const { task } = route.params;
+
+  // Lo que el cliente rellenó en "More info" vive en el store, no en los params.
+  const {
+    details,
+    evidence,
+    extraNote,
+    answers,
+    materialsRequested,
+    materialsBudget,
+    contractRate,
+    contractHours,
+    resetBookingForm,
+  } = useTaskStore();
 
   // Legal consent state
   const [consentIndependent, setConsentIndependent] = useState(false);
@@ -199,7 +213,35 @@ function BookingScreen(): React.JSX.Element {
         isFlexibleSchedule: task.isFlexibleSchedule ?? false,
         priority: task.priority ?? 'standard',
         selectedNotes: task.selectedNotes ?? [],
-        quantity: allowsQuantity ? quantity : undefined,
+        quantity: allowsQuantity
+          ? quantity
+          : contractHours
+            ? parseFloat(contractHours) || undefined
+            : undefined,
+
+        // TODO NO: esto NO es opcional. Sin estos campos, todo lo que el cliente
+        // aporta en "More info" —descripción, fotos, respuestas a las preguntas
+        // del servicio, nota, materiales y la tarifa de contrato— se quedaba en
+        // el store y NUNCA llegaba al backend.
+        //
+        // Esta pantalla arma su propia petición en vez de usar
+        // `taskStore.submitBooking`, que sí los incluía, y la diferencia pasó
+        // desapercibida porque solo revienta cuando el servicio EXIGE foto o
+        // detalles: entonces el backend rechaza con 400 "needs at least one
+        // photo" justo después de que el cliente acabara de subirla.
+        details: details.trim() || undefined,
+        evidence: evidence.length > 0 ? evidence : undefined,
+        extraNote: extraNote.trim() || undefined,
+        answers: Object.entries(answers)
+          .filter(([, v]) => (v ?? '').trim() !== '')
+          .map(([questionId, answer]) => ({ questionId, answer: answer.trim() })),
+        materialsRequested,
+        materialsBudgetCents: materialsBudget
+          ? Math.round(parseFloat(materialsBudget) * 100) || undefined
+          : undefined,
+        customerRateCents: contractRate
+          ? Math.round(parseFloat(contractRate) * 100) || undefined
+          : undefined,
       });
 
       // AQUÍ NO SE RETIENE DINERO. Antes se creaba un PaymentIntent con la media
@@ -252,6 +294,8 @@ function BookingScreen(): React.JSX.Element {
           });
       }
 
+      resetBookingForm();
+
       navigation.navigate('Matching', {
         jobId: result.bookingId,
         taskName: task.taskName,
@@ -276,7 +320,23 @@ function BookingScreen(): React.JSX.Element {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isFormValid, task, navigation]);
+  }, [
+    isFormValid,
+    task,
+    navigation,
+    allowsQuantity,
+    quantity,
+    details,
+    evidence,
+    extraNote,
+    answers,
+    materialsRequested,
+    materialsBudget,
+    contractRate,
+    contractHours,
+    stripeCustomerId,
+    resetBookingForm,
+  ]);
 
   return (
     <Screen>

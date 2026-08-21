@@ -62,7 +62,26 @@
     "pendingOffers": "Offres en attente",
     "setupServices": "Complétez votre profil",
     "setupText": "Vous y êtes presque! Sélectionnez vos services, téléchargez vos accréditations et commencez à gagner. Les prestataires vérifiés reçoivent 3x plus d'offres.",
-    "selectMyServices": "Commencer"
+    "selectMyServices": "Commencer",
+    "customerView": "Ce que voient les clients",
+    "noRatingYet": "★ Pas encore d'évaluation",
+    "jobsDone": "{n} travaux réalisés",
+    "oneJobDone": "1 travail réalisé",
+    "bioEmpty": "Vous n'avez pas encore écrit de présentation. C'est la première chose que lisent les clients quand ils comparent les offres.",
+    "firstJobHint": "Les évaluations commencent après votre premier travail terminé. D'ici là, ce sont une présentation claire et un prix juste qui remportent les offres.",
+    "verifiedTitle": "Vérifié",
+    "verifiedMsg": "Vous pouvez faire des offres sur les services que vous avez configurés.",
+    "inReviewTitle": "En cours d'examen",
+    "inReviewMsg": "Nous vérifions vos documents. Nous vous préviendrons dès que ce sera terminé.",
+    "toL1Title": "Faites-vous vérifier pour recevoir plus de travail",
+    "toL1Msg": "Envoyez-nous ceci et nous vérifions votre profil. Ce sont vos documents que nous vérifions, pas votre savoir-faire.",
+    "stepBio": "Rédigez votre présentation",
+    "stepBioHint": "La première chose qu'un client lit sur votre offre.",
+    "stepPortfolio": "Ajoutez 3 photos de votre travail",
+    "stepPortfolioSome": "{n} sur 3 téléversées.",
+    "stepPortfolioHint": "Des travaux passés, avant et après — tout ce qui montre le travail.",
+    "stepServices": "Choisissez vos services et fixez votre prix",
+    "stepServicesHint": "Sans cela, vous ne pouvez pas recevoir de travaux."
   },
   "jobOffers": {
     "title": "Travaux",
@@ -387,7 +406,10 @@
     "aboutMeEmpty": "Les clients le voient avant de vous choisir",
     "aboutMeHelp": "Un court résumé que les clients lisent avant de vous choisir. Votre expérience, vos points forts, votre façon de travailler.",
     "aboutMePlaceholder": "ex. Dix ans de ménage résidentiel dans le Grand Toronto. J'apporte mes produits et j'ai l'habitude des maisons avec animaux.",
-    "bioSaveFailed": "Impossible d'enregistrer votre résumé. Réessayez."
+    "bioSaveFailed": "Impossible d'enregistrer votre résumé. Réessayez.",
+    "discardTitle": "Abandonner les modifications ?",
+    "discardBody": "Votre présentation n'a pas été enregistrée.",
+    "discard": "Abandonner"
   },
   "settings": {
     "notifications": "Notifications",
@@ -714,7 +736,14 @@
     "answerPhoto": "+ Ajouter une photo",
     "contractRate": "Votre tarif horaire",
     "contractRateRange": "Proposez entre ${min} et ${max} de l'heure.",
-    "contractRateHelp": "Ici c'est vous qui fixez le prix. Les prestataires qui travaillent à ce tarif accepteront — vous choisissez qui."
+    "contractRateHelp": "Ici c'est vous qui fixez le prix. Les prestataires qui travaillent à ce tarif accepteront — vous choisissez qui.",
+    "questionsLabel": "À propos du travail",
+    "questionsHelp": "Le prestataire en a besoin pour évaluer l'ampleur du travail. Des réponses courtes suffisent.",
+    "optional": "Facultatif",
+    "detailsPlaceholder": "p. ex. 3 chambres au deuxième étage, portail latéral, un petit chien.",
+    "contractHours": "Heures dont vous avez besoin",
+    "contractHoursRequired": "Indiquez le nombre d'heures dont vous avez besoin.",
+    "contractHoursHelp": "Total : {total}. Si vous annulez en cours, vous ne payez que les heures travaillées."
   },
   "serviceCatalog": {
     "insuranceNeededTitle": "Assurance requise",
@@ -757,7 +786,11 @@
     "rejectFailed": "Impossible d'écarter cette offre.",
     "loadFailedTitle": "Impossible de charger les offres",
     "loadFailedBody": "Vérifiez votre connexion et réessayez.",
-    "materialsBudgetNote": "Vous aviez prévu environ {budget} pour les matériaux. Chaque prestataire chiffre ce que cela coûtera vraiment."
+    "materialsBudgetNote": "Vous aviez prévu environ {budget} pour les matériaux. Chaque prestataire chiffre ce que cela coûtera vraiment.",
+    "noCardTitle": "Ajoutez un moyen de paiement",
+    "noCardBody": "Le travail est planifié. Ajoutez une carte dans votre profil pour que nous puissions bloquer le montant avant le début du travail.",
+    "holdFailedTitle": "Impossible de bloquer le montant",
+    "holdFailedBody": "Le travail est planifié. Nous réessaierons avant le début du travail."
   },
   "activeJob": {
     "materials": "Matériaux",
@@ -785,5 +818,20 @@
     "materialsApproveTitle": "Approuver le supplément ?",
     "materialsApproveBody": "Le prestataire a dépensé {spent} en matériaux, soit {over} de plus que les {agreed} chiffrés.",
     "materialsApproveFailed": "Impossible d'approuver. Réessayez."
+  },
+  "posted": {
+    "eyebrowSending": "Publication",
+    "eyebrowDone": "Travail publié",
+    "sending": "Envoi aux prestataires de votre secteur…",
+    "reachHint": "Les prestataires qui offrent ce service le voient maintenant.",
+    "step1": "Publié",
+    "step2": "Offres reçues",
+    "step3": "Vous choisissez",
+    "explain": "Chacun envoie une offre avec son prix et le temps qu'il lui faut. Vous les comparez et choisissez celle que vous voulez.",
+    "window": "Les offres restent ouvertes deux jours.",
+    "noCharge": "Rien n'est facturé tant que vous n'avez pas accepté une offre.",
+    "viewJobs": "Voir mes travaux",
+    "backHome": "Retour à l'accueil",
+    "disclaimer": "VISP agit uniquement comme intermédiaire. Les prestataires sont des professionnels indépendants."
   }
 }

@@ -34,6 +34,7 @@ import {
   ServiceLevel,
 } from '../../types';
 import { get } from '../../services/apiClient';
+import { useNavigation } from '@react-navigation/native';
 import { providerService } from '../../services/providerService';
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,15 @@ interface VerificationStep {
   optional?: boolean;
   /** Cuántos lleva subidos de este tipo. */
   count?: number;
+  /**
+   * Cuenta para el progreso hacia L1. Solo la bio y el CV: son los dos
+   * documentos que VISP valida para subir a L1. Lo demás —licencia, seguro,
+   * cartas, fotos— suma al perfil pero no abre el nivel, y meterlo en la barra
+   * hacía que un proveedor a punto de ser L1 viera un 0%.
+   */
+  requiredForL1?: boolean;
+  /** El paso no se sube: se resuelve en otra pantalla (la bio, en el perfil). */
+  goTo?: 'about_me';
   status: 'not_started' | 'in_progress' | 'completed' | 'failed';
 }
 
@@ -305,7 +315,7 @@ function StepCard({
 
         {step.status === 'not_started' && (
           <GlassButton
-            title="Upload Document"
+            title={step.goTo === 'about_me' ? 'Write it' : 'Upload Document'}
             variant="glass"
             onPress={() => onAction(step)}
           />
@@ -424,12 +434,17 @@ const stepStyles = StyleSheet.create({
 
 export default function VerificationScreen(): React.JSX.Element {
   const theme = useTheme();
+  const navigation = useNavigation();
   const { t } = useTranslation();
   const [steps, setSteps] = useState<VerificationStep[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [currentLevel, setCurrentLevel] = useState<ServiceLevel>(1);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  // La bio no es un documento que se suba aquí: se escribe en el perfil. Pero SÍ
+  // es requisito de L1, así que la pantalla que enseña el camino a L1 tiene que
+  // saber si está hecha o no.
+  const [bio, setBio] = useState('');
 
   const fetchVerificationData = useCallback(async () => {
     setIsLoading(true);
@@ -451,6 +466,17 @@ export default function VerificationScreen(): React.JSX.Element {
         experience = [];
       }
 
+      // La bio vive en el perfil público. Si falla, el paso sale como pendiente
+      // en vez de tumbar la pantalla — mismo criterio que con el expediente.
+      let bioActual = '';
+      try {
+        const propio = await get<{ bio?: string | null }>('/provider/profile');
+        bioActual = propio?.bio ?? '';
+      } catch {
+        bioActual = '';
+      }
+      setBio(bioActual);
+
       // Cuántos documentos lleva subidos de cada tipo. Sale de las mismas dos
       // listas de las que ya se deduce el estado, así que no cuesta una llamada.
       const cuentaCred = (tipo: CredentialType) =>
@@ -461,6 +487,17 @@ export default function VerificationScreen(): React.JSX.Element {
       // Steps for the v1 beta (L0/L1 only — client decision 2026-08-10).
       // See visp-tasker/docs/plan-v1-l0-l1-ontario.md §7 WP1.
       const verificationSteps: VerificationStep[] = [
+        {
+          id: 'bio',
+          title: 'About me',
+          description:
+            'A short summary of your experience. It is the first thing a customer reads when comparing offers, and VISP needs it to verify your profile.',
+          credentialType: null,
+          requiredForLevel: 1,
+          requiredForL1: true,
+          goTo: 'about_me',
+          status: bioActual.trim() !== '' ? 'completed' : 'not_started',
+        },
         {
           id: 'crc',
           title: 'Background Check',
@@ -496,6 +533,7 @@ export default function VerificationScreen(): React.JSX.Element {
           credentialType: null,
           experienceKind: 'resume',
           requiredForLevel: 1,
+          requiredForL1: true,
           count: cuentaExp('resume'),
           status: experienceStatus(experience, 'resume'),
         },
@@ -519,6 +557,7 @@ export default function VerificationScreen(): React.JSX.Element {
           credentialType: null,
           experienceKind: 'work_photos',
           requiredForLevel: 1,
+          optional: true,
           count: cuentaExp('work_photos'),
           status: experienceStatus(experience, 'work_photos'),
         },
@@ -586,9 +625,15 @@ export default function VerificationScreen(): React.JSX.Element {
     fetchVerificationData();
   }, [fetchVerificationData]);
 
-  // Overall progress
-  const completedCount = steps.filter((s) => s.status === 'completed').length;
-  const totalCount = steps.length;
+  // Progreso HACIA L1, no "documentos subidos".
+  //
+  // Antes contaba los seis pasos de la lista, y salía "0 of 6" a alguien que ya
+  // era L1: mezclaba el camino al nivel con documentos que no lo abren (la
+  // licencia, el seguro, las cartas). Ahora solo cuenta bio y CV, que es lo que
+  // VISP valida para subir a L1, y el rótulo lo dice.
+  const pasosL1 = steps.filter((s) => s.requiredForL1);
+  const completedCount = pasosL1.filter((s) => s.status === 'completed').length;
+  const totalCount = pasosL1.length;
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
@@ -656,6 +701,10 @@ export default function VerificationScreen(): React.JSX.Element {
 
   const handleStepAction = useCallback(
     (step: VerificationStep) => {
+      if (step.goTo === 'about_me') {
+        navigation.navigate('Profile' as never);
+        return;
+      }
       if (!step.credentialType && !step.experienceKind) {
         Alert.alert(step.title, step.description);
         return;
@@ -717,7 +766,9 @@ export default function VerificationScreen(): React.JSX.Element {
         {/* Progress overview */}
         <GlassCard variant="elevated" style={styles.glassCardMargin}>
           <View style={styles.progressHeader}>
-            <Text style={[styles.progressTitle, { color: theme.textPrimary }]}>Verification Progress</Text>
+            <Text style={[styles.progressTitle, { color: theme.textPrimary }]}>
+              {currentLevel >= 1 ? 'Your profile' : 'Progress to L1'}
+            </Text>
             <Text style={styles.progressPercent}>{progressPercent}%</Text>
           </View>
 
@@ -731,7 +782,9 @@ export default function VerificationScreen(): React.JSX.Element {
           </View>
 
           <Text style={[styles.progressSubtext, { color: theme.textSecondary }]}>
-            {completedCount} of {totalCount} steps completed
+            {currentLevel >= 1
+              ? `${completedCount} of ${totalCount} verified — you are already L1`
+              : `${completedCount} of ${totalCount} steps to reach L1`}
           </Text>
 
           <View style={styles.currentLevelRow}>
