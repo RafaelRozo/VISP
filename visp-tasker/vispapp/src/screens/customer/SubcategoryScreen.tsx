@@ -39,6 +39,7 @@ import { Screen } from '../../components/visp';
 import { useTaskStore } from '../../stores/taskStore';
 import LevelBadge from '../../components/LevelBadge';
 import type { CustomerFlowParamList } from '../../types';
+import { unitSuffix } from '../../services/offerService';
 
 // ──────────────────────────────────────────────
 // Types
@@ -92,18 +93,6 @@ function SubcategoryScreen(): React.JSX.Element {
   }, [taskId, fetchTaskDetail]);
 
   // Format duration
-  const formatDuration = (minutes: number): string => {
-    if (minutes < 60) {
-      return `${minutes} minutes`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    if (remainingMinutes === 0) {
-      return `${hours} hour${hours > 1 ? 's' : ''}`;
-    }
-    return `${hours}h ${remainingMinutes}m`;
-  };
-
   // Loading
   if (isLoadingDetail) {
     return (
@@ -202,31 +191,29 @@ function SubcategoryScreen(): React.JSX.Element {
           {/* Price range */}
           <View style={styles.priceSection}>
             <GlassCard variant="elevated" padding={Spacing.lg}>
-              <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Estimated Price Range</Text>
+              <Text style={[styles.priceLabel, { color: theme.textSecondary }]}>Price range</Text>
+              {/* La unidad va PEGADA a la cifra: "50 a 90" no dice si es por hora,
+                  por mueble o por el trabajo entero, y es justo lo que decide si
+                  el precio parece caro o barato. */}
               <Text style={styles.priceValue}>
                 ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
+                <Text style={styles.priceUnit}>{unitSuffix(taskDetail.pricingUnit)}</Text>
               </Text>
               <Text style={[styles.priceNote, { color: theme.textTertiary }]}>
-                Final price depends on scope of work and provider availability
+                Providers who work in your area set their own price within this
+                range. You will see each offer with its price and time before you
+                choose — nothing is charged until you accept one.
               </Text>
             </GlassCard>
           </View>
 
-          {/* Duration and Level info */}
-          <View style={styles.infoRow}>
-            <GlassCard variant="standard" padding={Spacing.lg} style={styles.infoItem}>
-              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Estimated Duration</Text>
-              <Text style={[styles.infoValue, { color: theme.textPrimary }]}>
-                {formatDuration(taskDetail.estimatedDurationMinutes)}
-              </Text>
-            </GlassCard>
-            <GlassCard variant="standard" padding={Spacing.lg} style={styles.infoItem}>
-              <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Service Level</Text>
-              <Text style={[styles.infoValue, { color: levelColor }]}>
-                Level {taskDetail.level}
-              </Text>
-            </GlassCard>
-          </View>
+          {/* La DURACIÓN ESTIMADA y el NIVEL salieron de aquí (2026-08-21).
+
+              La duración era una media del catálogo que no describe este trabajo,
+              y bajo el modelo de ofertas quien dice cuánto tarda es el proveedor
+              en su oferta: enseñar un número nuestro al lado del suyo solo genera
+              discusiones. El nivel ya está arriba, en la insignia junto al título,
+              así que la tarjeta lo repetía. */}
 
           {/* Full description */}
           <View style={styles.section}>
@@ -254,9 +241,11 @@ function SubcategoryScreen(): React.JSX.Element {
             <GlassCard variant="dark" padding={Spacing.lg} style={styles.noticeCard}>
               <Text style={styles.noticeTitle}>Service Scope</Text>
               <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
-                This is a predefined service task. The provider will perform
-                exactly the work described above. Additional services require
-                a separate booking. The provider cannot add scope to this job.
+                The work is exactly what is described above — it does not change
+                from one provider to another. What each provider decides is their
+                own price within the range and how long they need, and they tell
+                you that in their offer. Anything outside this description needs a
+                separate booking; a provider cannot add work to this job.
               </Text>
             </GlassCard>
           </View>
@@ -268,9 +257,12 @@ function SubcategoryScreen(): React.JSX.Element {
         {/* Book Now CTA */}
         <View style={styles.ctaContainer}>
           <View style={styles.ctaPriceInfo}>
-            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>From</Text>
+            <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Range</Text>
             <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
-              ${taskDetail.priceRangeMin}
+              ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
+              <Text style={[styles.ctaPriceUnit, { color: theme.textSecondary }]}>
+                {unitSuffix(taskDetail.pricingUnit)}
+              </Text>
             </Text>
           </View>
           <GlassButton
@@ -438,6 +430,15 @@ const styles = StyleSheet.create({
     ...Typography.headline,
     color: Colors.warning,
     marginBottom: Spacing.sm,
+  },
+  priceUnit: {
+    ...Typography.title3,
+    fontWeight: FontWeight.regular as '400',
+    opacity: 0.7,
+  },
+  ctaPriceUnit: {
+    ...Typography.footnote,
+    fontWeight: FontWeight.regular as '400',
   },
   noticeText: {
     ...Typography.footnote,

@@ -55,7 +55,7 @@ import { useAuthStore } from '../../stores/authStore';
 import type { Job, RootStackParamList } from '../../types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-type TabKey = 'active' | 'completed' | 'drafts';
+type TabKey = 'active' | 'expired' | 'completed' | 'drafts';
 
 const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 
@@ -168,7 +168,7 @@ function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element 
                 { color: isActive ? t.bg : t.text2, lineHeight: 14 },
               ]}
             >
-              {tab.label} ({String(tab.count).padStart(2, '0')})
+              {tab.count > 0 ? `${tab.label} (${tab.count})` : tab.label}
             </Text>
           </Pressable>
         );
@@ -307,21 +307,32 @@ function MyJobsScreen(): React.JSX.Element {
   }, [fetchJobs]);
 
   // Group / count jobs per tab
+  // Los CADUCADOS salen de "Activos" y tienen su propia pestaña.
+  //
+  // Mezclados, un trabajo vivo se perdía entre ocho muertos: la pantalla decía
+  // "Activos (10)" cuando de verdad solo había dos esperando ofertas. El contador
+  // era falso y la lista, ruido. Separarlos deja "Activos" queriendo decir lo que
+  // dice, y junta en un sitio lo que hay que reponer o retirar.
   const grouped = useMemo(() => {
     const active: Job[] = [];
+    const expired: Job[] = [];
     const completed: Job[] = [];
     const drafts: Job[] = [];
     for (const j of jobs) {
       if (isDraftStatus(j.status)) drafts.push(j);
       else if (isCompletedStatus(j.status)) completed.push(j);
+      else if (isExpiredJob(j)) expired.push(j);
       else active.push(j);
     }
-    return { active, completed, drafts };
+    return { active, expired, completed, drafts };
   }, [jobs]);
 
   const tabs = useMemo(
     () => [
       { key: 'active' as TabKey, label: tr('myJobs.active') || 'Active', count: grouped.active.length },
+      // Caducados justo después de activos: son los que piden una decisión
+      // (reponer o retirar), no historial que se consulta de vez en cuando.
+      { key: 'expired' as TabKey, label: tr('myJobs.expired') || 'Expired', count: grouped.expired.length },
       { key: 'completed' as TabKey, label: tr('common.completed') || 'Completed', count: grouped.completed.length },
       { key: 'drafts' as TabKey, label: tr('myJobs.draft') || 'Drafts', count: grouped.drafts.length },
     ],
@@ -479,6 +490,17 @@ function MyJobsScreen(): React.JSX.Element {
                 ) : null}
               </View>
 
+              {/* Por qué caducó.
+                  "EXPIRED" a secas no explica nada y deja al cliente pensando que
+                  falló la app. Decir que nadie ofertó en 48 h convierte la etiqueta
+                  en información con la que puede decidir: reponerlo o retirarlo. */}
+              {expired ? (
+                <Text style={[VispText.body, { color: t.text3, marginTop: 4, marginBottom: 4 }]}>
+                  {tr('myJobs.expiredWhy') ||
+                    'No provider offered on this job within 48 hours.'}
+                </Text>
+              ) : null}
+
               {/* Cancel — allowed while no provider is assigned yet (pending /
                   expired). Backend guards the transition; we only offer it here. */}
               {isPending ? (
@@ -597,7 +619,7 @@ function MyJobsScreen(): React.JSX.Element {
         data={filteredJobs}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) =>
-          activeTab === 'active'
+          activeTab === 'active' || activeTab === 'expired'
             ? renderActiveCard(item)
             : renderHistoryRow(item, index === filteredJobs.length - 1)
         }
@@ -609,10 +631,17 @@ function MyJobsScreen(): React.JSX.Element {
                 ? tr('myJobs.noPastJobs')
                 : activeTab === 'drafts'
                   ? tr('myJobs.draft') || 'No drafts'
-                  : tr('myJobs.noActiveJobs')}
+                  : activeTab === 'expired'
+                    ? tr('myJobs.noExpired') || 'Nothing expired'
+                    : tr('myJobs.noActiveJobs')}
             </Text>
             <Text style={[VispText.body, { color: t.text2, textAlign: 'center' }]}>
-              {activeTab === 'completed' ? tr('myJobs.pastJobsAppear') : tr('myJobs.bookService')}
+              {activeTab === 'completed'
+                ? tr('myJobs.pastJobsAppear')
+                : activeTab === 'expired'
+                  ? tr('myJobs.expiredEmptyBody') ||
+                    'Jobs that nobody offered on within 48 hours end up here.'
+                  : tr('myJobs.bookService')}
             </Text>
           </View>
         }

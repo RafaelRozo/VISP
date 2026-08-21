@@ -22,6 +22,8 @@ import {
   ActionSheetIOS,
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -129,12 +131,59 @@ export default function ProfileScreen(): React.JSX.Element {
   const [bioOpen, setBioOpen] = useState(false);
   const [bioText, setBioText] = useState('');
   const [providerBio, setProviderBio] = useState<string | null>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    const mostrar = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
+    const ocultar = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => {
+      mostrar.remove();
+      ocultar.remove();
+    };
+  }, []);
   const [savingBio, setSavingBio] = useState(false);
 
   const openEditBio = useCallback(() => {
     setBioText(providerBio ?? '');
     setBioOpen(true);
   }, [providerBio]);
+
+  /**
+   * Cerrar el editor de bio sin perder lo escrito.
+   *
+   * Tres fallos que reportaron los usuarios, y que eran el mismo gesto:
+   * escribían, tocaban fuera para bajar el teclado —porque el botón de guardar
+   * quedaba TAPADO por el teclado— y el toque cerraba el modal y se llevaba el
+   * texto por delante.
+   *
+   * Ahora el primer toque fuera baja el teclado y deja el modal abierto, con lo
+   * que el botón aparece. Y si aun así se cierra con cambios sin guardar, se
+   * pregunta antes en vez de descartar en silencio: escribir una bio cuesta
+   * varios minutos y perderla sin aviso es lo que hace abandonar.
+   */
+  const closeBio = useCallback(() => {
+    if (savingBio) return;
+    if (keyboardOpen) {
+      Keyboard.dismiss();
+      return;
+    }
+    if (bioText.trim() !== (providerBio ?? '').trim()) {
+      Alert.alert(
+        tr('profileScreen.discardTitle') || 'Discard changes?',
+        tr('profileScreen.discardBody') || 'Your summary has not been saved.',
+        [
+          { text: tr('common.cancel') || 'Keep editing', style: 'cancel' },
+          {
+            text: tr('profileScreen.discard') || 'Discard',
+            style: 'destructive',
+            onPress: () => setBioOpen(false),
+          },
+        ],
+      );
+      return;
+    }
+    setBioOpen(false);
+  }, [savingBio, keyboardOpen, bioText, providerBio, tr]);
 
   const saveBio = useCallback(async () => {
     setSavingBio(true);
@@ -529,22 +578,21 @@ export default function ProfileScreen(): React.JSX.Element {
           <View style={styles.section}>
             <Eyebrow>{tr('profileScreen.providerSection') || 'Provider'}</Eyebrow>
             <View style={{ marginTop: 6 }}>
+              {/* "About me" va primero: con las ofertas, la bio es lo que el
+                  cliente lee para decidir entre varios proveedores, así que es
+                  lo primero que conviene tener hecho. Sin subtítulo — el nombre
+                  ya dice lo que es. */}
+              <MenuItem
+                icon="user"
+                title={tr('profileScreen.aboutMe') || 'About me'}
+                accent
+                onPress={openEditBio}
+              />
               <MenuItem
                 icon="user"
                 title={tr('profileScreen.myServices') || 'Services & pricing'}
                 accent
                 onPress={() => navigation.navigate('ProviderOnboarding')}
-              />
-              <MenuItem
-                icon="user"
-                title={tr('profileScreen.aboutMe') || 'About me'}
-                sub={
-                  providerBio
-                    ? providerBio.slice(0, 60) + (providerBio.length > 60 ? '…' : '')
-                    : tr('profileScreen.aboutMeEmpty') || 'Customers see this before choosing you'
-                }
-                accent
-                onPress={openEditBio}
               />
               <MenuItem
                 icon="money"
@@ -668,61 +716,68 @@ export default function ProfileScreen(): React.JSX.Element {
       {/* Bio del proveedor: resumen que el cliente lee en el Radar antes de
           elegirlo. El backend (PATCH /provider/profile) existía desde julio sin
           editor en la app. */}
-      <Modal visible={bioOpen} transparent animationType="fade" onRequestClose={() => setBioOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => !savingBio && setBioOpen(false)}>
-          <Pressable style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.border }]} onPress={() => {}}>
-            <Text style={[VispText.headlineMid, { color: t.text, marginBottom: 6 }]}>
-              {tr('profileScreen.aboutMe') || 'About me'}
-            </Text>
-            <Text style={[VispText.body, { color: t.text3, marginBottom: 12 }]}>
-              {tr('profileScreen.aboutMeHelp') ||
-                'A short summary customers read before choosing you. Your experience, what you are good at, how you work.'}
-            </Text>
-            <TextInput
-              style={[
-                styles.modalInput,
-                {
-                  color: t.text, borderColor: t.border, backgroundColor: t.deep,
-                  minHeight: 120, paddingTop: 12,
-                },
-              ]}
-              value={bioText}
-              onChangeText={setBioText}
-              placeholder={
-                tr('profileScreen.aboutMePlaceholder') ||
-                'e.g. Ten years doing residential cleaning in the GTA. I bring my own supplies and I am used to homes with pets.'
-              }
-              placeholderTextColor={t.text4}
-              editable={!savingBio}
-              multiline
-              maxLength={1000}
-              textAlignVertical="top"
-            />
-            <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 6, textAlign: 'right' }]}>
-              {bioText.length}/1000
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <Pressable
-                style={[styles.modalBtn, { borderColor: t.border, flex: 1 }]}
-                onPress={() => setBioOpen(false)}
-                disabled={savingBio}
-              >
-                <Text style={[VispText.chip, { color: t.text2 }]}>{tr('common.cancel') || 'Cancel'}</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modalBtn, { backgroundColor: t.text, borderColor: t.text, flex: 1, opacity: savingBio ? 0.6 : 1 }]}
-                onPress={saveBio}
-                disabled={savingBio}
-              >
-                {savingBio ? (
-                  <AnimatedSpinner size={18} color={t.bg} />
-                ) : (
-                  <Text style={[VispText.chip, { color: t.bg }]}>{tr('common.save') || 'Save'}</Text>
-                )}
-              </Pressable>
-            </View>
+      <Modal visible={bioOpen} transparent animationType="fade" onRequestClose={closeBio}>
+        {/* KeyboardAvoidingView: sin esto el teclado tapaba los botones y no
+            había forma de guardar sin cerrar el modal antes. */}
+        <KeyboardAvoidingView
+          style={styles.modalFill}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={closeBio}>
+            <Pressable style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.border }]} onPress={() => {}}>
+              <Text style={[VispText.headlineMid, { color: t.text, marginBottom: 6 }]}>
+                {tr('profileScreen.aboutMe') || 'About me'}
+              </Text>
+              <Text style={[VispText.body, { color: t.text3, marginBottom: 12 }]}>
+                {tr('profileScreen.aboutMeHelp') ||
+                  'A short summary customers read before choosing you. Your experience, what you are good at, how you work.'}
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    color: t.text, borderColor: t.border, backgroundColor: t.deep,
+                    minHeight: 120, paddingTop: 12,
+                  },
+                ]}
+                value={bioText}
+                onChangeText={setBioText}
+                placeholder={
+                  tr('profileScreen.aboutMePlaceholder') ||
+                  'e.g. Ten years doing residential cleaning in the GTA. I bring my own supplies and I am used to homes with pets.'
+                }
+                placeholderTextColor={t.text4}
+                editable={!savingBio}
+                multiline
+                maxLength={1000}
+                textAlignVertical="top"
+              />
+              <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 6, textAlign: 'right' }]}>
+                {bioText.length}/1000
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <Pressable
+                  style={[styles.modalBtn, { borderColor: t.border, flex: 1 }]}
+                  onPress={closeBio}
+                  disabled={savingBio}
+                >
+                  <Text style={[VispText.chip, { color: t.text2 }]}>{tr('common.cancel') || 'Cancel'}</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalBtn, { backgroundColor: t.text, borderColor: t.text, flex: 1, opacity: savingBio ? 0.6 : 1 }]}
+                  onPress={saveBio}
+                  disabled={savingBio}
+                >
+                  {savingBio ? (
+                    <AnimatedSpinner size={18} color={t.bg} />
+                  ) : (
+                    <Text style={[VispText.chip, { color: t.bg }]}>{tr('common.save') || 'Save'}</Text>
+                  )}
+                </Pressable>
+                </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );
@@ -733,6 +788,7 @@ export default function ProfileScreen(): React.JSX.Element {
 // ──────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  modalFill: { flex: 1 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 24 },
   modalCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, padding: 22 },
   modalInput: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },

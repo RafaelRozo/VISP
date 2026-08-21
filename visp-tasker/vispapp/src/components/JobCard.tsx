@@ -3,6 +3,14 @@
  *
  * Reusable card for provider views showing task name, customer area,
  * distance, price, time, and status indicator.
+ *
+ * Pasó al tema el 2026-08-21. Estaba atada a la paleta `Colors`, que es SOLO
+ * OSCURA (`textPrimary` es blanco fijo): en modo claro la lista de trabajos
+ * salía en blanco sobre blanco. Mismo fallo que arrastraban las tarjetas de
+ * servicio del lado cliente.
+ *
+ * Fuera también los nombres de nivel ("Helper", "Experienced"): no existen en
+ * esta versión, donde solo hay L0 y L1.
  */
 
 import React from 'react';
@@ -13,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import { Colors, getLevelColor, getStatusColor } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { GlassStyles } from '../theme/glass';
 import { JobStatus, ServiceLevel } from '../types';
 
@@ -36,13 +45,6 @@ interface JobCardProps {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const LEVEL_LABELS: Record<number, string> = {
-  1: 'Helper',
-  2: 'Experienced',
-  3: 'Certified Pro',
-  4: 'Emergency',
-};
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
@@ -89,12 +91,16 @@ function JobCard({
   slaDeadline,
   onPress,
 }: JobCardProps): React.JSX.Element {
+  const theme = useTheme();
   const levelColor = getLevelColor(level);
   const statusColor = getStatusColor(status);
 
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[
+        styles.container,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
@@ -107,10 +113,10 @@ function JobCard({
         {/* Header row */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Text style={styles.taskName} numberOfLines={1}>
+            <Text style={[styles.taskName, { color: theme.textPrimary }]} numberOfLines={1}>
               {taskName}
             </Text>
-            <Text style={styles.categoryName} numberOfLines={1}>
+            <Text style={[styles.categoryName, { color: theme.textSecondary }]} numberOfLines={1}>
               {categoryName}
             </Text>
           </View>
@@ -124,19 +130,19 @@ function JobCard({
         {/* Details row */}
         <View style={styles.detailsRow}>
           <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Location</Text>
-            <Text style={styles.detailValue} numberOfLines={1}>
+            <Text style={[styles.detailLabel, { color: theme.textTertiary }]}>Location</Text>
+            <Text style={[styles.detailValue, { color: theme.textPrimary }]} numberOfLines={1}>
               {customerArea}
             </Text>
           </View>
           <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Distance</Text>
-            <Text style={styles.detailValue}>
+            <Text style={[styles.detailLabel, { color: theme.textTertiary }]}>Distance</Text>
+            <Text style={[styles.detailValue, { color: theme.textPrimary }]}>
               {distanceKm != null ? distanceKm.toFixed(1) : '0.0'} km
             </Text>
           </View>
           <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Price</Text>
+            <Text style={[styles.detailLabel, { color: theme.textTertiary }]}>Price</Text>
             <Text style={styles.priceValue}>
               {estimatedPrice != null ? `$${Number(estimatedPrice).toFixed(2)}` : '--'}
             </Text>
@@ -147,11 +153,11 @@ function JobCard({
         <View style={styles.footerRow}>
           <View style={[styles.levelBadge, { borderColor: levelColor }]}>
             <Text style={[styles.levelText, { color: levelColor }]}>
-              L{level} {LEVEL_LABELS[level]}
+              L{level}
             </Text>
           </View>
           {scheduledAt ? (
-            <Text style={styles.timeText}>
+            <Text style={[styles.timeText, { color: theme.textSecondary }]}>
               {formatDate(scheduledAt)} at {formatTime(scheduledAt)}
             </Text>
           ) : slaDeadline ? (

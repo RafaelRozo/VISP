@@ -107,8 +107,8 @@ function BookingScreen(): React.JSX.Element {
   const isEmergency = task.level === 4;
   const [consentSLA, setConsentSLA] = useState(false);
 
-  // Payment state
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'succeeded' | 'failed'>('idle');
+  // El estado de pago vivía aquí para pintar el progreso de la retención; esa
+  // retención se mudó a la aceptación de la oferta y nadie lo leía ya.
   const stripeCustomerId = useAuthStore((s) => s.user?.stripeCustomerId);
 
   // Loading
@@ -199,63 +199,31 @@ function BookingScreen(): React.JSX.Element {
         isFlexibleSchedule: task.isFlexibleSchedule ?? false,
         priority: task.priority ?? 'standard',
         selectedNotes: task.selectedNotes ?? [],
-        estimatedPrice: task.estimatedPrice,
         quantity: allowsQuantity ? quantity : undefined,
       });
 
-      // Payment intent creation is deferred:
-      // - L1/L2 (TIME_BASED): PaymentIntent created on backend, charged when
-      //   the provider completes the job (backend handles via webhook).
-      // - L3/L4 (NEGOTIATED): PaymentIntent created after proposal acceptance.
+      // AQUÍ NO SE RETIENE DINERO. Antes se creaba un PaymentIntent con la media
+      // del rango del catálogo, porque el precio se conocía al reservar. Con las
+      // ofertas ya no: al publicar el trabajo no hay ni tarifa ni tiempo, y puede
+      // que no llegue ninguna oferta. Retener sobre una cifra inventada bloquearía
+      // el saldo del cliente por un trabajo que quizá nunca ocurra, y por un
+      // importe que no se parece al final.
       //
-      // We only pre-authorize here so the customer's card is validated.
-      // The actual charge happens when the job is completed.
-      const isTimeBased = task.level <= 2;
-
-      if (isTimeBased) {
-        const quotedAmountCents = result.estimatedPrice > 0
-          ? Math.round(result.estimatedPrice * 100)
-          : Math.round(((task.priceRangeMin + task.priceRangeMax) / 2) * 100);
-
-        if (quotedAmountCents > 0) {
-          try {
-            setPaymentStatus('processing');
-
-            // Auto-create Stripe customer if needed
-            let customerIdForPayment = stripeCustomerId ?? null;
-            if (!customerIdForPayment) {
-              try {
-                customerIdForPayment = await paymentService.ensureStripeCustomer();
-                const currentUser = useAuthStore.getState().user;
-                if (currentUser && customerIdForPayment) {
-                  useAuthStore.getState().setUser({
-                    ...currentUser,
-                    stripeCustomerId: customerIdForPayment,
-                  });
-                }
-              } catch (custErr) {
-                console.warn('[BookingScreen] Auto-create Stripe customer failed:', custErr);
-              }
-            }
-
-            // Create PaymentIntent on backend (stays in requires_payment_method).
-            // Actual charge is processed when the job completes.
-            const paymentIntent = await paymentService.createPaymentIntent(
-              result.bookingId,
-              quotedAmountCents,
-              'cad',
-              customerIdForPayment,
-            );
-            console.log('[BookingScreen] PaymentIntent created:', paymentIntent.id, '- will be charged on job completion');
-            setPaymentStatus('succeeded');
-          } catch (paymentError: any) {
-            console.warn('[BookingScreen] PaymentIntent creation failed:', paymentError?.message);
-            setPaymentStatus('failed');
-            // Non-blocking: job is created, payment intent can be created later
+      // La retención vive ahora en OffersScreen, al aceptar una oferta: primer
+      // instante en que existe un precio real.
+      //
+      // Lo único que sí conviene adelantar es el cliente de Stripe: crearlo aquí
+      // evita que ese trámite se cruce con la aceptación de la oferta.
+      if (!stripeCustomerId) {
+        try {
+          const nuevoId = await paymentService.ensureStripeCustomer();
+          const usuario = useAuthStore.getState().user;
+          if (usuario && nuevoId) {
+            useAuthStore.getState().setUser({ ...usuario, stripeCustomerId: nuevoId });
           }
+        } catch (custErr) {
+          console.warn('[BookingScreen] Auto-create Stripe customer failed:', custErr);
         }
-      } else {
-        console.log('[BookingScreen] L3/L4 negotiated pricing -- deferring payment to proposal acceptance');
       }
 
       // Auto-save address as default if user doesn't have one yet

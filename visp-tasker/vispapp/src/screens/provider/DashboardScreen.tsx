@@ -1,11 +1,14 @@
 /**
  * VISP - Provider Dashboard Screen
  *
- * Main provider home: earnings summary, active job card, incoming job
- * offers queue, availability toggle, on-call status for Level 4, and
- * performance score display.
+ * Casa del proveedor: ganancias, trabajo activo, ofertas entrantes,
+ * disponibilidad, camino a L1 y la ficha tal como la ve el cliente.
  *
- * Redesigned with dark glassmorphism.
+ * Dos bloques se fueron el 2026-08-21 y conviene saber por qué:
+ *   - El turno de guardia (on-call) colgaba del nivel 4, que se retiró del
+ *     producto en la reestructuración de niveles. Ningún proveedor puede
+ *     tenerlo, así que era una rama inalcanzable.
+ *   - El Performance Score enseñaba un 0/100 fijo que el backend nunca calculó.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,6 +16,7 @@ import {
   Alert,
   Image,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -23,7 +27,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors, getLevelColor } from '../../theme/colors';
+import { Colors } from '../../theme/colors';
 import { GlassStyles } from '../../theme/glass';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -35,10 +39,10 @@ import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useCompanyStore } from '../../stores/companyStore';
 import JobCard from '../../components/JobCard';
-import OnCallToggle from '../../components/OnCallToggle';
 import RoleSwitcher from '../../components/RoleSwitcher';
 import { resolveAvatarUrl } from '../../services/userService';
 import { taxonomyService } from '../../services/taxonomyService';
+import { providerService } from '../../services/providerService';
 import { ProviderTabParamList, ServiceLevel } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -72,18 +76,14 @@ export default function DashboardScreen(): React.JSX.Element {
 
   const {
     isOnline,
-    isOnCall,
     activeJob,
     pendingOffers = [],
     earnings = { today: 0, thisWeek: 0, thisMonth: 0, pendingPayout: 0, totalEarned: 0 },
-    performanceScore = 0,
     providerProfile,
     isLoadingDashboard,
     isTogglingStatus,
-    onCallShifts = [],
     fetchDashboard,
     toggleOnline,
-    toggleOnCall,
     declineOffer,
   } = useProviderStore();
 
@@ -116,11 +116,6 @@ export default function DashboardScreen(): React.JSX.Element {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  const isLevel4 = providerProfile?.level === 4;
-  const levelColor = providerProfile
-    ? getLevelColor(providerProfile.level)
-    : Colors.primary;
-
   // User initials fallback for avatar
   const userInitials = useMemo(() => {
     const first = (user?.firstName?.[0] ?? '').toUpperCase();
@@ -128,17 +123,44 @@ export default function DashboardScreen(): React.JSX.Element {
     return `${first}${last}` || '?';
   }, [user?.firstName, user?.lastName]);
 
-  // Level metadata (name + next-level CTA)
-  const levelMeta = useMemo(() => {
-    if (!providerProfile) return null;
-    const lvl = providerProfile.level;
-    const name = t(`dashboard.levelName${lvl}` as any);
-    const nextMsg =
-      lvl === 4
-        ? t('dashboard.nextLevelL4Top')
-        : t(`dashboard.nextLevelL${lvl}` as any);
-    return { level: lvl, name, nextMsg };
-  }, [providerProfile, t]);
+  /**
+   * Qué le falta al proveedor para llegar a L1.
+   *
+   * Sustituye al banner de "Helper — completa 10 trabajos con 4.5★ para
+   * desbloquear el nivel 2", que decía dos cosas falsas: los niveles no se
+   * desbloquean por número de trabajos (L1 se gana subiendo evidencia y que VISP
+   * la valide), y el nivel 2 ni siquiera existe en esta beta.
+   *
+   * El estado sale de datos reales: la bio del perfil público y las piezas de
+   * portfolio que ya están entre las credenciales del panel.
+   */
+  const portfolioCount = useMemo(
+    () =>
+      (providerProfile?.credentials ?? []).filter(
+        (c) => c.type === 'portfolio' && c.status !== 'rejected',
+      ).length,
+    [providerProfile?.credentials],
+  );
+
+  const [bio, setBio] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Solo para L0: es el único que necesita la lista, y así no se paga una
+    // llamada extra en cada carga del panel de quien ya está validado.
+    if (!providerProfile || providerProfile.level !== 0) return;
+    let vivo = true;
+    providerService
+      .getPublicProfile(providerProfile.id)
+      .then((perfil: { bio: string | null }) => {
+        if (vivo) setBio(perfil.bio);
+      })
+      .catch(() => {
+        /* Sin bio se pinta como pendiente; no vale la pena molestar por esto. */
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [providerProfile?.id, providerProfile?.level]);
 
   // Show level banner only when the provider has finished onboarding
   // (has at least one service selected). Until then the setup CTA does the job.
@@ -160,18 +182,6 @@ export default function DashboardScreen(): React.JSX.Element {
       (isCompanySupervisor ? 'CompanySupervisor' : 'CompanyAssignments') as any,
     );
   }, [navigation, isCompanySupervisor]);
-
-  const currentShift = useMemo(() => {
-    if (!onCallShifts || onCallShifts.length === 0) return null;
-    const now = new Date();
-    return (
-      onCallShifts.find((shift) => {
-        const start = new Date(shift.startTime);
-        const end = new Date(shift.endTime);
-        return now >= start && now <= end;
-      }) ?? null
-    );
-  }, [onCallShifts]);
 
   // ------------------------------------------
   // Earnings summary section
@@ -225,40 +235,207 @@ export default function DashboardScreen(): React.JSX.Element {
   // Performance score section
   // ------------------------------------------
 
-  const renderPerformanceScore = () => {
-    const scoreColor =
-      performanceScore >= 80
-        ? Colors.success
-        : performanceScore >= 60
-          ? Colors.warning
-          : Colors.emergencyRed;
+  /**
+   * Camino a L1, con estado real.
+   *
+   * En esta beta solo existen dos escalones, así que la tarjeta tiene dos caras:
+   * al que aún no está validado le dice exactamente qué le falta y le lleva
+   * allí de un toque; al validado le confirma que puede ofertar y se calla.
+   *
+   * Fuera los nombres comerciales ("Helper", "Experienced"): no aportaban nada y
+   * prometían una escalera que en esta versión no existe.
+   */
+  const renderLevelCard = () => {
+    if (!providerProfile) return null;
+
+    const nivel = providerProfile.level;
+
+    if (nivel > 0) {
+      return (
+        <View style={[styles.levelBanner, { borderColor: `${Colors.success}55`, backgroundColor: `${Colors.success}12` }]}>
+          <View style={[styles.levelChipSmall, { backgroundColor: `${Colors.success}30`, borderColor: Colors.success }]}>
+            <Text style={[styles.levelChipSmallText, { color: Colors.success }]}>L{nivel}</Text>
+          </View>
+          <View style={styles.levelBannerInfo}>
+            <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
+              {t('dashboard.verifiedTitle') || 'Verified'}
+            </Text>
+            <Text style={[styles.levelBannerMsg, { color: theme.textSecondary }]}>
+              {t('dashboard.verifiedMsg') ||
+                'You can offer on jobs for the services you set up.'}
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    const pasos = [
+      {
+        hecho: (bio ?? '').trim().length > 0,
+        label: t('dashboard.stepBio') || 'Write your bio',
+        hint: t('dashboard.stepBioHint') || 'The first thing a customer reads on your offer.',
+        ir: () => navigation.navigate('ProviderProfile' as any),
+      },
+      {
+        hecho: portfolioCount >= 3,
+        label: (t('dashboard.stepPortfolio') || 'Add 3 photos of your work')
+          .replace('{n}', String(portfolioCount)),
+        hint: portfolioCount > 0
+          ? (t('dashboard.stepPortfolioSome') || '{n} of 3 uploaded.').replace('{n}', String(portfolioCount))
+          : t('dashboard.stepPortfolioHint') || 'Past jobs, before and after — whatever shows the work.',
+        ir: () => navigation.navigate('ProviderProfile' as any, { screen: 'Credentials' }),
+      },
+      {
+        hecho: hasServices === true,
+        label: t('dashboard.stepServices') || 'Pick your services and set your price',
+        hint: t('dashboard.stepServicesHint') || 'You cannot receive jobs without them.',
+        ir: () => navigation.navigate('ProviderProfile' as any, { screen: 'ProviderOnboarding' }),
+      },
+    ];
+
+    const faltan = pasos.filter((p) => !p.hecho).length;
+    const enviado = faltan === 0;
+
+    return (
+      <View style={[styles.levelBanner, styles.levelCard, { borderColor: `${Colors.primary}55`, backgroundColor: `${Colors.primary}10` }]}>
+        <View style={styles.levelCardHead}>
+          <View style={[styles.levelChipSmall, { backgroundColor: `${Colors.primary}30`, borderColor: Colors.primary }]}>
+            <Text style={[styles.levelChipSmallText, { color: Colors.primary }]}>L0</Text>
+          </View>
+          <View style={styles.levelBannerInfo}>
+            <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
+              {enviado
+                ? t('dashboard.inReviewTitle') || 'In review'
+                : t('dashboard.toL1Title') || 'Get verified to receive more work'}
+            </Text>
+            <Text style={[styles.levelBannerMsg, { color: theme.textSecondary }]}>
+              {enviado
+                ? t('dashboard.inReviewMsg') ||
+                  'We are checking your documents. We will let you know as soon as it is done.'
+                : t('dashboard.toL1Msg') ||
+                  'Send us this and we verify your profile. It is your documents we check, not your skill.'}
+            </Text>
+          </View>
+        </View>
+
+        {!enviado ? (
+          <View style={styles.stepList}>
+            {pasos.map((p) => (
+              <Pressable
+                key={p.label}
+                onPress={p.hecho ? undefined : p.ir}
+                disabled={p.hecho}
+                style={styles.stepRow}
+                accessibilityRole={p.hecho ? undefined : 'button'}
+                accessibilityLabel={p.label}
+              >
+                <View
+                  style={[
+                    styles.stepBox,
+                    {
+                      borderColor: p.hecho ? Colors.success : theme.textTertiary,
+                      backgroundColor: p.hecho ? Colors.success : 'transparent',
+                    },
+                  ]}
+                >
+                  {p.hecho ? <Text style={styles.stepTick}>✓</Text> : null}
+                </View>
+                <View style={styles.stepText}>
+                  <Text
+                    style={[
+                      styles.stepLabel,
+                      { color: p.hecho ? theme.textSecondary : theme.textPrimary },
+                    ]}
+                  >
+                    {p.label}
+                  </Text>
+                  {!p.hecho ? (
+                    <Text style={[styles.stepHint, { color: theme.textSecondary }]}>{p.hint}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  /**
+   * "Así te ven los clientes" — sustituye al Performance Score.
+   *
+   * El marcador se va por dos razones. Una: era MENTIRA. El backend devolvía
+   * `performanceScore: 0` fijo y la propia tarjeta lo confesaba en letra
+   * pequeña ("not yet wired to live data"), así que enseñaba un 0/100 en rojo a
+   * proveedores que no habían hecho nada malo. Dos: con las ofertas, la
+   * puntuación interna de ranking dejó de decidir nada — el cliente ve varias
+   * ofertas y elige. Lo que pesa es lo que aparece en la tarjeta de oferta.
+   *
+   * Así que esta tarjeta enseña EXACTAMENTE eso: el nombre, las estrellas, los
+   * trabajos hechos y la bio, tal como los lee el cliente al comparar. Un
+   * proveedor que ve su propia ficha vacía entiende qué le falta sin que nadie
+   * se lo explique.
+   */
+  const renderCustomerView = () => {
+    if (!providerProfile) return null;
+
+    const valorada = providerProfile.rating > 0;
+    const nombre = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Provider';
 
     return (
       <GlassCard variant="standard" style={styles.performanceCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary, marginBottom: 0 }]}>{t('dashboard.performanceScore')}</Text>
-          <Chip>{(t('profileScreen.performanceScorePreview') || 'PREVIEW').toUpperCase()}</Chip>
-        </View>
-        <View style={styles.performanceRow}>
-          <View style={[styles.scoreCircle, { borderColor: scoreColor, opacity: 0.7 }]}>
-            <Text style={[styles.scoreValue, { color: scoreColor, fontFamily: FontMono }]}>
-              {performanceScore}
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+          {t('dashboard.customerView') || 'How customers see you'}
+        </Text>
+
+        <View style={styles.customerCard}>
+          {(() => {
+            const uri = resolveAvatarUrl(user?.avatarUrl);
+            return uri ? (
+              <Image source={{ uri }} style={styles.customerAvatar} />
+            ) : (
+              <View style={[styles.customerAvatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitials}>{userInitials}</Text>
+              </View>
+            );
+          })()}
+          <View style={styles.customerCardInfo}>
+            <Text style={[styles.customerName, { color: theme.textPrimary }]} numberOfLines={1}>
+              {nombre}
             </Text>
-            <Text style={[styles.scoreMax, { color: theme.textSecondary, fontFamily: FontMono }]}>/100</Text>
+            <View style={styles.customerStats}>
+              <Text style={[styles.customerStat, { color: valorada ? theme.textPrimary : theme.textSecondary }]}>
+                {valorada
+                  ? `★ ${providerProfile.rating.toFixed(1)}`
+                  : t('dashboard.noRatingYet') || '★ No rating yet'}
+              </Text>
+              <Text style={[styles.customerStat, { color: theme.textSecondary }]}>
+                {providerProfile.completedJobs === 1
+                  ? t('dashboard.oneJobDone') || '1 job done'
+                  : (t('dashboard.jobsDone') || '{n} jobs done').replace(
+                      '{n}',
+                      String(providerProfile.completedJobs),
+                    )}
+              </Text>
+            </View>
           </View>
-          <View style={styles.performanceInfo}>
-            <Text style={[styles.performanceLabel, { color: theme.textPrimary }]}>
-              {performanceScore >= 80
-                ? t('dashboard.excellent')
-                : performanceScore >= 60
-                  ? t('dashboard.good')
-                  : t('dashboard.needsImprovement')}
-            </Text>
-            <Text style={[styles.performanceSubtext, { color: theme.textSecondary, fontStyle: 'italic' }]}>
-              {t('dashboard.basedOnRatings')} · not yet wired to live data
-            </Text>
-          </View>
         </View>
+
+        <Text style={[styles.customerBio, { color: bio ? theme.textSecondary : theme.textTertiary }]} numberOfLines={3}>
+          {bio ||
+            t('dashboard.bioEmpty') ||
+            'You have not written a bio yet. It is the first thing customers read when they compare offers.'}
+        </Text>
+
+        {/* El primer trabajo es el que rompe el empate: sin estrellas, lo único
+            que el cliente puede juzgar es la bio y el precio. Decirlo evita que
+            un cero se lea como un castigo. */}
+        {!valorada ? (
+          <Text style={[styles.customerHint, { color: theme.textSecondary }]}>
+            {t('dashboard.firstJobHint') ||
+              'Ratings start after your first completed job. Until then, a clear bio and a fair price are what win offers.'}
+          </Text>
+        ) : null}
       </GlassCard>
     );
   };
@@ -561,51 +738,13 @@ export default function DashboardScreen(): React.JSX.Element {
 
         {renderSetupServicesPrompt()}
 
-        {/* Level progress banner: only after profile is set up */}
-        {showLevelBanner && levelMeta && (
-          <View
-            style={[
-              styles.levelBanner,
-              { borderColor: `${levelColor}55`, backgroundColor: `${levelColor}12` },
-            ]}
-          >
-            <View
-              style={[
-                styles.levelChipSmall,
-                { backgroundColor: `${levelColor}30`, borderColor: levelColor },
-              ]}
-            >
-              <Text style={[styles.levelChipSmallText, { color: levelColor }]}>
-                L{levelMeta.level}
-              </Text>
-            </View>
-            <View style={styles.levelBannerInfo}>
-              <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
-                {levelMeta.name}
-              </Text>
-              <Text
-                style={[styles.levelBannerMsg, { color: theme.textSecondary }]}
-                numberOfLines={2}
-              >
-                {levelMeta.nextMsg}
-              </Text>
-            </View>
-          </View>
-        )}
+        {showLevelBanner && renderLevelCard()}
 
         {renderAvailabilityToggle()}
 
-        {isLevel4 && (
-          <OnCallToggle
-            isOnCall={isOnCall}
-            currentShift={currentShift}
-            isLoading={isTogglingStatus}
-            onToggle={toggleOnCall}
-          />
-        )}
 
         {renderEarningsSummary()}
-        {renderPerformanceScore()}
+        {renderCustomerView()}
         {renderActiveJob()}
         {renderPendingOffers()}
 
@@ -752,6 +891,32 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   // --- Level progress banner ---
+  levelCard: { flexDirection: 'column', alignItems: 'stretch', gap: 14 },
+  levelCardHead: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  stepList: { gap: 12 },
+  stepRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  stepBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepTick: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  stepText: { flex: 1, gap: 2 },
+  stepLabel: { fontSize: 14, fontWeight: '600' as const, lineHeight: 19 },
+  stepHint: { fontSize: 12, lineHeight: 16, marginTop: 1 },
+  // Ficha tal como la ve el cliente
+  customerCard: { flexDirection: 'row', gap: 12, alignItems: 'center', marginTop: 4 },
+  customerAvatar: { width: 44, height: 44, borderRadius: 22 },
+  customerCardInfo: { flex: 1, gap: 2 },
+  customerName: { fontSize: 15, fontWeight: '600' as const },
+  customerStats: { flexDirection: 'row', gap: 14 },
+  customerStat: { fontSize: 13 },
+  customerBio: { fontSize: 13, lineHeight: 18, marginTop: 12 },
+  customerHint: { fontSize: 12, lineHeight: 17, marginTop: 10, fontStyle: 'italic' as const },
   levelBanner: {
     flexDirection: 'row',
     alignItems: 'center',

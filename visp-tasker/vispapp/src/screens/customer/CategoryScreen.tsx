@@ -40,12 +40,18 @@ interface LevelTab {
   label: string;
 }
 
+// Los niveles que el cliente puede filtrar.
+//
+// EMERGENCY (nivel 4) salió: el producto ya no lo ofrece y en el catálogo activo
+// hay CERO servicios de ese nivel, así que era un filtro que solo podía devolver
+// una lista vacía. Base (L0) entró: es el grupo más grande del catálogo y no
+// estaba, así que sus servicios no se podían filtrar.
 const LEVEL_TABS: LevelTab[] = [
-  { level: null, label: 'ALL' },
-  { level: 1, label: 'HELPER' },
-  { level: 2, label: 'EXPERIENCED' },
-  { level: 3, label: 'CERTIFIED' },
-  { level: 4, label: 'EMERGENCY' },
+  { level: null, label: 'All' },
+  { level: 0, label: 'Base' },
+  { level: 1, label: 'Helper' },
+  { level: 2, label: 'Experienced' },
+  { level: 3, label: 'Certified' },
 ];
 
 function CategoryScreen(): React.JSX.Element {
@@ -146,7 +152,13 @@ function CategoryScreen(): React.JSX.Element {
                 },
               ]}
             >
-              <Text style={[VispText.chip, { color: isActive ? t.bg : t.text2 }]}>
+              <Text
+                style={[
+                  VispText.bodyStrong,
+                  styles.tabLabel,
+                  { color: isActive ? t.bg : t.text2 },
+                ]}
+              >
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -200,8 +212,10 @@ function CategoryScreen(): React.JSX.Element {
                 name={task.name}
                 description={task.description}
                 level={task.level}
-                estimatedDurationMinutes={task.estimatedDurationMinutes}
                 basePrice={task.basePrice}
+                priceRangeMin={task.priceRangeMin}
+                priceRangeMax={task.priceRangeMax}
+                pricingUnit={task.pricingUnit}
                 onPress={handleTaskPress}
               />
             ))
@@ -224,8 +238,10 @@ function CategoryScreen(): React.JSX.Element {
                       name={task.name}
                       description={task.description}
                       level={task.level}
-                      estimatedDurationMinutes={task.estimatedDurationMinutes}
                       basePrice={task.basePrice}
+                      priceRangeMin={task.priceRangeMin}
+                      priceRangeMax={task.priceRangeMax}
+                      pricingUnit={task.pricingUnit}
                       onPress={handleTaskPress}
                     />
                   ))}
@@ -248,11 +264,15 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   tab: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    // Altura mínima en vez de solo padding: garantiza el área táctil aunque la
+    // etiqueta sea corta ("All"), y deja todas las píldoras a la misma altura.
+    minHeight: 38,
+    justifyContent: 'center',
     borderRadius: VispRadius.pill,
     borderWidth: 1,
   },
+  tabLabel: { fontSize: 13 },
 
   errorBox: {
     marginHorizontal: VispSpace.gutter,

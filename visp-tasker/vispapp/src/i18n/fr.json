@@ -505,7 +505,10 @@
     "offersReceived": "Offres reçues",
     "offerSingular": "offre",
     "offerPlural": "offres",
-    "viewOffers": "Comparer et choisir"
+    "viewOffers": "Comparer et choisir",
+    "noExpired": "Rien d'expiré",
+    "expiredEmptyBody": "Les travaux sans offre au bout de 48 heures atterrissent ici.",
+    "expiredWhy": "Aucun prestataire n'a fait d'offre en 48 heures."
   },
   "credentials": {
     "noCredentials": "Aucune accréditation",

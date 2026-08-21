@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, getLevelColor } from '../../theme/colors';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, ThemeColors } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
 import { GlassStyles } from '../../theme/glass';
 import { GlassCard, GlassButton } from '../../components/glass';
@@ -60,20 +60,20 @@ interface VerificationStep {
   requiredForLevel: ServiceLevel | null;
   /** Badge text used when `requiredForLevel` is null. */
   tagLabel?: string;
+  /**
+   * El documento no bloquea nada por sí solo. Se dice en la propia tarjeta, en
+   * pequeño: sin eso, seis tarjetas idénticas con "Not started" parecen seis
+   * deberes pendientes y el proveedor no sabe por dónde empezar.
+   */
+  optional?: boolean;
+  /** Cuántos lleva subidos de este tipo. */
+  count?: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'failed';
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const LEVEL_NAMES: Record<number, string> = {
-  0: 'Base',
-  1: 'Helper',
-  2: 'Experienced',
-  3: 'Certified Pro',
-  4: 'Emergency',
-};
 
 /** Highest level a provider can reach in the v1 beta. L2/L3 are on stand-by. */
 const MAX_LEVEL_V1 = 1;
@@ -92,7 +92,13 @@ function experienceStatus(
 }
 
 
-function getStepStatusConfig(status: string): {
+/**
+ * El estado "Not Started" venía fijado a `rgba(255,255,255,0.35)`: blanco al 35%.
+ * Sobre el fondo oscuro se leía a duras penas, y sobre el claro DESAPARECÍA — de
+ * ahí que en modo claro no hubiera ninguna etiqueta de estado. Ahora los tonos
+ * neutros salen del tema; los de color (verde, ámbar, rojo) funcionan en ambos.
+ */
+function getStepStatusConfig(status: string, theme: ThemeColors): {
   label: string;
   color: string;
   bgColor: string;
@@ -132,10 +138,10 @@ function getStepStatusConfig(status: string): {
       };
     default:
       return {
-        label: 'Not Started',
-        color: 'rgba(255, 255, 255, 0.35)',
-        bgColor: Colors.glass.white,
-        borderColor: Colors.glassBorder.subtle,
+        label: 'Not started',
+        color: theme.textTertiary,
+        bgColor: 'transparent',
+        borderColor: theme.border,
       };
   }
 }
@@ -158,7 +164,7 @@ function StepCard({
   onAction,
 }: StepCardProps): React.JSX.Element {
   const theme = useTheme();
-  const statusConfig = getStepStatusConfig(step.status);
+  const statusConfig = getStepStatusConfig(step.status, theme);
   // Levelless documents (driver's licence, insurance) get a neutral slate tag —
   // painting them with a level colour would imply a rank they don't carry.
   const levelColor =
@@ -174,6 +180,7 @@ function StepCard({
           <View
             style={[
               stepStyles.circle,
+              { borderColor: theme.border, backgroundColor: theme.surface },
               step.status === 'in_progress' && {
                 backgroundColor: Colors.warning,
                 borderColor: Colors.warning,
@@ -211,6 +218,7 @@ function StepCard({
           <View
             style={[
               stepStyles.line,
+              { backgroundColor: theme.border },
               step.status === 'completed' && {
                 backgroundColor: `${Colors.success}80`,
               },
@@ -238,7 +246,12 @@ function StepCard({
       >
         <View style={stepStyles.header}>
           <View style={stepStyles.headerLeft}>
-            <Text style={[stepStyles.title, { color: theme.textPrimary }]}>{step.title}</Text>
+            <Text
+              style={[stepStyles.title, { color: theme.textPrimary }]}
+              numberOfLines={2}
+            >
+              {step.title}
+            </Text>
             <View
               style={[
                 stepStyles.levelTag,
@@ -247,14 +260,14 @@ function StepCard({
             >
               <Text style={[stepStyles.levelTagText, { color: levelColor }]}>
                 {step.requiredForLevel === null
-                  ? step.tagLabel ?? 'All providers'
-                  : `L${step.requiredForLevel}+`}
+                  ? step.tagLabel ?? 'All'
+                  : `L${step.requiredForLevel}`}
               </Text>
             </View>
           </View>
           <View
             style={[
-              GlassStyles.badge,
+              stepStyles.statusBadge,
               {
                 backgroundColor: statusConfig.bgColor,
                 borderColor: statusConfig.borderColor,
@@ -274,6 +287,21 @@ function StepCard({
         </View>
 
         <Text style={[stepStyles.description, { color: theme.textSecondary }]}>{step.description}</Text>
+
+        {step.optional || (step.count ?? 0) > 0 ? (
+          <Text style={[stepStyles.optionalNote, { color: theme.textTertiary }]}>
+            {[
+              step.optional ? 'Optional' : null,
+              (step.count ?? 0) > 0
+                ? `${step.count} uploaded`
+                : step.optional
+                  ? 'none uploaded yet'
+                  : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        ) : null}
 
         {step.status === 'not_started' && (
           <GlassButton
@@ -338,31 +366,49 @@ const stepStyles = StyleSheet.create({
     marginBottom: 8,
   },
   headerLeft: {
+    // flexShrink en el contenedor Y en el título: sin los dos, un título largo
+    // empuja la etiqueta de nivel por encima de la de estado en vez de partirse.
     flex: 1,
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginRight: 8,
   },
   title: {
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: Colors.textPrimary,
   },
   levelTag: {
+    flexShrink: 0,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 5,
     paddingHorizontal: 5,
-    paddingVertical: 2,
+    paddingVertical: 1,
   },
   levelTagText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
   },
+  statusBadge: {
+    flexShrink: 0,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
   statusText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  // Nota de pie de la tarjeta: opcional y cuántos van subidos.
+  optionalNote: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: -4,
+    marginBottom: 10,
   },
   description: {
     fontSize: 13,
@@ -405,6 +451,13 @@ export default function VerificationScreen(): React.JSX.Element {
         experience = [];
       }
 
+      // Cuántos documentos lleva subidos de cada tipo. Sale de las mismas dos
+      // listas de las que ya se deduce el estado, así que no cuesta una llamada.
+      const cuentaCred = (tipo: CredentialType) =>
+        data.credentials.filter((c) => c.type === tipo && c.status !== 'rejected').length;
+      const cuentaExp = (kind: string) =>
+        experience.filter((e) => e.kind === kind && e.status !== 'rejected').length;
+
       // Steps for the v1 beta (L0/L1 only — client decision 2026-08-10).
       // See visp-tasker/docs/plan-v1-l0-l1-ontario.md §7 WP1.
       const verificationSteps: VerificationStep[] = [
@@ -415,17 +468,20 @@ export default function VerificationScreen(): React.JSX.Element {
             'A criminal record check is required for every provider. Upload your CRC document to begin the verification process.',
           credentialType: 'criminal_record_check',
           requiredForLevel: null,
-          tagLabel: 'All providers',
+          tagLabel: 'All',
+          count: cuentaCred('criminal_record_check'),
           status: getCredentialStepStatus(data.credentials, 'criminal_record_check'),
         },
         {
           id: 'drivers_license',
           title: "Driver's Licence",
           description:
-            "Upload your Ontario driver's licence (G1, G2 or G). Every provider uploads it as photo ID, and it is what lets you take jobs that involve driving. It is not a trade licence and does not raise your level.",
+            "Upload your Ontario driver's licence (G1, G2 or G). It works as photo ID and it is what lets you take jobs that involve driving. It is not a trade licence and does not raise your level.",
           credentialType: 'drivers_license',
           requiredForLevel: null,
-          tagLabel: 'All providers',
+          tagLabel: 'All',
+          optional: true,
+          count: cuentaCred('drivers_license'),
           status: getCredentialStepStatus(data.credentials, 'drivers_license'),
         },
         // Expediente de experiencia (L1): TRES documentos distintos, no uno.
@@ -434,12 +490,13 @@ export default function VerificationScreen(): React.JSX.Element {
         // igual, sin poder distinguirlos.
         {
           id: 'exp_resume',
-          title: 'CV / Résumé',
+          title: 'CV / Resume',
           description:
             'Upload your CV. VISP checks that the document is complete and legible — it does not judge your skills.',
           credentialType: null,
           experienceKind: 'resume',
           requiredForLevel: 1,
+          count: cuentaExp('resume'),
           status: experienceStatus(experience, 'resume'),
         },
         {
@@ -450,6 +507,8 @@ export default function VerificationScreen(): React.JSX.Element {
           credentialType: null,
           experienceKind: 'recommendation_letter',
           requiredForLevel: 1,
+          optional: true,
+          count: cuentaExp('recommendation_letter'),
           status: experienceStatus(experience, 'recommendation_letter'),
         },
         {
@@ -460,6 +519,7 @@ export default function VerificationScreen(): React.JSX.Element {
           credentialType: null,
           experienceKind: 'work_photos',
           requiredForLevel: 1,
+          count: cuentaExp('work_photos'),
           status: experienceStatus(experience, 'work_photos'),
         },
         {
@@ -470,6 +530,8 @@ export default function VerificationScreen(): React.JSX.Element {
           credentialType: 'insurance_certificate',
           requiredForLevel: null,
           tagLabel: 'Some services',
+          optional: true,
+          count: cuentaCred('insurance_certificate'),
           status: getCredentialStepStatus(data.credentials, 'insurance_certificate'),
         },
 
@@ -659,7 +721,7 @@ export default function VerificationScreen(): React.JSX.Element {
             <Text style={styles.progressPercent}>{progressPercent}%</Text>
           </View>
 
-          <View style={styles.progressBarBackground}>
+          <View style={[styles.progressBarBackground, { backgroundColor: theme.border }]}>
             <View
               style={[
                 styles.progressBarFill,
@@ -684,7 +746,7 @@ export default function VerificationScreen(): React.JSX.Element {
               ]}
             >
               <Text style={[styles.currentLevelBadgeText, { color: getLevelColor(currentLevel) }]}>
-                L{currentLevel} {LEVEL_NAMES[currentLevel]}
+                L{currentLevel}
               </Text>
             </View>
           </View>
@@ -697,19 +759,18 @@ export default function VerificationScreen(): React.JSX.Element {
             variant="dark"
             style={styles.nextStepsCard}
           >
-            <Text style={styles.nextStepsTitle}>
-              Next: Level {currentLevel + 1} -{' '}
-              {LEVEL_NAMES[(currentLevel + 1) as ServiceLevel]}
+            <Text style={[styles.nextStepsTitle, { color: theme.textPrimary }]}>
+              Next: L{currentLevel + 1}
             </Text>
             <Text style={[styles.nextStepsText, { color: theme.textSecondary }]}>
-              Complete the remaining verification steps below to unlock the next
-              service level and access higher-paying jobs.
+              Upload the documents below. VISP checks that they are complete and
+              legible — we verify the paperwork, not your skill.
             </Text>
           </GlassCard>
         )}
 
         {/* Verification steps */}
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Verification Steps</Text>
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Your documents</Text>
         {steps.map((step, index) => (
           <StepCard
             key={step.id}

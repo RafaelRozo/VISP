@@ -1,201 +1,154 @@
 /**
- * VISP - TaskCard Component
+ * VISP — TaskCard: un servicio del catálogo dentro de una categoría.
  *
- * Reusable card for displaying a service task in category lists.
- * Shows: task name, level badge, price range, duration estimate.
- * Supports tap handler for navigation to detail view.
+ * REESCRITA el 2026-08-21. La versión anterior usaba la paleta `Colors`, que es
+ * SOLO OSCURA (`textPrimary` estaba fijado a `#FFFFFF`), más los estilos "glass"
+ * pensados para fondo negro. En modo claro eso dejaba los títulos blancos sobre
+ * blanco y un velo lechoso sobre toda la lista. Ahora lee el tema como el resto
+ * de la app y funciona en los dos modos.
+ *
+ * Tres decisiones de contenido, no solo de estilo:
+ *
+ * 1. **El precio es un RANGO con su unidad**, no "desde $45". El cliente compara
+ *    servicios entre sí, y "45" no dice si es por hora, por mueble o por el
+ *    trabajo entero. Es el mismo criterio que ya aplicamos en la reserva.
+ *
+ * 2. **Fuera la duración estimada.** Salía del catálogo —una media que no
+ *    describe este trabajo— y bajo el modelo de ofertas quien dice cuánto tarda
+ *    es el proveedor en su oferta. Enseñar un número nuestro al lado del suyo
+ *    solo genera discusiones.
+ *
+ * 3. **Fuera el chevron**. Era un `>` escrito como texto, igual que el `$` y la
+ *    `T` que hacían de iconos. Una fila entera pulsable no necesita una flecha
+ *    para anunciarse, y esos caracteres se veían como lo que eran: caracteres.
  */
 
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ViewStyle,
-} from 'react-native';
-import { Colors } from '../theme/colors';
-import { Spacing } from '../theme/spacing';
-import { Typography, FontWeight } from '../theme/typography';
-import { BorderRadius } from '../theme/borders';
-import { Shadows } from '../theme/shadows';
-import { GlassStyles } from '../theme/glass';
+import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
+
+import { useVispTheme, VispText, VispRadius } from '../theme/visp';
 import LevelBadge from './LevelBadge';
 import type { ServiceLevel } from '../types';
-
-// ──────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────
 
 interface TaskCardProps {
   id: string;
   name: string;
   description: string;
   level: ServiceLevel;
-  estimatedDurationMinutes: number;
   basePrice: number;
   priceRangeMin?: number;
   priceRangeMax?: number;
+  pricingUnit?: string | null;
   onPress: (taskId: string) => void;
   style?: ViewStyle;
 }
 
-// ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
-
-function formatDuration(minutes: number): string {
-  if (minutes < 60) {
-    return `${minutes} min`;
+/** Sufijo de unidad para pegar al precio. Sin él, una cifra no significa nada. */
+function unitSuffix(unit?: string | null): string {
+  switch ((unit ?? '').toUpperCase()) {
+    case 'HOURLY':
+      return '/hr';
+    case 'PER_UNIT':
+      return '/item';
+    case 'PER_AREA':
+      return '/m²';
+    case 'PER_LINEAR_M':
+      return '/m';
+    case 'PER_VISIT':
+      return '/visit';
+    case 'PER_CONTRACT':
+      return '/hr';
+    default:
+      // FLAT_PACKAGE y cualquier unidad nueva: el importe ya es el total.
+      return '';
   }
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  if (remainingMinutes === 0) {
-    return `${hours}h`;
-  }
-  return `${hours}h ${remainingMinutes}m`;
 }
 
-function formatPriceRange(
-  basePrice: number,
-  rangeMin?: number,
-  rangeMax?: number,
-): string {
-  if (rangeMin !== undefined && rangeMax !== undefined) {
-    return `$${rangeMin} - $${rangeMax}`;
-  }
-  return `From $${basePrice}`;
+/** "$45 – $90" cuando hay rango; si min y max coinciden, una sola cifra. */
+function priceLabel(min?: number, max?: number, base?: number): string {
+  const lo = min ?? base ?? 0;
+  const hi = max ?? base ?? 0;
+  if (hi > lo) return `$${lo} – $${hi}`;
+  return `$${lo}`;
 }
-
-// ──────────────────────────────────────────────
-// Component
-// ──────────────────────────────────────────────
 
 function TaskCard({
   id,
   name,
   description,
   level,
-  estimatedDurationMinutes,
   basePrice,
   priceRangeMin,
   priceRangeMax,
+  pricingUnit,
   onPress,
   style,
 }: TaskCardProps): React.JSX.Element {
-  const handlePress = React.useCallback(() => {
-    onPress(id);
-  }, [id, onPress]);
+  const t = useVispTheme();
+  const precio = priceLabel(priceRangeMin, priceRangeMax, basePrice);
+  const unidad = unitSuffix(pricingUnit);
 
   return (
-    <TouchableOpacity
-      style={[styles.container, style]}
-      onPress={handlePress}
-      activeOpacity={0.7}
+    <Pressable
+      onPress={() => onPress(id)}
+      style={({ pressed }) => [
+        styles.container,
+        {
+          backgroundColor: pressed ? t.cardHi : t.card,
+          borderColor: t.border,
+        },
+        style,
+      ]}
       accessibilityRole="button"
-      accessibilityLabel={`${name}, Level ${level}, ${formatPriceRange(basePrice, priceRangeMin, priceRangeMax)}, estimated ${formatDuration(estimatedDurationMinutes)}`}
-      accessibilityHint="Double tap to view task details"
+      accessibilityLabel={`${name}. ${precio}${unidad}.`}
+      accessibilityHint="Opens the service details"
     >
+      {/* Nombre y nivel en la misma línea: son las dos cosas que filtran la
+          decisión antes de leer nada más. */}
       <View style={styles.header}>
-        <Text style={styles.name} numberOfLines={2}>
+        <Text style={[VispText.bodyStrong, styles.name, { color: t.text }]} numberOfLines={2}>
           {name}
         </Text>
         <LevelBadge level={level} size="small" />
       </View>
 
-      <Text style={styles.description} numberOfLines={2}>
+      <Text style={[VispText.body, { color: t.text2 }]} numberOfLines={2}>
         {description}
       </Text>
 
-      <View style={styles.footer}>
-        <View style={styles.footerItem}>
-          <Text style={styles.footerIcon}>$</Text>
-          <Text style={styles.priceText}>
-            {formatPriceRange(basePrice, priceRangeMin, priceRangeMax)}
-          </Text>
-        </View>
-
-        <View style={styles.footerItem}>
-          <Text style={styles.footerIcon}>T</Text>
-          <Text style={styles.durationText}>
-            {formatDuration(estimatedDurationMinutes)}
-          </Text>
-        </View>
+      {/* El precio es el ancla de la tarjeta: va solo, en su línea, y la unidad
+          va apagada al lado para que la cifra siga siendo lo que se escanea. */}
+      <View style={[styles.footer, { borderTopColor: t.border }]}>
+        <Text style={[VispText.bodyStrong, { color: t.text }]}>
+          {precio}
+          {unidad ? <Text style={[VispText.body, { color: t.text3 }]}>{` ${unidad}`}</Text> : null}
+        </Text>
       </View>
-
-      <View style={styles.chevronContainer}>
-        <Text style={styles.chevron}>{'>'}</Text>
-      </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
-// ──────────────────────────────────────────────
-// Styles
-// ──────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
-    ...GlassStyles.card,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    position: 'relative',
+    borderWidth: 1,
+    borderRadius: VispRadius.card,
+    padding: 16,
+    marginBottom: 10,
+    gap: 8,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.sm,
-    paddingRight: Spacing.xl,
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  name: {
-    ...Typography.headline,
-    color: Colors.textPrimary,
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  description: {
-    ...Typography.footnote,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.md,
-  },
+  // flex:1 para que el nombre largo se parta en dos líneas en vez de empujar
+  // la insignia de nivel fuera de la tarjeta.
+  name: { flex: 1 },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.lg,
-  },
-  footerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  footerIcon: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    fontWeight: FontWeight.bold,
-    marginRight: Spacing.xs,
-    width: 16,
-    textAlign: 'center',
-  },
-  priceText: {
-    ...Typography.callout,
-    color: Colors.primary,
-    fontWeight: FontWeight.semiBold,
-  },
-  durationText: {
-    ...Typography.footnote,
-    color: Colors.textSecondary,
-  },
-  chevronContainer: {
-    position: 'absolute',
-    right: Spacing.lg,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  chevron: {
-    fontSize: 18,
-    color: Colors.textTertiary,
-    fontWeight: FontWeight.bold,
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 });
 

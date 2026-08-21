@@ -90,6 +90,10 @@ class TaskBrief(BaseModel):
     base_price_min_cents: Optional[int] = None
     base_price_max_cents: Optional[int] = None
     estimated_duration_min: Optional[int] = None
+    # La unidad viaja también en el LISTADO, no solo en el detalle: sin ella la
+    # lista solo puede enseñar "desde $45", que no dice si son 45 por hora, por
+    # mueble o por el trabajo entero — y es justo lo que el cliente compara.
+    pricing_unit: Optional[str] = None
     icon_url: Optional[str] = None
     display_order: int
     is_active: bool

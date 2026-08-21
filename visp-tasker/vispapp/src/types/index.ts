@@ -116,6 +116,14 @@ export interface ServiceTask {
   level: ServiceLevel;
   estimatedDurationMinutes: number;
   basePrice: number;
+  /**
+   * Rango y unidad del catálogo. Van en el LISTADO y no solo en el detalle
+   * porque "desde $45" no dice si son 45 por hora, por mueble o por el trabajo
+   * entero — y es exactamente lo que el cliente compara al elegir.
+   */
+  priceRangeMin?: number;
+  priceRangeMax?: number;
+  pricingUnit?: string | null;
 }
 
 // ──────────────────────────────────────────────
@@ -629,7 +637,6 @@ export interface BookingRequest {
   isFlexibleSchedule: boolean;
   priority: PriorityLevel;
   selectedNotes: string[];
-  estimatedPrice: number;
   // PP5 — customer-confirmed quantity for per-unit/per-area tasks.
   quantity?: number;
   /**
@@ -828,7 +835,6 @@ export interface BookingTaskSummary {
   estimatedDurationMinutes: number;
   priceRangeMin: number;
   priceRangeMax: number;
-  estimatedPrice: number;
   description: string;
   // Booking details from TaskSelectionScreen
   address?: AddressInfo;

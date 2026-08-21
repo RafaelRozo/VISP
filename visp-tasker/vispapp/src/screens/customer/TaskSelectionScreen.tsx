@@ -45,6 +45,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
 import { geolocationService } from '../../services/geolocationService';
 import LevelBadge from '../../components/LevelBadge';
+import { unitSuffix } from '../../services/offerService';
 import type {
   CustomerFlowParamList,
   PriorityLevel,
@@ -117,15 +118,12 @@ function TaskSelectionScreen(): React.JSX.Element {
     isFlexibleSchedule,
     priority,
     selectedNotes,
-    estimatedPrice,
     isLoadingDetail,
     isLoadingTimeSlots,
-    isLoadingEstimate,
     isSubmittingBooking,
     error,
     fetchTaskDetail,
     fetchTimeSlots,
-    calculateEstimate,
     submitBooking,
     setAddress,
     setScheduledDate,
@@ -192,13 +190,6 @@ function TaskSelectionScreen(): React.JSX.Element {
       fetchTimeSlots(taskDetail.id, scheduledDate);
     }
   }, [scheduledDate, taskDetail, fetchTimeSlots]);
-
-  // Recalculate estimate when relevant fields change
-  useEffect(() => {
-    if (selectedTask && address) {
-      calculateEstimate();
-    }
-  }, [selectedTask, address, priority, calculateEstimate]);
 
   // Handle address text change (using real Geocoding API via Mapbox)
   // Debounced to 300ms to avoid excessive API calls while typing
@@ -344,7 +335,6 @@ function TaskSelectionScreen(): React.JSX.Element {
         estimatedDurationMinutes: taskDetail.estimatedDurationMinutes,
         priceRangeMin: taskDetail.priceRangeMin,
         priceRangeMax: taskDetail.priceRangeMax,
-        estimatedPrice: estimatedPrice,
         description: taskDetail.description,
         // Pass booking details for confirmation screen
         address: resolvedAddress,
@@ -362,7 +352,6 @@ function TaskSelectionScreen(): React.JSX.Element {
     scheduledTimeSlot,
     isFlexibleSchedule,
     taskDetail,
-    estimatedPrice,
     navigation,
     priority,
     selectedNotes,
@@ -402,12 +391,16 @@ function TaskSelectionScreen(): React.JSX.Element {
               <Text style={[styles.taskSummaryDescription, { color: theme.textSecondary }]}>
                 {taskDetail.description}
               </Text>
+              {/* La DURACIÓN salió (2026-08-21): era la media del catálogo, y
+                  quien dice cuánto tarda es el proveedor en su oferta. El precio
+                  lleva su unidad pegada, porque "50 a 90" no dice si es por hora,
+                  por mueble o por el trabajo entero. */}
               <View style={styles.taskSummaryMeta}>
-                <Text style={[styles.taskSummaryDuration, { color: theme.textSecondary }]}>
-                  Est. {taskDetail.estimatedDurationMinutes} min
-                </Text>
                 <Text style={[styles.taskSummaryPrice, { color: levelColor }]}>
                   ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
+                  <Text style={styles.taskSummaryUnit}>
+                    {unitSuffix(taskDetail.pricingUnit)}
+                  </Text>
                 </Text>
               </View>
             </GlassCard>
@@ -712,30 +705,14 @@ function TaskSelectionScreen(): React.JSX.Element {
             </View>
           </View>
 
-          {/* Price estimate */}
-          {estimatedPrice > 0 && (
-            <View style={styles.section}>
-              <GlassCard variant="elevated" style={styles.estimateCardBorder}>
-                <View style={styles.estimateCardContent}>
-                  <Text style={[styles.estimateLabel, { color: theme.textSecondary }]}>Estimated Total</Text>
-                  <Text style={styles.estimatePrice}>
-                    ${estimatedPrice.toFixed(2)}
-                  </Text>
-                  {isLoadingEstimate && (
-                    <AnimatedSpinner
-                      size={24}
-                      color={Colors.primary}
-                      style={styles.estimateLoader}
-                    />
-                  )}
-                  <Text style={[styles.estimateNote, { color: theme.textSecondary }]}>
-                    Final price may vary based on actual scope of work.
-                    You will be notified of any changes before they are applied.
-                  </Text>
-                </View>
-              </GlassCard>
-            </View>
-          )}
+          {/* La tarjeta "Estimated Total" salió de aquí (2026-08-21).
+
+              Mostraba un total calculado por el motor de precios viejo. Bajo el
+              modelo de ofertas ese número no existe al reservar: el precio es
+              `tarifa del proveedor × su estimación`, y ninguna de las dos se sabe
+              hasta que llega una oferta. Se retiró también la llamada que lo
+              calculaba — pegaba a la API cada vez que cambiaba la dirección o la
+              prioridad para producir una cifra que ya no se enseña. */}
 
           {/* Error display */}
           {error && (
@@ -750,18 +727,14 @@ function TaskSelectionScreen(): React.JSX.Element {
 
         {/* Confirm booking CTA */}
         <View style={styles.ctaContainer}>
-          {estimatedPrice > 0 ? (
-            <View style={styles.ctaPriceInfo}>
-              <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Estimated</Text>
-              <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
-                ${estimatedPrice.toFixed(2)}
-              </Text>
-            </View>
-          ) : taskDetail ? (
+          {taskDetail ? (
             <View style={styles.ctaPriceInfo}>
               <Text style={[styles.ctaPriceLabel, { color: theme.textSecondary }]}>Range</Text>
               <Text style={[styles.ctaPriceValue, { color: theme.textPrimary }]}>
                 ${taskDetail.priceRangeMin} - ${taskDetail.priceRangeMax}
+                <Text style={[styles.ctaPriceUnit, { color: theme.textSecondary }]}>
+                  {unitSuffix(taskDetail.pricingUnit)}
+                </Text>
               </Text>
             </View>
           ) : null}
@@ -832,9 +805,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  taskSummaryDuration: {
-    ...Typography.caption,
-    color: 'rgba(255, 255, 255, 0.45)',
+  taskSummaryUnit: {
+    ...Typography.footnote,
+    fontWeight: FontWeight.regular as '400',
+    opacity: 0.75,
+  },
+  ctaPriceUnit: {
+    ...Typography.footnote,
+    fontWeight: FontWeight.regular as '400',
   },
   taskSummaryPrice: {
     fontSize: FontSize.callout,

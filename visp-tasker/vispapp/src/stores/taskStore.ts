@@ -44,7 +44,6 @@ interface TaskState {
   isFlexibleSchedule: boolean;
   priority: PriorityLevel;
   selectedNotes: string[];
-  estimatedPrice: number;
   /**
    * Pantalla "More info" (migración 038). Soporte de decisión para el proveedor:
    * los ve antes de aceptar. No alteran servicio ni precio.
@@ -71,7 +70,6 @@ interface TaskState {
   isLoadingTasks: boolean;
   isLoadingDetail: boolean;
   isLoadingTimeSlots: boolean;
-  isLoadingEstimate: boolean;
   isSubmittingBooking: boolean;
 
   // Error
@@ -82,7 +80,6 @@ interface TaskState {
   fetchCategoryTasks: (categoryId: string, level?: ServiceLevel) => Promise<void>;
   fetchTaskDetail: (taskId: string) => Promise<void>;
   fetchTimeSlots: (taskId: string, date: string) => Promise<void>;
-  calculateEstimate: () => Promise<void>;
   submitBooking: () => Promise<{ bookingId: string }>;
 
   setSelectedCategory: (category: ServiceCategory) => void;
@@ -120,7 +117,6 @@ const initialBookingState = {
   isFlexibleSchedule: false,
   priority: 'standard' as PriorityLevel,
   selectedNotes: [],
-  estimatedPrice: 0,
   details: '',
   evidence: [] as string[],
   extraNote: '',
@@ -143,7 +139,6 @@ const initialState = {
   isLoadingTasks: false,
   isLoadingDetail: false,
   isLoadingTimeSlots: false,
-  isLoadingEstimate: false,
   isSubmittingBooking: false,
   error: null,
 };
@@ -251,27 +246,6 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
     }
   },
 
-  calculateEstimate: async () => {
-    const state = getState();
-    if (!state.selectedTask || !state.address) {
-      return;
-    }
-
-    set({ isLoadingEstimate: true, error: null });
-    try {
-      const result = await taskService.calculatePriceEstimate(
-        state.selectedTask.id,
-        state.priority,
-        state.address,
-      );
-      set({ estimatedPrice: result.estimatedPrice, isLoadingEstimate: false });
-    } catch (err: unknown) {
-      set({
-        isLoadingEstimate: false,
-        error: extractErrorMessage(err),
-      });
-    }
-  },
 
   submitBooking: async () => {
     const state = getState();
@@ -287,7 +261,6 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
       isFlexibleSchedule: state.isFlexibleSchedule,
       priority: state.priority,
       selectedNotes: state.selectedNotes,
-      estimatedPrice: state.estimatedPrice,
       details: state.details.trim() || undefined,
       evidence: state.evidence.length > 0 ? state.evidence : undefined,
       extraNote: state.extraNote.trim() || undefined,
@@ -317,7 +290,7 @@ export const useTaskStore = create<TaskState>((set, getState) => ({
       // las imágenes de OTRA propiedad.
       //
       // Se limpian solo estos tres y no todo el formulario a propósito: la
-      // pantalla de confirmación sigue usando selectedTask y estimatedPrice para
+      // pantalla de confirmación sigue usando selectedTask para
       // el paso de pago después de este punto.
       set({
         isSubmittingBooking: false,

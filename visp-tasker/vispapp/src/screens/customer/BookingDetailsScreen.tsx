@@ -40,10 +40,10 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { CustomerFlowParamList } from '../../types';
+import type { CustomerFlowParamList, ServiceQuestion } from '../../types';
 
 import { Screen, ScreenTitle, Eyebrow } from '../../components/visp';
-import { useVispTheme, VispText, VispSpace, VispRadius } from '../../theme/visp';
+import { useVispTheme, VispText, VispSpace, VispRadius, FontSansSemiBold } from '../../theme/visp';
 import { useTranslation } from '../../i18n';
 import { useTaskStore } from '../../stores/taskStore';
 import { taskService } from '../../services/taskService';
@@ -136,6 +136,10 @@ export default function BookingDetailsScreen(): React.JSX.Element {
         .sort((a, b) => a.displayOrder - b.displayOrder),
     [taskDetail?.questions, materialsRequested],
   );
+
+  // Cuántas van contestadas. Con ocho preguntas seguidas —Deck Staining tiene
+  // ocho— saber que quedan tres es la diferencia entre seguir y abandonar.
+  const answeredCount = questions.filter((q) => (answers[q.id] ?? '').trim() !== '').length;
 
   const detailsMissing = requiresDetails && details.trim() === '';
   const evidenceMissing = requiresEvidence && evidence.length === 0;
@@ -270,6 +274,12 @@ export default function BookingDetailsScreen(): React.JSX.Element {
           {(tr('bookingDetails.detailsLabel') || 'Service details').toUpperCase()}
           {requiresDetails ? ' *' : ''}
         </Eyebrow>
+        {/* El prompt del servicio va FUERA del campo, no como placeholder.
+            Dentro desaparecía al escribir la primera letra — y es justo la guía
+            que mantiene al cliente describiendo escala y acceso en vez de pedir
+            tareas nuevas (CLAUDE.md, regla 1). Quien más lo necesita es quien ya
+            está escribiendo, que es exactamente cuando se borraba. */}
+        <Text style={[VispText.body, { color: t.text2, marginTop: 4 }]}>{prompt}</Text>
         <TextInput
           style={[
             styles.input,
@@ -282,7 +292,8 @@ export default function BookingDetailsScreen(): React.JSX.Element {
           ]}
           value={details}
           onChangeText={setDetails}
-          placeholder={prompt}
+          placeholder={tr('bookingDetails.detailsPlaceholder') ||
+            'e.g. 3 bedrooms on the second floor, side gate, one small dog.'}
           placeholderTextColor={t.text3}
           multiline
           maxLength={4000}
@@ -329,7 +340,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
               keyboardType="decimal-pad"
               maxLength={8}
             />
-            <Text style={[VispText.eyebrow, { color: rateOutOfRange ? t.danger : t.text3, marginTop: 8 }]}>
+            <Text style={[VispText.eyebrow, { color: rateOutOfRange ? t.danger : t.text2, marginTop: 8 }]}>
               {rateOutOfRange
                 ? (tr('bookingDetails.contractRateRange') ||
                     'Offer between ${min} and ${max} per hour.')
@@ -383,7 +394,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                   {tr('bookingDetails.materialsAsk') ||
                     'I need the provider to buy the materials'}
                 </Text>
-                <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 4 }]}>
+                <Text style={[VispText.body, { color: t.text2, marginTop: 4 }]}>
                   {tr('bookingDetails.materialsHelp') ||
                     'They buy them, keep the receipt, and you reimburse what they paid.'}
                 </Text>
@@ -394,7 +405,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
               <>
                 {/* El mensaje que escribió el admin para ESTE servicio. */}
                 {taskDetail?.materialsNoteEn ? (
-                  <Text style={[VispText.body, { color: t.text3, marginTop: 10 }]}>
+                  <Text style={[VispText.body, { color: t.text2, marginTop: 10 }]}>
                     {taskDetail.materialsNoteEn}
                   </Text>
                 ) : null}
@@ -424,7 +435,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                     el material en su oferta, con su justificación, y el cliente
                     decidirá entonces. Sin esta línea, un cliente que ponga 100 y
                     reciba una oferta de 150 pensará que le cambiaron el trato. */}
-                <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 8 }]}>
+                <Text style={[VispText.body, { color: t.text2, marginTop: 8 }]}>
                   {budgetOutOfRange
                     ? (tr('bookingDetails.materialsBudgetRange') ||
                         'Enter an amount between ${min} and ${max}.')
@@ -439,114 +450,44 @@ export default function BookingDetailsScreen(): React.JSX.Element {
         ) : null}
 
         {/* ── Preguntas del servicio (migraciones 039/040) ───────────
-            Texto libre -> textarea. Opción cerrada -> botones de una sola
-            selección: en un móvil, tocar una opción es más rápido y menos
-            propenso a error que escribir, y la respuesta queda comparable. */}
+            Rediseñadas el 2026-08-21. Antes cada pregunta se pintaba con
+            `Eyebrow`: mono, MAYÚSCULAS, 10px y tracking ancho. Ese componente es
+            para etiquetas de dos palabras ("SERVICE DETAILS"), y las preguntas
+            reales son frases enteras — "Is there any heavy equipment that needs
+            to be moved in order to clean?". En micro-mayúsculas espaciadas eso no
+            se lee, se descifra.
+
+            Ahora cada pregunta es una FICHA: numerada, con la frase en sans de
+            16px, y la respuesta dentro. Con servicios que traen 8 preguntas
+            (Deck Staining), la numeración y el contador de arriba son lo que
+            evita la sensación de formulario sin fondo. */}
         {questions.length > 0 ? (
           <>
             <View style={styles.sectionGap} />
-            {questions.map((q) => {
-              const valor = answers[q.id] ?? '';
-              const falta = q.isRequired && valor.trim() === '';
-              return (
-                <View key={q.id} style={styles.questionBlock}>
-                  <Eyebrow>
-                    {q.questionEn.toUpperCase()}
-                    {q.isRequired ? ' *' : ''}
-                  </Eyebrow>
+            <View style={styles.sectionHead}>
+              <Eyebrow>
+                {(tr('bookingDetails.questionsLabel') || 'About the job').toUpperCase()}
+              </Eyebrow>
+              <Eyebrow color={answeredCount === questions.length ? t.ok : t.text3}>
+                {`${answeredCount}/${questions.length}`}
+              </Eyebrow>
+            </View>
+            <Text style={[VispText.body, { color: t.text2, marginBottom: 14 }]}>
+              {tr('bookingDetails.questionsHelp') ||
+                'The provider needs these to size the job. Short answers are fine.'}
+            </Text>
 
-                  {q.answerType === 'SINGLE_CHOICE' ? (
-                    <View style={styles.choiceRow}>
-                      {(q.options ?? []).map((opt) => {
-                        const activo = valor === opt.en;
-                        return (
-                          <Pressable
-                            key={opt.en}
-                            onPress={() => setAnswer(q.id, activo ? '' : opt.en)}
-                            style={[
-                              styles.choice,
-                              {
-                                borderColor: activo
-                                  ? t.violet
-                                  : falta
-                                    ? t.danger
-                                    : t.border,
-                                backgroundColor: activo ? t.violetDim : t.surface,
-                              },
-                            ]}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected: activo }}
-                          >
-                            <Text
-                              style={[
-                                VispText.body,
-                                { color: activo ? t.text : t.text2 },
-                              ]}
-                            >
-                              {opt.en}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  ) : q.answerType === 'IMAGE' ? (
-                    /* Pregunta de FOTO. El caso que la pidió es el color de
-                       pintura: descrito con palabras no sirve, la foto de la pared
-                       sí. Se sube igual que la evidencia y se guarda la URL como
-                       respuesta. */
-                    <Pressable
-                      onPress={() => handleAnswerPhoto(q.id)}
-                      disabled={uploading}
-                      style={[
-                        styles.photoAnswer,
-                        {
-                          borderColor: falta ? t.danger : t.border,
-                          backgroundColor: t.surface,
-                        },
-                      ]}
-                    >
-                      {valor ? (
-                        <Image
-                          source={{ uri: resolveUploadUrl(valor) ?? valor }}
-                          style={styles.photoAnswerImg}
-                        />
-                      ) : (
-                        <Text style={[VispText.body, { color: t.text3 }]}>
-                          {uploading
-                            ? tr('common.loading') || 'Uploading…'
-                            : tr('bookingDetails.answerPhoto') || '+ Add a photo'}
-                        </Text>
-                      )}
-                    </Pressable>
-                  ) : (
-                    <TextInput
-                      style={[
-                        styles.input,
-                        styles.inputNote,
-                        {
-                          color: t.text,
-                          backgroundColor: t.surface,
-                          borderColor: falta ? t.danger : t.border,
-                        },
-                      ]}
-                      value={valor}
-                      onChangeText={(txt) => setAnswer(q.id, txt)}
-                      placeholder={tr('bookingDetails.answerPlaceholder') || 'Your answer'}
-                      placeholderTextColor={t.text3}
-                      multiline
-                      maxLength={2000}
-                      textAlignVertical="top"
-                    />
-                  )}
-
-                  {falta ? (
-                    <Text style={[VispText.eyebrow, { color: t.danger, marginTop: 6 }]}>
-                      {tr('bookingDetails.answerRequired') || 'This answer is required.'}
-                    </Text>
-                  ) : null}
-                </View>
-              );
-            })}
+            {questions.map((q, i) => (
+              <QuestionCard
+                key={q.id}
+                q={q}
+                index={i}
+                value={answers[q.id] ?? ''}
+                uploading={uploading}
+                onAnswer={(txt) => setAnswer(q.id, txt)}
+                onPickPhoto={() => handleAnswerPhoto(q.id)}
+              />
+            ))}
           </>
         ) : null}
 
@@ -557,7 +498,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
           {requiresEvidence ? ' *' : ''}
           {`  ·  ${evidence.length}/${MAX_PHOTOS}`}
         </Eyebrow>
-        <Text style={[VispText.body, { color: t.text3, marginBottom: 10 }]}>
+        <Text style={[VispText.body, { color: t.text2, marginBottom: 10 }]}>
           {tr('bookingDetails.evidenceHelp') ||
             'A photo of the space or the problem saves questions later.'}
         </Text>
@@ -615,7 +556,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
         {/* ── 3. Nota extra ─────────────────────────────────────────── */}
         <View style={styles.sectionGap} />
         <Eyebrow>{(tr('bookingDetails.noteLabel') || 'Anything else').toUpperCase()}</Eyebrow>
-        <Text style={[VispText.body, { color: t.text3, marginBottom: 10 }]}>
+        <Text style={[VispText.body, { color: t.text2, marginBottom: 10 }]}>
           {tr('bookingDetails.noteHelp') ||
             'Optional. Anything that does not fit above — a nervous dog, a tricky gate.'}
         </Text>
@@ -661,6 +602,170 @@ export default function BookingDetailsScreen(): React.JSX.Element {
   );
 }
 
+/**
+ * Mayúscula inicial, solo para pintar.
+ *
+ * El catálogo lo escriben personas distintas y se nota: conviven "yes" y "Yes",
+ * "no" y "No", "what is the bed sizing?" con "Approximate size of garage?". No
+ * tocamos la base de datos por esto —el admin debe poder escribir lo que quiera—
+ * pero tampoco hace falta enseñar la inconsistencia.
+ */
+function mayus(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+interface QuestionCardProps {
+  q: ServiceQuestion;
+  index: number;
+  value: string;
+  uploading: boolean;
+  onAnswer: (txt: string) => void;
+  onPickPhoto: () => void;
+}
+
+/**
+ * Una pregunta del servicio, con su respuesta dentro.
+ *
+ * La ficha existe para AGRUPAR: pregunta y respuesta comparten fondo y borde, y
+ * así ocho preguntas seguidas se leen como ocho bloques y no como una columna de
+ * texto suelto sobre negro.
+ *
+ * El borde es además el estado: gris sin contestar, lavanda al contestar, rojo si
+ * falta y es obligatoria. Es la única señal de progreso que se ve sin leer.
+ */
+function QuestionCard({
+  q,
+  index,
+  value,
+  uploading,
+  onAnswer,
+  onPickPhoto,
+}: QuestionCardProps): React.JSX.Element {
+  const t = useVispTheme();
+  const { t: tr } = useTranslation();
+
+  const contestada = value.trim() !== '';
+  const falta = q.isRequired && !contestada;
+  const opciones = q.options ?? [];
+
+  // Opciones largas, o muchas, van en lista vertical. En fila de píldoras, una
+  // opción como "Some boards appear rotten or structurally damaged" se parte en
+  // dos líneas y deja de parecer un botón; con siete de esas, la fila es un muro.
+  const comoLista =
+    opciones.some((o) => (o.en ?? '').length > 14) || opciones.length > 4;
+
+  const borde = falta ? t.danger : contestada ? t.violetLine : t.border;
+
+  return (
+    <View style={[styles.qCard, { backgroundColor: t.surface, borderColor: borde }]}>
+      <View style={styles.qHead}>
+        <Text style={[VispText.caption, { color: contestada ? t.violet : t.text3 }]}>
+          {String(index + 1).padStart(2, '0')}
+        </Text>
+        {/* Solo se marca lo OPCIONAL. Casi todas las preguntas del catálogo son
+            obligatorias, y un asterisco en cada una es ruido que no informa. */}
+        {!q.isRequired ? (
+          <Text style={[VispText.chip, { color: t.text3 }]}>
+            {tr('bookingDetails.optional') || 'Optional'}
+          </Text>
+        ) : null}
+      </View>
+
+      <Text style={[styles.qText, { color: t.text }]}>{mayus(q.questionEn)}</Text>
+
+      {q.answerType === 'SINGLE_CHOICE' ? (
+        <View
+          style={comoLista ? styles.optCol : styles.optRow}
+          accessibilityRole="radiogroup"
+        >
+          {opciones.map((opt) => {
+            const activo = value === opt.en;
+            return (
+              <Pressable
+                key={opt.en}
+                onPress={() => onAnswer(activo ? '' : opt.en)}
+                style={[
+                  comoLista ? styles.optListItem : styles.optChip,
+                  {
+                    borderColor: activo ? t.violet : t.border,
+                    backgroundColor: activo ? t.violetDim : t.bg,
+                  },
+                ]}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: activo }}
+                accessibilityLabel={mayus(opt.en)}
+              >
+                {comoLista ? (
+                  <View
+                    style={[
+                      styles.radio,
+                      { borderColor: activo ? t.violet : t.borderStrong },
+                    ]}
+                  >
+                    {activo ? (
+                      <View style={[styles.radioDot, { backgroundColor: t.violet }]} />
+                    ) : null}
+                  </View>
+                ) : null}
+                <Text
+                  style={[
+                    VispText.body,
+                    { color: activo ? t.text : t.text2, flexShrink: 1 },
+                  ]}
+                >
+                  {mayus(opt.en)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : q.answerType === 'IMAGE' ? (
+        /* Pregunta de FOTO. El caso que la pidió es el color de pintura: descrito
+           con palabras no sirve, la foto de la pared sí. Se sube igual que la
+           evidencia y se guarda la URL como respuesta. */
+        <Pressable
+          onPress={onPickPhoto}
+          disabled={uploading}
+          style={[styles.photoAnswer, { borderColor: t.border, backgroundColor: t.bg }]}
+          accessibilityRole="button"
+          accessibilityLabel={tr('bookingDetails.answerPhoto') || 'Add a photo'}
+        >
+          {value ? (
+            <Image
+              source={{ uri: resolveUploadUrl(value) ?? value }}
+              style={styles.photoAnswerImg}
+            />
+          ) : (
+            <Text style={[VispText.body, { color: t.text2 }]}>
+              {uploading
+                ? tr('common.loading') || 'Uploading…'
+                : tr('bookingDetails.answerPhoto') || '+ Add a photo'}
+            </Text>
+          )}
+        </Pressable>
+      ) : (
+        /* Las respuestas de texto del catálogo son casi siempre cortas ("3",
+           "2-car", "front and back"). Una caja de 80px para eso pide un ensayo
+           que nadie escribe y deja la ficha medio vacía. */
+        <TextInput
+          style={[
+            styles.input,
+            styles.inputAnswer,
+            { color: t.text, backgroundColor: t.bg, borderColor: t.border },
+          ]}
+          value={value}
+          onChangeText={onAnswer}
+          placeholder={tr('bookingDetails.answerPlaceholder') || 'Your answer'}
+          placeholderTextColor={t.text3}
+          multiline
+          maxLength={2000}
+          textAlignVertical="top"
+        />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
@@ -669,7 +774,63 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   sectionGap: { height: 26 },
-  questionBlock: { marginBottom: 18 },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  // ── Ficha de pregunta ──────────────────────────────────────
+  qCard: {
+    borderWidth: 1,
+    borderRadius: VispRadius.cardLg,
+    padding: 16,
+    marginBottom: 10,
+  },
+  qHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  // 16px con interlineado 22: la pregunta es el contenido de la ficha, no una
+  // etiqueta. A 10px en mayúsculas espaciadas —como estaba— una frase larga
+  // obliga a leer letra a letra.
+  qText: {
+    fontFamily: FontSansSemiBold,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  // 44px de alto mínimo: por debajo de eso el dedo falla (regla de toque iOS).
+  optChip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: VispRadius.pill,
+    borderWidth: 1,
+  },
+  optCol: { gap: 8, marginTop: 12 },
+  optListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: VispRadius.card,
+    borderWidth: 1,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
   // Materiales
   materialsToggle: {
     flexDirection: 'row',
@@ -702,13 +863,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   photoAnswerImg: { width: '100%', height: '100%' },
-  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  choice: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: VispRadius.pill,
-    borderWidth: 1,
-  },
   input: {
     borderWidth: 1,
     borderRadius: VispRadius.card,
@@ -720,6 +874,7 @@ const styles = StyleSheet.create({
   },
   inputMultiline: { minHeight: 120 },
   inputNote: { minHeight: 80 },
+  inputAnswer: { minHeight: 52 },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

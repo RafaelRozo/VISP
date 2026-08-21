@@ -37,6 +37,9 @@ import { useVispTheme, VispText, VispRadius } from '../../theme/visp';
 import { useTranslation } from '../../i18n';
 import { offerService, magnitudeLabel, type JobOffer, type JobOffersResult } from '../../services/offerService';
 import { resolveUploadUrl } from '../../services/userService';
+import taskService from '../../services/taskService';
+import { paymentService } from '../../services/paymentService';
+import { useAuthStore } from '../../stores/authStore';
 import type { CustomerFlowParamList } from '../../types';
 
 type Nav = NativeStackNavigationProp<CustomerFlowParamList, 'Offers'>;
@@ -58,6 +61,7 @@ export default function OffersScreen(): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const { jobId } = route.params;
+  const stripeCustomerId = useAuthStore((s) => s.user?.stripeCustomerId);
 
   const [data, setData] = useState<JobOffersResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,6 +105,40 @@ export default function OffersScreen(): React.JSX.Element {
               setBusyId(offer.offerId);
               try {
                 await offerService.acceptOffer(jobId, offer.offerId);
+
+                // Retener el importe en la tarjeta, AQUÍ.
+                //
+                // Este es el primer instante en que existe un precio: hasta que
+                // el cliente elige una oferta no hay ni tarifa ni tiempo. Antes
+                // la retención se hacía al aprobar al proveedor, y ese paso
+                // desapareció con el modelo de ofertas — sin esto el trabajo
+                // llega al cierre sin autorización y el cobro final falla.
+                //
+                // No bloquea la navegación: la oferta ya está aceptada y el
+                // trabajo agendado. Si no hay tarjeta o Stripe falla, se avisa y
+                // se cobra al cerrar; atrapar al cliente en esta pantalla por un
+                // problema de pago sería peor.
+                try {
+                  const { methods } = stripeCustomerId
+                    ? await paymentService.listPaymentMethods(stripeCustomerId)
+                    : { methods: [] };
+                  if (methods.length > 0) {
+                    await taskService.authorizePayment(jobId, methods[0].id);
+                  } else {
+                    Alert.alert(
+                      tr('offers.noCardTitle') || 'Add a payment method',
+                      tr('offers.noCardBody') ||
+                        'The job is scheduled. Add a card in your profile so we can hold the amount before the work starts.',
+                    );
+                  }
+                } catch {
+                  Alert.alert(
+                    tr('offers.holdFailedTitle') || 'Could not hold the amount',
+                    tr('offers.holdFailedBody') ||
+                      'The job is scheduled. We will try again before the work starts.',
+                  );
+                }
+
                 navigation.navigate('JobTracking', { jobId });
               } catch (err: unknown) {
                 const detail = (err as { response?: { data?: { detail?: { message?: string } } } })
@@ -120,7 +158,7 @@ export default function OffersScreen(): React.JSX.Element {
         ],
       );
     },
-    [jobId, navigation, load, tr],
+    [jobId, navigation, load, tr, stripeCustomerId],
   );
 
   const handleReject = useCallback(

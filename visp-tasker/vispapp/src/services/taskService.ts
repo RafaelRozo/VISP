@@ -110,6 +110,7 @@ interface BackendTask {
   base_price_min_cents?: number | null;
   base_price_max_cents?: number | null;
   estimated_duration_min?: number | null;
+  pricing_unit?: string | null;
   icon_url?: string | null;
   display_order: number;
   is_active: boolean;
@@ -144,6 +145,9 @@ function mapTask(task: BackendTask): ServiceTask {
     level: safeLevel,
     estimatedDurationMinutes: task.estimated_duration_min ?? 60,
     basePrice: (task.base_price_min_cents ?? 0) / 100,
+    priceRangeMin: (task.base_price_min_cents ?? 0) / 100,
+    priceRangeMax: (task.base_price_max_cents ?? 0) / 100,
+    pricingUnit: task.pricing_unit ?? null,
   };
 }
 
@@ -222,11 +226,15 @@ function mapTaskDetail(task: BackendTaskDetail): ServiceTaskDetail {
   return {
     ...mapTask(normalizedTask),
     fullDescription: task.description ?? 'No detailed description available.',
-    requirements: [
-      'Provider must arrive on time',
-      'Standard tools required',
-      'Clean up after work completion',
-    ],
+    // Vacío A PROPÓSITO (2026-08-21). Aquí había tres frases fijas —"llegar a
+    // tiempo", "herramientas estándar", "limpiar al terminar"— escritas en el
+    // código y devueltas IGUALES para los 300 servicios del catálogo. Se pintaban
+    // bajo el título "Requirements" como si describieran ESE servicio. No salen
+    // del admin ni de ningún sitio: eran inventadas.
+    //
+    // La pantalla ya oculta la sección cuando la lista viene vacía. Cuando el
+    // catálogo tenga requisitos de verdad por servicio, se mapean aquí.
+    requirements: [],
     examplePhotos: [],
     priceRangeMin: (task.base_price_min_cents ?? 0) / 100,
     priceRangeMax: (task.base_price_max_cents ?? 0) / 100,
@@ -291,46 +299,6 @@ async function fetchTimeSlots(
     endTime: slot.endTime ?? slot.end_time,
     available: slot.available ?? true,
   }));
-}
-
-/**
- * Calculate price estimate using the real backend pricing engine.
- * GET /api/v1/pricing/estimate
- */
-async function calculatePriceEstimate(
-  taskId: string,
-  priority: string,
-  address: AddressInfo,
-): Promise<{ estimatedPrice: number; priceMin: number; priceMax: number; breakdown: string }> {
-  try {
-    const params: Record<string, unknown> = {
-      task_id: taskId,
-      latitude: address.latitude || 45.4215,
-      longitude: address.longitude || -75.6972,
-      is_emergency: priority === 'urgent',
-    };
-
-    const response = await apiClient.get('/pricing/estimate', { params });
-    const data: any = response.data;
-
-    const minCents = data.final_price_min_cents ?? data.base_price_min_cents ?? 0;
-    const maxCents = data.final_price_max_cents ?? data.base_price_max_cents ?? 0;
-    const priceMin = minCents / 100;
-    const priceMax = maxCents / 100;
-    // Use the average as the estimated price
-    const estimatedPrice = (priceMin + priceMax) / 2;
-
-    const multiplier = parseFloat(data.dynamic_multiplier ?? '1.0');
-    const breakdown = multiplier > 1
-      ? `Base: $${priceMin}-$${priceMax} × ${multiplier}x dynamic`
-      : `Estimated: $${priceMin} - $${priceMax}`;
-
-    return { estimatedPrice, priceMin, priceMax, breakdown };
-  } catch (err) {
-    console.warn('[taskService] Price estimate API failed, using base prices', err);
-    // Fallback: return 0 so the UI knows to show the range instead
-    return { estimatedPrice: 0, priceMin: 0, priceMax: 0, breakdown: 'Estimate unavailable' };
-  }
 }
 
 /**
@@ -677,7 +645,6 @@ export const taskService = {
   fetchCategoryTasks,
   fetchTaskDetail,
   fetchTimeSlots,
-  calculatePriceEstimate,
   createBooking,
   uploadBookingEvidence,
   searchTasks,

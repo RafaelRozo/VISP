@@ -505,7 +505,10 @@
     "offersReceived": "Offers received",
     "offerSingular": "offer",
     "offerPlural": "offers",
-    "viewOffers": "Compare and choose"
+    "viewOffers": "Compare and choose",
+    "noExpired": "Nothing expired",
+    "expiredEmptyBody": "Jobs that nobody offered on within 48 hours end up here.",
+    "expiredWhy": "No provider offered on this job within 48 hours."
   },
   "credentials": {
     "noCredentials": "No Credentials",

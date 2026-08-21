@@ -459,12 +459,18 @@ export default function SettingsScreen(): React.JSX.Element {
             value={notifications.jobUpdates}
             onToggle={(v) => handleNotificationToggle('jobUpdates', v)}
           />
+          {/* Avisos de emergencia: ocultos mientras Emergency esté apagado en
+              esta versión (features.EMERGENCY_ENABLED). Ofrecer un interruptor
+              para notificaciones que nunca llegan solo genera dudas. El estado
+              se sigue guardando y enviando igual, así que al reactivar la
+              función basta con descomentar estas líneas.
           <View style={styles.glassDivider} />
           <SettingsToggle
             label={t('settings.emergencyAlerts')}
             value={notifications.emergencyAlerts}
             onToggle={(v) => handleNotificationToggle('emergencyAlerts', v)}
           />
+          */}
         </GlassCard>
 
         {/* App Settings Section */}

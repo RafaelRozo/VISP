@@ -64,6 +64,7 @@ import {
   FontSansBold,
   FontSans,
 } from '../../theme/visp';
+import { EMERGENCY_ENABLED } from '../../config/features';
 import RoleSwitcher from '../../components/RoleSwitcher';
 import { useCompanyStore } from '../../stores/companyStore';
 import { get } from '../../services/apiClient';
@@ -499,33 +500,39 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
           </View>
         )}
 
-        {/* — Compact Emergency banner — */}
-        <View style={styles.sectionGutter}>
-          <MotionPressable onPress={handleEmergencyPress} pressScale={0.98}>
-            <View
-              style={[
-                styles.emergencyBanner,
-                {
-                  backgroundColor: t.isDark ? 'rgba(252,129,129,0.10)' : 'rgba(220,38,38,0.06)',
-                  borderColor: t.isDark ? 'rgba(252,129,129,0.30)' : 'rgba(220,38,38,0.20)',
-                },
-              ]}
-            >
-              <View style={[styles.emergencyIcon, { backgroundColor: t.danger }]}>
-                <Icon name="bolt" size={16} color={t.bg} />
+        {/* — Emergency —
+            Apagado en esta versión (EMERGENCY_ENABLED). No es solo que no toque
+            todavía: detrás no hay catálogo — cero servicios activos de emergencia
+            y cero de nivel 4—, así que la puerta llevaba a una habitación vacía.
+            El bloque se queda para encenderlo con un booleano. */}
+        {EMERGENCY_ENABLED ? (
+          <View style={styles.sectionGutter}>
+            <MotionPressable onPress={handleEmergencyPress} pressScale={0.98}>
+              <View
+                style={[
+                  styles.emergencyBanner,
+                  {
+                    backgroundColor: t.isDark ? 'rgba(252,129,129,0.10)' : 'rgba(220,38,38,0.06)',
+                    borderColor: t.isDark ? 'rgba(252,129,129,0.30)' : 'rgba(220,38,38,0.20)',
+                  },
+                ]}
+              >
+                <View style={[styles.emergencyIcon, { backgroundColor: t.danger }]}>
+                  <Icon name="bolt" size={16} color={t.bg} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                    {tr('homeScreen.emergency')}
+                  </Text>
+                  <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}>
+                    {String(tr('homeScreen.emergencySub')).toUpperCase()}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={16} color={t.text3} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[VispText.bodyStrong, { color: t.text }]}>
-                  {tr('homeScreen.emergency')}
-                </Text>
-                <Text style={[VispText.eyebrowTight, { color: t.text3, marginTop: 2 }]}>
-                  {String(tr('homeScreen.emergencySub')).toUpperCase()}
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={16} color={t.text3} />
-            </View>
-          </MotionPressable>
-        </View>
+            </MotionPressable>
+          </View>
+        ) : null}
 
         {/* — Company (VISP for Business) — only for company members — */}
         {companyMembership ? (
