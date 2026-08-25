@@ -10,7 +10,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   Platform,
   RefreshControl,
@@ -20,7 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage } from '../../services/imagePickerService';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme, ThemeColors } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -638,39 +637,14 @@ export default function VerificationScreen(): React.JSX.Element {
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   const performUpload = useCallback(
-    async (step: VerificationStep, source: 'camera' | 'library') => {
+    async (step: VerificationStep) => {
       if (!step.credentialType) return;
 
-      const permRequest =
-        source === 'camera'
-          ? ImagePicker.requestCameraPermissionsAsync
-          : ImagePicker.requestMediaLibraryPermissionsAsync;
-      const perm = await permRequest();
-      if (!perm.granted) {
-        Alert.alert(
-          t('common.error'),
-          source === 'camera'
-            ? t('profileScreen.permissionDenied')
-            : t('profileScreen.permissionDenied'),
-        );
-        return;
-      }
+      // El selector de fuente, el permiso y el picker viven en el helper: esta
+      // pantalla tenía su propia copia y era la única de seis que ofrecía cámara.
+      const asset = await pickImage({ title: step.title, quality: 0.8 });
+      if (!asset) return;
 
-      const launcher =
-        source === 'camera'
-          ? ImagePicker.launchCameraAsync
-          : ImagePicker.launchImageLibraryAsync;
-      const result = await launcher({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: false,
-        quality: 0.8,
-      });
-
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        return;
-      }
-
-      const asset = result.assets[0];
       setIsUploading(true);
       try {
         const archivo = {
@@ -709,32 +683,9 @@ export default function VerificationScreen(): React.JSX.Element {
         Alert.alert(step.title, step.description);
         return;
       }
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            title: step.title,
-            options: [
-              t('common.cancel'),
-              t('profileScreen.takePhoto'),
-              t('profileScreen.chooseFromLibrary'),
-            ],
-            cancelButtonIndex: 0,
-            userInterfaceStyle: 'dark',
-          },
-          (buttonIndex) => {
-            if (buttonIndex === 1) performUpload(step, 'camera');
-            else if (buttonIndex === 2) performUpload(step, 'library');
-          },
-        );
-      } else {
-        Alert.alert(step.title, '', [
-          { text: t('profileScreen.takePhoto'), onPress: () => performUpload(step, 'camera') },
-          { text: t('profileScreen.chooseFromLibrary'), onPress: () => performUpload(step, 'library') },
-          { text: t('common.cancel'), style: 'cancel' },
-        ]);
-      }
+      performUpload(step);
     },
-    [t, performUpload],
+    [navigation, performUpload],
   );
 
   if (isLoading) {

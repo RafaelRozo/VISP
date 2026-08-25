@@ -555,6 +555,7 @@
     "all": "All"
   },
   "verification": {
+    "uploadSuccess": "Your document has been submitted for review.",
     "verificationStatus": "Verification Status",
     "currentLevel": "Current Level",
     "verifiedCredentials": "Verified Credentials",
@@ -703,6 +704,22 @@
     "errorTitle": "Something went wrong",
     "emptyTitle": "No assignments yet",
     "emptyBody": "Jobs your supervisor assigns to you will appear here."
+  },
+  "imagePicker": {
+    "title": "Add a photo",
+    "takePhoto": "Take Photo",
+    "chooseFromLibrary": "Choose from Library",
+    "openSettings": "Open Settings",
+    "cameraDeniedTitle": "Camera access needed",
+    "cameraDeniedBody": "Allow camera access to take the photo now.",
+    "libraryDeniedTitle": "Photo access needed",
+    "libraryDeniedBody": "Allow photo access to choose a picture from your library."
+  },
+  "booking": {
+    "ownService": {
+      "title": "You offer this service too",
+      "body": "You won't see this job in your provider job list: you can't make an offer on your own job. Other providers will."
+    }
   },
   "bookingDetails": {
     "title": "More info",

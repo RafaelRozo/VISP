@@ -21,7 +21,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage } from '../../services/imagePickerService';
 import { AnimatedSpinner } from '../../components/animations';
 import { Colors, getLevelColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
@@ -147,19 +147,10 @@ export default function ServiceCatalogScreen(): React.JSX.Element {
   const uploadSectionDoc = useCallback(async () => {
     if (!gateItem) return;
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: false,
-        quality: 0.8,
-      });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      // Cámara o galería: el documento suele estar en papel, delante.
+      const asset = await pickImage({ quality: 0.8 });
+      if (!asset) return;
 
-      const asset = result.assets[0];
       setUploading(true);
       await providerService.uploadCredential(
         { uri: asset.uri, type: asset.mimeType, name: asset.fileName },

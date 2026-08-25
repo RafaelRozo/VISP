@@ -555,6 +555,7 @@
     "all": "Tous"
   },
   "verification": {
+    "uploadSuccess": "Votre document a été soumis pour examen.",
     "verificationStatus": "Statut de vérification",
     "currentLevel": "Niveau actuel",
     "verifiedCredentials": "Accréditations vérifiées",
@@ -703,6 +704,22 @@
     "errorTitle": "Une erreur est survenue",
     "emptyTitle": "Aucune assignation pour l'instant",
     "emptyBody": "Les travaux que votre superviseur vous assigne apparaîtront ici."
+  },
+  "imagePicker": {
+    "title": "Ajouter une photo",
+    "takePhoto": "Prendre une photo",
+    "chooseFromLibrary": "Choisir dans la galerie",
+    "openSettings": "Ouvrir les réglages",
+    "cameraDeniedTitle": "Accès à la caméra requis",
+    "cameraDeniedBody": "Autorisez l'accès à la caméra pour prendre la photo maintenant.",
+    "libraryDeniedTitle": "Accès aux photos requis",
+    "libraryDeniedBody": "Autorisez l'accès aux photos pour choisir une image dans votre galerie."
+  },
+  "booking": {
+    "ownService": {
+      "title": "Vous offrez aussi ce service",
+      "body": "Ce travail n'apparaîtra pas dans votre liste de prestataire : vous ne pouvez pas faire d'offre sur votre propre travail. D'autres prestataires le pourront."
+    }
   },
   "bookingDetails": {
     "title": "Plus d'infos",

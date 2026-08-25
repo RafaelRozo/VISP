@@ -36,7 +36,7 @@ import {
   CredentialType,
 } from '../../types';
 import { get } from '../../services/apiClient';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage } from '../../services/imagePickerService';
 import { providerService, PendingCredential } from '../../services/providerService';
 
 // ---------------------------------------------------------------------------
@@ -204,22 +204,10 @@ export default function CredentialsScreen(): React.JSX.Element {
   const handlePendingUpload = useCallback(
     async (item: PendingCredential) => {
       try {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) {
-          Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
-          return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          allowsMultipleSelection: false,
-          quality: 0.8,
-        });
+        // Cámara o galería: el carnet o el certificado están en papel, a mano.
+        const asset = await pickImage({ quality: 0.8 });
+        if (!asset) return;
 
-        if (result.canceled || !result.assets || result.assets.length === 0) {
-          return;
-        }
-
-        const asset = result.assets[0];
         setIsUploading(true);
 
         const credType = item.requiredType === 'license' ? 'trade_license' : 'certification';
@@ -254,22 +242,9 @@ export default function CredentialsScreen(): React.JSX.Element {
     async (preselectedType?: CredentialType) => {
       const performUpload = async (type: CredentialType) => {
         try {
-          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (!perm.granted) {
-            Alert.alert(t('common.error'), t('profileScreen.permissionDenied'));
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsMultipleSelection: false,
-            quality: 0.8,
-          });
+          const asset = await pickImage({ quality: 0.8 });
+          if (!asset) return;
 
-          if (result.canceled || !result.assets || result.assets.length === 0) {
-            return;
-          }
-
-          const asset = result.assets[0];
           setIsUploading(true);
 
           await providerService.uploadCredential(

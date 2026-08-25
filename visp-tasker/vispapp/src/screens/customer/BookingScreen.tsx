@@ -44,6 +44,7 @@ import LevelBadge from '../../components/LevelBadge';
 import { taskService, PRIORITY_OPTIONS, PREDEFINED_NOTES } from '../../services/taskService';
 import { unitSuffix } from '../../services/offerService';
 import { paymentService } from '../../services/paymentService';
+import { providerService } from '../../services/providerService';
 import { patch } from '../../services/apiClient';
 import { useAuthStore } from '../../stores/authStore';
 import { useTaskStore } from '../../stores/taskStore';
@@ -133,6 +134,26 @@ function BookingScreen(): React.JSX.Element {
   const [pricingUnit, setPricingUnit] = useState<string | null>(null);
   const [minQuantity, setMinQuantity] = useState(1);
   const [quantity, setQuantity] = useState(1);
+
+  // Nadie oferta en su propio trabajo: el backend excluye al proveedor cuyo
+  // usuario es el cliente del trabajo. Con el RoleSwitcher, la misma cuenta puede
+  // ser las dos cosas, y hasta ahora el trabajo simplemente no aparecía en su
+  // bolsa sin ninguna explicación. Si el cliente está cualificado para ESTE
+  // servicio, se le dice antes de publicar.
+  const userRole = useAuthStore((s) => s.user?.role);
+  const [isOwnService, setIsOwnService] = useState(false);
+
+  useEffect(() => {
+    if (userRole !== 'provider' && userRole !== 'both') return;
+    let active = true;
+    providerService.getProviderRates()
+      .then(({ items }) => {
+        if (!active) return;
+        setIsOwnService(items.some((it) => it.task_id === task.taskId));
+      })
+      .catch(() => { /* sin aviso; la regla la sigue aplicando el backend */ });
+    return () => { active = false; };
+  }, [task.taskId, userRole]);
 
   useEffect(() => {
     let active = true;
@@ -353,6 +374,20 @@ function BookingScreen(): React.JSX.Element {
               Please review all details below before confirming.
             </Text>
           </View>
+
+          {/* ── Ofreces este mismo servicio ────────────────── */}
+          {isOwnService && (
+            <View style={styles.section}>
+              <View style={[styles.ownServiceNotice, { borderColor: Colors.warning }]}>
+                <Text style={[styles.ownServiceTitle, { color: theme.textPrimary }]}>
+                  {t('booking.ownService.title')}
+                </Text>
+                <Text style={[styles.ownServiceBody, { color: theme.textSecondary }]}>
+                  {t('booking.ownService.body')}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* ── Task Summary ────────────────── */}
           <View style={styles.section}>
@@ -779,6 +814,21 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.xl,
+  },
+  ownServiceNotice: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  ownServiceTitle: {
+    fontSize: FontSize.footnote,
+    fontWeight: FontWeight.semibold,
+    marginBottom: Spacing.xs,
+  },
+  ownServiceBody: {
+    fontSize: FontSize.footnote,
+    lineHeight: 20,
   },
   sectionHeader: {
     flexDirection: 'row',

@@ -57,7 +57,7 @@ import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono }
 import { AnimatedSpinner } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
 import { Job, JobStatus, ProviderTabParamList, ScheduledJob } from '../../types';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage } from '../../services/imagePickerService';
 import { offerService, type MaterialReceipt } from '../../services/offerService';
 
 // Idempotent — JobTrackingScreen may also call this; Mapbox swallows duplicates.
@@ -461,19 +461,10 @@ export default function ActiveJobScreen(): React.JSX.Element {
     const job = activeJob;
     if (!job) return;
 
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(
-        tr('activeJob.photoPermTitle') || 'Photo access needed',
-        tr('activeJob.photoPermBody') || 'Allow photo access to attach the receipt.',
-      );
-      return;
-    }
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.6,
-    });
-    if (picked.canceled || picked.assets.length === 0) return;
+    // Cámara o galería: el proveedor tiene el recibo en la mano al salir de la
+    // tienda, no en el carrete.
+    const asset = await pickImage({ quality: 0.6 });
+    if (!asset) return;
 
     // El importe se pide aparte: la foto prueba QUÉ se compró, pero lo que se
     // reembolsa es lo que el proveedor declara, y tiene que poder corregirlo.
@@ -494,7 +485,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
             try {
               await offerService.uploadMaterialReceipt(job.id, {
                 amountCents: monto,
-                fileUri: picked.assets[0].uri,
+                fileUri: asset.uri,
               });
               await loadMaterials(job.id);
             } catch {

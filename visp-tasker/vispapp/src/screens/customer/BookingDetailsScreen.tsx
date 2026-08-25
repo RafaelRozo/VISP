@@ -37,7 +37,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImage, pickImages } from '../../services/imagePickerService';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CustomerFlowParamList, ServiceQuestion } from '../../types';
@@ -176,28 +176,20 @@ export default function BookingDetailsScreen(): React.JSX.Element {
       return;
     }
 
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(
-        tr('bookingDetails.permTitle') || 'Photo access needed',
-        tr('bookingDetails.permBody') ||
-          'Allow photo access to attach pictures of the job.',
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: remaining,
+    // Cámara o galería: la foto de la casa, del jardín o del desperfecto casi
+    // nunca existe ya — se toma aquí mismo.
+    const assets = await pickImages({
+      title: tr('bookingDetails.addPhoto'),
+      multiple: true,
+      limit: remaining,
       quality: PICKER_QUALITY,
     });
-    if (result.canceled || result.assets.length === 0) return;
+    if (assets.length === 0) return;
 
     setUploading(true);
     try {
       const urls = await taskService.uploadBookingEvidence(
-        result.assets.map((a) => a.uri),
+        assets.map((a) => a.uri),
       );
       addEvidence(urls);
     } catch {
@@ -221,25 +213,12 @@ export default function BookingDetailsScreen(): React.JSX.Element {
    */
   const handleAnswerPhoto = useCallback(
     async (questionId: string) => {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(
-          tr('bookingDetails.permTitle') || 'Photo access needed',
-          tr('bookingDetails.permBody') ||
-            'Allow photo access to attach pictures of the job.',
-        );
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: false,
-        quality: PICKER_QUALITY,
-      });
-      if (result.canceled || result.assets.length === 0) return;
+      const asset = await pickImage({ quality: PICKER_QUALITY });
+      if (!asset) return;
 
       setUploading(true);
       try {
-        const [url] = await taskService.uploadBookingEvidence([result.assets[0].uri]);
+        const [url] = await taskService.uploadBookingEvidence([asset.uri]);
         if (url) setAnswer(questionId, url);
       } catch {
         Alert.alert(

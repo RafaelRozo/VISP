@@ -44,6 +44,7 @@ import Animated, {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFrom } from '../../services/imagePickerService';
 
 import { useTranslation } from '../../i18n';
 import {
@@ -256,22 +257,18 @@ export default function ProfileScreen(): React.JSX.Element {
     [user, setUser, tr],
   );
 
+  // El menú de esta pantalla ofrece además "Quitar foto", así que elige la
+  // fuente él mismo; el permiso y el picker sí salen del helper, para heredar el
+  // mensaje correcto (cámara y carrete son permisos distintos) y la salida a
+  // Ajustes cuando iOS ya no vuelve a preguntar.
   const pickFromCamera = useCallback(async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(tr('common.error'), tr('profileScreen.permissionDenied'));
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
+    const asset = await pickImageFrom('camera', {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
-    if (!result.canceled && result.assets?.[0]) {
-      await performAvatarUpload(result.assets[0]);
-    }
-  }, [performAvatarUpload, tr]);
+    if (asset) await performAvatarUpload(asset);
+  }, [performAvatarUpload]);
 
   const performAvatarRemove = useCallback(async () => {
     if (!user) return;
@@ -288,21 +285,13 @@ export default function ProfileScreen(): React.JSX.Element {
   }, [user, setUser, tr]);
 
   const pickFromLibrary = useCallback(async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(tr('common.error'), tr('profileScreen.permissionDenied'));
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+    const asset = await pickImageFrom('library', {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
-    if (!result.canceled && result.assets?.[0]) {
-      await performAvatarUpload(result.assets[0]);
-    }
-  }, [performAvatarUpload, tr]);
+    if (asset) await performAvatarUpload(asset);
+  }, [performAvatarUpload]);
 
   const handleChangeAvatar = useCallback(() => {
     if (!user) return;
