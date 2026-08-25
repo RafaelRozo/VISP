@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from src.api.deps import CurrentUser, DBSession
 from src.services import (
     file_service,
+    matchingEngine,
     materialsService,
     notificationService,
     offerService,
@@ -70,6 +71,22 @@ class CreateOfferIn(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+
+# Cada motivo de `matchingEngine.BID_*` se arregla de una forma distinta, así que
+# cada uno se cuenta de una forma distinta.
+_NOT_INVITED_MESSAGES = {
+    matchingEngine.BID_OWN_JOB: "You can't make an offer on your own job.",
+    matchingEngine.BID_NOT_QUALIFIED: "You are not qualified for this service.",
+    matchingEngine.BID_OUT_OF_RANGE: (
+        "This job is outside your service area. Update your address or your "
+        "service radius in your profile."
+    ),
+    matchingEngine.BID_NO_LOCATION: (
+        "Add your home address in your profile so we can match you with nearby jobs."
+    ),
+    matchingEngine.BID_REQUIREMENTS: "You don't meet the requirements for this job yet.",
+}
 
 
 async def _provider_id(db: DBSession, user: CurrentUser) -> uuid.UUID:
@@ -126,12 +143,18 @@ async def create_offer(
                 "message": "This job is no longer taking offers.",
             },
         )
-    except offerService.NotInvitedError:
+    except offerService.NotInvitedError as exc:
+        # El motivo importa: "no puedes ofertar" a secas deja al proveedor sin
+        # saber si le falta la calificación, si el trabajo le queda lejos o si es
+        # suyo — y las tres se arreglan de forma distinta.
         raise HTTPException(
             status_code=403,
             detail={
                 "code": "not_invited",
-                "message": "You are not qualified for this job.",
+                "reason": exc.reason,
+                "message": _NOT_INVITED_MESSAGES.get(
+                    exc.reason or "", "You are not qualified for this job."
+                ),
             },
         )
     except offerService.NoRateError:

@@ -78,16 +78,32 @@ async def run() -> None:
     booked_id = None
     job_b = uuid.uuid4()
     provider_id = None
+    # Set once the provider is picked; the cleanup runs even if we fail before that.
+    home_original = None
     task = None
     seeded_qual = False
     try:
         check(await conn.fetchval("SELECT current_database()") == "visp_prod", "wrong DB")
         print("Connected to dev DB: visp_prod")
 
+        # ACTIVE + L0/L1 + ORDER BY id. `ORDER BY created_at` picked a different
+        # provider on every run (the seeded ones share created_at) and sometimes
+        # landed on an L3, which needs a verified licence and insurance. It went
+        # unnoticed while the smoke inserted the job_assignment by hand; the
+        # provider job list is now computed live, so the real filter applies.
         prov = await conn.fetchrow(
-            "SELECT id, user_id FROM provider_profiles ORDER BY created_at NULLS LAST LIMIT 1")
-        check(prov is not None, "need a provider_profile")
+            "SELECT id, user_id, home_latitude, home_longitude, service_radius_km "
+            "FROM provider_profiles "
+            "WHERE status = 'ACTIVE' AND current_level IN ('LEVEL_0', 'LEVEL_1') "
+            "ORDER BY id LIMIT 1")
+        check(prov is not None, "need an ACTIVE L0/L1 provider_profile")
         provider_id, provider_user = prov["id"], prov["user_id"]
+        # Put the provider where the job is (43.65, -79.38): that distance is what
+        # matching measures. Restored in the cleanup.
+        home_original = (prov["home_latitude"], prov["home_longitude"], prov["service_radius_km"])
+        await conn.execute(
+            "UPDATE provider_profiles SET home_latitude=43.65, home_longitude=-79.38, "
+            "service_radius_km=50, updated_at=now() WHERE id=$1", provider_id)
 
         # A PER_UNIT task that allows quantity and has a price range.
         task = await conn.fetchrow(
@@ -162,10 +178,7 @@ async def run() -> None:
                    VALUES ($1,$2,$3,$4,'PENDING_MATCH',43.65,-79.38,'1 Smoke St','ON',$5,$6,$7,now(),now())""",
                 job_b, f"PP4A-{job_b.hex[:8].upper()}", customer["id"], task["id"],
                 Decimal(QTY), task["base_price_max_cents"] + 999, commission_rate)
-            await conn.execute(
-                "INSERT INTO job_assignments (id, job_id, provider_id, status, offered_at, created_at, updated_at) "
-                "VALUES ($1,$2,$3,'OFFERED',now(),now(),now())",
-                uuid.uuid4(), job_b, provider_id)
+            # Sin sembrar job_assignments: la bolsa del proveedor ya no las lee.
             # Ofertas v2: el proveedor OFERTA y el cliente elige. En PER_UNIT la
             # magnitud la puso el cliente al reservar, así que la oferta no lleva
             # ninguna: es justo lo que se está comprobando aquí.
@@ -234,6 +247,11 @@ async def run() -> None:
             if booked_id is not None:
                 await cleanup_job(conn, booked_id)
             await cleanup_job(conn, job_b)
+            if provider_id and home_original is not None:
+                await conn.execute(
+                    "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+                    "service_radius_km=$4, updated_at=now() WHERE id=$1",
+                    provider_id, *home_original)
             if provider_id and task:
                 await conn.execute("DELETE FROM provider_service_rates WHERE provider_id=$1 AND task_id=$2", provider_id, task["id"])
                 if seeded_qual:

@@ -390,23 +390,27 @@ async def update_my_location(
     body: LocationUpdateRequest,
 ) -> dict[str, Any]:
     from src.models.user import User
-    from src.models.provider import ProviderProfile
     from sqlalchemy import select
 
-    # Update user's last known location
+    # Solo la posición EN VIVO del usuario. Sirve para centrar mapas y para el
+    # seguimiento del trabajo activo; es un dato volátil y no decide nada.
     stmt = select(User).where(User.id == user.id)
     db_user = (await db.execute(stmt)).scalar_one_or_none()
     if db_user:
         db_user.last_latitude = body.latitude
         db_user.last_longitude = body.longitude
 
-    # If user is a provider, also update provider profile home location
-    provider_stmt = select(ProviderProfile).where(ProviderProfile.user_id == user.id)
-    provider = (await db.execute(provider_stmt)).scalar_one_or_none()
-    if provider:
-        provider.home_latitude = body.latitude
-        provider.home_longitude = body.longitude
-
+    # NO se toca `provider_profiles.home_*`. Antes se hacía, y era el bug:
+    # `home_latitude/longitude` es la BASE del proveedor y el matching mide desde
+    # ahí, así que el GPS del teléfono acababa decidiendo qué trabajos ve. La app
+    # llama a esta ruta al arrancar y en cada tick del trabajo activo, de modo que
+    # bastaba con abrirla de viaje para dejar de recibir trabajos de tu propia
+    # ciudad — y probar desde fuera de Canadá te sacaba del mercado entero. Es la
+    # misma razón por la que la zona de servicio no se comprueba nunca contra el
+    # GPS del dispositivo (ver CLAUDE.md, Service Zones).
+    #
+    # La base sale de la dirección declarada, que se escribe en `update_me` y pasa
+    # por el gate de zona de servicio.
     await db.commit()
 
     return {"data": {"ok": True}}

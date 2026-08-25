@@ -76,17 +76,36 @@ async def run() -> None:
     conn = await asyncpg.connect(_DSN)
     job_id = uuid.uuid4()
     provider_id = None
+    # Set once the provider is picked; the cleanup runs even if we fail before that.
+    home_original = None
     task = None
     seeded_qual = False
     try:
         check(await conn.fetchval("SELECT current_database()") == "visp_prod", "wrong DB")
         print("Connected to dev DB: visp_prod")
 
+        # ACTIVE + L0/L1 + ORDER BY id. `ORDER BY created_at` picked a different
+        # provider on every run (the seeded ones share created_at) and sometimes
+        # landed on an L3, which needs a verified licence and insurance to be
+        # offered any job. It went unnoticed while the smoke inserted the
+        # job_assignment by hand; the provider job list is now computed live, so
+        # the real eligibility filter applies.
         prov = await conn.fetchrow(
-            "SELECT id, user_id FROM provider_profiles ORDER BY created_at NULLS LAST LIMIT 1"
+            "SELECT id, user_id, home_latitude, home_longitude, service_radius_km "
+            "FROM provider_profiles "
+            "WHERE status = 'ACTIVE' AND current_level IN ('LEVEL_0', 'LEVEL_1') "
+            "ORDER BY id LIMIT 1"
         )
-        check(prov is not None, "need a provider_profile")
+        check(prov is not None, "need an ACTIVE L0/L1 provider_profile")
         provider_id, provider_user = prov["id"], prov["user_id"]
+        # Put the provider where the job is (43.65, -79.38) — that distance is what
+        # matching measures. Restored in the cleanup below.
+        home_original = (prov["home_latitude"], prov["home_longitude"], prov["service_radius_km"])
+        await conn.execute(
+            "UPDATE provider_profiles SET home_latitude=43.65, home_longitude=-79.38, "
+            "service_radius_km=50, updated_at=now() WHERE id=$1",
+            provider_id,
+        )
 
         # A non-custom task with a price range.
         task = await conn.fetchrow(
@@ -159,11 +178,7 @@ async def run() -> None:
                 job_id, f"PP4-{job_id.hex[:8].upper()}", customer["id"], task["id"],
                 catalog_quote, commission_rate,
             )
-            await conn.execute(
-                "INSERT INTO job_assignments (id, job_id, provider_id, status, offered_at, created_at, updated_at) "
-                "VALUES ($1,$2,$3,'OFFERED',now(),now(),now())",
-                uuid.uuid4(), job_id, provider_id,
-            )
+            # No hand-seeded job_assignment: the provider job list reads none.
             print(f"        -> job {job_id} quoted at catalog {catalog_quote}c")
 
             # 3. provider offers + customer accepts -> reprice to provider rate (PP4).
@@ -235,6 +250,12 @@ async def run() -> None:
             await conn.execute("DELETE FROM pricing_events WHERE job_id=$1", job_id)
             await conn.execute("DELETE FROM job_assignments WHERE job_id=$1", job_id)
             await conn.execute("DELETE FROM jobs WHERE id=$1", job_id)
+            if provider_id and home_original is not None:
+                await conn.execute(
+                    "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+                    "service_radius_km=$4, updated_at=now() WHERE id=$1",
+                    provider_id, *home_original,
+                )
             if provider_id and task:
                 await conn.execute(
                     "DELETE FROM provider_service_rates WHERE provider_id=$1 AND task_id=$2",

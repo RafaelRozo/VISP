@@ -85,11 +85,8 @@ async def seed_job(conn, job_id, customer_id, task_id, provider_id, quote, commi
            VALUES ($1,$2,$3,$4,'PENDING_MATCH',43.65,-79.38,'1 Smoke St','ON',$5,$6,now(),now())""",
         job_id, f"PP3-{job_id.hex[:8].upper()}", customer_id, task_id, quote, commission_rate,
     )
-    await conn.execute(
-        "INSERT INTO job_assignments (id, job_id, provider_id, status, offered_at, created_at, updated_at) "
-        "VALUES ($1,$2,$3,'OFFERED',now(),now(),now())",
-        uuid.uuid4(), job_id, provider_id,
-    )
+    # Sin sembrar job_assignments: la bolsa del proveedor ya no las lee, se
+    # calcula en vivo. Lo que hay que preparar es dónde vive el proveedor.
 
 
 async def run() -> None:
@@ -97,6 +94,8 @@ async def run() -> None:
     job_a = uuid.uuid4()
     job_b = uuid.uuid4()
     provider_id = None
+    # Set once the provider is picked; the cleanup runs even if we fail before that.
+    home_original = None
     task = None
     seeded_qual = False
     orig_tax_registered = None
@@ -109,11 +108,23 @@ async def run() -> None:
             "SELECT combined_rate FROM province_tax_rates WHERE province_code='ON'")
         check(on_rate == ON_RATE, f"ON rate in DB is {on_rate}, expected {ON_RATE}")
 
+        # ACTIVE + L0/L1 + ORDER BY id. `ORDER BY created_at` picked a different
+        # provider on every run (the seeded ones share created_at) and sometimes
+        # landed on an L3, which needs a verified licence and insurance. It went
+        # unnoticed while the smoke inserted the job_assignment by hand.
         prov = await conn.fetchrow(
-            "SELECT id, user_id, tax_registered FROM provider_profiles ORDER BY created_at NULLS LAST LIMIT 1")
-        check(prov is not None, "need a provider_profile")
+            "SELECT id, user_id, tax_registered, home_latitude, home_longitude, service_radius_km "
+            "FROM provider_profiles "
+            "WHERE status = 'ACTIVE' AND current_level IN ('LEVEL_0', 'LEVEL_1') "
+            "ORDER BY id LIMIT 1")
+        check(prov is not None, "need an ACTIVE L0/L1 provider_profile")
         provider_id, provider_user = prov["id"], prov["user_id"]
         orig_tax_registered = prov["tax_registered"]
+        # Put the provider where the jobs are (43.65, -79.38). Restored in cleanup.
+        home_original = (prov["home_latitude"], prov["home_longitude"], prov["service_radius_km"])
+        await conn.execute(
+            "UPDATE provider_profiles SET home_latitude=43.65, home_longitude=-79.38, "
+            "service_radius_km=50, updated_at=now() WHERE id=$1", provider_id)
 
         task = await conn.fetchrow(
             """SELECT id, name, pricing_unit, base_price_min_cents, base_price_max_cents, estimated_duration_min
@@ -244,6 +255,11 @@ async def run() -> None:
                 await conn.execute("DELETE FROM jobs WHERE id=$1", jid)
             if provider_id is not None and orig_tax_registered is not None:
                 await conn.execute("UPDATE provider_profiles SET tax_registered=$2 WHERE id=$1", provider_id, orig_tax_registered)
+            if provider_id and home_original is not None:
+                await conn.execute(
+                    "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+                    "service_radius_km=$4, updated_at=now() WHERE id=$1",
+                    provider_id, *home_original)
             if provider_id and task:
                 await conn.execute("DELETE FROM provider_service_rates WHERE provider_id=$1 AND task_id=$2", provider_id, task["id"])
                 if seeded_qual:

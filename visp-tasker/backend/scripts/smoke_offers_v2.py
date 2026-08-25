@@ -82,20 +82,20 @@ async def _qualify(conn, provider_id, task_id) -> None:
         )
 
 
-async def _invite(conn, job_id, provider_id) -> None:
-    """El broadcast del booking crea estas filas. Se siembran a mano para no depender
-    de que el motor de matching deje pasar a estos dos proveedores concretos — pero si
-    el broadcast ya invitó a este proveedor, no se duplica."""
-    ya = await conn.fetchval(
-        "SELECT 1 FROM job_assignments WHERE job_id=$1 AND provider_id=$2 AND status='OFFERED'",
-        job_id, provider_id,
-    )
-    if ya:
-        return
+async def _place_near(conn, provider_id, lat, lng, radius_km: int = 50) -> None:
+    """Coloca la base del proveedor cerca del trabajo, que es lo que el matching mide.
+
+    Esto sustituye al viejo `_invite()`, que insertaba a mano la fila de
+    `job_assignments` "para no depender del motor de matching". Era justo lo que no
+    había que hacer: el smoke se fabricaba la invitación que el broadcast real nunca
+    creaba, así que pasaba en verde mientras en el dispositivo NINGÚN proveedor veía
+    NINGÚN trabajo (24 de 36 acabaron huérfanos). Ahora se prepara el dato de entrada
+    —dónde vive el proveedor— y se deja que el producto decida solo si lo ve.
+    """
     await conn.execute(
-        "INSERT INTO job_assignments (id, job_id, provider_id, status, offered_at, created_at, updated_at) "
-        "VALUES ($1,$2,$3,'OFFERED',now(),now(),now())",
-        uuid.uuid4(), job_id, provider_id,
+        "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+        "service_radius_km=$4, updated_at=now() WHERE id=$1",
+        provider_id, lat, lng, radius_km,
     )
 
 
@@ -123,6 +123,9 @@ async def run() -> None:
     prov_a = prov_b = None
     tax_reg_original = None
     created_tasks: list[uuid.UUID] = []
+    # Vacío hasta que se elijan los proveedores: el `finally` corre igual si el
+    # smoke se cae antes de llegar ahí.
+    home_original: dict = {}
 
     try:
         dbname = await conn.fetchval("SELECT current_database()")
@@ -149,10 +152,24 @@ async def run() -> None:
         rate_a = (task["lo"] + task["hi"]) // 2
         rate_b = task["hi"]
 
+        # L0/L1 y `ORDER BY id`, las dos cosas a propósito. Antes era
+        # `ORDER BY created_at NULLS LAST`, y como los proveedores sembrados
+        # comparten `created_at`, cada corrida elegía a dos distintos: unas veces
+        # tocaban L3, que exige licencia y seguro verificados, y el smoke fallaba
+        # sin que hubiera cambiado nada. Lo que se prueba aquí es el ciclo de
+        # ofertas, no la verificación de credenciales.
         provs = await conn.fetch(
-            "SELECT id, user_id FROM provider_profiles ORDER BY created_at NULLS LAST LIMIT 2"
+            "SELECT id, user_id, home_latitude, home_longitude, service_radius_km "
+            "FROM provider_profiles "
+            "WHERE status = 'ACTIVE' AND current_level IN ('LEVEL_0', 'LEVEL_1') "
+            "ORDER BY id LIMIT 2"
         )
-        check(len(provs) >= 2, "hacen falta 2 provider_profiles")
+        check(len(provs) >= 2, "hacen falta 2 provider_profiles ACTIVE de nivel L0/L1")
+        # Se devuelven a su sitio en la limpieza: son perfiles reales de la base.
+        home_original = {
+            p["id"]: (p["home_latitude"], p["home_longitude"], p["service_radius_km"])
+            for p in provs
+        }
         prov_a, user_a = provs[0]["id"], provs[0]["user_id"]
         prov_b, user_b = provs[1]["id"], provs[1]["user_id"]
 
@@ -165,6 +182,10 @@ async def run() -> None:
 
         await _qualify(conn, prov_a, task_id)
         await _qualify(conn, prov_b, task_id)
+        # Los dos viven donde va a estar el trabajo (43.65, -79.38). Es lo único que
+        # se prepara: que aparezca en su bolsa lo decide el producto.
+        await _place_near(conn, prov_a, 43.65, -79.38)
+        await _place_near(conn, prov_b, 43.65, -79.38)
         print(f"servicio '{task['name']}' rango {task['lo']}-{task['hi']}c/h")
         print(f"proveedor A tarifa {rate_a}c/h · proveedor B tarifa {rate_b}c/h\n")
 
@@ -208,10 +229,8 @@ async def run() -> None:
                   f"rango devuelto {est['minCents']}-{est['maxCents']} != catalogo {task['lo']}-{task['hi']}")
             print(f"        -> {est['minCents']/100:.2f}-{est['maxCents']/100:.2f} CAD/h")
 
-            await _invite(conn, job_id, prov_a)
-            await _invite(conn, job_id, prov_b)
-
             # ================= PARTE B =================
+            # Sin sembrar nada: si A ve el trabajo es porque el producto se lo enseña.
             step("B1", "el proveedor A ve el trabajo en su bolsa")
             r = await client.get(f"{API}/provider/open-jobs", headers=hdr_a)
             check(r.status_code == 200, f"open-jobs: {r.status_code}: {r.text}")
@@ -412,7 +431,6 @@ async def run() -> None:
             print("        -> materiales pedidos, presupuesto 100 CAD, foto del color guardada")
 
             step("E6", "el proveedor ve el material ANTES de ofertar")
-            await _invite(conn, mat_job_id, prov_a)
             r = await client.get(f"{API}/provider/open-jobs", headers=hdr_a)
             check(r.status_code == 200, f"open-jobs: {r.status_code}")
             it = next(i for i in r.json()["data"]["items"] if i["jobId"] == str(mat_job_id))
@@ -660,6 +678,14 @@ async def run() -> None:
                 await conn.execute(
                     "DELETE FROM provider_service_rates WHERE task_id=$1 AND provider_id = ANY($2::uuid[])",
                     task_id, [prov_a, prov_b])
+            # Los proveedores vuelven a donde vivían: `_place_near` los mudó junto
+            # al trabajo de prueba, y dejarlos ahí falsearía el matching real.
+            for pid, (lat, lng, radius) in home_original.items():
+                await conn.execute(
+                    "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+                    "service_radius_km=$4, updated_at=now() WHERE id=$1",
+                    pid, lat, lng, radius,
+                )
             print("[limpieza] hecho")
         except Exception as exc:  # noqa: BLE001
             print(f"[limpieza] FALLO: {exc}")

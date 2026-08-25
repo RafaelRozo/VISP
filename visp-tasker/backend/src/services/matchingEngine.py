@@ -323,6 +323,104 @@ async def _evaluate_candidate(
 # Public API
 # ---------------------------------------------------------------------------
 
+# Motivos por los que un proveedor NO puede ofertar en un trabajo. Se devuelven
+# como cadena y no como booleano para poder explicarlos —al proveedor con un 4xx
+# y a nosotros en el log—; `None` es el único valor que significa "sí puede".
+BID_NOT_QUALIFIED = "not_qualified"
+BID_OWN_JOB = "own_job"
+BID_NO_LOCATION = "no_location"
+BID_OUT_OF_RANGE = "out_of_range"
+BID_REQUIREMENTS = "requirements"
+
+
+async def provider_can_bid(
+    db: AsyncSession,
+    job: Job,
+    provider: ProviderProfile,
+    *,
+    task: ServiceTask | None = None,
+    level_cache: dict[ProviderLevel, bool] | None = None,
+) -> Optional[str]:
+    """¿Puede ESTE proveedor ofertar en ESTE trabajo?
+
+    Es el único predicado de elegibilidad del producto. Lo usan la bolsa de
+    trabajos del proveedor (`offerService.list_open_jobs`), la validación al
+    ofertar (`offerService.create_offer`) y, a través de
+    `find_matching_providers`, el broadcast de notificaciones.
+
+    Que viva en un solo sitio es deliberado. Antes la bolsa leía
+    `job_assignments` congeladas en el instante de la reserva mientras el
+    matching aplicaba estos filtros: dos fuentes de verdad que se separaban en
+    cuanto el proveedor cambiaba de dirección o se registraba después de que el
+    trabajo se publicara. Resultado: trabajos que nadie veía nunca.
+
+    `level_cache` memoiza los filtros duros por nivel: no dependen del trabajo
+    concreto, así que al recorrer la bolsa entera se evalúan una vez por nivel
+    en vez de una vez por trabajo.
+
+    Returns:
+        None si puede ofertar, o la constante `BID_*` con el motivo del bloqueo.
+    """
+    if task is None:
+        task = await db.get(ServiceTask, job.task_id)
+    if task is None:
+        return BID_NOT_QUALIFIED
+
+    # Nadie oferta en su propio trabajo. La app deja alternar entre cliente y
+    # proveedor con la misma cuenta, así que este caso llega solo y hay que
+    # decirlo: el trabajo desaparecía de la bolsa sin explicación.
+    if provider.user_id == job.customer_id:
+        return BID_OWN_JOB
+
+    qualified = (
+        await db.execute(
+            select(ProviderTaskQualification.id)
+            .where(
+                ProviderTaskQualification.provider_id == provider.id,
+                ProviderTaskQualification.task_id == job.task_id,
+                ProviderTaskQualification.qualified.is_(True),
+            )
+            .limit(1)
+        )
+    ).scalars().first()
+    if qualified is None:
+        return BID_NOT_QUALIFIED
+
+    # La base del proveedor es su DIRECCIÓN declarada, no el GPS del teléfono
+    # (ver `users.update_my_location`). Sin ella no hay forma de saber si el
+    # trabajo le queda cerca.
+    if provider.home_latitude is None or provider.home_longitude is None:
+        return BID_NO_LOCATION
+    if job.service_latitude is None or job.service_longitude is None:
+        return BID_NO_LOCATION
+
+    distance_km = haversine_distance(
+        float(provider.home_latitude),
+        float(provider.home_longitude),
+        float(job.service_latitude),
+        float(job.service_longitude),
+    )
+    radius_km = float(provider.service_radius_km or 0)
+    if radius_km <= 0 or distance_km > radius_km:
+        return BID_OUT_OF_RANGE
+
+    if level_cache is not None and task.level in level_cache:
+        passes = level_cache[task.level]
+    else:
+        passes = await _evaluate_candidate(
+            db,
+            provider,
+            task.level,
+            float(job.service_latitude),
+            float(job.service_longitude),
+            distance_km,
+        ) is not None
+        if level_cache is not None:
+            level_cache[task.level] = passes
+
+    return None if passes else BID_REQUIREMENTS
+
+
 async def find_matching_providers(
     db: AsyncSession,
     job: Job,

@@ -41,9 +41,16 @@ from src.models.job_offer import JobOffer, MagnitudeSource, OfferStatus
 from src.models.provider import ProviderProfile
 from src.models.provider_rate import ProviderServiceRate
 from src.models.review import Review, ReviewStatus
-from src.models.taxonomy import PricingUnit, ServiceTask
+from src.models.taxonomy import PricingUnit, ProviderTaskQualification, ServiceTask
 from src.models.user import User
 from src.services import fee_service, provider_rate_service, tax_service
+from src.services.matchingEngine import (
+    BID_NO_LOCATION,
+    BID_NOT_QUALIFIED,
+    BID_OUT_OF_RANGE,
+    BID_OWN_JOB,
+    provider_can_bid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +83,16 @@ class JobNotOpenError(OfferError):
 
 
 class NotInvitedError(OfferError):
-    """El proveedor no está entre los calificados para este trabajo."""
+    """El proveedor no cumple los requisitos para ofertar en este trabajo.
+
+    Lleva el motivo (`matchingEngine.BID_*`) para que la ruta explique cuál de
+    ellos falla. Un "no puedes ofertar" a secas deja al proveedor sin saber si le
+    falta la calificación, si el trabajo le queda lejos o si es suyo.
+    """
+
+    def __init__(self, job_id: str, reason: str | None = None) -> None:
+        self.reason = reason
+        super().__init__(job_id)
 
 
 class NoRateError(OfferError):
@@ -237,39 +253,76 @@ def _job_is_open(job: Job) -> bool:
 async def list_open_jobs(
     db: AsyncSession, provider_id: uuid.UUID
 ) -> list[dict[str, Any]]:
-    """La bolsa de trabajos abiertos del proveedor.
+    """La bolsa de trabajos abiertos del proveedor, calculada EN VIVO.
 
-    Sale de los `job_assignments` en OFFERED que ya creó el broadcast del booking: el
-    filtrado duro (zona, nivel, calificación, credenciales) lo hizo el motor de
-    matching en ese momento, así que aquí no se vuelve a calcular nada.
+    Antes salía de los `job_assignments` en OFFERED que creaba el broadcast en el
+    instante de la reserva. Ese disparo era único: si en ese momento no había
+    ningún proveedor elegible —porque ninguno se había registrado todavía, o
+    porque su dirección estaba mal— el trabajo quedaba huérfano para siempre.
+    Nadie lo veía y nadie se enteraba, porque el broadcast falla en silencio.
+
+    Ahora se evalúa cada vez que el proveedor abre la bolsa, con
+    `matchingEngine.provider_can_bid` —el mismo predicado que valida la oferta al
+    crearla—, así que ver un trabajo y poder ofertarlo no pueden divergir. Las
+    `job_assignments` siguen creándose, pero ya solo como registro de a quién se
+    notificó.
     """
     now = datetime.now(timezone.utc)
-    rows = (
+
+    provider = await db.get(ProviderProfile, provider_id)
+    if provider is None:
+        return []
+
+    # El filtro barato va en SQL (trabajo abierto + calificado + no es suyo); el
+    # caro —radio, nivel, credenciales— se aplica en `provider_can_bid` sobre lo
+    # que sobreviva, que es poco.
+    candidate_jobs = (
         await db.execute(
-            select(Job, JobAssignment)
-            .join(JobAssignment, JobAssignment.job_id == Job.id)
+            select(Job)
+            .join(
+                ProviderTaskQualification,
+                ProviderTaskQualification.task_id == Job.task_id,
+            )
             .where(
-                JobAssignment.provider_id == provider_id,
-                JobAssignment.status == AssignmentStatus.OFFERED,
+                ProviderTaskQualification.provider_id == provider_id,
+                ProviderTaskQualification.qualified.is_(True),
                 Job.status == JobStatus.PENDING_MATCH,
                 Job.accepted_offer_id.is_(None),
+                Job.customer_id != provider.user_id,
             )
             .order_by(Job.created_at.desc())
         )
-    ).all()
+    ).scalars().all()
 
-    if not rows:
-        return []
-
-    job_ids = [j.id for j, _ in rows]
-    task_ids = {j.task_id for j, _ in rows}
-
-    tasks = {
+    task_ids = {j.task_id for j in candidate_jobs}
+    tasks_by_id = {
         t.id: t
         for t in (
             await db.execute(select(ServiceTask).where(ServiceTask.id.in_(task_ids)))
         ).scalars().all()
-    }
+    } if task_ids else {}
+
+    level_cache: dict[Any, bool] = {}
+    rows: list[Job] = []
+    for job in candidate_jobs:
+        if job.offers_close_at and job.offers_close_at <= now:
+            continue
+        task = tasks_by_id.get(job.task_id)
+        if task is None:
+            continue
+        blocked = await provider_can_bid(
+            db, job, provider, task=task, level_cache=level_cache
+        )
+        if blocked is None:
+            rows.append(job)
+
+    if not rows:
+        return []
+
+    job_ids = [j.id for j in rows]
+    task_ids = {j.task_id for j in rows}
+
+    tasks = tasks_by_id
     rates = {
         r.task_id: r
         for r in (
@@ -298,12 +351,8 @@ async def list_open_jobs(
     }
 
     items: list[dict[str, Any]] = []
-    for job, _assignment in rows:
-        if job.offers_close_at and job.offers_close_at <= now:
-            continue
-        task = tasks.get(job.task_id)
-        if task is None:
-            continue
+    for job in rows:
+        task = tasks[job.task_id]
         rate = rates.get(job.task_id)
         source = magnitude_source_for(task.pricing_unit)
         existing = mine.get(job.id)
@@ -370,23 +419,20 @@ async def create_offer(
     if not _job_is_open(job):
         raise JobNotOpenError(job.status.value)
 
-    # `.first()` y no `.scalar_one_or_none()`: `job_assignments` no tiene índice único
-    # por (job, proveedor), así que un reintento del broadcast puede dejar la
-    # invitación duplicada. Basta con que exista UNA; exigir exactamente una convierte
-    # un duplicado inocuo en un 500.
-    invited = (
-        await db.execute(
-            select(JobAssignment)
-            .where(
-                JobAssignment.job_id == job_id,
-                JobAssignment.provider_id == provider_id,
-                JobAssignment.status == AssignmentStatus.OFFERED,
-            )
-            .limit(1)
-        )
-    ).scalars().first()
-    if invited is None:
-        raise NotInvitedError(str(job_id))
+    # La elegibilidad se recalcula aquí, no se lee de `job_assignments`.
+    #
+    # Antes bastaba con tener una invitación OFFERED, y esa invitación se había
+    # emitido en el instante de la reserva: un proveedor que desde entonces se
+    # hubiera mudado fuera del radio, o al que le hubieran retirado la
+    # calificación, seguía pudiendo ofertar. Y al revés —el caso que rompía— quien
+    # se registraba después no podía ofertar en nada. Es el MISMO predicado que
+    # usa la bolsa, así que lo que se ve se puede ofertar y lo que no se ve, no.
+    provider = await db.get(ProviderProfile, provider_id)
+    if provider is None:
+        raise NotInvitedError(str(job_id), BID_NOT_QUALIFIED)
+    blocked = await provider_can_bid(db, job, provider)
+    if blocked is not None:
+        raise NotInvitedError(str(job_id), blocked)
 
     existing = (
         await db.execute(
@@ -701,13 +747,33 @@ async def accept_offer(
             )
         )
     ).scalars().all()
+    winner_assignment = None
     for a in assignments:
         if a.provider_id == offer.provider_id:
+            winner_assignment = a
             a.status = AssignmentStatus.ACCEPTED
             a.responded_at = now
         else:
             a.status = AssignmentStatus.DECLINED
             a.responded_at = now
+
+    # El ganador puede no tener invitación: desde que la bolsa se calcula en vivo,
+    # se puede ofertar en un trabajo cuyo broadcast no te alcanzó (te registraste
+    # después, o corregiste tu dirección). Sin esta fila el trabajo quedaría
+    # SCHEDULED sin proveedor asignado, y la assignment ACCEPTED es justo lo que
+    # autoriza al proveedor a verlo y trabajarlo (`realtime/handlers/jobHandler`,
+    # `providerService.get_active_job`). Se crea aquí en vez de dar por hecho que
+    # el broadcast la dejó.
+    if winner_assignment is None:
+        db.add(
+            JobAssignment(
+                job_id=job_id,
+                provider_id=offer.provider_id,
+                status=AssignmentStatus.ACCEPTED,
+                offered_at=offer.created_at or now,
+                responded_at=now,
+            )
+        )
 
     job.status = JobStatus.SCHEDULED
     job.price_agreed_at = now

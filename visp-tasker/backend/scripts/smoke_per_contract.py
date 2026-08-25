@@ -82,15 +82,17 @@ async def _qualify(conn, provider_id, task_id) -> None:
             "UPDATE provider_task_qualifications SET qualified=TRUE WHERE id=$1", row["id"])
 
 
-async def _invite(conn, job_id, provider_id) -> None:
-    ya = await conn.fetchval(
-        "SELECT 1 FROM job_assignments WHERE job_id=$1 AND provider_id=$2 AND status='OFFERED'",
-        job_id, provider_id)
-    if not ya:
-        await conn.execute(
-            "INSERT INTO job_assignments (id, job_id, provider_id, status, offered_at, created_at, updated_at) "
-            "VALUES ($1,$2,$3,'OFFERED',now(),now(),now())",
-            uuid.uuid4(), job_id, provider_id)
+async def _place_near(conn, provider_id, lat, lng, radius_km: int = 50) -> None:
+    """Coloca la base del proveedor junto al trabajo, que es lo que mide el matching.
+
+    Sustituye al viejo `_invite()`, que insertaba a mano la fila de
+    `job_assignments`. La bolsa del proveedor ya no lee esas filas: se calcula en
+    vivo, así que sembrarlas probaba una puerta que el producto no usa.
+    """
+    await conn.execute(
+        "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+        "service_radius_km=$4, updated_at=now() WHERE id=$1",
+        provider_id, lat, lng, radius_km)
 
 
 async def _drop_job(conn, job_id) -> None:
@@ -109,13 +111,21 @@ async def run() -> None:
     conn = await asyncpg.connect(_DSN)
     task_id = None
     jobs_creados: list[uuid.UUID] = []
+    # Vacío hasta que se elijan los proveedores: el `finally` corre igual si el
+    # smoke se cae antes.
+    home_original: dict = {}
     try:
         check(await conn.fetchval("SELECT current_database()") == "visp_prod", "BD equivocada")
         print("Conectado a visp_prod\n")
 
         # ---------- servicio de contrato ----------
         cat = await conn.fetchval("SELECT category_id FROM service_tasks LIMIT 1")
-        lvl = await conn.fetchval("SELECT level::text FROM service_tasks LIMIT 1")
+        # LEVEL_0 explícito. Antes copiaba el nivel de `service_tasks LIMIT 1`, que
+        # sin ORDER BY devolvía cualquiera —salía LEVEL_2— y entonces ningún
+        # proveedor L1 calificaba para el trabajo. No se notaba porque la
+        # invitación se sembraba a mano; ahora el filtro de nivel se aplica de
+        # verdad. Lo que se prueba aquí es `per_contract`, no los niveles.
+        lvl = "LEVEL_0"
         task_id = uuid.uuid4()
         await conn.execute(
             """INSERT INTO service_tasks
@@ -126,16 +136,30 @@ async def run() -> None:
             "ZZ SMOKE contrato — no usar", lvl, RANGO_MIN, RANGO_MAX)
         print(f"servicio de contrato creado · rango ${RANGO_MIN/100:.0f}–${RANGO_MAX/100:.0f}/h")
 
+        # L0/L1 y orden por id: los sembrados comparten `created_at`, así que
+        # `ORDER BY created_at` elegía a dos distintos en cada corrida —a veces L3,
+        # que exige licencia y seguro verificados— y el smoke fallaba solo.
         provs = await conn.fetch(
-            "SELECT id, user_id FROM provider_profiles ORDER BY created_at NULLS LAST LIMIT 2")
-        check(len(provs) >= 2, "hacen falta 2 proveedores")
+            "SELECT id, user_id, home_latitude, home_longitude, service_radius_km "
+            "FROM provider_profiles "
+            "WHERE status = 'ACTIVE' AND current_level IN ('LEVEL_0', 'LEVEL_1') "
+            "ORDER BY id LIMIT 2")
+        check(len(provs) >= 2, "hacen falta 2 proveedores ACTIVE de nivel L0/L1")
         prov_a, user_a = provs[0]["id"], provs[0]["user_id"]
         prov_b, user_b = provs[1]["id"], provs[1]["user_id"]
+        home_original.update({
+            p["id"]: (p["home_latitude"], p["home_longitude"], p["service_radius_km"])
+            for p in provs
+        })
         cust = await conn.fetchval(
             "SELECT id FROM users WHERE id<>$1 AND id<>$2 ORDER BY created_at NULLS LAST LIMIT 1",
             user_a, user_b)
         await _qualify(conn, prov_a, task_id)
         await _qualify(conn, prov_b, task_id)
+        # Viven donde estará el trabajo (43.65, -79.38). Nada más se prepara: que
+        # aparezca en su bolsa lo decide el producto.
+        await _place_near(conn, prov_a, 43.65, -79.38)
+        await _place_near(conn, prov_b, 43.65, -79.38)
 
         hdr_a = {"Authorization": f"Bearer {auth_service.create_access_token(user_a)[0]}"}
         hdr_b = {"Authorization": f"Bearer {auth_service.create_access_token(user_b)[0]}"}
@@ -175,8 +199,6 @@ async def run() -> None:
             check(fila["q"] == Decimal(HORAS), f"horas guardadas {fila['q']}")
             print(f"        -> guardado: ${fila['t']/100:.0f}/h × {fila['q']} h")
 
-            await _invite(conn, job_id, prov_a)
-            await _invite(conn, job_id, prov_b)
 
             # ================= PARTE B =================
             step("B1", "el proveedor ve el trato cerrado y que solo tiene que aceptar")
@@ -251,7 +273,6 @@ async def run() -> None:
             check(r.status_code in (200, 201), f"book: {r.status_code}")
             job2 = uuid.UUID(r.json()["data"]["job"]["id"])
             jobs_creados.append(job2)
-            await _invite(conn, job2, prov_a)
             r = await cl.post(f"{API}/provider/open-jobs/{job2}/offer", headers=hdr_a, json={})
             check(r.status_code == 201, f"aceptar: {r.status_code}: {r.text}")
             oid = r.json()["data"]["offerId"]
@@ -278,7 +299,6 @@ async def run() -> None:
                                     "quantity": 4, "details": "Se cancela sin empezar."})
             job3 = uuid.UUID(r.json()["data"]["job"]["id"])
             jobs_creados.append(job3)
-            await _invite(conn, job3, prov_a)
             r = await cl.post(f"{API}/provider/open-jobs/{job3}/offer", headers=hdr_a, json={})
             oid3 = r.json()["data"]["offerId"]
             await cl.post(f"{API}/jobs/{job3}/offers/{oid3}/accept", headers=hdr_c)
@@ -306,6 +326,13 @@ async def run() -> None:
                 await conn.execute("DELETE FROM provider_task_qualifications WHERE task_id=$1", task_id)
                 await conn.execute("DELETE FROM provider_service_rates WHERE task_id=$1", task_id)
                 await conn.execute("DELETE FROM service_tasks WHERE id=$1", task_id)
+            # Los proveedores vuelven a donde vivían: `_place_near` los mudó junto
+            # al trabajo de prueba.
+            for pid, (lat, lng, radius) in home_original.items():
+                await conn.execute(
+                    "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "
+                    "service_radius_km=$4, updated_at=now() WHERE id=$1",
+                    pid, lat, lng, radius)
             print("[limpieza] hecho")
         except Exception as exc:  # noqa: BLE001
             print(f"[limpieza] FALLO: {exc}")

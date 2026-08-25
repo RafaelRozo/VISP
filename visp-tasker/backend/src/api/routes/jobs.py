@@ -491,9 +491,15 @@ async def book_job(
             dynamic_multiplier=None,
         )
 
-        # Broadcast OFFERED assignments to ALL qualified providers.
-        # The job stays in PENDING_MATCH — it only transitions when a
-        # provider manually accepts the offer.
+        # Broadcast: notifica a los proveedores que califican AHORA.
+        #
+        # Ya NO es lo que decide quién ve el trabajo. La bolsa del proveedor
+        # (`offerService.list_open_jobs`) se calcula en vivo con el mismo
+        # predicado, así que si este broadcast sale vacío el trabajo sigue
+        # apareciéndole a quien califique más tarde. Antes no: estas
+        # `job_assignments` eran la única puerta y se emitían una sola vez, de
+        # modo que un broadcast vacío dejaba el trabajo huérfano para siempre —24
+        # de 36 trabajos acabaron así—. Aquí solo se registra a quién se avisó.
         try:
             from src.services.matchingEngine import find_matching_providers
             from src.models.job import JobAssignment, AssignmentStatus
@@ -524,7 +530,9 @@ async def book_job(
                 job.id,
             )
         except Exception as exc:
-            logger.warning("Offer broadcast failed for job %s: %s", job.id, exc)
+            # `exception` y no `warning`: sin el traceback, este except se tragó
+            # durante semanas un KeyError de nivel sin dejar rastro que sirviera.
+            logger.exception("Offer broadcast failed for job %s: %s", job.id, exc)
 
         # Build mobile-friendly response
         try:
