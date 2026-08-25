@@ -56,6 +56,8 @@ const STATUS_LABELS: Record<JobStatus, string> = {
   cancelled_by_system: 'Cancelled',
   disputed: 'Disputed',
   refunded: 'Refunded',
+  // No dice "Cancelled": nadie lo canceló, se le pasó el plazo.
+  expired: 'Expired',
 };
 
 function formatStatusLabel(status: JobStatus): string {

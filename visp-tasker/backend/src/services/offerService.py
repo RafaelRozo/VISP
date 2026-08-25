@@ -28,8 +28,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, cast, func, literal, select, type_coerce, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import TIME as SQLTime
+from sqlalchemy.types import TIMESTAMP as SQLTimestamp
 
 from src.models.job import (
     AssignmentStatus,
@@ -269,6 +271,10 @@ async def list_open_jobs(
     """
     now = datetime.now(timezone.utc)
 
+    # Al día antes de leer: no hay worker en marcha, así que si esto no se hace
+    # aquí, un trabajo cuyo plazo venció hace tres minutos seguiría ofreciéndose.
+    await expire_stale_jobs(db)
+
     provider = await db.get(ProviderProfile, provider_id)
     if provider is None:
         return []
@@ -413,6 +419,11 @@ async def create_offer(
     Su TARIFA no viene del cuerpo de la petición: sale de su perfil, ya validada
     contra el rango del catálogo. Lo que sí aporta es la magnitud (las horas, los m²)
     y, si el trabajo lleva material, cuánto costará y por qué."""
+    # El plazo se comprueba CERRANDO el trabajo, no leyéndolo aparte: así
+    # "vencido" y "cerrado" son la misma cosa, decidida en un único sitio
+    # —`job_deadline_sql`—, en vez de una regla en SQL para los listados y otra
+    # escrita en Python aquí, que es como acaban divergiendo.
+    await expire_stale_jobs(db, job_id=job_id)
     job = await db.get(Job, job_id)
     if job is None:
         raise JobNotFoundError(str(job_id))
@@ -831,8 +842,8 @@ def default_close_at(from_time: Optional[datetime] = None) -> datetime:
 async def expire_stale_offers(db: AsyncSession) -> dict[str, int]:
     """Cierra las ofertas cuya ventana ya pasó. Devuelve el recuento para el log.
 
-    No cancela el trabajo: un trabajo sin ofertas sigue siendo del cliente, que decide
-    si lo repone o lo cancela. Cancelarlo por él sería decidir en su nombre.
+    Solo toca las OFERTAS. Que el TRABAJO se cierre es cosa de
+    `expire_stale_jobs`, aquí abajo.
     """
     now = datetime.now(timezone.utc)
     stale = (
@@ -849,3 +860,106 @@ async def expire_stale_offers(db: AsyncSession) -> dict[str, int]:
         o.responded_at = now
     await db.flush()
     return {"expired_offers": len(stale)}
+
+
+# La hora de `requested_time_start` es LOCAL del área de servicio, no UTC: el
+# cliente que pide "el lunes a las 13:00" quiere las 13:00 de su reloj. La
+# columna es un TIME sin zona, así que hay que decirle cuál es.
+#
+# Comparar el valor crudo contra `now()` (UTC) expiraría los trabajos CUATRO
+# HORAS ANTES de tiempo en verano: las 13:00 de Toronto son las 17:00 UTC.
+#
+# Cuando VISP abra zonas en otro huso —Vancouver, Montreal no, misma zona— esto
+# tiene que salir de `service_zones` y no de una constante.
+SERVICE_TIMEZONE = "America/Toronto"
+
+# Un trabajo sin fecha y sin ventana no puede quedarse abierto para siempre: los
+# 19 trabajos anteriores a ofertas v2 nacieron con `offers_close_at` nulo y
+# llevaban meses abiertos. Se les aplica la misma ventana que a los nuevos,
+# contada desde que se crearon.
+_FALLBACK_WINDOW = timedelta(hours=OFFER_WINDOW_HOURS)
+
+
+def job_deadline_sql():
+    """El instante en que un trabajo deja de admitir ofertas, como expresión SQL.
+
+    Son DOS relojes y manda el que llegue antes:
+
+      1. `offers_close_at` — la ventana de 48 h para recibir ofertas.
+      2. la CITA (`requested_date` + `requested_time_start`) — de nada sirve
+         ofertar a las 13:05 por un servicio que era a las 13:00.
+
+    El segundo no se miraba en ninguna parte, y por eso un trabajo cuya fecha ya
+    había pasado seguía apareciendo como abierto hasta que venciera su ventana,
+    dos días después.
+
+    Sin hora se toma el final del día: "el lunes" no vence el lunes a las 00:00.
+    `LEAST` ignora los NULL, así que basta con que exista uno de los dos relojes;
+    si no existe ninguno, se cae a la ventana desde la creación.
+    """
+    # `date + time` da un timestamp SIN zona, que es hora local del área; el
+    # `timezone(...)` lo ancla a esa zona y devuelve ya el instante absoluto.
+    cita_local = type_coerce(
+        Job.requested_date + func.coalesce(
+            Job.requested_time_start, cast(literal("23:59:59"), SQLTime)
+        ),
+        SQLTimestamp,
+    )
+    cita_utc = func.timezone(SERVICE_TIMEZONE, cita_local)
+    return func.coalesce(
+        func.least(
+            Job.offers_close_at,
+            case((Job.requested_date.isnot(None), cita_utc), else_=None),
+        ),
+        Job.created_at + _FALLBACK_WINDOW,
+    )
+
+
+async def expire_stale_jobs(
+    db: AsyncSession, *, job_id: Optional[uuid.UUID] = None
+) -> int:
+    """Marca EXPIRED los trabajos abiertos a los que se les pasó el plazo.
+
+    Se llama de forma perezosa cada vez que alguien mira la lista —el cliente sus
+    trabajos, el proveedor su bolsa— además de poder correrse desde un cron. Esa
+    es la razón de que sea perezosa: no hay ningún worker en marcha, así que
+    depender de una tarea programada era exactamente lo que dejó 25 trabajos
+    abiertos, el más viejo de febrero. Así, en el momento en que alguien abre la
+    app, lo que ve ya está al día.
+
+    Con `job_id` se limita a ese trabajo: es lo que hace `create_offer` antes de
+    aceptar una oferta, para no barrer la tabla entera en cada intento.
+
+    Devuelve cuántos cerró, para el log.
+    """
+    now = datetime.now(timezone.utc)
+    condiciones = [
+        Job.status == JobStatus.PENDING_MATCH,
+        Job.accepted_offer_id.is_(None),
+        job_deadline_sql() <= now,
+    ]
+    if job_id is not None:
+        condiciones.append(Job.id == job_id)
+    vencidos = (await db.execute(select(Job).where(*condiciones))).scalars().all()
+
+    if not vencidos:
+        return 0
+
+    for job in vencidos:
+        job.status = JobStatus.EXPIRED
+        job.cancelled_at = now
+
+    # Las ofertas que seguían pendientes en esos trabajos se cierran con ellos:
+    # dejarlas vivas haría que sus proveedores siguieran esperando respuesta de
+    # un trabajo que ya no existe.
+    await db.execute(
+        update(JobOffer)
+        .where(
+            JobOffer.job_id.in_([j.id for j in vencidos]),
+            JobOffer.status == OfferStatus.PENDING,
+        )
+        .values(status=OfferStatus.EXPIRED, responded_at=now)
+    )
+    await db.flush()
+    logger.info("Expirados %d trabajos por plazo vencido", len(vencidos))
+    return len(vencidos)

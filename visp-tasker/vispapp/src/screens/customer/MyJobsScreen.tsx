@@ -64,27 +64,21 @@ const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 /**
  * Un trabajo abierto está muerto cuando ya no puede recibir ofertas.
  *
- * Se mira la VENTANA DE OFERTAS (48 h desde que se posteó), no la hora de servicio
- * que pidió el cliente. Antes se usaba la hora pedida y eso marcaba como caducado
- * un trabajo recién creado: si alguien reservaba a las 15:36 para "hoy a la 1 PM"
- * —cosa que el selector permitía— nacía etiquetado EXPIRED. El selector ya no deja
- * elegir horas pasadas, pero el criterio seguía siendo el equivocado: mientras la
- * ventana siga abierta, el trabajo está vivo y puede llegarle una oferta.
+ * Lo decide el BACKEND, que ahora tiene un estado `expired` de verdad. Aquí se
+ * calculaba, y por dos motivos estaba mal:
  *
- * Los trabajos anteriores al modelo de ofertas no tienen ventana; para esos se cae
- * a la regla de las 48 h desde su creación, que es lo que habrían tenido.
+ *   - Solo miraba la ventana de ofertas (48 h) e ignoraba la HORA DEL SERVICIO,
+ *     así que un trabajo cuya cita era ayer a la 1 PM seguía saliendo activo
+ *     hasta que venciera su ventana, dos días después.
+ *   - Y aunque lo pintara como caducado, en la base seguía abierto: los
+ *     proveedores lo veían y podían ofertar por él.
+ *
+ * La regla vive ahora en `offerService.job_deadline_sql`, que compara los dos
+ * relojes y —esto no se puede hacer bien desde aquí— resuelve la hora de la cita
+ * en la zona del área de servicio, no en la del teléfono de quien mira.
  */
 function isExpiredJob(job: Job): boolean {
-  if (!PENDING_STATUSES.includes(job.status)) return false;
-
-  if (job.offersCloseAt) {
-    return new Date(job.offersCloseAt).getTime() < Date.now();
-  }
-  if (job.createdAt) {
-    const VENTANA_MS = 48 * 60 * 60 * 1000;
-    return new Date(job.createdAt).getTime() + VENTANA_MS < Date.now();
-  }
-  return false;
+  return job.status === 'expired';
 }
 
 // ──────────────────────────────────────────────

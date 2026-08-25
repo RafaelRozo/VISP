@@ -598,6 +598,19 @@ async def get_active_jobs(
     from src.models.job import Job, JobStatus
     from src.models.taxonomy import ServiceTask
 
+    # Cerrar lo vencido ANTES de leer. Sin esto el cliente veía como "activo" un
+    # trabajo cuya hora ya había pasado —y los había de meses—: no hay ningún
+    # worker en marcha, así que el momento de mirar es el único momento fiable
+    # para poner la lista al día.
+    from src.services import offerService as _offerService
+
+    await _offerService.expire_stale_jobs(db)
+
+    # EXPIRED NO va en esta lista, aunque sea terminal. Esta ruta alimenta la
+    # pantalla "My Jobs" entera, que reparte lo que recibe en cuatro pestañas
+    # —activos, caducados, completados, borradores—; filtrar los caducados aquí
+    # dejaría vacía su propia pestaña. Lo que el cliente pidió es verlos marcados
+    # como caducados, no que desaparezcan.
     terminal_statuses = {
         JobStatus.COMPLETED,
         JobStatus.CANCELLED_BY_CUSTOMER,
@@ -704,6 +717,11 @@ async def list_jobs_by_customer(
         description="Number of items per page",
     ),
 ) -> JobListResponse:
+    # Igual que en /jobs/active: al día antes de leer. Esta es la lista que ve el
+    # cliente en "My Jobs", donde se quedaban los trabajos abiertos de meses.
+    from src.services import offerService as _offerService
+
+    await _offerService.expire_stale_jobs(db)
     try:
         result = await jobService.get_jobs_by_customer(
             db,

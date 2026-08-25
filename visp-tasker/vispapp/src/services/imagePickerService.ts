@@ -36,6 +36,12 @@ export interface PickImageOptions {
   /** Recorte previo — se usa en el avatar, con `aspect`. */
   allowsEditing?: boolean;
   aspect?: [number, number];
+  /**
+   * Tema del ActionSheet de iOS. La app tiene su propio interruptor claro/oscuro
+   * que puede no coincidir con el del sistema; si no se pasa, manda el sistema.
+   * Este helper no es un componente, así que no puede leer el ThemeContext solo.
+   */
+  isDark?: boolean;
 }
 
 /**
@@ -44,7 +50,10 @@ export interface PickImageOptions {
  * Resuelve a `null` si cancela. iOS usa el ActionSheet nativo; Android, un
  * Alert de tres botones, que es lo que ya hacía `VerificationScreen`.
  */
-export function askImageSource(title?: string): Promise<ImageSource | null> {
+export function askImageSource(
+  title?: string,
+  isDark?: boolean,
+): Promise<ImageSource | null> {
   const heading = title ?? t('imagePicker.title');
   const camera = t('imagePicker.takePhoto');
   const library = t('imagePicker.chooseFromLibrary');
@@ -53,16 +62,32 @@ export function askImageSource(title?: string): Promise<ImageSource | null> {
   return new Promise((resolve) => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
-        { title: heading, options: [camera, library, cancel], cancelButtonIndex: 2 },
+        {
+          title: heading,
+          options: [camera, library, cancel],
+          cancelButtonIndex: 2,
+          ...(isDark === undefined
+            ? {}
+            : { userInterfaceStyle: isDark ? ('dark' as const) : ('light' as const) }),
+        },
         (index) => resolve(index === 0 ? 'camera' : index === 1 ? 'library' : null),
       );
       return;
     }
-    Alert.alert(heading, undefined, [
-      { text: camera, onPress: () => resolve('camera') },
-      { text: library, onPress: () => resolve('library') },
-      { text: cancel, style: 'cancel', onPress: () => resolve(null) },
-    ]);
+    // `onDismiss` es obligatorio, no cortesía: en Android el Alert se cierra
+    // tocando fuera sin disparar ningún botón, y sin esto la promesa se queda
+    // colgada para siempre — el botón de añadir foto dejaría de responder sin
+    // ningún error.
+    Alert.alert(
+      heading,
+      undefined,
+      [
+        { text: camera, onPress: () => resolve('camera') },
+        { text: library, onPress: () => resolve('library') },
+        { text: cancel, style: 'cancel', onPress: () => resolve(null) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(null) },
+    );
   });
 }
 
@@ -112,7 +137,7 @@ async function ensurePermission(source: ImageSource): Promise<boolean> {
 export async function pickImages(
   options: PickImageOptions = {},
 ): Promise<ImagePicker.ImagePickerAsset[]> {
-  const source = await askImageSource(options.title);
+  const source = await askImageSource(options.title, options.isDark);
   if (source === null) return [];
   return pickImagesFrom(source, options);
 }

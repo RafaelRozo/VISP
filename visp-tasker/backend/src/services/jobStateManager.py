@@ -73,6 +73,9 @@ VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.SCHEDULED,
         JobStatus.CANCELLED_BY_CUSTOMER,
         JobStatus.CANCELLED_BY_SYSTEM,
+        # Venció la ventana de ofertas o llegó la hora del servicio sin que nadie
+        # fuera elegido. Lo hace el sistema, nunca una persona.
+        JobStatus.EXPIRED,
     },
     JobStatus.MATCHED: {
         JobStatus.PENDING_APPROVAL,            # provider interested -> customer reviews
@@ -137,6 +140,9 @@ VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.REFUNDED: {
         JobStatus.CANCELLED_BY_SYSTEM,
     },
+    # Terminal de verdad: la fecha ya pasó, así que no hay nada que reactivar. Si
+    # el cliente todavía quiere el servicio, reserva de nuevo y elige otra fecha.
+    JobStatus.EXPIRED: set(),
 }
 
 # Statuses in which the customer can still cancel

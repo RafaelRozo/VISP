@@ -145,9 +145,16 @@ export default function DashboardScreen(): React.JSX.Element {
   const [bio, setBio] = useState<string | null>(null);
 
   useEffect(() => {
-    // Solo para L0: es el único que necesita la lista, y así no se paga una
-    // llamada extra en cada carga del panel de quien ya está validado.
-    if (!providerProfile || providerProfile.level !== 0) return;
+    // Se pide SIEMPRE, en todos los niveles.
+    //
+    // Antes solo si el proveedor era L0, para ahorrarse una llamada en el panel
+    // de quien ya estaba validado. Pero esta misma `bio` alimenta dos cosas: la
+    // lista de pasos que faltan para L1 —que en efecto solo interesa en L0— y la
+    // tarjeta "How customers see you", que se enseña en todos los niveles. Al
+    // ahorrarse la llamada para el resto, la tarjeta leía `null` y le decía a un
+    // L1 con su bio escrita que no tenía bio. Le mentía sobre su propio perfil
+    // en la pantalla cuyo único trabajo es enseñarle cómo lo ve el cliente.
+    if (!providerProfile) return;
     let vivo = true;
     providerService
       .getPublicProfile(providerProfile.id)
@@ -160,7 +167,8 @@ export default function DashboardScreen(): React.JSX.Element {
     return () => {
       vivo = false;
     };
-  }, [providerProfile?.id, providerProfile?.level]);
+    // Ya no depende del nivel: se pide para todos.
+  }, [providerProfile?.id]);
 
   // Show level banner only when the provider has finished onboarding
   // (has at least one service selected). Until then the setup CTA does the job.

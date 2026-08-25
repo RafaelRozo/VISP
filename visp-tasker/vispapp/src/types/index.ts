@@ -149,7 +149,10 @@ export type JobStatus =
   | 'cancelled_by_provider'
   | 'cancelled_by_system'
   | 'disputed'
-  | 'refunded';
+  | 'refunded'
+  // Se le pasó el plazo: venció la ventana de ofertas o llegó la hora del
+  // servicio sin que nadie fuera elegido. No es una cancelación.
+  | 'expired';
 
 export interface Job {
   id: string;

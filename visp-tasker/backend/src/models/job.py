@@ -47,6 +47,11 @@ class JobStatus(str, enum.Enum):
     CANCELLED_BY_SYSTEM = "cancelled_by_system"
     DISPUTED = "disputed"
     REFUNDED = "refunded"
+    # Se le pasó el arroz: o venció la ventana de ofertas, o llegó la hora del
+    # servicio sin que el cliente eligiera a nadie. No es una cancelación —nadie
+    # lo canceló— y por eso no reusa CANCELLED_BY_SYSTEM: al cliente le importa
+    # la diferencia entre "lo cancelaron" y "nadie ofertó a tiempo".
+    EXPIRED = "expired"
 
 
 class JobPriority(str, enum.Enum):
