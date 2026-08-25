@@ -359,7 +359,14 @@
     "active": "Active"
   },
   "jobs": {
-    "onlyOpen": "Only open jobs (taking offers)",
+    "tab": {
+      "open": "Open",
+      "active": "In progress",
+      "completed": "Completed",
+      "expired": "Expired",
+      "cancelled": "Cancelled",
+      "all": "All"
+    },
     "withoutOffers": "with no offers yet",
     "reference": "Ref",
     "service": "Service",

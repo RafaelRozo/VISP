@@ -21,22 +21,73 @@ import { useTranslation } from 'react-i18next';
 import { adminService, type AdminJobRow } from '@/services/adminService';
 import { formatMoney, formatMoneyRange } from '@/lib/money';
 
+// `toUpperCase()` y no comparar tal cual: el endpoint devuelve el estado en
+// minúsculas ('pending_match') porque serializa el VALOR del enum, mientras que
+// en la base se guarda el NOMBRE ('PENDING_MATCH'). Comparado en mayúsculas, no
+// coincidía ninguna rama y todos los chips salían del color por defecto.
 function statusChipColor(status: string): string {
-  if (status === 'PENDING_MATCH') return 'var(--t-warn)';
-  if (status.startsWith('CANCELLED') || status === 'DISPUTED') return 'var(--t-danger)';
-  if (status === 'COMPLETED') return 'var(--t-ok)';
+  const s = status.toUpperCase();
+  if (s === 'PENDING_MATCH') return 'var(--t-warn)';
+  if (s.startsWith('CANCELLED') || s === 'DISPUTED') return 'var(--t-danger)';
+  if (s === 'COMPLETED') return 'var(--t-ok)';
+  if (s === 'EXPIRED') return 'var(--t-text-2)';
   return 'var(--t-text-2)';
 }
+
+/**
+ * Las pestañas del monitoreo.
+ *
+ * Antes solo había un interruptor "solo abiertos", que enseñaba una cosa o
+ * absolutamente todo. Para vigilar la plataforma a diario lo que hace falta es
+ * separar lo que pide atención (abiertos sin ofertas, trabajo en curso) de lo
+ * que es historial (terminados, caducados, cancelados).
+ *
+ * Los estados de cada grupo se mandan al backend en una sola llamada separados
+ * por coma; los contadores los calcula él sobre la tabla entera, no sobre las
+ * filas traídas.
+ */
+const GRUPOS = [
+  { key: 'open', estados: ['PENDING_MATCH'], label: 'Open' },
+  {
+    key: 'active',
+    estados: ['SCHEDULED', 'PROVIDER_ACCEPTED', 'PROVIDER_EN_ROUTE', 'IN_PROGRESS'],
+    label: 'In progress',
+  },
+  { key: 'completed', estados: ['COMPLETED'], label: 'Completed' },
+  { key: 'expired', estados: ['EXPIRED'], label: 'Expired' },
+  {
+    key: 'cancelled',
+    estados: [
+      'CANCELLED_BY_CUSTOMER',
+      'CANCELLED_BY_PROVIDER',
+      'CANCELLED_BY_SYSTEM',
+      'DISPUTED',
+      'REFUNDED',
+    ],
+    label: 'Cancelled',
+  },
+  { key: 'all', estados: [], label: 'All' },
+] as const;
+
+type GrupoKey = (typeof GRUPOS)[number]['key'];
 
 export default function Jobs() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const [onlyOpen, setOnlyOpen] = useState(true);
+  const [grupo, setGrupo] = useState<GrupoKey>('open');
   const [selected, setSelected] = useState<string | null>(null);
 
+  const grupoActual = GRUPOS.find((g) => g.key === grupo) ?? GRUPOS[0];
+
   const jobs = useQuery({
-    queryKey: ['admin-jobs', onlyOpen],
-    queryFn: () => adminService.listJobs({ onlyOpen, limit: 200 }),
+    queryKey: ['admin-jobs', grupo],
+    queryFn: () =>
+      adminService.listJobs({
+        statusFilter: grupoActual.estados.length
+          ? grupoActual.estados.join(',')
+          : undefined,
+        limit: 200,
+      }),
   });
 
   const detail = useQuery({
@@ -46,25 +97,54 @@ export default function Jobs() {
   });
 
   const rows: AdminJobRow[] = jobs.data?.jobs ?? [];
-  const sinOfertas = rows.filter((j) => j.status === 'PENDING_MATCH' && j.offerCount === 0).length;
+  const counts = jobs.data?.counts ?? {};
+  // El backend manda los contadores por estado; cada pestaña suma los suyos.
+  // "All" es el total de la tabla, no la suma de los grupos: si algún día
+  // apareciera un estado que ningún grupo recoge, el total lo delataría.
+  const totalTodos = Object.values(counts).reduce((a, b) => a + b, 0);
+  const cuentaDe = (g: (typeof GRUPOS)[number]): number =>
+    g.estados.length === 0
+      ? totalTodos
+      : g.estados.reduce((n, e) => n + (counts[e.toLowerCase()] ?? 0), 0);
+
+  const sinOfertas = rows.filter(
+    (j) => j.status.toUpperCase() === 'PENDING_MATCH' && j.offerCount === 0,
+  ).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <h1 className="t-h1">{t('nav.jobs') || 'Jobs & offers'}</h1>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={onlyOpen}
-            onChange={(e) => setOnlyOpen(e.target.checked)}
-          />
-          {t('jobs.onlyOpen') || 'Only open jobs (taking offers)'}
-        </label>
-        {onlyOpen && sinOfertas > 0 && (
+        {grupo === 'open' && sinOfertas > 0 && (
           <span className="t-chip" style={{ color: 'var(--t-warn)' }}>
             ⚠ {sinOfertas} {t('jobs.withoutOffers') || 'with no offers yet'}
           </span>
         )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {GRUPOS.map((g) => {
+          const activo = g.key === grupo;
+          return (
+            <button
+              key={g.key}
+              type="button"
+              onClick={() => setGrupo(g.key)}
+              className="t-chip"
+              style={{
+                cursor: 'pointer',
+                border: `1px solid ${activo ? 'var(--t-violet-line)' : 'var(--t-border)'}`,
+                background: activo ? 'var(--t-violet-wash)' : 'transparent',
+                color: activo ? 'var(--t-violet)' : 'var(--t-text-2)',
+                padding: '6px 12px',
+                fontSize: 13,
+              }}
+            >
+              {t(`jobs.tab.${g.key}`, { defaultValue: g.label })}{' '}
+              <span style={{ opacity: 0.7 }}>{cuentaDe(g)}</span>
+            </button>
+          );
+        })}
       </div>
 
       {jobs.isLoading && <div className="t-muted">…</div>}

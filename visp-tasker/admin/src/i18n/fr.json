@@ -359,7 +359,14 @@
     "active": "Actif"
   },
   "jobs": {
-    "onlyOpen": "Seulement les travaux ouverts (offres en cours)",
+    "tab": {
+      "open": "Ouverts",
+      "active": "En cours",
+      "completed": "Terminés",
+      "expired": "Expirés",
+      "cancelled": "Annulés",
+      "all": "Tous"
+    },
     "withoutOffers": "sans offre",
     "reference": "Réf",
     "service": "Service",

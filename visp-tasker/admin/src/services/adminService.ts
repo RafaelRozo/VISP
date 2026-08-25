@@ -555,12 +555,21 @@ export const adminService = {
   dashboardStats: () => apiGet<DashboardStats>('/admin/dashboard/stats'),
 
   // Trabajos y ofertas (ofertas v2)
+  /**
+   * `statusFilter` acepta varios estados separados por coma — las pestañas del
+   * monitoreo agrupan ("en curso" son cuatro estados) y así se piden en una sola
+   * llamada. `counts` viene siempre y cuenta la tabla ENTERA, no las filas
+   * devueltas: con `limit` puesto, contar lo traído haría mentir a las pestañas.
+   */
   listJobs: (params: { onlyOpen?: boolean; statusFilter?: string; limit?: number } = {}) =>
-    apiGet<{ jobs: AdminJobRow[]; count: number }>('/admin/jobs', {
-      only_open: params.onlyOpen ? 'true' : undefined,
-      status_filter: params.statusFilter,
-      limit: params.limit,
-    }),
+    apiGet<{ jobs: AdminJobRow[]; count: number; counts: Record<string, number> }>(
+      '/admin/jobs',
+      {
+        only_open: params.onlyOpen ? 'true' : undefined,
+        status_filter: params.statusFilter,
+        limit: params.limit,
+      },
+    ),
 
   jobDetail: (jobId: string) => apiGet<AdminJobDetail>(`/admin/jobs/${jobId}`),
 

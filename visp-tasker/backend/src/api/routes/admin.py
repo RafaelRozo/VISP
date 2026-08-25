@@ -1421,6 +1421,20 @@ async def admin_list_jobs(
     from src.models.job import Job, JobStatus
     from src.models.job_offer import JobOffer, OfferStatus
     from src.models.taxonomy import ServiceTask
+    from src.services import offerService as _offerService
+
+    # Al día antes de contar. Si no, "Abiertos" incluye trabajos cuya fecha pasó
+    # hace semanas y el equipo persigue un problema que no existe.
+    await _offerService.expire_stale_jobs(db)
+
+    # Contadores sobre la tabla ENTERA, no sobre las filas que se devuelven: con
+    # `limit` puesto, contar lo traído daría "Abiertos (200)" habiendo 640.
+    conteo_estados = {
+        s: int(n)
+        for s, n in (
+            await db.execute(select(Job.status, func.count(Job.id)).group_by(Job.status))
+        ).all()
+    }
 
     stmt = (
         select(Job, ServiceTask, User)
@@ -1432,11 +1446,24 @@ async def admin_list_jobs(
     if only_open:
         stmt = stmt.where(Job.status == JobStatus.PENDING_MATCH)
     elif status_filter:
-        stmt = stmt.where(Job.status == status_filter.upper())
+        # Acepta VARIOS estados separados por coma: las pestañas del admin agrupan
+        # ("en curso" son cuatro estados distintos) y sin esto cada grupo exigiría
+        # una llamada por estado.
+        pedidos = [s.strip().upper() for s in status_filter.split(",") if s.strip()]
+        validos = [s for s in pedidos if s in JobStatus.__members__]
+        if not validos:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Estado desconocido: {status_filter}",
+            )
+        stmt = stmt.where(Job.status.in_([JobStatus[s] for s in validos]))
 
     rows = (await db.execute(stmt)).all()
+    # Los contadores se devuelven SIEMPRE, también con la lista vacía: son lo que
+    # pinta las pestañas, y sin ellos todas dirían cero al abrir una vacía.
+    counts = {estado.value: n for estado, n in conteo_estados.items()}
     if not rows:
-        return {"data": {"jobs": [], "count": 0}}
+        return {"data": {"jobs": [], "count": 0, "counts": counts}}
 
     job_ids = [j.id for j, _, _ in rows]
     # Recuento de ofertas por trabajo en UNA consulta: una por trabajo convertiría
@@ -1478,6 +1505,7 @@ async def admin_list_jobs(
             "createdAt": j.created_at.isoformat() if j.created_at else None,
         } for j, t, u in rows],
         "count": len(rows),
+        "counts": counts,
     }}
 
 
