@@ -126,6 +126,8 @@ async def run() -> None:
     # Vacío hasta que se elijan los proveedores: el `finally` corre igual si el
     # smoke se cae antes de llegar ahí.
     home_original: dict = {}
+    # Tarifas que ya existían antes del smoke; se restauran en la limpieza.
+    tarifas_previas: list = []
 
     try:
         dbname = await conn.fetchval("SELECT current_database()")
@@ -182,6 +184,24 @@ async def run() -> None:
 
         await _qualify(conn, prov_a, task_id)
         await _qualify(conn, prov_b, task_id)
+
+        # El smoke arranca comprobando que SIN tarifa no se puede ofertar, así que
+        # necesita que estos dos proveedores no la tengan para este servicio. No es
+        # una suposición segura: son perfiles reales de visp_prod y alguien puede
+        # haberles puesto precio probando a mano —pasó, y el smoke falló con un
+        # "debería no poder ofertar" que no tenía nada que ver con el código—. Se
+        # guardan, se quitan, y la limpieza las devuelve tal cual estaban.
+        tarifas_previas = await conn.fetch(
+            "SELECT provider_id, rate_cents, min_charge_cents, is_active "
+            "FROM provider_service_rates WHERE task_id=$1 AND provider_id = ANY($2::uuid[])",
+            task_id, [prov_a, prov_b],
+        )
+        await conn.execute(
+            "DELETE FROM provider_service_rates WHERE task_id=$1 AND provider_id = ANY($2::uuid[])",
+            task_id, [prov_a, prov_b],
+        )
+        if tarifas_previas:
+            print(f"        (apartadas {len(tarifas_previas)} tarifa(s) puestas a mano; se restauran al final)")
         # Los dos viven donde va a estar el trabajo (43.65, -79.38). Es lo único que
         # se prepara: que aparezca en su bolsa lo decide el producto.
         await _place_near(conn, prov_a, 43.65, -79.38)
@@ -678,6 +698,14 @@ async def run() -> None:
                 await conn.execute(
                     "DELETE FROM provider_service_rates WHERE task_id=$1 AND provider_id = ANY($2::uuid[])",
                     task_id, [prov_a, prov_b])
+                # Devolver las que ya existían antes de correr el smoke.
+                for tp in tarifas_previas:
+                    await conn.execute(
+                        "INSERT INTO provider_service_rates "
+                        "(id, provider_id, task_id, rate_cents, min_charge_cents, is_active, created_at, updated_at) "
+                        "VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,now(),now())",
+                        tp["provider_id"], task_id, tp["rate_cents"],
+                        tp["min_charge_cents"], tp["is_active"])
             # Los proveedores vuelven a donde vivían: `_place_near` los mudó junto
             # al trabajo de prueba, y dejarlos ahí falsearía el matching real.
             for pid, (lat, lng, radius) in home_original.items():

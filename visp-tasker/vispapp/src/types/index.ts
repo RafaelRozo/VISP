@@ -178,6 +178,9 @@ export interface Job {
   /** Cierre de la ventana de ofertas (48 h). NULL en trabajos anteriores al
    *  modelo de ofertas. Es lo que define si un trabajo abierto sigue vivo. */
   offersCloseAt?: string | null;
+  /** Ofertas esperando respuesta. Lo calcula el backend en `/jobs/active`: es lo
+   *  que separa "publicado, sin noticias" de "te toca elegir". */
+  offerCount?: number;
   createdAt: string;
   updatedAt: string;
 }

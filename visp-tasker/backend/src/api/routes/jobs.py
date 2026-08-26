@@ -592,7 +592,7 @@ async def get_active_jobs(
     db: DBSession,
     user: CurrentUser,
 ) -> dict[str, Any]:
-    from sqlalchemy import select
+    from sqlalchemy import func, select
     from sqlalchemy.orm import selectinload
 
     from src.models.job import Job, JobStatus
@@ -650,6 +650,31 @@ async def get_active_jobs(
 
     from src.api.routes.providers import _mobile_status
 
+    # Cuántas ofertas VIVAS tiene cada trabajo, en UNA sola consulta.
+    #
+    # La app repartía los trabajos en pestañas —"publicado" vs. "con ofertas"— y
+    # para saber cuál era cuál preguntaba trabajo por trabajo DESPUÉS de pintar la
+    # lista: las pestañas se recolocaban solas delante del usuario según iban
+    # llegando las respuestas. Viniendo aquí, la clasificación es correcta desde
+    # el primer pintado y se ahorra una llamada por trabajo abierto.
+    from src.models.job_offer import JobOffer, OfferStatus
+
+    conteo_ofertas: dict[Any, int] = {}
+    if jobs:
+        conteo_ofertas = {
+            jid: int(n)
+            for jid, n in (
+                await db.execute(
+                    select(JobOffer.job_id, func.count(JobOffer.id))
+                    .where(
+                        JobOffer.job_id.in_([j.id for j in jobs]),
+                        JobOffer.status == OfferStatus.PENDING,
+                    )
+                    .group_by(JobOffer.job_id)
+                )
+            ).all()
+        }
+
     items = []
     for j in jobs:
         item = MobileJobOut.model_validate(j).model_dump(by_alias=True)
@@ -673,6 +698,10 @@ async def get_active_jobs(
         item["offersCloseAt"] = (
             j.offers_close_at.isoformat() if j.offers_close_at else None
         )
+        # Ofertas esperando respuesta. Es lo que separa "publicado, sin noticias"
+        # de "tienes que elegir", que para el cliente son dos situaciones muy
+        # distintas y hasta ahora se veían igual.
+        item["offerCount"] = conteo_ofertas.get(j.id, 0)
         items.append(item)
 
     return {

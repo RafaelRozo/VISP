@@ -55,7 +55,7 @@ import { useAuthStore } from '../../stores/authStore';
 import type { Job, RootStackParamList } from '../../types';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-type TabKey = 'active' | 'expired' | 'completed' | 'drafts';
+type TabKey = 'posted' | 'offered' | 'booked' | 'expired' | 'completed';
 
 const PENDING_STATUSES = ['pending_match', 'draft', 'pending'];
 
@@ -276,7 +276,7 @@ function MyJobsScreen(): React.JSX.Element {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('active');
+  const [activeTab, setActiveTab] = useState<TabKey>('posted');
 
   const fetchJobs = useCallback(async (silent = false) => {
     try {
@@ -307,28 +307,49 @@ function MyJobsScreen(): React.JSX.Element {
   // "Activos (10)" cuando de verdad solo había dos esperando ofertas. El contador
   // era falso y la lista, ruido. Separarlos deja "Activos" queriendo decir lo que
   // dice, y junta en un sitio lo que hay que reponer o retirar.
+  // Las cinco pestañas siguen el ciclo del trabajo, y cada una responde a una
+  // pregunta distinta del cliente:
+  //
+  //   POSTED    lo publiqué, aún no me oferta nadie
+  //   OFFERED   tengo ofertas -> me toca decidir          <- la accionable
+  //   BOOKED    ya elegí: hay proveedor y está en marcha
+  //   EXPIRED   se pasó el plazo sin cerrar nada
+  //   COMPLETED historial
+  //
+  // Antes había un único "Activos" que mezclaba las tres primeras: un trabajo con
+  // ofertas esperando se veía igual que uno al que nadie había respondido, y el
+  // cliente no tenía forma de saber que le tocaba mover ficha. Los borradores se
+  // retiraron: la reserva publica directamente y no había ni uno en la base.
+  //
+  // `offerCount` viene del backend en la propia lista, así que el reparto es
+  // correcto desde el primer pintado y las pestañas no se recolocan solas.
   const grouped = useMemo(() => {
-    const active: Job[] = [];
+    const posted: Job[] = [];
+    const offered: Job[] = [];
+    const booked: Job[] = [];
     const expired: Job[] = [];
     const completed: Job[] = [];
-    const drafts: Job[] = [];
     for (const j of jobs) {
-      if (isDraftStatus(j.status)) drafts.push(j);
-      else if (isCompletedStatus(j.status)) completed.push(j);
+      if (isCompletedStatus(j.status)) completed.push(j);
       else if (isExpiredJob(j)) expired.push(j);
-      else active.push(j);
+      else if (j.status === 'pending_match') {
+        ((j.offerCount ?? 0) > 0 ? offered : posted).push(j);
+      } else if (isDraftStatus(j.status)) posted.push(j);
+      else booked.push(j);
     }
-    return { active, expired, completed, drafts };
+    return { posted, offered, booked, expired, completed };
   }, [jobs]);
 
   const tabs = useMemo(
     () => [
-      { key: 'active' as TabKey, label: tr('myJobs.active') || 'Active', count: grouped.active.length },
-      // Caducados justo después de activos: son los que piden una decisión
-      // (reponer o retirar), no historial que se consulta de vez en cuando.
+      { key: 'posted' as TabKey, label: tr('myJobs.tabPosted'), count: grouped.posted.length },
+      // OFFERED va segunda a propósito: es la única que pide una decisión del
+      // cliente, y hasta ahora no había forma de ver de un vistazo que tenía
+      // ofertas esperando.
+      { key: 'offered' as TabKey, label: tr('myJobs.tabOffered'), count: grouped.offered.length },
+      { key: 'booked' as TabKey, label: tr('myJobs.tabBooked'), count: grouped.booked.length },
       { key: 'expired' as TabKey, label: tr('myJobs.expired') || 'Expired', count: grouped.expired.length },
       { key: 'completed' as TabKey, label: tr('common.completed') || 'Completed', count: grouped.completed.length },
-      { key: 'drafts' as TabKey, label: tr('myJobs.draft') || 'Drafts', count: grouped.drafts.length },
     ],
     [grouped, tr],
   );
@@ -367,20 +388,12 @@ function MyJobsScreen(): React.JSX.Element {
   // Antes aquí se cargaba "el proveedor que aceptó" para que el cliente lo
   // aprobara. Ya no hay tal cosa: el trabajo recibe VARIAS ofertas y el cliente
   // elige. Lo que hace falta en la lista es saber si ya hay alguna esperando.
-  const [offerCounts, setOfferCounts] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    const abiertos = jobs.filter((j) => j.status === 'pending_match');
-    abiertos.forEach(async (job) => {
-      if (offerCounts[job.id] != null) return;
-      try {
-        const res = await offerService.listOffers(job.id);
-        setOfferCounts((prev) => ({ ...prev, [job.id]: res.count }));
-      } catch {
-        // Un fallo aquí no puede tumbar la lista: se queda sin el contador.
-      }
-    });
-  }, [jobs, offerCounts]);
+  // El contador de ofertas YA NO se pide desde aquí: viene en `offerCount` de
+  // `/jobs/active`. Antes se preguntaba trabajo por trabajo después de pintar la
+  // lista, con una guarda que grababa el primer 0 y no volvía a preguntar nunca
+  // —así que si la oferta llegaba después de abrir la pantalla, el cliente no se
+  // enteraba ni refrescando—. Ahora el reparto en pestañas es correcto desde el
+  // primer pintado y con una sola llamada.
 
   const handleViewOffers = useCallback(
     (jobId: string) => {
@@ -425,7 +438,7 @@ function MyJobsScreen(): React.JSX.Element {
       const expired = isExpiredJob(item);
       const isOpen = item.status === 'pending_match';
       const accent = isAccentStatus(item.status);
-      const offerCount = offerCounts[item.id] ?? 0;
+      const offerCount = item.offerCount ?? 0;
       const labelKey = statusLabelKey(item.status);
       const statusText = expired
         ? (tr('myJobs.expired') || 'Expired').toUpperCase()
@@ -546,7 +559,7 @@ function MyJobsScreen(): React.JSX.Element {
         </MotionPressable>
       );
     },
-    [handleJobPress, handleViewOffers, offerCounts, t, tr],
+    [handleJobPress, handleViewOffers, t, tr],
   );
 
   // ── Completed / drafts row renderer ──────
@@ -619,9 +632,11 @@ function MyJobsScreen(): React.JSX.Element {
         data={filteredJobs}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) =>
-          activeTab === 'active' || activeTab === 'expired'
-            ? renderActiveCard(item)
-            : renderHistoryRow(item, index === filteredJobs.length - 1)
+          // Todo lo que sigue vivo se pinta como tarjeta con su estado y sus
+          // acciones; solo el historial se resume en una fila.
+          activeTab === 'completed'
+            ? renderHistoryRow(item, index === filteredJobs.length - 1)
+            : renderActiveCard(item)
         }
         contentContainerStyle={filteredJobs.length === 0 ? styles.emptyList : styles.list}
         ListEmptyComponent={
@@ -629,11 +644,13 @@ function MyJobsScreen(): React.JSX.Element {
             <Text style={[VispText.headlineMid, { color: t.text, textAlign: 'center', marginBottom: 8 }]}>
               {activeTab === 'completed'
                 ? tr('myJobs.noPastJobs')
-                : activeTab === 'drafts'
-                  ? tr('myJobs.draft') || 'No drafts'
-                  : activeTab === 'expired'
-                    ? tr('myJobs.noExpired') || 'Nothing expired'
-                    : tr('myJobs.noActiveJobs')}
+                : activeTab === 'expired'
+                  ? tr('myJobs.noExpired') || 'Nothing expired'
+                  : activeTab === 'offered'
+                    ? tr('myJobs.noOffered')
+                    : activeTab === 'booked'
+                      ? tr('myJobs.noBooked')
+                      : tr('myJobs.noActiveJobs')}
             </Text>
             <Text style={[VispText.body, { color: t.text2, textAlign: 'center' }]}>
               {activeTab === 'completed'
@@ -641,7 +658,11 @@ function MyJobsScreen(): React.JSX.Element {
                 : activeTab === 'expired'
                   ? tr('myJobs.expiredEmptyBody') ||
                     'Jobs that nobody offered on within 48 hours end up here.'
-                  : tr('myJobs.bookService')}
+                  : activeTab === 'offered'
+                    ? tr('myJobs.noOfferedBody')
+                    : activeTab === 'booked'
+                      ? tr('myJobs.noBookedBody')
+                      : tr('myJobs.bookService')}
             </Text>
           </View>
         }

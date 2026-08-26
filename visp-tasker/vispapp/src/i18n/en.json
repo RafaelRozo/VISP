@@ -479,6 +479,13 @@
     "payment": "Payment"
   },
   "myJobs": {
+    "tabPosted": "Posted",
+    "tabOffered": "Offered",
+    "tabBooked": "Booked",
+    "noOffered": "No offers yet",
+    "noOfferedBody": "When a provider offers on one of your jobs, it moves here so you can compare and choose.",
+    "noBooked": "Nothing booked",
+    "noBookedBody": "Once you accept an offer, the job appears here until it is done.",
     "title": "My Jobs",
     "newJob": "New job",
     "active": "Active",

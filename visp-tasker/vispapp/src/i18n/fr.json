@@ -479,6 +479,13 @@
     "payment": "Paiement"
   },
   "myJobs": {
+    "tabPosted": "Publiés",
+    "tabOffered": "Offres",
+    "tabBooked": "Réservés",
+    "noOffered": "Pas encore d'offres",
+    "noOfferedBody": "Quand un prestataire fait une offre sur un de vos travaux, il arrive ici pour que vous puissiez comparer et choisir.",
+    "noBooked": "Rien de réservé",
+    "noBookedBody": "Dès que vous acceptez une offre, le travail apparaît ici jusqu'à ce qu'il soit terminé.",
     "title": "Mes travaux",
     "newJob": "Nouveau travail",
     "active": "Actifs",
