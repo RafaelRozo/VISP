@@ -22,7 +22,7 @@
         "NSPhotoLibraryUsageDescription": "VISP needs photo library access so you can attach photos to a booking and upload your documents."
       },
       "bundleIdentifier": "com.droz.vispapp",
-      "buildNumber": "22"
+      "buildNumber": "23"
     },
     "android": {
       "package": "com.visp.tasker",
