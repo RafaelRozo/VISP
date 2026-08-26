@@ -337,18 +337,24 @@ function MyJobsScreen(): React.JSX.Element {
 
   const handleJobPress = useCallback(
     (job: Job) => {
+      // `pending_match` va PRIMERO, y el orden es el arreglo de un bug.
+      //
+      // Esta rama existía desde ofertas v2 pero estaba escrita DESPUÉS del
+      // `PENDING_STATUSES.includes(...)`, y esa lista contiene 'pending_match'.
+      // Resultado: era código inalcanzable. El cliente pulsaba su trabajo, le
+      // salía el diálogo "Searching for Provider" del flujo viejo —cuando el
+      // sistema asignaba proveedor solo— y no había forma de llegar a las
+      // ofertas que ya tenía esperando. El trabajo se quedaba muerto ahí.
+      if (job.status === 'pending_match') {
+        navigation.navigate('Offers', { jobId: job.id });
+        return;
+      }
       if (PENDING_STATUSES.includes(job.status)) {
         Alert.alert(tr('myJobs.searchingForProvider'), tr('homeScreen.searchingMessage'));
         return;
       }
       if (job.status === 'matched') {
         Alert.alert(tr('homeScreen.waitingForProvider'), tr('homeScreen.waitingMessage'));
-        return;
-      }
-      if (job.status === 'pending_match') {
-        // Con ofertas esperando, el destino útil es la pantalla de ofertas; sin
-        // ellas, el trabajo aún no tiene nada que enseñar.
-        navigation.navigate('Offers', { jobId: job.id });
         return;
       }
       navigation.navigate('JobTracking', { jobId: job.id });

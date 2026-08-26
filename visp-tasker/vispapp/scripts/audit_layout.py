@@ -248,6 +248,61 @@ if _en_path.exists():
                     "detail": f'"{clave}" existe en inglés pero no en fr.json',
                 })
 
+# ------------------------------------- 7. claves DINÁMICAS por enum del backend
+#
+# El detector de arriba solo ve claves literales. Pero la app también construye
+# claves con una plantilla:
+#
+#     tr(`myPricesScreen.unit.${unit}`)
+#
+# donde `unit` viene del backend. Cuando allí se añadió `per_contract`
+# (migración 046) nadie tocó la app: el chip de la pantalla de precios salía como
+# `[missing "en.myPricesScreen.unit.per_contract" translation]` en el dispositivo,
+# y ni tsc ni el detector literal podían verlo.
+#
+# Aquí se comprueba lo único que se puede comprobar de una clave dinámica: que
+# exista una entrada por CADA valor del enum que la alimenta. La lista de valores
+# se lee del propio backend, así que añadir una unidad allí rompe esta auditoría
+# hasta que se traduzca.
+
+_PRICING_UNIT_PY = (
+    Path(__file__).resolve().parents[2] / "backend" / "src" / "models" / "taxonomy.py"
+)
+_ENUMS_DINAMICOS = [
+    # (fichero del enum, clase, prefijo de la clave en i18n)
+    (_PRICING_UNIT_PY, "PricingUnit", "myPricesScreen.unit"),
+]
+
+if _en_path.exists():
+    for ruta_enum, clase, prefijo in _ENUMS_DINAMICOS:
+        if not ruta_enum.exists():
+            continue
+        fuente = ruta_enum.read_text(encoding="utf-8")
+        bloque = re.search(rf"class {clase}\(.*?\):(.*?)(?=\nclass |\Z)", fuente, re.S)
+        if not bloque:
+            continue
+        valores = re.findall(r'^\s+[A-Z_]+\s*=\s*"([a-z_]+)"', bloque.group(1), re.M)
+        for valor in valores:
+            clave = f"{prefijo}.{valor}"
+            if not _tiene(_en, clave):
+                findings.append({
+                    "sev": "HIGH",
+                    "kind": "i18n-enum-sin-traducir",
+                    "file": f"src/i18n/en.json",
+                    "line": 1,
+                    "detail": f'"{clave}" falta: el backend tiene {clase}.{valor.upper()} '
+                              f'y la app arma esa clave con una plantilla, así que '
+                              f'saldrá [missing] en pantalla',
+                })
+            elif not _tiene(_fr, clave):
+                findings.append({
+                    "sev": "MED",
+                    "kind": "i18n-enum-sin-traducir-fr",
+                    "file": f"src/i18n/fr.json",
+                    "line": 1,
+                    "detail": f'"{clave}" existe en inglés pero no en fr.json',
+                })
+
 # ---------------------------------------------------------------- salida
 order = {"HIGH": 0, "MED": 1, "LOW": 2}
 findings.sort(key=lambda d: (order[d["sev"]], d["kind"], d["file"], d["line"]))

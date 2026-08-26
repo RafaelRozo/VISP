@@ -206,6 +206,13 @@ export default function MyPricesScreen(): React.JSX.Element {
             const msg = rowMsg[item.task_id];
             const saving = savingId === item.task_id;
             const rangeText = `${dollarsLabel(item.base_price_min_cents)} – ${dollarsLabel(item.base_price_max_cents)}`;
+            // En un CONTRATO el precio no es del proveedor: lo publica el cliente
+            // junto con las horas, y el proveedor solo acepta o no. Pedirle aquí un
+            // precio es pedirle un dato que no manda y que no se usa en ninguna
+            // parte — `offerService.is_contract()` ni siquiera le exige tarifa para
+            // ofertar. Se enseña el servicio, para que sepa que lo tiene activo, y
+            // se explica quién pone el precio.
+            const esContrato = item.pricing_unit === 'per_contract';
             return (
               <Card key={item.task_id} padding={VispSpace.card} style={{ marginBottom: 12 }}>
                 <View style={styles.headerRow}>
@@ -221,6 +228,11 @@ export default function MyPricesScreen(): React.JSX.Element {
 
                 <Eyebrow>{tr('myPricesScreen.allowed') || 'Allowed range'} · {rangeText}</Eyebrow>
 
+                {esContrato ? (
+                  <Text style={[VispText.body, { color: t.text2, marginTop: 8 }]}>
+                    {tr('myPricesScreen.contractNote')}
+                  </Text>
+                ) : (
                 <View style={styles.inputRow}>
                   <View style={[styles.inputBox, { borderColor: t.border, backgroundColor: t.surface }]}>
                     <Text style={{ fontFamily: FontSansBold, fontSize: 18, color: t.text3, marginRight: 2 }}>$</Text>
@@ -254,6 +266,7 @@ export default function MyPricesScreen(): React.JSX.Element {
                     </Pressable>
                   )}
                 </View>
+                )}
 
                 {msg ? (
                   <Text style={[VispText.caption, { marginTop: 8, color: msg.type === 'ok' ? t.ok : t.danger }]}>

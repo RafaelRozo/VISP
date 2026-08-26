@@ -26,7 +26,12 @@ export interface ProviderRateItem {
     task_name: string;
     task_slug: string;
     level: string;
-    pricing_unit: 'hourly' | 'per_unit' | 'per_area' | 'per_linear_m' | 'per_visit' | 'flat_package' | 'custom_quote';
+    // `per_contract` (migración 046) faltaba aquí: la unidad se añadió en el
+    // backend y la app se quedó atrás, así que el chip de la tarjeta salía como
+    // `[missing "en.myPricesScreen.unit.per_contract" translation]` y no había
+    // forma de distinguir un contrato del resto. En un contrato el precio lo
+    // pone el CLIENTE, así que la pantalla no debe pedir tarifa por él.
+    pricing_unit: 'hourly' | 'per_unit' | 'per_area' | 'per_linear_m' | 'per_visit' | 'flat_package' | 'custom_quote' | 'per_contract';
     allows_quantity: boolean;
     base_price_min_cents: number | null;
     base_price_max_cents: number | null;

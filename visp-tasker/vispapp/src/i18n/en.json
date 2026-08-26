@@ -147,6 +147,7 @@
     "emptyBody": "Once your services are approved (no pending documents), they appear here so you can set your price.",
     "companyManagedTitle": "Set by your company",
     "companyManagedBody": "You work for a business — these prices are set by your company and can’t be changed here.",
+    "contractNote": "The customer sets the price and the hours on this service. You only accept or pass — there is no rate of yours to set here.",
     "customSection": "Quoted per job",
     "customBody": "Agreed with the customer before the job starts.",
     "unit": {
@@ -156,7 +157,8 @@
       "per_linear_m": "linear m",
       "per_visit": "visit",
       "flat_package": "package",
-      "custom_quote": "quote"
+      "custom_quote": "quote",
+      "per_contract": "contract"
     }
   },
   "earningsScreen": {

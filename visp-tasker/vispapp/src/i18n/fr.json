@@ -147,6 +147,7 @@
     "emptyBody": "Une fois vos services approuvés (sans documents en attente), ils apparaissent ici pour définir votre tarif.",
     "companyManagedTitle": "Défini par votre entreprise",
     "companyManagedBody": "Vous travaillez pour une entreprise — ces prix sont définis par votre entreprise et ne peuvent pas être modifiés ici.",
+    "contractNote": "Sur ce service, c'est le client qui fixe le prix et les heures. Vous acceptez ou non — il n'y a pas de tarif à définir ici.",
     "customSection": "Sur devis",
     "customBody": "Convenu avec le client avant le début du travail.",
     "unit": {
@@ -156,7 +157,8 @@
       "per_linear_m": "m linéaire",
       "per_visit": "visite",
       "flat_package": "forfait",
-      "custom_quote": "devis"
+      "custom_quote": "devis",
+      "per_contract": "contrat"
     }
   },
   "earningsScreen": {
