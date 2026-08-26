@@ -473,6 +473,11 @@ async function getActiveJobs(): Promise<Job[]> {
     actualDurationMinutes: j.actualDurationMinutes ?? j.actual_duration_minutes ?? null,
     estimatedDurationMinutes: j.estimatedDurationMinutes ?? j.estimated_duration_minutes ?? null,
     offersCloseAt: j.offersCloseAt ?? j.offers_close_at ?? null,
+    // Ofertas esperando respuesta. Sin esto, "Offered" sale SIEMPRE vacía y todo
+    // cae en "Posted": este mapeo copia campo por campo, así que cualquier dato
+    // nuevo del backend se pierde en silencio si no se añade también aquí. Es la
+    // segunda vez que muerde el mismo patrón — ver `providerStore.fetchDashboard`.
+    offerCount: j.offerCount ?? j.offer_count ?? 0,
     createdAt: j.createdAt,
     updatedAt: j.createdAt,
   }));

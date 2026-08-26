@@ -47,6 +47,7 @@ import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 // Screens - Customer
 import CustomerHomeScreen from '../screens/customer/HomeScreen';
 import JobTrackingScreen from '../screens/customer/JobTrackingScreen';
+import OffersScreen from '../screens/customer/OffersScreen';
 import MyJobsScreen from '../screens/customer/MyJobsScreen';
 
 // Screens - Provider
@@ -700,6 +701,18 @@ export default function AppNavigator(): React.JSX.Element {
                 ...opts,
                 title: `Chat - ${(route.params as { otherUserName: string }).otherUserName}`,
               })}
+            />
+            {/* Ofertas recibidas. La pantalla existía y la ruta estaba declarada
+                en `RootStackParamList`, pero NUNCA se registró aquí: navegar a
+                'Offers' no hacía absolutamente nada —React Navigation no
+                encuentra la ruta y falla en silencio, sin error visible— así que
+                el cliente veía sus ofertas en la lista y no podía abrirlas.
+                TypeScript no lo caza: el tipo declara la ruta, no comprueba que
+                exista una pantalla montada para ella. */}
+            <RootStack.Screen
+              name="Offers"
+              component={OffersScreen}
+              options={{ headerShown: false, ...opts }}
             />
             <RootStack.Screen
               name="JobTracking"

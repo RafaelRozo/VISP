@@ -641,6 +641,32 @@ async def list_offers(
         ).all()
     }
 
+    # Cuántos servicios ofrece cada proveedor.
+    #
+    # Un proveedor recién llegado no tiene estrellas ni trabajos hechos, así que
+    # su ficha se queda en "New provider · L1" y el cliente no tiene NADA con lo
+    # que juzgarlo salvo el precio. Esto no inventa una métrica de calidad —dice
+    # un hecho verificable— pero sí distingue a quien se ha dado de alta en un
+    # servicio suelto de quien tiene un oficio montado.
+    servicios = {
+        pid: int(cnt)
+        for pid, cnt in (
+            await db.execute(
+                select(
+                    ProviderTaskQualification.provider_id,
+                    func.count(ProviderTaskQualification.id),
+                )
+                .join(ServiceTask, ServiceTask.id == ProviderTaskQualification.task_id)
+                .where(
+                    ProviderTaskQualification.provider_id.in_(provider_ids),
+                    ProviderTaskQualification.qualified.is_(True),
+                    ServiceTask.is_active.is_(True),
+                )
+                .group_by(ProviderTaskQualification.provider_id)
+            )
+        ).all()
+    }
+
     items: list[dict[str, Any]] = []
     for o in offers:
         prof = profiles.get(o.provider_id)
@@ -659,6 +685,12 @@ async def list_offers(
             "rating": round(rating[0], 1) if rating else None,
             "reviewCount": rating[1] if rating else 0,
             "completedJobs": completed.get(o.provider_id, 0),
+            # Servicios activos en los que está cualificado. Es lo único con
+            # sustancia que se le puede enseñar al cliente de un proveedor nuevo.
+            "serviceCount": servicios.get(o.provider_id, 0),
+            # Desde cuándo está en la plataforma. Tampoco es una métrica de
+            # calidad, pero "lleva aquí desde marzo" dice más que nada.
+            "memberSince": prof.created_at.isoformat() if prof and prof.created_at else None,
             # El trabajo ofertado: "8 horas", "80 m²", "5 unidades".
             "magnitude": float(o.magnitude),
             "magnitudeSource": o.magnitude_source,

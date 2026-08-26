@@ -789,6 +789,9 @@
     "openProvider": "Je ne peux pas faire ce travail — annuler"
   },
   "offers": {
+    "serviceSingular": "service",
+    "servicePlural": "services",
+    "memberSince": "Sur VISP depuis {date}",
     "title": "Offres",
     "eyebrowWaiting": "§ En attente d'offres",
     "emptyTitle": "Aucune offre pour l'instant.",

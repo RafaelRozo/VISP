@@ -265,9 +265,32 @@ export default function OffersScreen(): React.JSX.Element {
                         ? ` · ${o.completedJobs} ${tr('offers.jobsDone') || 'jobs done'}`
                         : ''}
                       {o.level != null ? ` · L${o.level}` : ''}
+                      {/* Cuántos servicios ofrece y desde cuándo está. Un
+                          proveedor recién llegado no tiene estrellas ni trabajos
+                          hechos, así que su ficha se quedaba en "New provider ·
+                          L1" y el cliente no tenía nada con lo que juzgarlo
+                          salvo el precio. Ninguno de los dos mide calidad, pero
+                          son hechos verificables. */}
+                      {o.serviceCount ? ` · ${o.serviceCount} ${
+                        o.serviceCount === 1
+                          ? (tr('offers.serviceSingular') || 'service')
+                          : (tr('offers.servicePlural') || 'services')
+                      }` : ''}
                     </Text>
                   </View>
                 </View>
+
+                {o.memberSince ? (
+                  <Text style={[VispText.eyebrow, { color: t.text4, marginTop: 2 }]}>
+                    {(tr('offers.memberSince') || 'On VISP since {date}').replace(
+                      '{date}',
+                      new Date(o.memberSince).toLocaleDateString(undefined, {
+                        month: 'long',
+                        year: 'numeric',
+                      }),
+                    )}
+                  </Text>
+                ) : null}
 
                 {o.bio ? (
                   <Text

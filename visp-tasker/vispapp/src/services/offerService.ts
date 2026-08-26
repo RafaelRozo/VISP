@@ -63,6 +63,11 @@ export interface JobOffer {
   rating: number | null;
   reviewCount: number;
   completedJobs: number;
+  /** Servicios activos en los que está cualificado. Para un proveedor nuevo es
+   *  lo único con sustancia que el cliente puede mirar además del precio. */
+  serviceCount?: number;
+  /** Alta del perfil de proveedor. Tampoco mide calidad, pero sitúa. */
+  memberSince?: string | null;
   /** El trabajo ofertado: 8 (horas), 80 (m²), 5 (unidades). */
   magnitude: number;
   magnitudeSource: MagnitudeSource;
@@ -290,11 +295,21 @@ export function unitSuffix(pricingUnit: string | null | undefined): string {
 export function magnitudeLabel(pricingUnit: string | null | undefined): string {
   switch ((pricingUnit ?? '').toUpperCase()) {
     case 'HOURLY':
+    // Un contrato SE MIDE EN HORAS: el cliente publica su tarifa por hora y
+    // cuántas horas contrata. Faltaba aquí —la unidad se añadió en la migración
+    // 046 y este switch se quedó atrás— así que la oferta decía "8 units" y
+    // "$25.00 / unit" en un trabajo por horas.
+    case 'PER_CONTRACT':
       return 'hours';
     case 'PER_AREA':
       return 'm²';
     case 'PER_LINEAR_M':
       return 'meters';
+    case 'PER_VISIT':
+      return 'visits';
+    case 'FLAT_PACKAGE':
+      // Magnitud fija en 1: "1 units" no dice nada. Es el trabajo entero.
+      return 'job';
     default:
       return 'units';
   }
