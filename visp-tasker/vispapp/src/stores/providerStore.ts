@@ -170,7 +170,18 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
         isOnline: dashboard.profile?.isOnline ?? false,
         isOnCall: dashboard.profile?.isOnCall ?? false,
         activeJob: dashboard.activeJob ?? null,
-        pendingOffers: dashboard.pendingOffers ?? [],
+        // `pendingOffers` NO se toca aquí, y es la corrección de un crash.
+        //
+        // `/provider/dashboard` devuelve la bolsa con la forma VIEJA —
+        // `customerEvidence`, `customerAnswers`, `assignmentId`, `task`— mientras
+        // que `/provider/open-jobs` la devuelve con la nueva: `evidence`,
+        // `answers`, `myRateCents`, `canOffer`. Al escribir las dos en el mismo
+        // campo, entrar al panel pisaba la bolsa con objetos de otra forma y la
+        // tarjeta reventaba en `job.evidence.length` con undefined. No se veía
+        // mientras la bolsa estuvo vacía; apareció con el primer trabajo.
+        //
+        // La única fuente de este campo es `fetchOffers()`. Si algún día el
+        // dashboard vuelve a traerla, hay que convertirla antes de guardarla.
         earnings: dashboard.earnings ?? initialEarnings,
         performanceScore: dashboard.performanceScore ?? 0,
         onCallShifts: getState().onCallShifts ?? [],

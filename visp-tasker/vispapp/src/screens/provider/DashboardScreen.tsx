@@ -83,14 +83,21 @@ export default function DashboardScreen(): React.JSX.Element {
     isLoadingDashboard,
     isTogglingStatus,
     fetchDashboard,
+    fetchOffers,
     toggleOnline,
     declineOffer,
   } = useProviderStore();
 
   // Initial load
+  //
+  // La bolsa se pide APARTE, a `/provider/open-jobs`. El panel ya no la trae:
+  // devolvía los mismos trabajos con otra forma de campos y pisaba los buenos,
+  // lo que tumbaba la pantalla de Jobs. Son dos llamadas en vez de una, y es el
+  // precio de que este resumen y la bolsa enseñen exactamente lo mismo.
   useEffect(() => {
     fetchDashboard();
-  }, [fetchDashboard]);
+    fetchOffers();
+  }, [fetchDashboard, fetchOffers]);
 
   // Re-check selected services every time the screen regains focus so the
   // "Complete Your Profile" CTA disappears right after the user saves
@@ -114,7 +121,8 @@ export default function DashboardScreen(): React.JSX.Element {
   // Pull-to-refresh
   const onRefresh = useCallback(() => {
     fetchDashboard();
-  }, [fetchDashboard]);
+    fetchOffers();
+  }, [fetchDashboard, fetchOffers]);
 
   // User initials fallback for avatar
   const userInitials = useMemo(() => {

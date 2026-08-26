@@ -242,9 +242,13 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
           {job.details}
         </Text>
       ) : null}
-      {job.evidence.length > 0 ? (
+      {/* `?? []` y no `job.evidence.length`: este acceso directo tumbó la app
+          entera cuando el store traía la bolsa con la forma vieja. La causa está
+          arreglada en `providerStore.fetchDashboard`, pero una tarjeta no debe
+          poder matar la app por un campo que no vino. */}
+      {(job.evidence ?? []).length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={cardStyles.thumbs}>
-          {job.evidence.map((url) => (
+          {(job.evidence ?? []).map((url) => (
             <Image
               key={url}
               source={{ uri: resolveUploadUrl(url) ?? url }}
@@ -253,9 +257,9 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
           ))}
         </ScrollView>
       ) : null}
-      {job.answers.length > 0 ? (
+      {(job.answers ?? []).length > 0 ? (
         <View style={{ marginTop: 8, gap: 4 }}>
-          {job.answers.map((a, i) => (
+          {(job.answers ?? []).map((a, i) => (
             <Text key={i} style={[VispText.eyebrow, { color: t.text3 }]}>
               {a.question}: <Text style={{ color: t.text2 }}>{
                 a.answerType === 'IMAGE' ? (tr('jobOffers.photoAnswer') || 'photo attached') : a.answer
