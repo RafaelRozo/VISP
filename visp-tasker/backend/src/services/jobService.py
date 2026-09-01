@@ -755,6 +755,18 @@ async def update_job_status(
             if job.pricing_model is None:
                 job.pricing_model = LEVEL_PRICING_MODEL[task_level]
 
+    elif target_status in (
+        JobStatus.CANCELLED_BY_CUSTOMER,
+        JobStatus.CANCELLED_BY_PROVIDER,
+        JobStatus.CANCELLED_BY_SYSTEM,
+    ):
+        # `cancel_job` ya sellaba la hora, pero esta función es el OTRO camino a
+        # una cancelación —el que usa el barrido de plantones— y no la sellaba.
+        # `TSK-5SEVZG` quedó cancelado con `cancelled_at` en NULL: un trabajo
+        # cancelado sin hora no se puede auditar ni ordenar, y el motivo por sí
+        # solo no dice cuándo pasó.
+        job.cancelled_at = now
+
     elif target_status == JobStatus.COMPLETED:
         job.completed_at = now
 

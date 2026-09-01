@@ -305,11 +305,15 @@ async def run() -> None:
         estado_h = await _estado(conn, jid_h)
         check(estado_h == "CANCELLED_BY_SYSTEM",
               f"el plantón quedó en {estado_h} en vez de cancelarse")
-        motivo = await conn.fetchval(
-            "SELECT cancellation_reason FROM jobs WHERE id=$1", jid_h)
-        check(motivo == "no_show_provider",
-              f"sin motivo de no-show: quedó '{motivo}'")
-        print("        -> CANCELLED_BY_SYSTEM con motivo no_show_provider")
+        fila_h = await conn.fetchrow(
+            "SELECT cancellation_reason, cancelled_at FROM jobs WHERE id=$1", jid_h)
+        check(fila_h["cancellation_reason"] == "no_show_provider",
+              f"sin motivo de no-show: quedó '{fila_h['cancellation_reason']}'")
+        # Un trabajo cancelado sin hora no se puede auditar ni ordenar. Se comprueba
+        # porque la primera versión lo dejaba en NULL: `cancel_job` sellaba la hora
+        # pero `update_job_status`, que es por donde pasa el barrido, no.
+        check(fila_h["cancelled_at"] is not None, "quedó cancelado sin `cancelled_at`")
+        print("        -> CANCELLED_BY_SYSTEM, motivo no_show_provider, con hora")
 
         # ================= I =================
         step("I", "dentro del margen de 2 h NO se toca")
