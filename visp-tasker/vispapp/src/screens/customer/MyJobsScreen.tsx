@@ -246,9 +246,29 @@ function formatJobId(id: string): string {
 function formatDateMeta(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
   return d
-    .toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    .toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+    })
     .toUpperCase();
+}
+
+/**
+ * La fecha que el cliente necesita ver en la tarjeta es la CITA, no la de alta.
+ *
+ * La tarjeta enseñaba `createdAt` —cuándo publicó el trabajo—, que es justo el
+ * dato que no le sirve para saber si el servicio es hoy o fue ayer. La fecha de
+ * alta se queda como respaldo para los trabajos sin cita ("cuando puedas"), que
+ * si no se quedarían sin ninguna fecha.
+ */
+function cardDate(item: { scheduledAt?: string | null; createdAt?: string | null }): string {
+  return formatDateMeta(item.scheduledAt || item.createdAt);
 }
 
 function iconForCategory(name: string | undefined): VispIconName {
@@ -488,7 +508,7 @@ function MyJobsScreen(): React.JSX.Element {
 
               {/* Footer — date eyebrow + price */}
               <View style={styles.cardFooter}>
-                <Text style={[VispText.eyebrow, { color: t.text3 }]}>{formatDateMeta(item.createdAt)}</Text>
+                <Text style={[VispText.eyebrow, { color: t.text3 }]}>{cardDate(item)}</Text>
                 {item.estimatedPrice > 0 ? (
                   <Text
                     style={{

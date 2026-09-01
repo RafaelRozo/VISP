@@ -619,6 +619,18 @@ async def get_active_jobs(
 
     await _offerService.expire_stale_jobs(db)
 
+    # Y lo mismo con los ya reservados: el que se pasó de hora trabajando y el que
+    # nadie llegó a empezar. Va también aquí, y no solo en el panel del proveedor,
+    # porque el plantón lo sufre el CLIENTE: es quien abre la app a preguntarse si
+    # alguien va a venir, y tiene que encontrarlo resuelto.
+    from src.jobs.jobLifecycle import sweep_all
+
+    try:
+        await sweep_all(db)
+    except Exception:  # noqa: BLE001 — la lista nunca falla por el barrido.
+        await db.rollback()
+        logger.exception("Barrido de trabajos comprometidos fallido en /jobs/active")
+
     # EXPIRED NO va en esta lista, aunque sea terminal. Esta ruta alimenta la
     # pantalla "My Jobs" entera, que reparte lo que recibe en cuatro pestañas
     # —activos, caducados, completados, borradores—; filtrar los caducados aquí

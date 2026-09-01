@@ -159,10 +159,10 @@ async def get_dashboard(
     # worker de `jobs/jobLifecycle` es el camino normal, pero esto es lo que hace
     # que el aviso salga aunque el worker no esté corriendo — que es exactamente
     # lo que pasaba con el scheduler anterior sin que nadie se enterara.
-    from src.jobs.jobLifecycle import sweep_in_progress
+    from src.jobs.jobLifecycle import sweep_all
 
     try:
-        await sweep_in_progress(db)
+        await sweep_all(db)
     except Exception:  # noqa: BLE001 — el dashboard nunca falla por el barrido.
         # El rollback es obligatorio, no cortesía: una sesión que reventó a mitad
         # de un flush queda envenenada y haría fallar TODO lo que viene después,

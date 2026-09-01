@@ -371,6 +371,35 @@ function formatDayShort(iso: string | null | undefined): string {
   }
 }
 
+/**
+ * La FECHA de la tarjeta: "MON, SEP 1".
+ *
+ * Existe porque la tarjeta solo enseñaba la hora, y una hora suelta no dice de
+ * qué día es. Un paseo de perro del 31 a las 12:00 se leía igual que uno de hoy
+ * a las 12:00 — y así fue como un trabajo del día anterior pareció estar al día.
+ *
+ * Lleva el año solo cuando NO es el año en curso: escribirlo siempre añade ruido
+ * al 99% de las tarjetas para cubrir el 1%.
+ */
+function formatCardDate(iso: string | null | undefined): string {
+  if (!iso) return 'TBD';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'TBD';
+    const mismoAno = d.getFullYear() === new Date().getFullYear();
+    return d
+      .toLocaleDateString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        ...(mismoAno ? {} : { year: 'numeric' }),
+      })
+      .toUpperCase();
+  } catch {
+    return 'TBD';
+  }
+}
+
 function formatDurationMin(minutes: number | null | undefined): string {
   if (!minutes) return '—';
   if (minutes < 60) return `${minutes}m`;
@@ -783,6 +812,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
               <View style={{ marginTop: 12 }}>
                 <TimeJobCard
                   time={formatTimeHHMM(liveTodayJob.scheduledAt || liveTodayJob.startedAt)}
+                  date={formatCardDate(liveTodayJob.scheduledAt || liveTodayJob.startedAt)}
                   duration={formatDurationMin(liveTodayJob.estimatedDurationMinutes)}
                   title={liveTodayJob.taskName}
                   customerName="Customer"
@@ -911,6 +941,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
                   <TimeJobCard
                     key={j.id}
                     time={formatTimeHHMM(j.scheduledAt)}
+                    date={formatCardDate(j.scheduledAt)}
                     duration={formatDurationMin(j.estimatedDurationMinutes)}
                     title={j.taskName}
                     customerName={j.customerArea || 'Customer'}
@@ -949,7 +980,10 @@ export default function ActiveJobScreen(): React.JSX.Element {
                 </View>
               ) : (
                 week.map((j, idx) => {
-                  const day = formatDayShort(j.scheduledAt);
+                  // Fecha completa, no solo "MON": dentro de la misma semana el
+                  // día de la semana basta, pero esta lista también recibe cosas
+                  // que ya pasaron, y ahí "MON" a secas engaña.
+                  const day = formatCardDate(j.scheduledAt);
                   const time = formatTimeHHMM(j.scheduledAt);
                   return (
                     <View
@@ -1009,6 +1043,8 @@ export default function ActiveJobScreen(): React.JSX.Element {
 
 interface TimeJobCardProps {
   time: string;
+  /** La fecha, DENTRO de la tarjeta. Sin ella la hora del raíl no dice de qué día es. */
+  date: string;
   duration: string;
   title: string;
   customerName: string;
@@ -1025,6 +1061,7 @@ interface TimeJobCardProps {
 
 function TimeJobCard({
   time,
+  date,
   duration,
   title,
   customerName,
@@ -1079,6 +1116,14 @@ function TimeJobCard({
           </Text>
           {isNext ? <Chip accent>NEXT</Chip> : <Chip dark>{String(status).toUpperCase()}</Chip>}
         </View>
+
+        {/* La fecha va en su propia línea y no pegada a la ciudad: ahí la comía
+            el `numberOfLines={1}` en cuanto la dirección era larga, que es
+            siempre. Es el dato que hacía falta para no confundir un trabajo de
+            ayer con uno de hoy, así que no puede ser el primero en truncarse. */}
+        <Text style={[VispText.eyebrow, { color: t.text2, marginTop: 2 }]}>
+          {date} · {time}
+        </Text>
 
         <View style={timeCardStyles.customerRow}>
           <View style={[timeCardStyles.initialsBox, { backgroundColor: t.deep, borderColor: t.border }]}>

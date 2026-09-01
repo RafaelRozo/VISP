@@ -65,6 +65,25 @@ MAX_NOTICES = 3
 # queda tiempo de reintentarlo en el siguiente ciclo.
 AUTH_SAFETY_DAYS = 6
 
+# Cuánto se espera, después de la hora de FIN pactada, antes de dar por no-show un
+# trabajo que nadie llegó a empezar (decisión de Ricardo, 2026-09-01). Se cuenta
+# desde el fin y no desde el inicio a propósito: el proveedor que llega tarde pero
+# hace el trabajo no puede quedarse sin él por diez minutos.
+NO_SHOW_GRACE = timedelta(hours=2)
+
+# Motivo con el que queda registrada la cancelación. Cerrado, no texto libre: el
+# valor de esto es poder contar reincidencias.
+NO_SHOW_REASON = "no_show_provider"
+
+# Un trabajo comprometido que todavía no ha empezado. `IN_PROGRESS` NO está aquí:
+# ese ya tiene su propio camino (aviso + red de seguridad), y cancelar un trabajo
+# que alguien está haciendo sería destruir trabajo real.
+_NOT_STARTED_STATUSES = (
+    JobStatus.SCHEDULED,
+    JobStatus.PROVIDER_ACCEPTED,
+    JobStatus.PROVIDER_EN_ROUTE,
+)
+
 
 async def _provider_user_id(db: AsyncSession, job_id) -> object | None:
     """El `user_id` del proveedor asignado, que es a quien se le manda el push.
@@ -206,6 +225,99 @@ async def sweep_in_progress(db: AsyncSession) -> dict[str, int]:
     return {"nudged": avisados, "auto_closed": cerrados}
 
 
+async def sweep_no_shows(db: AsyncSession) -> dict[str, int]:
+    """Cierra los trabajos reservados a los que nadie se presentó.
+
+    `TSK-5SEVZG` —un paseo de perro del 31-ago a las 12:00— seguía apareciendo
+    como "reservado" al día siguiente, porque `/provider/schedule` no filtra por
+    fecha: cualquier trabajo comprometido es "próximo" para siempre. El cliente no
+    tenía forma de saber si iba a ir o no, y el hueco seguía ocupando la agenda
+    del proveedor.
+
+    **Por qué CANCELLED_BY_SYSTEM y no EXPIRED.** `EXPIRED` significa "nadie
+    ofertó y se cerró la ventana" (migración 049): un trabajo que nunca tuvo
+    proveedor. Este tiene proveedor asignado y precio acordado. Meterlos en el
+    mismo estado haría imposible distinguir "no interesó a nadie" de "quedaron y
+    no apareció", que es justo el dato que hay que poder contar. Y una
+    cancelación, además, SUELTA LA RETENCIÓN: dejarla viva cobraría al cliente el
+    plantón.
+    """
+    from src.services.cancellation_service import _release_hold
+
+    now = datetime.now(timezone.utc)
+    cancelados = 0
+
+    filas = (
+        await db.execute(
+            select(Job, ServiceTask)
+            .join(ServiceTask, ServiceTask.id == Job.task_id)
+            .where(
+                Job.status.in_(_NOT_STARTED_STATUSES),
+                Job.started_at.is_(None),
+                Job.requested_date.isnot(None),
+            )
+        )
+    ).all()
+
+    for job, task in filas:
+        ventana = jobSchedule.scheduled_window(job, task)
+        if ventana is None or now < ventana[1] + NO_SHOW_GRACE:
+            continue
+
+        # La retención se suelta ANTES de cambiar el estado. Si se hace después y
+        # algo falla en medio, queda un trabajo cancelado con el dinero del
+        # cliente todavía bloqueado, que es el peor de los dos órdenes posibles.
+        await _release_hold(job)
+
+        from src.services import jobService
+
+        try:
+            await jobService.update_job_status(
+                db, job.id, JobStatus.CANCELLED_BY_SYSTEM.value, actor_type="system"
+            )
+        except Exception:  # noqa: BLE001 — uno atascado no para a los demás.
+            logger.exception("No-show fallido para el trabajo %s", job.id)
+            continue
+
+        job.cancellation_reason = NO_SHOW_REASON
+        cancelados += 1
+        logger.warning(
+            "Trabajo %s (%s) cancelado por el sistema: estaba reservado para %s y "
+            "nadie lo empezó",
+            job.id, job.reference_number, ventana[0].isoformat(),
+        )
+
+        # Se avisa a los DOS. El cliente porque se queda sin servicio y tiene que
+        # poder volver a publicarlo; el proveedor porque perdió el trabajo y eso
+        # queda en su expediente.
+        destinatarios = [job.customer_id]
+        prov_user = await _provider_user_id(db, job.id)
+        if prov_user is not None:
+            destinatarios.append(prov_user)
+        for uid in destinatarios:
+            try:
+                await notificationService.notify_job_cancelled(
+                    job_id=job.id, user_id=uid, cancelled_by="system", db=db
+                )
+            except Exception:  # noqa: BLE001 — el push nunca bloquea.
+                logger.exception("Aviso de no-show fallido para %s", job.id)
+
+    await db.flush()
+    return {"no_shows": cancelados}
+
+
+async def sweep_all(db: AsyncSession) -> dict[str, int]:
+    """Los dos relojes de un trabajo ya comprometido, en una sola pasada.
+
+    Van juntos porque son el mismo agujero visto por sus dos lados: nada vigilaba
+    a un trabajo después de que el cliente aceptara la oferta. Uno se pasó de hora
+    trabajando y el otro nunca llegó a empezar.
+    """
+    resultado = await sweep_in_progress(db)
+    resultado.update(await sweep_no_shows(db))
+    return resultado
+
+
 # ---------------------------------------------------------------------------
 # Tarea de fondo
 # ---------------------------------------------------------------------------
@@ -221,9 +333,9 @@ async def _run_loop() -> None:
     while _running:
         try:
             async with async_session_factory() as db:
-                resultado = await sweep_in_progress(db)
+                resultado = await sweep_all(db)
                 await db.commit()
-            if resultado["nudged"] or resultado["auto_closed"]:
+            if any(resultado.values()):
                 logger.info("Barrido de trabajos en curso: %s", resultado)
         except asyncio.CancelledError:
             raise

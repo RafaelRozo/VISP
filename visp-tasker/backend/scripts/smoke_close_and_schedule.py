@@ -18,6 +18,11 @@ Los dos fallos que Ricardo reprodujo el 31-ago, cada uno con su comprobación:
   F — ofertar por ese trabajo da 4xx con el motivo, no un 500 ni un éxito.
   G — uno que empieza a las 14:00, justo cuando el otro acaba, SÍ se puede
       ofertar: el solape es estricto, sin margen de traslado.
+  H — NO-SHOW: un trabajo reservado que nadie empezó y al que se le pasó la hora
+      de fin + 2 h se cancela solo. `TSK-5SEVZG` seguía "reservado" al día
+      siguiente porque `/provider/schedule` no filtra por fecha.
+  I — dentro del margen de 2 h NO se toca: el que llega tarde pero trabaja no
+      puede quedarse sin el trabajo.
 
 Las credenciales salen del .env — este script no lleva ninguna dentro.
 
@@ -31,6 +36,9 @@ import sys
 import uuid
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+TORONTO = ZoneInfo("America/Toronto")
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
@@ -107,10 +115,10 @@ async def _estado(conn, jid) -> str:
 
 
 async def _barrer(db_factory) -> dict:
-    from src.jobs.jobLifecycle import sweep_in_progress
+    from src.jobs.jobLifecycle import sweep_all
 
     async with db_factory() as db:
-        resultado = await sweep_in_progress(db)
+        resultado = await sweep_all(db)
         await db.commit()
     return resultado
 
@@ -284,6 +292,39 @@ async def run() -> None:
             check(fila_g["blockedReason"] is None,
                   "empezar a las 17:00 cuando el otro acaba a las 17:00 no es un solape")
             print("        -> sin choque: el solape es estricto")
+
+        # ================= H =================
+        step("H", "NO-SHOW: reservado, nadie lo empezó, fin + 2 h -> cancelado")
+        # Ayer a las 09:00, 2 h de contrato: venció hace mucho más de 2 h.
+        jid_h = await _crear_job(
+            conn, cust, task_id, estado="SCHEDULED",
+            fecha=hoy_local - timedelta(days=1), hora=time(9, 0), cantidad=2)
+        creados.append(jid_h)
+        await _asignar(conn, jid_h, prov_id)
+        await _barrer(async_session_factory)
+        estado_h = await _estado(conn, jid_h)
+        check(estado_h == "CANCELLED_BY_SYSTEM",
+              f"el plantón quedó en {estado_h} en vez de cancelarse")
+        motivo = await conn.fetchval(
+            "SELECT cancellation_reason FROM jobs WHERE id=$1", jid_h)
+        check(motivo == "no_show_provider",
+              f"sin motivo de no-show: quedó '{motivo}'")
+        print("        -> CANCELLED_BY_SYSTEM con motivo no_show_provider")
+
+        # ================= I =================
+        step("I", "dentro del margen de 2 h NO se toca")
+        # Empezaba hace 30 min y dura 1 h: aún no ha llegado ni a su hora de fin.
+        casi = (ahora - timedelta(minutes=30)).astimezone(TORONTO)
+        jid_i = await _crear_job(
+            conn, cust, task_id, estado="SCHEDULED",
+            fecha=casi.date(), hora=casi.time().replace(microsecond=0), cantidad=1)
+        creados.append(jid_i)
+        await _asignar(conn, jid_i, prov_id)
+        await _barrer(async_session_factory)
+        estado_i = await _estado(conn, jid_i)
+        check(estado_i == "SCHEDULED",
+              f"canceló a un proveedor que aún está en plazo: quedó {estado_i}")
+        print("        -> intacto: el retraso razonable no cuesta el trabajo")
 
         print(f"\nTODAS LAS COMPROBACIONES PASARON ({_checks}).")
 
