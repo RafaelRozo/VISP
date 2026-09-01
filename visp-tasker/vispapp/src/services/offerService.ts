@@ -48,6 +48,13 @@ export interface OpenJob {
   /** Su propia tarifa. NULL en un contrato, donde el precio no es suyo. */
   myRateCents: number | null;
   canOffer: boolean;
+  /**
+   * Por qué no puede ofertar, cuando el motivo NO es "te falta la tarifa".
+   * Hoy solo llega `schedule_conflict`: ya tiene otro trabajo comprometido a esa
+   * hora. Los demás bloqueos (fuera de radio, sin cualificación) sacan el trabajo
+   * de la bolsa; este no, porque mañana ese hueco estará libre.
+   */
+  blockedReason: 'schedule_conflict' | null;
   alreadyOffered: boolean;
   offersCloseAt: string | null;
 }

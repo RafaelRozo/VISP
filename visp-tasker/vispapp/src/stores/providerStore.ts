@@ -79,7 +79,7 @@ interface ProviderState {
   updateJobStatus: (jobId: string, status: JobStatus) => Promise<void>;
   startNavigation: (jobId: string) => Promise<void>;
   arriveAtJob: (jobId: string) => Promise<void>;
-  completeJob: (jobId: string) => Promise<void>;
+  completeJob: (jobId: string, photosAfter?: string[]) => Promise<void>;
   fetchActiveJob: (jobId: string) => Promise<void>;
   setOfferFilter: (category: string | null, maxDistance: number | null) => void;
   setOfferSort: (sortBy: 'distance' | 'price' | 'expiry') => void;
@@ -451,10 +451,16 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
     }
   },
 
-  completeJob: async (jobId: string) => {
+  completeJob: async (jobId: string, photosAfter?: string[]) => {
     set({ error: null });
     try {
-      await post(`/provider/jobs/${jobId}/complete`);
+      // Las fotos de "después" son OPCIONALES: son la mejor prueba en una
+      // disputa, pero exigirlas dejaría a un proveedor sin cobertura sin poder
+      // cerrar NI COBRAR, y el cobro no puede depender de la señal del móvil.
+      await post(
+        `/provider/jobs/${jobId}/complete`,
+        photosAfter && photosAfter.length > 0 ? { photosAfter } : undefined,
+      );
       set({ activeJob: null });
       getState().fetchDashboard();
     } catch (err: unknown) {

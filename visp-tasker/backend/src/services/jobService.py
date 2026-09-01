@@ -27,7 +27,7 @@ import random
 import string
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional, Sequence
 
@@ -618,8 +618,13 @@ async def _enforce_start_preconditions(db: AsyncSession, job: Job, now: datetime
 
     # --- Time gate (emergencies + start-now bookings exempt) ---
     if not is_emergency and job.requested_date is not None:
-        slot_time = job.requested_time_start or time(0, 0)
-        scheduled = datetime.combine(job.requested_date, slot_time, tzinfo=timezone.utc)
+        # La hora de la cita es LOCAL del área de servicio, no UTC. Anclarla en
+        # UTC —como se hacía— corría la puerta CUATRO HORAS en verano: las 13:00
+        # de Toronto son las 17:00 UTC, así que el proveedor podía arrancar a las
+        # 09:00 un trabajo de la 13:00. `jobSchedule` es quien sabe la zona.
+        from src.services import jobSchedule
+
+        scheduled = jobSchedule.scheduled_start(job)
         earliest = scheduled - timedelta(minutes=START_SCHEDULE_GRACE_MIN)
         if now < earliest:
             raise JobStartNotAllowedError(

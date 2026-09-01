@@ -20,6 +20,7 @@ Exceptions map to 4xx at the route layer (never 5xx — Cloudflare rule).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
@@ -202,6 +203,10 @@ async def authorize_job(
     job.stripe_payment_intent_id = result.id
     job.authorized_amount_cents = auth_amount
     job.capture_buffer_pct = AUTHORIZATION_BUFFER - Decimal(1)
+    # El reloj de los 7 días de Stripe arranca AQUÍ. Es lo que mira la red de
+    # seguridad de `jobs/jobLifecycle` para cerrar un trabajo olvidado antes de
+    # que la retención se libere sola y el cobro se pierda.
+    job.authorized_at = datetime.now(timezone.utc)
     await db.flush()
     return result
 

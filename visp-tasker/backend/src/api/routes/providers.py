@@ -26,7 +26,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, Query, Request, status, UploadFile, File, Form
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from src.api.schemas.payouts import (
     PayoutBankIn,
     PayoutIdentityIn,
@@ -60,7 +60,12 @@ from src.api.schemas.provider import (
     DataResponse,
     ProviderCategoryOut,
 )
-from src.services import providerService, taxonomy_service, jobService
+from src.services import (
+    jobService,
+    notificationService,
+    providerService,
+    taxonomy_service,
+)
 
 
 router = APIRouter(prefix="/provider", tags=["Provider"])
@@ -83,6 +88,36 @@ _MOBILE_STATUS_MAP: dict[str, str] = {
 
 def _mobile_status(backend_status: str) -> str:
     return _MOBILE_STATUS_MAP.get(backend_status, backend_status)
+
+
+def _fin_iso(job: Any, task: Any) -> Optional[str]:
+    """Cuándo debería terminar el trabajo que está EN CURSO.
+
+    Se cuenta desde `started_at`, no desde la cita: `TSK-BD00BM` estaba agendado
+    el 29 a las 16:00 y se arrancó el 31 a las 09:12; medirlo contra la cita
+    habría dado un fin dos días anterior a su propio comienzo.
+    """
+    from src.services import jobSchedule
+
+    ventana = jobSchedule.working_window(job, task)
+    return ventana[1].isoformat() if ventana else None
+
+
+def _esta_vencido(job: Any, task: Any) -> bool:
+    """¿Ya pasó su hora de fin y sigue en curso?
+
+    Es lo que enciende el aviso en la app. Va aquí y no en el móvil porque la
+    duración depende de la unidad de precio, y esa regla vive en un solo sitio.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    from src.models.job import JobStatus
+    from src.services import jobSchedule
+
+    if job.status != JobStatus.IN_PROGRESS:
+        return False
+    ventana = jobSchedule.working_window(job, task)
+    return ventana is not None and _dt.now(_tz.utc) >= ventana[1]
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +154,22 @@ async def get_dashboard(
     from src.models.verification import ProviderCredential
     from sqlalchemy import select as sa_select
     from sqlalchemy.orm import selectinload
+
+    # Al día antes de leer, igual que hace la bolsa con las ofertas vencidas. El
+    # worker de `jobs/jobLifecycle` es el camino normal, pero esto es lo que hace
+    # que el aviso salga aunque el worker no esté corriendo — que es exactamente
+    # lo que pasaba con el scheduler anterior sin que nadie se enterara.
+    from src.jobs.jobLifecycle import sweep_in_progress
+
+    try:
+        await sweep_in_progress(db)
+    except Exception:  # noqa: BLE001 — el dashboard nunca falla por el barrido.
+        # El rollback es obligatorio, no cortesía: una sesión que reventó a mitad
+        # de un flush queda envenenada y haría fallar TODO lo que viene después,
+        # que es el dashboard entero. Va primero porque el barrido es lo primero
+        # de la ruta: no hay nada más que perder.
+        await db.rollback()
+        logger.exception("Barrido de trabajos en curso fallido en el dashboard")
 
     # 1. Get or default profile
     profile_stmt = (
@@ -274,6 +325,12 @@ async def get_dashboard(
                 "level": 1, # default level fallback
                 "startedAt": active_job.started_at.isoformat() if active_job.started_at else None,
                 "completedAt": active_job.completed_at.isoformat() if active_job.completed_at else None,
+                # Cuándo debería acabar y si ya se pasó. Lo calcula el servidor a
+                # propósito: la duración sale de la unidad de precio (horas
+                # contratadas, o la estimación del catálogo) y duplicar esa regla
+                # en la app es justo cómo las dos versiones acaban discrepando.
+                "scheduledEndAt": _fin_iso(active_job, task),
+                "isOverdue": _esta_vencido(active_job, task),
             }
 
     # 4. Pending offers — reuse the offers logic
@@ -490,6 +547,11 @@ async def get_job_detail(
         "level": 1, # default level fallback
         "startedAt": job.started_at.isoformat() if job.started_at else None,
         "completedAt": job.completed_at.isoformat() if job.completed_at else None,
+        # Los mismos dos campos que devuelve el dashboard, y calculados con la
+        # misma función. Dos endpoints escribiendo `activeJob` con formas
+        # distintas es exactamente lo que tumbó la pantalla de Jobs el 26-ago.
+        "scheduledEndAt": _fin_iso(job, task),
+        "isOverdue": _esta_vencido(job, task),
         # Materiales (migración 043/045). El proveedor los necesita AQUÍ, en el
         # trabajo en curso: es donde tiene que acordarse de subir la factura antes
         # de cerrar, y sin factura no hay reembolso.
@@ -598,15 +660,35 @@ async def arrive_at_job(
 # POST /api/v1/provider/jobs/{job_id}/complete
 # ---------------------------------------------------------------------------
 
+class CompleteJobRequest(BaseModel):
+    """Cierre del trabajo. Las fotos son OPCIONALES a propósito.
+
+    Sirven de prueba de lo que se entregó y son la mejor defensa en una disputa,
+    pero exigirlas dejaría a un proveedor sin cobertura sin poder cerrar **ni
+    cobrar** — y el cobro es lo que no puede depender de la señal del móvil.
+    """
+
+    photos_after: Optional[list[str]] = Field(
+        default=None, alias="photosAfter", max_length=5
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 @router.post(
     "/jobs/{job_id}/complete",
     summary="Complete a job",
-    description="Provider marks the job as completed.",
+    description=(
+        "Provider marks the job as completed. Optionally attaches 'after' photos "
+        "(same upload endpoint as booking evidence). Completing captures the held "
+        "payment and notifies the customer to leave a review."
+    ),
 )
 async def complete_job(
     db: DBSession,
     user: CurrentUser,
     job_id: uuid.UUID,
+    body: Optional[CompleteJobRequest] = None,
 ) -> dict[str, Any]:
     try:
         provider_id = await _get_provider_id(db, user)
@@ -634,6 +716,23 @@ async def complete_job(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         )
+
+    if body is not None and body.photos_after:
+        job.photos_after_json = body.photos_after
+        await db.flush()
+
+    # El cliente no se enteraba de que su trabajo había terminado: este aviso solo
+    # salía por el canal de Socket.IO, que la app no usa para cerrar. Sin él nadie
+    # llega nunca a la pantalla de calificar.
+    try:
+        await notificationService.notify_job_completed(
+            job_id=job.id,
+            customer_id=job.customer_id,
+            final_price_cents=job.actual_total_cents or job.total_charged_cents or 0,
+            db=db,
+        )
+    except Exception:  # noqa: BLE001 — el push jamás bloquea el cierre ni el cobro.
+        logger.exception("Aviso de cierre fallido para el trabajo %s", job.id)
 
     return {"data": {"jobId": str(job.id), "status": _mobile_status(job.status.value), "completedAt": job.completed_at.isoformat() if job.completed_at else None}}
 

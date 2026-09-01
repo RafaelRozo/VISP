@@ -331,6 +331,58 @@ BID_OWN_JOB = "own_job"
 BID_NO_LOCATION = "no_location"
 BID_OUT_OF_RANGE = "out_of_range"
 BID_REQUIREMENTS = "requirements"
+# Ya tiene otro trabajo comprometido a esa misma hora. A diferencia de los
+# anteriores, este motivo NO oculta el trabajo de la bolsa: se enseña en gris con
+# su explicación, porque desaparecer sin decir por qué es exactamente el fallo
+# que ya se pagó una vez con `own_job`.
+BID_SCHEDULE_CONFLICT = "schedule_conflict"
+
+
+# Un trabajo ocupa la agenda de su proveedor desde que lo acepta hasta que lo
+# cierra. `SCHEDULED` entra porque el compromiso nace al aceptar la oferta, no al
+# ponerse en marcha: la razón entera de esto es no dejar que se comprometa dos
+# veces a la misma hora.
+_COMMITTED_STATUSES = (
+    JobStatus.SCHEDULED,
+    JobStatus.PROVIDER_ACCEPTED,
+    JobStatus.PROVIDER_EN_ROUTE,
+    JobStatus.IN_PROGRESS,
+)
+
+
+async def provider_busy_windows(
+    db: AsyncSession, provider_id: uuid.UUID
+) -> list[tuple[datetime, datetime]]:
+    """Los huecos que este proveedor ya tiene comprometidos, en UTC.
+
+    Se lee de `job_assignments` en ACCEPTED —que es donde vive el proveedor
+    asignado, no en `jobs`— cruzado con los trabajos que siguen vivos.
+
+    Los trabajos sin fecha no aparecen: no reservan horas, así que no pueden
+    chocar con nada.
+    """
+    from src.services import jobSchedule
+
+    rows = (
+        await db.execute(
+            select(Job, ServiceTask)
+            .join(JobAssignment, JobAssignment.job_id == Job.id)
+            .join(ServiceTask, ServiceTask.id == Job.task_id)
+            .where(
+                JobAssignment.provider_id == provider_id,
+                JobAssignment.status == AssignmentStatus.ACCEPTED,
+                Job.status.in_(_COMMITTED_STATUSES),
+                Job.requested_date.isnot(None),
+            )
+        )
+    ).all()
+
+    ventanas: list[tuple[datetime, datetime]] = []
+    for job, task in rows:
+        ventana = jobSchedule.scheduled_window(job, task)
+        if ventana is not None:
+            ventanas.append(ventana)
+    return ventanas
 
 
 async def provider_can_bid(
@@ -340,6 +392,7 @@ async def provider_can_bid(
     *,
     task: ServiceTask | None = None,
     level_cache: dict[ProviderLevel, bool] | None = None,
+    busy_windows: list[tuple[datetime, datetime]] | None = None,
 ) -> Optional[str]:
     """¿Puede ESTE proveedor ofertar en ESTE trabajo?
 
@@ -356,7 +409,9 @@ async def provider_can_bid(
 
     `level_cache` memoiza los filtros duros por nivel: no dependen del trabajo
     concreto, así que al recorrer la bolsa entera se evalúan una vez por nivel
-    en vez de una vez por trabajo.
+    en vez de una vez por trabajo. `busy_windows` hace lo mismo con la agenda del
+    proveedor, que tampoco depende del trabajo que se está evaluando; si no se
+    pasa, se consulta aquí.
 
     Returns:
         None si puede ofertar, o la constante `BID_*` con el motivo del bloqueo.
@@ -418,7 +473,22 @@ async def provider_can_bid(
         if level_cache is not None:
             level_cache[task.level] = passes
 
-    return None if passes else BID_REQUIREMENTS
+    if not passes:
+        return BID_REQUIREMENTS
+
+    # La agenda va la última a propósito: es el motivo menos definitivo de todos
+    # —mañana ese hueco estará libre— así que cualquier otro bloqueo, que es
+    # estructural, debe ganarle al explicarlo.
+    from src.services import jobSchedule
+
+    if busy_windows is None:
+        busy_windows = await provider_busy_windows(db, provider.id)
+    if busy_windows:
+        ventana = jobSchedule.scheduled_window(job, task)
+        if any(jobSchedule.overlaps(ventana, ocupada) for ocupada in busy_windows):
+            return BID_SCHEDULE_CONFLICT
+
+    return None
 
 
 async def find_matching_providers(

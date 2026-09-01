@@ -310,11 +310,17 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
         </View>
       ) : null}
 
-      {/* ── Sin tarifa no se puede ofertar ──────────────── */}
+      {/* ── Por qué no puede ofertar ────────────────────── */}
+      {/* El motivo manda sobre el mensaje: hasta hoy siempre decía "pon tu
+          precio", que en un choque de agenda es sencillamente falso y manda al
+          proveedor a arreglar algo que no está roto. */}
       {!job.canOffer && !job.alreadyOffered ? (
         <Text style={[VispText.eyebrow, { color: t.danger, marginTop: 12 }]}>
-          {tr('jobOffers.setRateFirst') ||
-            'Set your price for this service in My Prices before you can offer.'}
+          {job.blockedReason === 'schedule_conflict'
+            ? tr('jobOffers.scheduleConflict') ||
+              'You already have another job booked at this time.'
+            : tr('jobOffers.setRateFirst') ||
+              'Set your price for this service in My Prices before you can offer.'}
         </Text>
       ) : null}
       {job.alreadyOffered ? (

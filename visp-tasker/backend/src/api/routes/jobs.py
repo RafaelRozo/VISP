@@ -383,12 +383,25 @@ async def book_job(
         # Determine priority from emergency flag
         priority = "emergency" if body.is_emergency else "standard"
 
-        # Build schedule from scheduledAt if provided
+        # Build schedule from scheduledAt if provided.
+        #
+        # `requested_date` / `requested_time_start` guardan hora LOCAL del área de
+        # servicio: es lo que el cliente eligió en su reloj y lo que leen tanto el
+        # vencimiento (`offerService.job_deadline_sql`) como la puerta de arranque.
+        # La app manda un naive ("2026-08-31T12:00:00") y encaja solo, pero un
+        # cliente que mande el mismo instante en UTC ("...T16:00:00+00:00") vería
+        # su trabajo archivado a las 16:00 locales: cuatro horas movido, sin
+        # error. Se normaliza aquí en vez de confiar en que todos manden naive.
         schedule = None
         if body.scheduled_at:
+            from src.services import jobSchedule
+
+            cuando = body.scheduled_at
+            if cuando.tzinfo is not None:
+                cuando = cuando.astimezone(jobSchedule.SERVICE_TIMEZONE)
             schedule = {
-                "requested_date": body.scheduled_at.date(),
-                "requested_time_start": body.scheduled_at.time(),
+                "requested_date": cuando.date(),
+                "requested_time_start": cuando.time(),
                 "requested_time_end": None,
                 "flexible_schedule": False,
             }

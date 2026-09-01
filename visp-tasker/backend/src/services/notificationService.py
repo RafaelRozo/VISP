@@ -688,6 +688,57 @@ async def notify_job_completed(
     )
 
 
+async def notify_job_overdue(
+    job_id: uuid.UUID,
+    provider_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Avisar al proveedor de que su trabajo ya debería haber terminado.
+
+    Sale cuando pasa la hora de fin (inicio real + duración contratada) y el
+    trabajo sigue en curso. Antes de esto nadie avisaba de nada: un trabajo de 8 h
+    empezado a las 09:12 seguía "en progreso" un día después, con la tarjeta
+    retenida y camino de que Stripe soltara la autorización.
+
+    Reusa el tipo JOB_REMINDER —es exactamente eso, un recordatorio sobre un
+    trabajo— para no tener que ampliar el enum de Postgres, que es una migración
+    irreversible por un matiz de vocabulario.
+
+    Args:
+        job_id: El trabajo que se ha pasado de hora.
+        provider_id: El **user_id** del proveedor asignado.
+        db: Sesión async.
+    """
+    job = await db.get(Job, job_id)
+    if not job:
+        logger.error("notify_job_overdue: Job %s not found", job_id)
+        return False
+
+    title = "⏱ Time to close your job"
+    body = (
+        f"Your job #{job.reference_number} has reached its scheduled end. "
+        f"Close it in the app to get paid — you can add after photos too."
+    )
+    data = {
+        "type": NotificationType.JOB_REMINDER.value,
+        "job_id": str(job_id),
+        "reference_number": job.reference_number,
+        "screen": "provider/job-detail",
+        "overdue": "true",
+    }
+
+    return await _send_to_user(
+        user_id=provider_id,
+        title=title,
+        body=body,
+        notification_type=NotificationType.JOB_REMINDER,
+        data=data,
+        db=db,
+        sound="default",
+        priority="high",
+    )
+
+
 async def notify_job_cancelled(
     job_id: uuid.UUID,
     user_id: uuid.UUID,

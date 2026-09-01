@@ -57,8 +57,9 @@ import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono }
 import { AnimatedSpinner } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
 import { Job, JobStatus, ProviderTabParamList, ScheduledJob } from '../../types';
-import { pickImage } from '../../services/imagePickerService';
+import { pickImage, pickImages } from '../../services/imagePickerService';
 import { offerService, type MaterialReceipt } from '../../services/offerService';
+import { taskService } from '../../services/taskService';
 
 // Idempotent — JobTrackingScreen may also call this; Mapbox swallows duplicates.
 MapboxGL.setAccessToken(Config.mapboxAccessToken);
@@ -334,6 +335,10 @@ const STATUS_FLOW_LABELS: Record<string, string> = {
   completed: 'Completed',
 };
 
+// Fotos del trabajo TERMINADO. El mismo tope que la evidencia del cliente al
+// reservar, y el mismo que valida el backend: pasarse devuelve 400.
+const MAX_AFTER_PHOTOS = 5;
+
 const NEXT_STATUS_ACTIONS: Record<string, { label: string; next: JobStatus }> = {
   scheduled: { label: 'Start Route', next: 'en_route' },
   accepted: { label: 'Start Route', next: 'en_route' },
@@ -536,6 +541,51 @@ export default function ActiveJobScreen(): React.JSX.Element {
     }
   }, [arriveAtJob]);
 
+  // Cierra el trabajo, con o sin fotos del resultado.
+  //
+  // El orden importa: primero se suben las fotos y DESPUÉS se cierra. Cerrar
+  // antes dispararía el cobro y dejaría las fotos huérfanas si la subida falla,
+  // que es justo cuando más falta hacen. Y si la subida falla, el cierre sigue
+  // adelante igual: el cobro del proveedor no puede quedar colgando de una foto.
+  const doComplete = useCallback(async (conFotos: boolean) => {
+    const job = activeJob;
+    if (!job) return;
+
+    let urls: string[] = [];
+    if (conFotos) {
+      const assets = await pickImages({ quality: 0.6, isDark: t.isDark });
+      if (assets.length > 0) {
+        setIsUpdating(true);
+        try {
+          urls = await taskService.uploadBookingEvidence(
+            assets.slice(0, MAX_AFTER_PHOTOS).map((a) => a.uri),
+          );
+        } catch {
+          Alert.alert(
+            tr('activeJob.photosFailedTitle') || "Photos couldn't be uploaded",
+            tr('activeJob.photosFailedBody') ||
+              'The job will be completed without them.',
+          );
+        } finally {
+          setIsUpdating(false);
+        }
+      }
+    }
+
+    setIsUpdating(true);
+    try {
+      await completeJob(job.id, urls);
+      const err = useProviderStore.getState().error;
+      if (err) {
+        Alert.alert(tr('activeJob.completeFailedTitle') || "Couldn't complete the job", err);
+        return;
+      }
+      navigation.goBack();
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [activeJob, completeJob, navigation, tr, t.isDark]);
+
   // ── Status update flow (preserved) ──
   const handleStatusUpdate = useCallback(async () => {
     if (!activeJob) return;
@@ -586,15 +636,7 @@ export default function ActiveJobScreen(): React.JSX.Element {
           {
             text: tr('activeJob.completeAnyway') || 'Complete anyway',
             style: 'destructive',
-            onPress: async () => {
-              setIsUpdating(true);
-              try {
-                await completeJob(activeJob.id);
-                navigation.goBack();
-              } finally {
-                setIsUpdating(false);
-              }
-            },
+            onPress: () => void doComplete(false),
           },
           { text: tr('common.cancel') || 'Cancel', style: 'cancel' },
         ],
@@ -602,12 +644,31 @@ export default function ActiveJobScreen(): React.JSX.Element {
       return;
     }
 
-    const confirmMessage =
-      action.next === 'completed'
-        ? 'Confirm that the job is complete. The customer will be notified and payment will be processed.'
-        : `Update job status to "${STATUS_FLOW_LABELS[action.next]}"?`;
+    // Al cerrar se ofrecen fotos del trabajo terminado. Van APARTE del botón de
+    // confirmar, no como paso obligatorio: son la mejor prueba si el cliente
+    // reclama, pero exigirlas dejaría a un proveedor sin cobertura sin poder
+    // cerrar ni cobrar.
+    if (action.next === 'completed') {
+      Alert.alert(
+        tr('activeJob.completeTitle') || 'Complete this job',
+        tr('activeJob.completeBody') ||
+          'The customer will be notified and the payment will be processed.',
+        [
+          {
+            text: tr('activeJob.addAfterPhotos') || 'Add photos & complete',
+            onPress: () => void doComplete(true),
+          },
+          {
+            text: tr('activeJob.completeNoPhotos') || 'Complete without photos',
+            onPress: () => void doComplete(false),
+          },
+          { text: tr('common.cancel') || 'Cancel', style: 'cancel' },
+        ],
+      );
+      return;
+    }
 
-    Alert.alert('Update Status', confirmMessage, [
+    Alert.alert('Update Status', `Update job status to "${STATUS_FLOW_LABELS[action.next]}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Confirm',
@@ -616,17 +677,13 @@ export default function ActiveJobScreen(): React.JSX.Element {
           try {
             if (action.next === 'en_route') await startNavigation(activeJob.id);
             else if (action.next === 'in_progress') await doArrive(activeJob.id);
-            else if (action.next === 'completed') {
-              await completeJob(activeJob.id);
-              navigation.goBack();
-            }
           } finally {
             setIsUpdating(false);
           }
         },
       },
     ]);
-  }, [activeJob, startNavigation, arriveAtJob, completeJob, doArrive, navigation,
+  }, [activeJob, startNavigation, arriveAtJob, doArrive, doComplete,
       legalAcknowledged, materials, receipts, handleAddReceipt, tr]);
 
   // ── Open deep view ──
@@ -685,6 +742,34 @@ export default function ActiveJobScreen(): React.JSX.Element {
               {(tr('schedule.today') || 'Today').toUpperCase()} ·{' '}
               {new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
             </Eyebrow>
+
+            {/* El trabajo se pasó de su hora de fin y sigue abierto. El push se
+                pierde si el teléfono estaba en silencio; esto no. Hasta hoy no
+                existía ningún aviso: un contrato de 8 h empezado a las 09:12
+                seguía "en progreso" al día siguiente, con la tarjeta retenida. */}
+            {activeJob?.isOverdue ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: VispRadius.card,
+                  backgroundColor: 'rgba(231,76,60,0.12)',
+                  borderWidth: 1,
+                  borderColor: t.danger,
+                }}
+              >
+                <Text style={[VispText.eyebrow, { color: t.danger }]}>
+                  {tr('activeJob.overdueTitle') || 'This job has run past its end time'}
+                </Text>
+                <Text style={[VispText.body, { color: t.text2, marginTop: 4 }]}>
+                  {(tr('activeJob.overdueBody') ||
+                    'It was booked for {hours}. Close it to get paid.').replace(
+                    '{hours}',
+                    formatTimeHHMM(activeJob.scheduledEndAt ?? null) || '—',
+                  )}
+                </Text>
+              </View>
+            ) : null}
 
             {/* Always show the route-to-destination map for the active job
                 (any assigned status), never gated to en_route/in_progress.

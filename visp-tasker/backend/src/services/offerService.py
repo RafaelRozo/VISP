@@ -45,12 +45,14 @@ from src.models.provider_rate import ProviderServiceRate
 from src.models.review import Review, ReviewStatus
 from src.models.taxonomy import PricingUnit, ProviderTaskQualification, ServiceTask
 from src.models.user import User
-from src.services import fee_service, provider_rate_service, tax_service
+from src.services import fee_service, jobSchedule, provider_rate_service, tax_service
 from src.services.matchingEngine import (
     BID_NO_LOCATION,
     BID_NOT_QUALIFIED,
     BID_OUT_OF_RANGE,
     BID_OWN_JOB,
+    BID_SCHEDULE_CONFLICT,
+    provider_busy_windows,
     provider_can_bid,
 )
 
@@ -111,6 +113,15 @@ class DuplicateOfferError(OfferError):
 
 class MaterialsQuoteRequiredError(OfferError):
     """El trabajo pide material y la oferta no lo cotiza, o no explica el importe."""
+
+
+class ProviderBusyError(OfferError):
+    """El proveedor de esa oferta ya se comprometió en otro trabajo a esa hora.
+
+    No se puede prevenir al ofertar: dos ofertas suyas en trabajos que se pisan
+    son válidas por separado y solo chocan cuando el cliente acepta la segunda.
+    Por eso la agenda se revalida aquí, al aceptar, y no solo en `create_offer`.
+    """
 
 
 class OfferNotFoundError(OfferError):
@@ -309,7 +320,14 @@ async def list_open_jobs(
     } if task_ids else {}
 
     level_cache: dict[Any, bool] = {}
+    # La agenda del proveedor es la misma para toda la bolsa: se lee una vez y no
+    # una por trabajo.
+    busy_windows = await provider_busy_windows(db, provider_id)
     rows: list[Job] = []
+    # El choque de agenda NO saca el trabajo de la bolsa: sale marcado y con su
+    # motivo. Es el único bloqueo temporal —mañana ese hueco está libre— y
+    # esconderlo sin explicación es el fallo que ya costó caro con `own_job`.
+    conflicted: set[uuid.UUID] = set()
     for job in candidate_jobs:
         if job.offers_close_at and job.offers_close_at <= now:
             continue
@@ -317,10 +335,14 @@ async def list_open_jobs(
         if task is None:
             continue
         blocked = await provider_can_bid(
-            db, job, provider, task=task, level_cache=level_cache
+            db, job, provider, task=task, level_cache=level_cache,
+            busy_windows=busy_windows,
         )
         if blocked is None:
             rows.append(job)
+        elif blocked == BID_SCHEDULE_CONFLICT:
+            rows.append(job)
+            conflicted.add(job.id)
 
     if not rows:
         return []
@@ -397,7 +419,12 @@ async def list_open_jobs(
             # Su propia tarifa. Sin tarifa no puede ofertar.
             "myRateCents": rate.rate_cents if rate else None,
             "canOffer": (rate is not None or task.pricing_unit == PricingUnit.PER_CONTRACT)
-            and existing is None,
+            and existing is None
+            and job.id not in conflicted,
+            # Por qué no puede ofertar, cuando el motivo no es "te falta la tarifa".
+            # La app pinta el mensaje que corresponda: sin esto solo sabía decir
+            # "pon tu precio", que en un choque de agenda es mentira.
+            "blockedReason": BID_SCHEDULE_CONFLICT if job.id in conflicted else None,
             "alreadyOffered": existing is not None,
             "offersCloseAt": job.offers_close_at.isoformat() if job.offers_close_at else None,
         })
@@ -739,6 +766,17 @@ async def accept_offer(
     if offer.status != OfferStatus.PENDING:
         raise OfferNotPendingError(offer.status)
 
+    # La agenda del ganador se revalida AQUÍ, no basta con haberla mirado al
+    # ofertar: entre que ofertó y el cliente eligió pudo aceptar otro trabajo a
+    # esa misma hora. Sin esto el sistema lo agenda dos veces y uno de los dos
+    # clientes se queda plantado con la tarjeta ya retenida.
+    task_agenda = await db.get(ServiceTask, job.task_id)
+    ventana = jobSchedule.scheduled_window(job, task_agenda)
+    if ventana is not None:
+        ocupadas = await provider_busy_windows(db, offer.provider_id)
+        if any(jobSchedule.overlaps(ventana, o) for o in ocupadas):
+            raise ProviderBusyError(str(offer.provider_id))
+
     now = datetime.now(timezone.utc)
 
     # La magnitud de la oferta pasa a ser la del trabajo ANTES del reprice: es lo que
@@ -901,9 +939,11 @@ async def expire_stale_offers(db: AsyncSession) -> dict[str, int]:
 # Comparar el valor crudo contra `now()` (UTC) expiraría los trabajos CUATRO
 # HORAS ANTES de tiempo en verano: las 13:00 de Toronto son las 17:00 UTC.
 #
-# Cuando VISP abra zonas en otro huso —Vancouver, Montreal no, misma zona— esto
-# tiene que salir de `service_zones` y no de una constante.
-SERVICE_TIMEZONE = "America/Toronto"
+# La zona vive en `jobSchedule`, que es quien calcula todas las ventanas de un
+# trabajo. Aquí se usa su NOMBRE porque va dentro de un `timezone(...)` de
+# Postgres, que espera la cadena. Cuando VISP abra zonas en otro huso esto tiene
+# que salir de `service_zones` y no de una constante.
+SERVICE_TIMEZONE = jobSchedule.SERVICE_TIMEZONE_NAME
 
 # Un trabajo sin fecha y sin ventana no puede quedarse abierto para siempre: los
 # 19 trabajos anteriores a ofertas v2 nacieron con `offers_close_at` nulo y

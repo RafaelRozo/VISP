@@ -166,6 +166,13 @@ export interface Job {
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  /**
+   * Cuándo debería terminar el trabajo EN CURSO, y si ya se pasó. Los calcula el
+   * servidor: la duración depende de la unidad de precio (horas contratadas o la
+   * estimación del catálogo) y esa regla vive en un solo sitio, no duplicada aquí.
+   */
+  scheduledEndAt?: string | null;
+  isOverdue?: boolean;
   estimatedPrice: number;
   finalPrice: number | null;
   provider: JobProvider | null;

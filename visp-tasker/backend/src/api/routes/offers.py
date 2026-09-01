@@ -86,6 +86,9 @@ _NOT_INVITED_MESSAGES = {
         "Add your home address in your profile so we can match you with nearby jobs."
     ),
     matchingEngine.BID_REQUIREMENTS: "You don't meet the requirements for this job yet.",
+    matchingEngine.BID_SCHEDULE_CONFLICT: (
+        "You already have another job booked at this time."
+    ),
 }
 
 
@@ -297,6 +300,20 @@ async def accept_offer(
             detail={
                 "code": "provider_rate_gone",
                 "message": "That provider is no longer available. Pick another offer.",
+            },
+        )
+    except offerService.ProviderBusyError:
+        # Se comprometió en otro trabajo a esa misma hora entre ofertar y ser
+        # elegido. El cliente no ha perdido nada —su trabajo sigue abierto y con
+        # las demás ofertas vivas— así que se le dice que elija otra.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "provider_busy",
+                "message": (
+                    "That provider has just been booked for another job at this "
+                    "time. Pick another offer."
+                ),
             },
         )
 

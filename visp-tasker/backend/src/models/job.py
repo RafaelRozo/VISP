@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     Time,
@@ -196,6 +197,22 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     overage_approved_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # El reloj del trabajo en curso (migración 051). `authorized_at` es cuándo se
+    # creó la RETENCIÓN en Stripe, que es lo único contra lo que se puede medir su
+    # caducidad: Stripe suelta las autorizaciones sin capturar a los 7 días, así
+    # que la red de seguridad cierra el trabajo antes de llegar ahí.
+    authorized_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Cuándo y cuántas veces se le avisó al proveedor de que su trabajo ya debería
+    # haber terminado. Sin esto el aviso saldría en cada ciclo del scheduler.
+    overdue_notified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    overdue_notice_count: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="0"
     )
 
     # Pricing model v2

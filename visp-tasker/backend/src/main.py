@@ -32,14 +32,28 @@ async def lifespan(app: FastAPI):
 
     Startup:
       - Import realtime handlers to register Socket.IO event listeners.
+      - Start the in-progress job sweep (nudge + safety-net close).
 
     Shutdown:
+      - Stop the sweep.
       - Close the shared Redis client used by the realtime module.
     """
     # Importing handlers is sufficient to register all Socket.IO events
     from src.realtime import handlers  # noqa: F401
 
+    # Avisa al proveedor cuando su trabajo se pasa de hora y, si nadie lo cierra,
+    # lo cierra antes de que Stripe suelte la retención. Un solo uvicorn sin
+    # `--workers` (ver entrypoint.sh), así que no hay avisos duplicados.
+    from src.jobs.jobLifecycle import (
+        start_job_lifecycle_worker,
+        stop_job_lifecycle_worker,
+    )
+
+    await start_job_lifecycle_worker()
+
     yield
+
+    await stop_job_lifecycle_worker()
 
     # Graceful shutdown: close Redis connections
     try:

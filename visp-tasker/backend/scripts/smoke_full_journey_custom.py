@@ -240,13 +240,18 @@ async def run() -> None:
         async with AsyncClient(transport=transport, base_url="http://sim", timeout=30.0) as client:
 
             # 1 --------------------------------------------------------------
-            # Customer schedules the job for NOW (a real slot). This exercises the
-            # scheduledAt path so we prove the requested date/time is persisted, and
-            # keeps the happy-path start inside the schedule grace window. The time-
-            # gate BLOCK is tested explicitly at step 8b with a future slot.
+            # Customer schedules the job 10 minutes out. Ese hueco es deliberado y
+            # tiene que caber entre dos relojes opuestos:
+            #   * la cita tiene que estar en el FUTURO o el trabajo caduca al nacer
+            #     — un trabajo deja de admitir ofertas cuando llega su hora.
+            #   * y a menos de START_SCHEDULE_GRACE_MIN (15 min) para que el
+            #     proveedor pueda arrancarlo ya en el camino feliz.
+            # Reservar "ahora mismo", como se hacía, solo funcionaba porque la hora
+            # se archivaba cuatro horas movida: la cita caía en el futuro por el
+            # error, no por el diseño. El BLOQUEO por hora se prueba en el paso 8b.
             now = datetime.now(timezone.utc)
-            scheduled_at = now.replace(second=0, microsecond=0)
-            step(1, "Customer books the service for a scheduled time (now)")
+            scheduled_at = (now + timedelta(minutes=10)).replace(second=0, microsecond=0)
+            step(1, "Customer books the service for a scheduled time (in 10 min)")
             r = await client.post(f"{API}/jobs/book", headers=H_CUST, json={
                 "serviceTaskId": str(TASK_ID),
                 "locationAddress": "1 Bloor St E", "locationLat": LAT, "locationLng": LNG,
