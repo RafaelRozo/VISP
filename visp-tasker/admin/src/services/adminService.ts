@@ -337,6 +337,31 @@ export interface ExperienceRecord {
 }
 
 /** Póliza de seguro pendiente de verificar. */
+/** Un contrato legal firmado en la app, con su rastro de auditoría. */
+export interface SignedContractRow {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  consentType: string;
+  version: string;
+  /**
+   * Falso = firmó una versión anterior a la vigente. Hoy no bloquea a nadie,
+   * pero el admin tiene que poder verlo cuando el abogado cambie el texto.
+   */
+  isCurrentVersion: boolean;
+  signedFullName: string | null;
+  businessName: string | null;
+  hasDrawnSignature: boolean;
+  documentHash: string | null;
+  consentTextHash: string | null;
+  ipAddress: string | null;
+  deviceId: string | null;
+  documentUrl: string;
+  signatureUrl: string | null;
+  createdAt: string | null;
+}
+
 export interface InsurancePolicyRow {
   id: string;
   providerId: string;
@@ -646,6 +671,12 @@ export const adminService = {
     apiPost<{ id: string; status: string }>(`/admin/experience-records/${id}/reject`, { note }),
 
   // ── Pólizas de seguro ──
+  signedContracts: (consentType?: string) =>
+    apiGet<SignedContractRow[]>(
+      '/admin/signed-contracts',
+      consentType ? { consent_type: consentType } : undefined,
+    ),
+
   insurancePolicies: (status?: string) =>
     apiGet<InsurancePolicyRow[]>(
       '/admin/insurance-policies',

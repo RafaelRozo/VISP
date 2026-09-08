@@ -9,7 +9,7 @@
  * - Type-safe navigation params throughout
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AnimatedSpinner } from '../components/animations';
 import Svg, { Defs, LinearGradient, Stop, Path } from 'react-native-svg';
@@ -89,6 +89,8 @@ import DesignSystemScreen from '../screens/dev/DesignSystemScreen';
 // Editorial primitives
 import { VispTabBar } from '../components/visp';
 import type { VispIconName } from '../components/visp';
+import ContractSignScreen from '../screens/legal/ContractSignScreen';
+import * as legalService from '../services/legalService';
 
 const CUSTOMER_TAB_ICONS: Record<string, VispIconName> = {
   Home: 'home',
@@ -589,6 +591,37 @@ export default function AppNavigator(): React.JSX.Element {
     userRole === 'both' ? activeMode : (userRole as 'customer' | 'provider');
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
 
+  // ── Puerta legal ────────────────────────────────────────────────────────
+  // `null` = todavía no se sabe. Se pregunta al servidor en cada entrada
+  // (registro o login) en vez de resolverlo solo en el momento del alta: quien
+  // mate la app a mitad de la firma se quedaría siendo proveedor sin contrato,
+  // y los proveedores que ya existen nunca firmarían. Preguntando aquí, el
+  // hueco se cierra solo.
+  const [legalPending, setLegalPending] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setLegalPending(null);
+      return;
+    }
+    let cancelled = false;
+    legalService
+      .getPendingConsents()
+      .then((r) => {
+        if (!cancelled) setLegalPending(r.pending.length > 0);
+      })
+      .catch(() => {
+        // Falla ABIERTO a propósito: si la comprobación se cae por red, dejar
+        // al usuario fuera de su propia app sería peor que dejarle entrar. El
+        // candado de verdad está en el servidor —un proveedor sin contrato no
+        // puede ofertar— y esa comprobación no depende de esta pantalla.
+        if (!cancelled) setLegalPending(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.id]);
+
   // Handle notification tap deep-links
   const handleNotificationNavigation = useCallback(
     (data: NotificationData) => {
@@ -671,6 +704,13 @@ export default function AppNavigator(): React.JSX.Element {
       >
         {!isAuthenticated ? (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
+        ) : legalPending ? (
+          // Única pantalla montada: sin atrás y sin "más tarde". Un proveedor
+          // sin contrato no puede ofertar, así que dejarle pasar solo lo
+          // llevaría a una app bloqueada sin explicación.
+          <RootStack.Screen name="ContractSign">
+            {() => <ContractSignScreen onCompleted={() => setLegalPending(false)} />}
+          </RootStack.Screen>
         ) : effectiveRole === 'customer' ? (
           <>
             <RootStack.Screen

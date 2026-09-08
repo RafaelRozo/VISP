@@ -45,7 +45,9 @@ from src.models.provider_rate import ProviderServiceRate
 from src.models.review import Review, ReviewStatus
 from src.models.taxonomy import PricingUnit, ProviderTaskQualification, ServiceTask
 from src.models.user import User
+from src.models.verification import ConsentType
 from src.services import fee_service, jobSchedule, provider_rate_service, tax_service
+from src.services.legalConsentService import has_valid_signature
 from src.services.matchingEngine import (
     BID_NO_LOCATION,
     BID_NOT_QUALIFIED,
@@ -323,6 +325,11 @@ async def list_open_jobs(
     # La agenda del proveedor es la misma para toda la bolsa: se lee una vez y no
     # una por trabajo.
     busy_windows = await provider_busy_windows(db, provider_id)
+    # El contrato firmado es el MISMO valor para toda la bolsa: se resuelve una
+    # vez y no una por trabajo.
+    contract_signed = await has_valid_signature(
+        db, provider.user_id, ConsentType.PROVIDER_IC_AGREEMENT
+    )
     rows: list[Job] = []
     # El choque de agenda NO saca el trabajo de la bolsa: sale marcado y con su
     # motivo. Es el único bloqueo temporal —mañana ese hueco está libre— y
@@ -336,7 +343,7 @@ async def list_open_jobs(
             continue
         blocked = await provider_can_bid(
             db, job, provider, task=task, level_cache=level_cache,
-            busy_windows=busy_windows,
+            busy_windows=busy_windows, contract_signed=contract_signed,
         )
         if blocked is None:
             rows.append(job)

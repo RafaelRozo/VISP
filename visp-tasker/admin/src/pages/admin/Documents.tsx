@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,8 +7,10 @@ import {
   ExperienceRecord,
   InsurancePolicyRow,
   PendingCredential,
+  SignedContractRow,
   LICENSE_CLASSES,
 } from '@/services/adminService';
+import { apiGetBlobUrl } from '@/services/apiClient';
 import { Config } from '@/services/config';
 
 function resolveDocUrl(url: string | null): string | null {
@@ -47,8 +49,23 @@ export default function Documents() {
   // validador es el mismo —mirar un documento y decidir— pero cada una escribe
   // en una tabla distinta y desbloquea cosas distintas.
   const [tab, setTab] = useState<
-    'credentials' | 'experience' | 'insurance' | 'cancellations'
+    'credentials' | 'experience' | 'insurance' | 'cancellations' | 'contracts'
   >('credentials');
+
+  // El PDF firmado se baja como blob con el token del admin: el endpoint está
+  // autenticado a propósito, así que un <iframe src> normal daría 401.
+  const [contractPreview, setContractPreview] = useState<{
+    row: SignedContractRow;
+    url: string;
+  } | null>(null);
+  const [contractLoading, setContractLoading] = useState<string | null>(null);
+
+  // Cada object-URL que no se libera se queda en memoria hasta recargar.
+  useEffect(() => {
+    return () => {
+      if (contractPreview) URL.revokeObjectURL(contractPreview.url);
+    };
+  }, [contractPreview]);
 
   const qExperience = useQuery<ExperienceRecord[]>({
     queryKey: ['experience-records'],
@@ -60,6 +77,12 @@ export default function Documents() {
     queryKey: ['insurance-policies'],
     queryFn: () => adminService.insurancePolicies('pending_review'),
     enabled: tab === 'insurance',
+  });
+
+  const qContracts = useQuery<SignedContractRow[]>({
+    queryKey: ['signed-contracts'],
+    queryFn: () => adminService.signedContracts(),
+    enabled: tab === 'contracts',
   });
 
   const qCancellations = useQuery<CancellationReport[]>({
@@ -187,7 +210,163 @@ export default function Documents() {
           {t('documents.tabCancellations')}
           {qCancellations.data?.length ? ` (${qCancellations.data.length})` : ''}
         </Pill>
+        <Pill active={tab === 'contracts'} onClick={() => setTab('contracts')}>
+          {t('documents.tabContracts')}
+          {qContracts.data?.length ? ` (${qContracts.data.length})` : ''}
+        </Pill>
       </div>
+
+      {/* ── Contratos firmados ───────────────────────────────────────── */}
+      {tab === 'contracts' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p className="t-lede" style={{ margin: 0 }}>
+            {t('documents.contractsHelp')}
+          </p>
+          {qContracts.isLoading ? (
+            <div className="t-lede">{t('common.loading')}</div>
+          ) : (qContracts.data ?? []).length === 0 ? (
+            <div className="t-lede">{t('documents.noContracts')}</div>
+          ) : (
+            (qContracts.data ?? []).map((c) => (
+              <div key={c.id} className="t-card" style={{ padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {c.signedFullName || c.userName}{' '}
+                      <span className="t-chip t-chip-mono" style={{ fontSize: 10 }}>
+                        v{c.version}
+                      </span>
+                      {/* Firmó una versión anterior a la vigente. Hoy no
+                          bloquea, pero cuando el abogado cambie el texto esta
+                          marca es la lista de a quién hay que pedir re-firma. */}
+                      {!c.isCurrentVersion && (
+                        <span
+                          className="t-chip"
+                          style={{ fontSize: 10, marginLeft: 6, color: 'var(--t-danger)' }}
+                        >
+                          {t('documents.outdatedVersion')}
+                        </span>
+                      )}
+                      {c.hasDrawnSignature && (
+                        <span className="t-chip" style={{ fontSize: 10, marginLeft: 6 }}>
+                          {t('documents.signed')}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--t-text-3)', marginTop: 4 }}>
+                      {c.consentType} · {c.userEmail}
+                      {c.businessName ? ` · ${c.businessName}` : ''}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--t-text-3)', marginTop: 6 }}>
+                      {c.createdAt ? new Date(c.createdAt).toLocaleString() : '—'}
+                      {c.ipAddress ? ` · IP ${c.ipAddress}` : ''}
+                      {c.deviceId ? ` · ${c.deviceId}` : ''}
+                    </div>
+                    {/* El hash del PDF es lo que prueba que el archivo
+                        archivado no se ha tocado desde que se generó. */}
+                    <div
+                      className="t-chip t-chip-mono"
+                      style={{ fontSize: 10, marginTop: 6, display: 'inline-block' }}
+                    >
+                      sha256 {(c.documentHash ?? '').slice(0, 24)}…
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexShrink: 0 }}>
+                    <button
+                      className="t-btn t-btn-primary t-btn-sm"
+                      disabled={contractLoading === c.id}
+                      onClick={async () => {
+                        setContractLoading(c.id);
+                        try {
+                          // La ruta se construye aquí en vez de recortar la
+                          // que manda el backend: `baseURL` ya lleva el
+                          // prefijo, y un replace de cadena se rompe en
+                          // silencio el día que cambie el prefijo.
+                          const url = await apiGetBlobUrl(
+                            `/admin/signed-contracts/${c.id}/document`,
+                          );
+                          if (contractPreview) URL.revokeObjectURL(contractPreview.url);
+                          setContractPreview({ row: c, url });
+                        } catch {
+                          alert(t('documents.contractOpenFailed'));
+                        } finally {
+                          setContractLoading(null);
+                        }
+                      }}
+                    >
+                      {contractLoading === c.id
+                        ? t('common.loading')
+                        : t('documents.viewContract')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+
+          {contractPreview && (
+            <div
+              onClick={() => {
+                URL.revokeObjectURL(contractPreview.url);
+                setContractPreview(null);
+              }}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: 24,
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="t-card"
+                style={{
+                  width: 'min(900px, 100%)',
+                  height: '90vh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: 12,
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontWeight: 600 }}>
+                    {contractPreview.row.signedFullName || contractPreview.row.userName} · v
+                    {contractPreview.row.version}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <a
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      href={contractPreview.url}
+                      download={`VISP-${contractPreview.row.consentType}-v${contractPreview.row.version}.pdf`}
+                    >
+                      {t('documents.download')}
+                    </a>
+                    <button
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      onClick={() => {
+                        URL.revokeObjectURL(contractPreview.url);
+                        setContractPreview(null);
+                      }}
+                    >
+                      {t('common.close')}
+                    </button>
+                  </div>
+                </div>
+                <iframe
+                  title="contract"
+                  src={contractPreview.url}
+                  style={{ flex: 1, border: 0, borderRadius: 8, background: '#fff' }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* ── Cancelaciones con motivo ─────────────────────────────────── */}
       {tab === 'cancellations' ? (

@@ -128,6 +128,7 @@ async def run() -> None:
 
     conn = await asyncpg.connect(_DSN)
     creados: list[uuid.UUID] = []
+    consent_sembrado = None
     prov_id = None
     home_original = None
 
@@ -184,6 +185,23 @@ async def run() -> None:
         cust = await conn.fetchval(
             "SELECT id FROM users WHERE id <> $1 ORDER BY created_at NULLS LAST LIMIT 1", prov_user)
         hdr_p = {"Authorization": f"Bearer {auth_service.create_access_token(prov_user)[0]}"}
+
+        # El contrato firmado es desde hoy una precondición para ofertar
+        # (`BID_NO_CONTRACT`, plan docs/plan-firma-contratos.md). Este smoke usa
+        # un proveedor REAL de visp_prod, así que se le siembra el
+        # consentimiento SOLO si no lo tiene, y solo se borra lo sembrado: si el
+        # proveedor ya había firmado de verdad, su fila no se toca.
+        consent_sembrado = await conn.fetchval(
+            """INSERT INTO legal_consents
+                 (user_id, consent_type, consent_version, consent_text_hash,
+                  consent_text, granted)
+               SELECT $1, 'PROVIDER_IC_AGREEMENT', 'smoke', 'smoke', 'smoke', TRUE
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM legal_consents
+                    WHERE user_id = $1 AND consent_type = 'PROVIDER_IC_AGREEMENT'
+                      AND granted)
+               RETURNING id""",
+            prov_user)
         print(f"servicio '{task['name']}' · proveedor {prov_id}\n")
 
         ahora = datetime.now(timezone.utc)
@@ -241,16 +259,29 @@ async def run() -> None:
         check(await _estado(conn, jid_d) == "IN_PROGRESS", "cerró un trabajo en marcha")
         print("        -> intacto")
 
-        # El trabajo D queda comprometido de 09:00 a 17:00 hora local y sirve de
-        # agenda ocupada para las tres comprobaciones que siguen.
+        # ── Agenda para E, F y G ────────────────────────────────────────────
+        # MAÑANA, no hoy. Un trabajo PENDING_MATCH cuya CITA ya pasó se marca
+        # EXPIRED, y `list_open_jobs` hace ese barrido de forma perezosa nada más
+        # entrar. Con la cita a las 13:00 de hoy, este bloque solo pasaba si el
+        # smoke se corría antes de las 13:00 de Toronto: a partir de esa hora el
+        # trabajo se expiraba antes de llegar a evaluarse y "desaparecía de la
+        # bolsa" — el producto haciendo lo correcto, la prueba mintiendo.
+        # El trabajo D de arriba está EN CURSO hoy y no sirve de agenda para
+        # mañana, así que la ventana ocupada se siembra aparte.
+        manana = hoy_local + timedelta(days=1)
+        jid_agenda = await _crear_job(
+            conn, cust, task_id, estado="SCHEDULED", fecha=manana,
+            hora=time(9, 0), cantidad=8)
+        creados.append(jid_agenda)
+        await _asignar(conn, jid_agenda, prov_id)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://smoke") as cl:
 
             # ================= E =================
             step("E", "AGENDA: el trabajo que se pisa sale BLOQUEADO en la bolsa, no oculto")
-            # Empieza a las 13:00, dentro de la ventana 09:00-17:00 del trabajo D.
+            # Empieza a las 13:00, dentro de la ventana 09:00-17:00 comprometida.
             jid_e = await _crear_job(
-                conn, cust, task_id, estado="PENDING_MATCH", fecha=hoy_local,
+                conn, cust, task_id, estado="PENDING_MATCH", fecha=manana,
                 hora=time(13, 0), cantidad=2)
             creados.append(jid_e)
             r = await cl.get(f"{API}/provider/open-jobs", headers=hdr_p)
@@ -282,7 +313,7 @@ async def run() -> None:
             # ================= G =================
             step("G", "uno que empieza justo cuando el otro acaba SÍ se puede ofertar")
             jid_g = await _crear_job(
-                conn, cust, task_id, estado="PENDING_MATCH", fecha=hoy_local,
+                conn, cust, task_id, estado="PENDING_MATCH", fecha=manana,
                 hora=time(17, 0), cantidad=1)
             creados.append(jid_g)
             r = await cl.get(f"{API}/provider/open-jobs", headers=hdr_p)
@@ -344,6 +375,9 @@ async def run() -> None:
                 await conn.execute(
                     "DELETE FROM notifications WHERE data_json->>'job_id' = $1", str(jid))
                 await conn.execute("DELETE FROM jobs WHERE id=$1", jid)
+            if consent_sembrado is not None:
+                await conn.execute(
+                    "DELETE FROM legal_consents WHERE id=$1", consent_sembrado)
             if prov_id and home_original is not None:
                 await conn.execute(
                     "UPDATE provider_profiles SET home_latitude=$2, home_longitude=$3, "

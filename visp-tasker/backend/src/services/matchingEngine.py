@@ -60,6 +60,7 @@ from src.models.sla import OnCallShift, OnCallStatus
 from src.models.taxonomy import ProviderTaskQualification, ServiceTask
 from src.models.user import User
 from src.models.verification import (
+    ConsentType,
     CredentialStatus,
     CredentialType,
     InsuranceStatus,
@@ -67,6 +68,7 @@ from src.models.verification import (
     ProviderInsurancePolicy,
 )
 from src.services.geoService import ProviderDistance, filter_by_radius, haversine_distance
+from src.services.legalConsentService import has_valid_signature
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +338,13 @@ BID_REQUIREMENTS = "requirements"
 # su explicación, porque desaparecer sin decir por qué es exactamente el fallo
 # que ya se pagó una vez con `own_job`.
 BID_SCHEDULE_CONFLICT = "schedule_conflict"
+# No ha firmado el contrato de proveedor independiente. Es una condición del
+# PROVEEDOR, no del trabajo: bloquea absolutamente todo hasta que firme. La app
+# ya lo manda a firmar nada más entrar, pero esta es la cerradura de verdad —
+# la comprobación del cliente falla ABIERTA a propósito para no dejar a nadie
+# fuera de su propia app por un fallo de red, así que el candado tiene que
+# estar aquí.
+BID_NO_CONTRACT = "no_contract"
 
 
 # Un trabajo ocupa la agenda de su proveedor desde que lo acepta hasta que lo
@@ -393,6 +402,7 @@ async def provider_can_bid(
     task: ServiceTask | None = None,
     level_cache: dict[ProviderLevel, bool] | None = None,
     busy_windows: list[tuple[datetime, datetime]] | None = None,
+    contract_signed: bool | None = None,
 ) -> Optional[str]:
     """¿Puede ESTE proveedor ofertar en ESTE trabajo?
 
@@ -426,6 +436,19 @@ async def provider_can_bid(
     # decirlo: el trabajo desaparecía de la bolsa sin explicación.
     if provider.user_id == job.customer_id:
         return BID_OWN_JOB
+
+    # El contrato firmado. Va aquí arriba y no al final porque no depende del
+    # trabajo: si falta, ningún otro filtro importa.
+    #
+    # `contract_signed` se pasa precalculado desde la bolsa —es el MISMO valor
+    # para los cientos de trabajos que se recorren— y solo se consulta cuando
+    # llega en None, que es el caso de la validación al ofertar.
+    if contract_signed is None:
+        contract_signed = await has_valid_signature(
+            db, provider.user_id, ConsentType.PROVIDER_IC_AGREEMENT
+        )
+    if not contract_signed:
+        return BID_NO_CONTRACT
 
     qualified = (
         await db.execute(

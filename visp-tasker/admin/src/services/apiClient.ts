@@ -117,4 +117,21 @@ export async function apiDelete<T>(url: string): Promise<T> {
   return unwrap<T>(r);
 }
 
+/**
+ * Descarga un archivo protegido y devuelve un object-URL para verlo o guardarlo.
+ *
+ * Los contratos firmados NO se sirven por el mount estático de `/uploads`:
+ * llevan nombre legal completo y firma manuscrita, y un UUID es inadivinable
+ * pero no privado. Como el endpoint exige el token de admin, un `<img src>` o
+ * un `<a href>` normales no valen —no llevan cabecera— así que se baja como
+ * blob y se le da al navegador una URL local.
+ *
+ * Quien lo llame DEBE hacer `URL.revokeObjectURL` al cerrar: cada blob que no
+ * se libera se queda en memoria hasta recargar la página.
+ */
+export async function apiGetBlobUrl(url: string): Promise<string> {
+  const r = await apiClient.get(url, { responseType: 'blob' });
+  return URL.createObjectURL(r.data as Blob);
+}
+
 export default apiClient;

@@ -58,3 +58,7 @@ aiosqlite>=0.19.0
 # entran fotos de 1-2 MB y `uploads/` crece sin control.
 # El código la usa de forma OPCIONAL: si no está instalada, guarda el original.
 Pillow>=10.3.0
+# PDF de los contratos firmados. Python puro: no anade dependencias de sistema
+# al Dockerfile (WeasyPrint exigiria pango/cairo). Las fuentes basicas son
+# latin-1, por eso DejaVuSans va embarcada en assets/fonts/.
+fpdf2>=2.8.0

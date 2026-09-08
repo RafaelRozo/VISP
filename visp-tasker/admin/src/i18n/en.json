@@ -344,7 +344,15 @@
     "upholdWithImpact": "Uphold + affect rating",
     "upholdNoImpact": "Uphold only",
     "dismiss": "Dismiss",
-    "upholdPrompt": "Note for the record (optional):"
+    "upholdPrompt": "Note for the record (optional):",
+    "tabContracts": "Contracts",
+    "contractsHelp": "Signed legal agreements. The PDF is the artifact: agreement text, filled acceptance block, drawn signature and audit trail. It is served authenticated, never from /uploads.",
+    "noContracts": "No signed contracts yet.",
+    "viewContract": "View PDF",
+    "outdatedVersion": "Older version",
+    "signed": "Signed",
+    "download": "Download",
+    "contractOpenFailed": "Could not open the contract."
   },
   "promotions": {
     "title": "Promotions",

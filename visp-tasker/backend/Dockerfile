@@ -45,6 +45,10 @@ COPY alembic.ini .
 COPY migrations/ ./migrations/
 COPY seeds/ ./seeds/
 COPY scripts/ ./scripts/
+# Los contratos y las fuentes del PDF firmado. Sin estas dos lineas la firma
+# revienta en el contenedor con FileNotFoundError, pero funciona en local.
+COPY content/ ./content/
+COPY assets/ ./assets/
 COPY entrypoint.sh .
 
 # Make entrypoint executable and create non-root user

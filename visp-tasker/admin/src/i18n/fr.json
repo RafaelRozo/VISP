@@ -344,7 +344,15 @@
     "upholdWithImpact": "Confirmer + affecter la note",
     "upholdNoImpact": "Confirmer seulement",
     "dismiss": "Rejeter",
-    "upholdPrompt": "Note pour le dossier (facultatif) :"
+    "upholdPrompt": "Note pour le dossier (facultatif) :",
+    "tabContracts": "Contrats",
+    "contractsHelp": "Ententes juridiques signées. Le PDF est la pièce : texte de l'entente, bloc d'acceptation rempli, signature manuscrite et piste de vérification. Il est servi avec authentification, jamais depuis /uploads.",
+    "noContracts": "Aucun contrat signé pour l'instant.",
+    "viewContract": "Voir le PDF",
+    "outdatedVersion": "Version antérieure",
+    "signed": "Signé",
+    "download": "Télécharger",
+    "contractOpenFailed": "Impossible d'ouvrir le contrat."
   },
   "promotions": {
     "title": "Promotions",

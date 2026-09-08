@@ -216,6 +216,11 @@ export interface JobAddress {
 
 export type RootStackParamList = {
   Auth: undefined;
+  /**
+   * Puerta legal. Se monta como ÚNICA pantalla mientras el usuario deba algún
+   * contrato, así que no se navega a ella: se entra por estar donde estás.
+   */
+  ContractSign: undefined;
   Login: undefined;
   Register: undefined;
   CompanyJoin: undefined;

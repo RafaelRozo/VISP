@@ -249,6 +249,19 @@ class LegalConsent(Base):
     user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     device_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Signature (migration 052).  Nullable: a clickwrap consent has no drawn
+    # signature, and that is a valid acceptance under Ontario's Electronic
+    # Commerce Act -- the stroke is additional evidence, not the acceptance.
+    signed_full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    business_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    signature_svg: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    signature_image_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # The signed PDF and its hash.  consent_text_hash proves WHICH TEXT was
+    # shown; document_hash proves the archived PDF has not been altered since.
+    document_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    document_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
     # Immutable timestamp -- no updated_at
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

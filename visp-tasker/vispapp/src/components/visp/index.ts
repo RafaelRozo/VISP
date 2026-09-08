@@ -23,3 +23,6 @@ export { MenuItem } from './MenuItem';
 export { SearchInput } from './SearchInput';
 export { OnlinePill } from './OnlinePill';
 export { VispTabBar } from './VispTabBar';
+export { SignaturePad } from './SignaturePad';
+export type { SignatureValue } from './SignaturePad';
+export { LegalMarkdown, parseLegalMarkdown } from './LegalMarkdown';

@@ -37,6 +37,7 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import FileResponse
 
 logger = logging.getLogger(__name__)
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -59,12 +60,16 @@ from src.models.taxonomy import (
     ServiceTask,
 )
 from src.models.verification import (
+    ConsentType,
     CredentialStatus,
     InsuranceStatus,
+    LegalConsent,
     ProviderCredential,
     ProviderInsurancePolicy,
 )
 from src.services import admin_service
+from src.services.legalConsentService import get_latest_version
+from src.services.legalPdfService import contract_absolute_path
 
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -1007,6 +1012,122 @@ async def reject_credential(
 # la tabla `superusers` — pasarles un id de superuser reventaría con violación de
 # FK en tiempo de ejecución. Se sigue el mismo patrón que las credenciales, que
 # ya omite esa columna por la misma razón.
+
+
+@router.get("/signed-contracts", summary="Contratos legales firmados")
+async def list_signed_contracts(
+    db: DBSession,
+    admin: CurrentAdmin,
+    consent_type: Optional[str] = None,
+) -> dict[str, Any]:
+    """Los contratos que la gente ha firmado en la app.
+
+    Solo las filas que produjeron un DOCUMENTO: `legal_consents` guarda también
+    aceptaciones sin PDF (el checkbox de términos del registro), y mezclarlas
+    aquí llenaría la pantalla de filas sin nada que abrir.
+    """
+    stmt = (
+        select(LegalConsent, User)
+        .join(User, LegalConsent.user_id == User.id)
+        .where(LegalConsent.document_path.isnot(None))
+        .order_by(LegalConsent.created_at.desc())
+    )
+    if consent_type:
+        raw = consent_type.strip()
+        parsed: Optional[ConsentType] = None
+        for candidate in (raw, raw.lower(), raw.upper()):
+            try:
+                parsed = ConsentType(candidate)
+                break
+            except ValueError:
+                parsed = getattr(ConsentType, candidate.upper(), None)
+                if isinstance(parsed, ConsentType):
+                    break
+                parsed = None
+        if parsed is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Invalid consent_type '{consent_type}'. Valid: "
+                    + ", ".join(c.value for c in ConsentType)
+                ),
+            )
+        stmt = stmt.where(LegalConsent.consent_type == parsed)
+
+    rows = (await db.execute(stmt)).all()
+    vigentes = {
+        c: get_latest_version(c)
+        for c in {r[0].consent_type for r in rows}
+    }
+    return {
+        "data": [
+            {
+                "id": str(c.id),
+                "userId": str(c.user_id),
+                "userName": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email,
+                "userEmail": u.email,
+                "consentType": c.consent_type.value,
+                "version": c.consent_version,
+                # Se marca lo firmado sobre una versión vieja. Hoy no bloquea a
+                # nadie (`REQUIRE_CURRENT_CONTRACT_VERSION = False`), pero el
+                # admin tiene que poder VER quién quedó atrás cuando el abogado
+                # cambie el texto: ese es el motivo de guardar la versión.
+                "isCurrentVersion": c.consent_version == vigentes.get(c.consent_type),
+                "signedFullName": c.signed_full_name,
+                "businessName": c.business_name,
+                "hasDrawnSignature": bool(c.signature_image_path),
+                "documentHash": c.document_hash,
+                "consentTextHash": c.consent_text_hash,
+                "ipAddress": str(c.ip_address) if c.ip_address else None,
+                "deviceId": c.device_id,
+                # El PDF NO se sirve por /uploads: lleva nombre legal completo y
+                # firma manuscrita, y un UUID es inadivinable, no privado.
+                "documentUrl": f"/api/v1/admin/signed-contracts/{c.id}/document",
+                "signatureUrl": (
+                    f"/api/v1/admin/signed-contracts/{c.id}/signature"
+                    if c.signature_image_path else None
+                ),
+                "createdAt": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c, u in rows
+        ]
+    }
+
+
+@router.get("/signed-contracts/{consent_id}/document", response_class=FileResponse)
+async def admin_download_signed_contract(
+    consent_id: uuid.UUID,
+    db: DBSession,
+    admin: CurrentAdmin,
+) -> FileResponse:
+    """El PDF firmado, con token de admin."""
+    consent = await db.get(LegalConsent, consent_id)
+    if consent is None or not consent.document_path:
+        raise HTTPException(status_code=404, detail="document_not_found")
+    path = contract_absolute_path(consent.document_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="document_missing_on_disk")
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"VISP-{consent.consent_type.value}-v{consent.consent_version}.pdf",
+    )
+
+
+@router.get("/signed-contracts/{consent_id}/signature", response_class=FileResponse)
+async def admin_download_signature_image(
+    consent_id: uuid.UUID,
+    db: DBSession,
+    admin: CurrentAdmin,
+) -> FileResponse:
+    """El PNG del trazo, para previsualizarlo sin abrir el PDF entero."""
+    consent = await db.get(LegalConsent, consent_id)
+    if consent is None or not consent.signature_image_path:
+        raise HTTPException(status_code=404, detail="signature_not_found")
+    path = contract_absolute_path(consent.signature_image_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="signature_missing_on_disk")
+    return FileResponse(path, media_type="image/png")
 
 
 @router.get("/insurance-policies", summary="Insurance policies pending review")

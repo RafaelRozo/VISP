@@ -427,7 +427,21 @@ class TestGetLatestVersion:
         assert get_latest_version(ConsentType.PLATFORM_TOS) == "1.0"
 
     def test_provider_ic_agreement_version(self):
-        assert get_latest_version(ConsentType.PROVIDER_IC_AGREEMENT) == "1.0"
+        # v1.3 = el PDF firmado por el cliente (docs/VISP_Service_Provider.pdf,
+        # 3-sep-2026), convertido a markdown en content/legal/.
+        assert get_latest_version(ConsentType.PROVIDER_IC_AGREEMENT) == "1.3"
+
+    def test_customer_service_agreement_version(self):
+        assert get_latest_version(ConsentType.CUSTOMER_SERVICE_AGREEMENT) == "1.2"
+
+    def test_every_registered_version_has_its_file(self):
+        """Cada versión del registro tiene su archivo en content/legal/.
+
+        Es el fallo que se paga caro: subir la versión en el diccionario y
+        olvidar el archivo no rompe nada hasta que alguien intenta firmar.
+        """
+        for consent_type in CONSENT_VERSIONS:
+            load_consent_text(consent_type)  # revienta con FileNotFoundError
 
     def test_level_4_emergency_sla_version(self):
         assert get_latest_version(ConsentType.LEVEL_4_EMERGENCY_SLA) == "1.0"
