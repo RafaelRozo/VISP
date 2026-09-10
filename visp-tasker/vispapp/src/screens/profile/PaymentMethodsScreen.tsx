@@ -222,14 +222,14 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
   // Fetch saved payment methods
   // -----------------------------------------------------------------------
 
-  const fetchMethods = useCallback(async () => {
-    if (!stripeCustomerId) {
+  const fetchMethods = useCallback(async (customerId = stripeCustomerId) => {
+    if (!customerId) {
       setMethods([]);
       setIsLoading(false);
       return;
     }
     try {
-      const result = await paymentService.listPaymentMethods(stripeCustomerId);
+      const result = await paymentService.listPaymentMethods(customerId);
       setMethods(result.methods ?? []);
     } catch (err) {
       console.warn('[PaymentMethodsScreen] Failed to load methods:', err);
@@ -306,7 +306,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
       Alert.alert('Success', 'Card added successfully.');
       setShowAddCard(false);
       setCardFormComplete(false);
-      fetchMethods();
+      await fetchMethods(customerId);
     } catch (err: any) {
       console.error('[PaymentMethods] Save card error:', err);
       Alert.alert('Error', err?.message ?? 'Failed to save card. Please try again.');
@@ -405,7 +405,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
             )}
 
             <GlassButton
-              title="+ Add Payment Method"
+              title={methods.length > 0 ? '+ Add Other Payment Method' : '+ Add Payment Method'}
               variant="glow"
               onPress={() => setShowAddCard(true)}
               style={styles.addButton}

@@ -5,8 +5,8 @@ Plan: docs/plan-firma-contratos.md
 Lo que se comprueba, y por qué cada cosa:
 
   A — GET /consents/document/{tipo} devuelve el markdown vigente, su versión y
-      su hash. El del proveedor pide firma; el del cliente no (es clickwrap,
-      que es lo que el propio documento contempla).
+      su hash. Tanto el del proveedor como el del cliente piden firma: los dos
+      se archivan con el trazo dibujado en el PDF.
   B — SIN TOKEN no se puede firmar. Este era el agujero: hasta hoy
       `POST /consents/record` no pedía token y sacaba el `user_id` DEL BODY,
       así que cualquiera podía fabricar un consentimiento a nombre ajeno.
@@ -155,9 +155,9 @@ async def main() -> int:
 
             r = await c.get(f"{API}/consents/document/{CUSTOMER_DOC}")
             check(r.status_code == 200, f"A: documento del cliente {r.status_code}")
-            check(r.json()["requires_signature"] is False,
-                  "A: el acuerdo del cliente es clickwrap, no debe exigir trazo")
-            step("A", f"acuerdo del cliente v{r.json()['version']} (clickwrap)")
+            check(r.json()["requires_signature"] is True,
+                  "A: el acuerdo del cliente también debe exigir trazo")
+            step("A", f"acuerdo del cliente v{r.json()['version']} (con firma)")
 
             cuerpo = {
                 "consent_type": PROVIDER_DOC,
@@ -324,8 +324,8 @@ async def main() -> int:
             tipos = [p["consent_type"] for p in r.json()["pending"]]
             check(tipos == [CUSTOMER_DOC],
                   f"K: un customer debe solo el acuerdo de cliente, debe {tipos}")
-            check(r.json()["pending"][0]["requires_signature"] is False,
-                  "K: el del cliente no debe exigir trazo")
+            check(r.json()["pending"][0]["requires_signature"] is True,
+                  "K: el del cliente también debe exigir trazo")
             check(r.json()["suggested_legal_name"] == "Smoke Contract",
                   "K: el nombre legal precargado no sale del registro")
             step("K", f"customer → {tipos}")
@@ -343,9 +343,9 @@ async def main() -> int:
                   f"K: un `both` debe LOS DOS documentos, debe {tipos}")
             firmas = {p["consent_type"]: p["requires_signature"]
                       for p in r.json()["pending"]}
-            check(firmas[PROVIDER_DOC] is True and firmas[CUSTOMER_DOC] is False,
-                  f"K: `both` firma el de proveedor y acepta el de cliente: {firmas}")
-            step("K", f"both → {sorted(tipos)} (trazo solo en el de proveedor)")
+            check(firmas[PROVIDER_DOC] is True and firmas[CUSTOMER_DOC] is True,
+                  f"K: `both` firma LOS DOS documentos: {firmas}")
+            step("K", f"both → {sorted(tipos)} (trazo en ambos)")
 
         # ---- L: la puerta de ofertar --------------------------------------
         # Se seedea un proveedor SIN contrato y un trabajo cualquiera. El motivo

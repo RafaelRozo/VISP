@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -164,19 +165,71 @@ def _ensure_access_token() -> str:
     return token
 
 
+# Full country names the callers may send instead of an ISO code.
+_COUNTRY_ALIASES: dict[str, str] = {
+    "canada": "ca",
+    "canadá": "ca",
+    "united states": "us",
+    "united states of america": "us",
+    "usa": "us",
+    "u.s.": "us",
+    "u.s.a.": "us",
+    "mexico": "mx",
+    "méxico": "mx",
+}
+
+
+def normalize_country_codes(country: str) -> str:
+    """Turn a free-form country hint into a Mapbox ``country`` filter value.
+
+    Accepts one value or a comma-separated list, either as ISO 3166-1
+    alpha-2 codes or as full names ("Canada", "United States").  Unknown
+    tokens are dropped rather than forwarded: Mapbox rejects the whole
+    filter when one code is invalid, and the query then silently returns
+    worldwide results.
+    """
+    if not country:
+        return ""
+
+    codes: list[str] = []
+    for raw in country.split(","):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        code = _COUNTRY_ALIASES.get(token)
+        if code is None and len(token) == 2 and token.isascii() and token.isalpha():
+            code = token
+        if code and code not in codes:
+            codes.append(code)
+    return ",".join(codes)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-async def geocode_address(address: str, *, country: str = "") -> dict[str, Any]:
+async def geocode_address(
+    address: str,
+    *,
+    country: str = "",
+    proximity: tuple[float, float] | None = None,
+    limit: int = 5,
+) -> dict[str, Any]:
     """Forward-geocode a human-readable address to coordinates.
 
     Uses the Mapbox Geocoding API v5.
 
     Args:
         address: Full or partial street address string.
-        country: ISO 3166-1 alpha-2 country code to bias results (e.g. "MX", "CA").
+        country: Country filter — ISO 3166-1 alpha-2 code(s), comma-separated,
+            or a full country name.  Sent as the ``country`` *filter* only;
+            it must never be concatenated into ``address`` (see
+            ``geocoder._compose_full_address``).
+        proximity: Optional ``(lat, lng)`` used to bias — not restrict — the
+            ranking towards a point.  Results far from it still come back,
+            they just rank lower.
+        limit: Maximum number of features to return (1-10).
 
     Returns:
         Dict with keys: lat, lng, formatted_address, place_id, location_type,
@@ -186,35 +239,43 @@ async def geocode_address(address: str, *, country: str = "") -> dict[str, Any]:
         MapboxError: On API failure or missing results.
     """
     token = _ensure_access_token()
-    encoded_address = address.replace("#", "")
+    # "#" (unit designator) is noise to Mapbox and breaks the URL path.
+    query = address.replace("#", "").strip()
+
+    empty: dict[str, Any] = {
+        "lat": None,
+        "lng": None,
+        "formatted_address": None,
+        "place_id": None,
+        "location_type": None,
+        "all_results": [],
+    }
+    if not query:
+        return empty
 
     params: dict[str, Any] = {
         "access_token": token,
-        "limit": 5,
+        "limit": max(1, min(limit, 10)),
         "types": "address,place,locality,neighborhood,postcode",
     }
-    # Bias results to specific country if provided
-    if country:
-        params["country"] = country.lower()
+    country_filter = normalize_country_codes(country)
+    if country_filter:
+        params["country"] = country_filter
+    if proximity is not None:
+        # Mapbox expects lng,lat — the tuple we receive is lat,lng.
+        params["proximity"] = f"{proximity[1]:.6f},{proximity[0]:.6f}"
 
     async with httpx.AsyncClient() as client:
         data = await _request_with_retry(
             client,
             "GET",
-            f"{_BASE_URL}/geocoding/v5/mapbox.places/{encoded_address}.json",
+            f"{_BASE_URL}/geocoding/v5/mapbox.places/{quote(query, safe='')}.json",
             params=params,
         )
 
     features = data.get("features", []) if isinstance(data, dict) else []
     if not features:
-        return {
-            "lat": None,
-            "lng": None,
-            "formatted_address": None,
-            "place_id": None,
-            "location_type": None,
-            "all_results": [],
-        }
+        return empty
 
     best = features[0]
     coords = best.get("center", [0, 0])  # [lng, lat] in GeoJSON

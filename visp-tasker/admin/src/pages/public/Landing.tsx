@@ -36,9 +36,11 @@ export default function Landing() {
               <a key={l.href} href={l.href} onClick={closeMenu}>{l.label}</a>
             ))}
             {/* Mobile-only actions surfaced inside the dropdown */}
+            {/* Business registration is deferred to a later release.
             <a href="/business/register" className="nav-mobile-only nav-cta-line" onClick={closeMenu}>
               Register for Business
             </a>
+            */}
             <a
               href={REQUEST_URL}
               target="_blank"
@@ -50,7 +52,9 @@ export default function Landing() {
             </a>
           </nav>
           <div className="header-cta">
+            {/* Business registration is deferred to a later release.
             <a href="/business/register" className="btn btn-secondary">Register for Business</a>
+            */}
             <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary">Request a Job</a>
             <div className="header-lang"><LangSwitcher /></div>
             <button

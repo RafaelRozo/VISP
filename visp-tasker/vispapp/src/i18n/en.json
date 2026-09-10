@@ -162,6 +162,16 @@
       "per_contract": "contract"
     }
   },
+  "providerOnboarding": {
+    "loadingService": "Loading service…",
+    "yourPrice": "Your price",
+    "priceHint": "Set it now to start receiving offers right away.",
+    "remove": "Remove service",
+    "removeConfirmTitle": "Remove this service?",
+    "removeConfirmBody": "It will no longer be offered. You can add it back anytime.",
+    "serviceAddedTitle": "Service added",
+    "addedPendingVerification": "This service needs document verification before you can price and offer it. Upload the documents in Profile > Credentials."
+  },
   "earningsScreen": {
     "earnings": "Earnings",
     "today": "Today",

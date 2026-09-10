@@ -40,6 +40,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Device from 'expo-device';
 import { Screen, LegalMarkdown, SignaturePad } from '../../components/visp';
 import type { SignatureValue } from '../../components/visp/SignaturePad';
 import { GlassButton } from '../../components/glass';
@@ -78,6 +79,8 @@ export function ContractSignScreen({
   const [doc, setDoc] = useState<legalService.LegalDocument | null>(null);
 
   const [legalName, setLegalName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
   const [accepted, setAccepted] = useState(false);
   const [reachedEnd, setReachedEnd] = useState(false);
   const [signature, setSignature] = useState<SignatureValue | null>(null);
@@ -105,6 +108,7 @@ export function ContractSignScreen({
         pending.suggestedLegalName ||
           [user?.firstName, user?.lastName].filter(Boolean).join(' '),
       );
+      setAccountEmail(pending.accountEmail);
     } catch (e: any) {
       setLoadError(
         e?.response?.data?.detail ||
@@ -165,12 +169,16 @@ export function ContractSignScreen({
     [],
   );
 
-  const needsSignature = !!currentPending?.requiresSignature;
-  const hasSignature = !!signature && signature.strokes.length > 0;
+  const needsSignature = !!currentPending && (
+    currentPending.consentType === 'customer_service_agreement' ||
+    currentPending.consentType === 'provider_ic_agreement' ||
+    currentPending.requiresSignature || !!doc?.requiresSignature
+  );
+  const hasSignature = !!signature && signature.strokes.some((stroke) => stroke.length >= 2);
   const nameOk = legalName.trim().length >= 2;
 
   const canSubmit =
-    !!doc &&
+    !!doc && doc.consentType === currentPending?.consentType &&
     !submitting &&
     reachedEnd &&
     accepted &&
@@ -185,9 +193,14 @@ export function ContractSignScreen({
       await legalService.signConsent({
         consentType: currentPending.consentType,
         signedFullName: legalName.trim(),
+        businessName: businessName.trim() || undefined,
         // El hash del texto que ESTA pantalla mostró. El servidor lo compara
         // con el de la versión vigente y rechaza la firma si no coinciden.
         documentHash: doc.hash,
+        // El identificador del aparato entra en el rastro de auditoría. Sale de
+        // `expo-device`, que ya estaba instalado: no vale meter una dependencia
+        // nativa nueva por esto, con Expo 55 cada una es riesgo en cada prebuild.
+        deviceId: [Device.modelId, Device.osVersion].filter(Boolean).join(' iOS ') || undefined,
         signature:
           needsSignature && signature
             ? {
@@ -226,7 +239,7 @@ export function ContractSignScreen({
       setSubmitting(false);
     }
   }, [
-    doc, currentPending, canSubmit, legalName, needsSignature, signature,
+    doc, currentPending, canSubmit, legalName, businessName, needsSignature, signature,
     index, queue.length, onCompleted, loadQueue,
   ]);
 
@@ -293,7 +306,7 @@ export function ContractSignScreen({
         scrollEventThrottle={64}
         keyboardShouldPersistTaps="handled"
       >
-        {!!doc && <LegalMarkdown markdown={doc.text} />}
+        {!!doc && <LegalMarkdown markdown={doc.text} replaceAcceptanceForm />}
 
         {/* Aviso de idioma: los contratos solo existen en inglés todavía; el
             francés está en revisión legal. Un contrato no se traduce a medias. */}
@@ -302,6 +315,40 @@ export function ContractSignScreen({
         </Text>
 
         <View style={[styles.divider, { backgroundColor: t.border }]} />
+
+        {/* The final blank form is completed here; the original document/hash
+            stays intact and the server archives these fields with the drawing. */}
+        <View
+          style={[
+            styles.recordCard,
+            { backgroundColor: t.surface, borderColor: t.border },
+          ]}
+        >
+          <Text style={[styles.recordTitle, { color: t.text }]}>
+            {currentPending?.consentType === 'provider_ic_agreement'
+              ? 'Service provider acceptance and signature'
+              : 'Customer acceptance and signature'}
+          </Text>
+          {[
+            ['Legal name', legalName.trim() || '—'],
+            ['Business name (if applicable)', businessName.trim() || '—'],
+            ['Account email', accountEmail || '—'],
+            ['Account ID', user?.id || '—'],
+            ['Agreement version', doc ? `v${doc.version}` : '—'],
+            ['Acceptance date', 'Recorded when you sign (Ontario time)'],
+          ].map(([k, v]) => (
+            <View key={k} style={styles.recordRow}>
+              <Text style={[styles.recordKey, { color: t.text3 }]}>{k}</Text>
+              <Text style={[styles.recordValue, { color: t.text2 }]}>
+                {v}
+              </Text>
+            </View>
+          ))}
+          <Text style={[styles.recordNote, { color: t.text3 }]}>
+            Your signature, these details, the acceptance record ID, date and
+            time, IP address, device and agreement text will be archived in your signed PDF.
+          </Text>
+        </View>
 
         {/* ── Nombre legal ── */}
         <Text style={[styles.label, { color: t.text }]}>Full legal name</Text>
@@ -321,6 +368,19 @@ export function ContractSignScreen({
           ]}
         />
 
+        <Text style={[styles.label, { color: t.text }]}>Business name (optional)</Text>
+        <TextInput
+          value={businessName}
+          onChangeText={setBusinessName}
+          placeholder="Business name, if applicable"
+          placeholderTextColor={t.text4}
+          autoCapitalize="words"
+          style={[
+            styles.input,
+            { color: t.text, backgroundColor: t.surface, borderColor: t.border },
+          ]}
+        />
+
         {/* ── Firma ── */}
         {needsSignature && (
           <>
@@ -329,6 +389,7 @@ export function ContractSignScreen({
               Sign with your finger.
             </Text>
             <SignaturePad
+              key={`${currentPending?.consentType}:${doc?.version}`}
               onChange={setSignature}
               caption={legalName.trim() || undefined}
             />
@@ -398,6 +459,13 @@ const styles = StyleSheet.create({
 
   langNote: { fontSize: 11.5, fontStyle: 'italic', marginTop: 16 },
   divider: { height: 1, marginVertical: 24 },
+
+  recordCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 24 },
+  recordTitle: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2, marginBottom: 10 },
+  recordRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 6 },
+  recordKey: { fontSize: 12 },
+  recordValue: { fontSize: 12.5, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  recordNote: { fontSize: 11, lineHeight: 16, marginTop: 8 },
 
   label: { fontSize: 14, fontWeight: '700', marginTop: 8 },
   help: { fontSize: 12, marginTop: 2, marginBottom: 10 },

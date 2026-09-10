@@ -191,9 +191,10 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
     navigation.navigate('Register');
   }, [navigation]);
 
-  const handleJoinCompany = useCallback(() => {
-    navigation.navigate('CompanyJoin');
-  }, [navigation]);
+  // VISP for Business is deferred to a later release.
+  // const handleJoinCompany = useCallback(() => {
+  //   navigation.navigate('CompanyJoin');
+  // }, [navigation]);
 
   // ── Derived State ────────────────────────
 
@@ -358,7 +359,7 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
               </TouchableOpacity>
             </View>
 
-            {/* VISP for Business — collaborator registration via company code */}
+            {/* VISP for Business — hidden for this release.
             <View style={styles.businessDividerRow}>
               <View style={styles.businessDividerLine} />
               <Text style={styles.businessDividerText}>VISP for Business</Text>
@@ -370,6 +371,7 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
                 <Text style={styles.createAccountLink}>I have a code</Text>
               </TouchableOpacity>
             </View>
+            */}
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>

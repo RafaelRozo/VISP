@@ -171,8 +171,9 @@ async def sign_legal_document(
             strokes=body.signature.strokes,
         )
 
-    # El contrato del proveedor sí exige trazo; el del cliente es clickwrap,
-    # que es lo que el propio documento contempla ("By clicking I Agree...").
+    # Ambos contratos (proveedor y cliente) exigen trazo. La cláusula clickwrap
+    # del documento sigue siendo la aceptación; la firma dibujada se archiva en
+    # el PDF como prueba adicional, igual para las dos partes.
     if body.consent_type in _SIGNATURE_DOCS and (
         signature is None or signature.is_empty()
     ):

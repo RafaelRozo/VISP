@@ -189,7 +189,7 @@ def _split_row(line: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in cells]
 
 
-def _render_markdown(pdf: ContractPDF, markdown: str) -> None:
+def _render_markdown(pdf: ContractPDF, markdown: str, *, replace_acceptance_form: bool = False) -> None:
     lines = markdown.split("\n")
     i = 0
     while i < len(lines):
@@ -209,7 +209,17 @@ def _render_markdown(pdf: ContractPDF, markdown: str) -> None:
             while j < len(lines) and _TABLE_ROW.match(lines[j].strip()):
                 rows.append(_split_row(lines[j].strip()))
                 j += 1
-            _render_table(pdf, header, rows)
+            # The final empty form is completed on the signature page. Keep
+            # every clause and other table intact, without a duplicate blank form.
+            acceptance_form = (
+                header == ["Field", "Value (filled at acceptance)"]
+                and len(rows) == 5
+                and all(len(row) == 2 and not row[1] for row in rows)
+                and rows[0][0] in ("**Customer Legal Name**", "**Service Provider Legal Name**")
+                and not any(line.strip() for line in lines[j:])
+            )
+            if not (replace_acceptance_form and acceptance_form):
+                _render_table(pdf, header, rows)
             i = j
             continue
 
@@ -478,7 +488,7 @@ def build_signed_contract(
 
     pdf = ContractPDF(running_head=running_head, footer_note=footer_note)
     pdf.add_page()
-    _render_markdown(pdf, markdown)
+    _render_markdown(pdf, markdown, replace_acceptance_form=True)
     _render_signature_page(pdf, record, signature_png)
     return bytes(pdf.output()), signature_png
 

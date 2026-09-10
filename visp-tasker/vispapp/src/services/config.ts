@@ -20,7 +20,7 @@ interface AppConfig {
 const DEV_CONFIG: AppConfig = {
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
-  mapboxAccessToken: 'MAPBOX_ACCESS_TOKEN_HERE',
+  mapboxAccessToken: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '',
   stripePublishableKey: 'pk_test_51TMUEvI9nmjXITB8M1kWgFas5MW8AQJfqVwHQcpaThfS6tesyfbTVgIp74FdE61DzSFBpbABlZi1S1kd6kT6YEsa00O8FAMvlW',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',

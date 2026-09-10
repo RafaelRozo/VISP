@@ -599,28 +599,33 @@ export default function AppNavigator(): React.JSX.Element {
   // hueco se cierra solo.
   const [legalPending, setLegalPending] = useState<boolean | null>(null);
 
+  // Estable a propósito. Con una flecha en línea, cada render de este navegador
+  // creaba un `onCompleted` nuevo; dentro de la pantalla ese prop es
+  // dependencia del `useCallback` que carga la cola, así que la cola se
+  // recargaba —y el índice se reseteaba a 0— en cada render del padre.
+  const handleLegalCompleted = useCallback(() => setLegalPending(false), []);
+
   useEffect(() => {
     if (!isAuthenticated) {
       setLegalPending(null);
       return;
     }
     let cancelled = false;
+    setLegalPending(null);
     legalService
       .getPendingConsents()
       .then((r) => {
         if (!cancelled) setLegalPending(r.pending.length > 0);
       })
       .catch(() => {
-        // Falla ABIERTO a propósito: si la comprobación se cae por red, dejar
-        // al usuario fuera de su propia app sería peor que dejarle entrar. El
-        // candado de verdad está en el servidor —un proveedor sin contrato no
-        // puede ofertar— y esa comprobación no depende de esta pantalla.
-        if (!cancelled) setLegalPending(false);
+        // A failed check cannot establish that either contract was signed.
+        // ContractSignScreen reloads the queue and provides an explicit retry.
+        if (!cancelled) setLegalPending(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, user?.role]);
 
   // Handle notification tap deep-links
   const handleNotificationNavigation = useCallback(
@@ -709,7 +714,7 @@ export default function AppNavigator(): React.JSX.Element {
           // sin contrato no puede ofertar, así que dejarle pasar solo lo
           // llevaría a una app bloqueada sin explicación.
           <RootStack.Screen name="ContractSign">
-            {() => <ContractSignScreen onCompleted={() => setLegalPending(false)} />}
+            {() => <ContractSignScreen onCompleted={handleLegalCompleted} />}
           </RootStack.Screen>
         ) : effectiveRole === 'customer' ? (
           <>

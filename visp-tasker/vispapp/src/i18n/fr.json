@@ -162,6 +162,16 @@
       "per_contract": "contrat"
     }
   },
+  "providerOnboarding": {
+    "loadingService": "Chargement du service…",
+    "yourPrice": "Votre tarif",
+    "priceHint": "Définissez-le maintenant pour recevoir des offres immédiatement.",
+    "remove": "Retirer le service",
+    "removeConfirmTitle": "Retirer ce service ?",
+    "removeConfirmBody": "Il ne sera plus offert. Vous pouvez le rajouter à tout moment.",
+    "serviceAddedTitle": "Service ajouté",
+    "addedPendingVerification": "Ce service requiert une vérification de documents avant de pouvoir le tarifer et l'offrir. Téléversez les documents dans Profil > Accréditations."
+  },
   "earningsScreen": {
     "earnings": "Revenus",
     "today": "Aujourd'hui",

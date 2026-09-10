@@ -123,9 +123,11 @@ export function parseLegalMarkdown(md: string): Block[] {
 
 interface LegalMarkdownProps {
   markdown: string;
+  /** The signing screen renders this final form with live account data and a pad. */
+  replaceAcceptanceForm?: boolean;
 }
 
-export function LegalMarkdown({ markdown }: LegalMarkdownProps): React.JSX.Element {
+export function LegalMarkdown({ markdown, replaceAcceptanceForm = false }: LegalMarkdownProps): React.JSX.Element {
   const t = useVispTheme();
   const blocks = useMemo(() => parseLegalMarkdown(markdown), [markdown]);
 
@@ -180,6 +182,13 @@ export function LegalMarkdown({ markdown }: LegalMarkdownProps): React.JSX.Eleme
               </View>
             );
           case 'table':
+            if (
+              replaceAcceptanceForm && idx === blocks.length - 1 &&
+              b.header.length === 2 && b.header[0] === 'Field' &&
+              b.header[1] === 'Value (filled at acceptance)' &&
+              b.rows.length === 5 && b.rows.every((row) => row.length === 2 && !row[1]) &&
+              ['Customer Legal Name', 'Service Provider Legal Name'].includes(plain(b.rows[0][0]))
+            ) return null;
             // Cada fila se apila como "etiqueta / valor" en vez de en columnas:
             // la matriz de suministros tiene 3 columnas muy anchas y en un
             // móvil en columnas sale ilegible.
@@ -201,8 +210,19 @@ export function LegalMarkdown({ markdown }: LegalMarkdownProps): React.JSX.Eleme
                         <Text style={[styles.tableLabel, { color: t.text3 }]}>
                           {plain(b.header[c] || '')}
                         </Text>
-                        <Text style={[styles.tableValue, { color: t.text2 }]}>
-                          {plain(cell) || '—'}
+                        <Text
+                          style={[
+                            styles.tableValue,
+                            { color: plain(cell) ? t.text2 : t.text3 },
+                            !plain(cell) && styles.tableValueEmpty,
+                          ]}
+                        >
+                          {/* La tabla de aceptación del contrato viene EN BLANCO:
+                              es el formulario del PDF, y el texto se muestra
+                              verbatim porque es lo que se hashea. Un guion suelto
+                              se lee como "falta un dato", así que se dice qué pasa
+                              con esa casilla. */}
+                          {plain(cell) || 'Completed automatically when you accept'}
                         </Text>
                       </View>
                     ))}
@@ -244,4 +264,5 @@ const styles = StyleSheet.create({
   tableCell: { marginBottom: 8 },
   tableLabel: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4, marginBottom: 2 },
   tableValue: { fontSize: 12.5, lineHeight: 19 },
+  tableValueEmpty: { fontStyle: 'italic' },
 });

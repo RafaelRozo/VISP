@@ -2,19 +2,27 @@
  * VISP - Provider Onboarding Screen
  *
  * Service selection during provider onboarding. Categories with expandable
- * task lists, checkbox selection, restricted-task badges, and submit flow.
+ * task lists. Tapping a service opens a modal with its description and a price
+ * input, so the provider enables AND prices the service in one step.
  *
  * Dark glassmorphism styling with GlassBackground, GlassCard, GlassButton.
  */
 
 import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     FlatList,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
-    Alert,
 } from 'react-native';
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -23,16 +31,21 @@ import { useTheme } from '../../theme/ThemeContext';
 import { GlassStyles } from '../../theme/glass';
 import { GlassCard, GlassButton } from '../../components/glass';
 import { Screen } from '../../components/visp';
+import { useTranslation } from '../../i18n';
 import { taxonomyService, ProviderCategory, ProviderTask } from '../../services/taxonomyService';
 import { providerService } from '../../services/providerService';
+import { taskService } from '../../services/taskService';
+import type { ServiceTaskDetail } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
 import { useProviderStore } from '../../stores/providerStore';
 
+type RowPrice = { cents: number; unit: string };
 
 export default function ProviderOnboardingScreen() {
     const theme = useTheme();
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
+    const { t: tr } = useTranslation();
     const { user } = useAuthStore();
     const { providerProfile, fetchProviderProfile } = useProviderStore();
 
@@ -42,9 +55,30 @@ export default function ProviderOnboardingScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
+    const [priceMap, setPriceMap] = useState<Record<string, RowPrice>>({});
+    const [managedByCompany, setManagedByCompany] = useState(false);
+
+    const [modalTask, setModalTask] = useState<ProviderTask | null>(null);
+    const [modalDetail, setModalDetail] = useState<ServiceTaskDetail | null>(null);
+    const [modalLoading, setModalLoading] = useState(false);
+    const [modalSaving, setModalSaving] = useState(false);
+    const [priceInput, setPriceInput] = useState('');
+    const [modalError, setModalError] = useState<string | null>(null);
+
     useEffect(() => {
         loadTaxonomy();
     }, []);
+
+    const unitLabel = (unit: string): string => tr(`myPricesScreen.unit.${unit}`) || unit;
+
+    const fmtRange = (minDollars: number, maxDollars: number): string => {
+        const lo = minDollars > 0 ? Math.round(minDollars) : null;
+        const hi = maxDollars > 0 ? Math.round(maxDollars) : null;
+        if (lo != null && hi != null) return `$${lo} \u2013 $${hi}`;
+        if (lo != null) return `$${lo}+`;
+        if (hi != null) return `\u2264 $${hi}`;
+        return '\u2014';
+    };
 
     const loadTaxonomy = async () => {
         try {
@@ -68,6 +102,20 @@ export default function ProviderOnboardingScreen() {
             } catch {
                 // No saved services yet -- that is fine for first-time onboarding
             }
+
+            try {
+                const { items, managedByCompany: mbc } = await providerService.getProviderRates();
+                setManagedByCompany(mbc);
+                const map: Record<string, RowPrice> = {};
+                for (const r of items) {
+                    if (r.rate_cents != null) {
+                        map[r.task_id] = { cents: r.rate_cents, unit: r.pricing_unit };
+                    }
+                }
+                setPriceMap(map);
+            } catch {
+                // Rates are optional here; the modal still works without them
+            }
         } catch (error) {
             console.error('Failed to load taxonomy:', error);
             const errorMessage = (error as any)?.message || 'Failed to load services.';
@@ -87,14 +135,161 @@ export default function ProviderOnboardingScreen() {
         setExpandedCategories(newExpanded);
     };
 
-    const toggleTask = (taskId: string) => {
-        const newSelected = new Set(selectedTaskIds);
-        if (newSelected.has(taskId)) {
-            newSelected.delete(taskId);
-        } else {
-            newSelected.add(taskId);
+    const closeModal = () => {
+        if (modalSaving) return;
+        setModalTask(null);
+        setModalDetail(null);
+        setPriceInput('');
+        setModalError(null);
+        setModalLoading(false);
+    };
+
+    const openModal = async (task: ProviderTask) => {
+        setModalTask(task);
+        setModalDetail(null);
+        setModalError(null);
+        setModalLoading(true);
+        const existing = priceMap[task.id];
+        setPriceInput(existing ? (existing.cents / 100).toFixed(2) : '');
+        try {
+            const detail = await taskService.fetchTaskDetail(task.id);
+            setModalDetail(detail);
+        } catch (error) {
+            console.error('Failed to load service detail:', error);
+            setModalError(tr('myPricesScreen.loadError') || 'Could not load this service.');
+        } finally {
+            setModalLoading(false);
         }
-        setSelectedTaskIds(newSelected);
+    };
+
+    const onPriceChange = (raw: string) => {
+        const cleaned = raw.replace(/[^0-9.]/g, '');
+        const parts = cleaned.split('.');
+        const formatted = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : cleaned;
+        setPriceInput(formatted);
+        setModalError(null);
+    };
+
+    const handleModalSave = async () => {
+        if (!modalTask || modalSaving) return;
+        const task = modalTask;
+        const detail = modalDetail;
+
+        const unit = detail?.pricingUnit ?? null;
+        const isContract = unit === 'per_contract';
+        const isCustomQuote = unit === 'custom_quote';
+        const priceable = !!detail && !isContract && !isCustomQuote && !managedByCompany;
+
+        let cents: number | null = null;
+        if (priceable && detail) {
+            const dollars = parseFloat(priceInput);
+            if (isNaN(dollars) || dollars < 0) {
+                setModalError(tr('myPricesScreen.invalidAmount') || 'Enter a valid amount.');
+                return;
+            }
+            cents = Math.round(dollars * 100);
+            const lo = detail.priceRangeMin > 0 ? Math.round(detail.priceRangeMin * 100) : null;
+            const hi = detail.priceRangeMax > 0 ? Math.round(detail.priceRangeMax * 100) : null;
+            if ((lo != null && cents < lo) || (hi != null && cents > hi)) {
+                setModalError(
+                    `${tr('myPricesScreen.outOfRange') || 'Allowed range'}: ${fmtRange(detail.priceRangeMin, detail.priceRangeMax)}`,
+                );
+                return;
+            }
+        }
+
+        setModalSaving(true);
+        setModalError(null);
+        try {
+            const nextSelected = new Set(selectedTaskIds);
+            nextSelected.add(task.id);
+            await providerService.updateServices(Array.from(nextSelected));
+            setSelectedTaskIds(nextSelected);
+
+            let needsVerification = false;
+            if (priceable && cents != null) {
+                try {
+                    await providerService.setProviderRate(task.id, cents);
+                    const savedCents = cents;
+                    setPriceMap(p => ({ ...p, [task.id]: { cents: savedCents, unit: unit ?? '' } }));
+                } catch (rateErr: any) {
+                    const status = rateErr?.statusCode;
+                    if (status === 403) {
+                        needsVerification = true;
+                    } else if (status === 422) {
+                        setModalError(tr('myPricesScreen.outOfRangeServer') || 'Price outside the allowed range.');
+                        setModalSaving(false);
+                        return;
+                    } else {
+                        setModalError(tr('myPricesScreen.saveError') || 'Could not save. Try again.');
+                        setModalSaving(false);
+                        return;
+                    }
+                }
+            }
+
+            setModalSaving(false);
+            setModalTask(null);
+            setModalDetail(null);
+            setPriceInput('');
+            setModalError(null);
+
+            if (needsVerification) {
+                Alert.alert(
+                    tr('providerOnboarding.serviceAddedTitle') || 'Service added',
+                    tr('providerOnboarding.addedPendingVerification') ||
+                        'This service needs document verification before you can price and offer it.',
+                );
+            }
+        } catch (error) {
+            console.error('Failed to save service:', error);
+            setModalSaving(false);
+            setModalError(tr('myPricesScreen.saveError') || 'Could not save. Try again.');
+        }
+    };
+
+    const handleRemove = () => {
+        if (!modalTask || modalSaving) return;
+        const task = modalTask;
+        Alert.alert(
+            tr('providerOnboarding.removeConfirmTitle') || 'Remove this service?',
+            tr('providerOnboarding.removeConfirmBody') || 'It will no longer be offered.',
+            [
+                { text: tr('common.cancel') || 'Cancel', style: 'cancel' },
+                {
+                    text: tr('providerOnboarding.remove') || 'Remove',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setModalSaving(true);
+                        try {
+                            const next = new Set(selectedTaskIds);
+                            next.delete(task.id);
+                            await providerService.updateServices(Array.from(next));
+                            try {
+                                await providerService.deleteProviderRate(task.id);
+                            } catch {
+                                // No rate to delete -- ignore
+                            }
+                            setSelectedTaskIds(next);
+                            setPriceMap(p => {
+                                const copy = { ...p };
+                                delete copy[task.id];
+                                return copy;
+                            });
+                            setModalSaving(false);
+                            setModalTask(null);
+                            setModalDetail(null);
+                            setPriceInput('');
+                            setModalError(null);
+                        } catch (error) {
+                            console.error('Failed to remove service:', error);
+                            setModalSaving(false);
+                            setModalError(tr('myPricesScreen.saveError') || 'Could not save. Try again.');
+                        }
+                    },
+                },
+            ],
+        );
     };
 
     const handleSubmit = async () => {
@@ -143,9 +338,6 @@ export default function ProviderOnboardingScreen() {
     };
 
     const finishOnboarding = async () => {
-        // Refresh profile to get new status/level
-        // await fetchProviderProfile(); // optional if store has it
-
         // If we can go back (came from Profile/Dashboard), just go back
         if (navigation.canGoBack()) {
             navigation.goBack();
@@ -174,6 +366,15 @@ export default function ProviderOnboardingScreen() {
             </Screen>
         );
     }
+
+    const modalUnit = modalDetail?.pricingUnit ?? null;
+    const modalIsContract = modalUnit === 'per_contract';
+    const modalIsCustomQuote = modalUnit === 'custom_quote';
+    const modalPriceable = !!modalDetail && !modalIsContract && !modalIsCustomQuote && !managedByCompany;
+    const modalSelected = modalTask ? selectedTaskIds.has(modalTask.id) : false;
+    const modalLevel = modalTask ? (modalTask.level || '').replace('LEVEL_', '') : '';
+    const modalDescription =
+        modalDetail?.fullDescription || modalTask?.description || '';
 
     return (
         <Screen>
@@ -239,6 +440,7 @@ export default function ProviderOnboardingScreen() {
                                             const needsLicense = task.licenseRequired;
                                             const needsCertification = task.certificationRequired;
                                             const isRegulated = task.regulated && !needsLicense && !needsCertification;
+                                            const rowPrice = priceMap[task.id];
 
                                             return (
                                                 <TouchableOpacity
@@ -247,7 +449,7 @@ export default function ProviderOnboardingScreen() {
                                                         styles.taskItem,
                                                         isSelected && styles.taskItemSelected,
                                                     ]}
-                                                    onPress={() => toggleTask(task.id)}
+                                                    onPress={() => openModal(task)}
                                                     activeOpacity={0.7}
                                                 >
                                                     <View style={[
@@ -269,6 +471,12 @@ export default function ProviderOnboardingScreen() {
                                                         ]}>
                                                             {task.name}
                                                         </Text>
+                                                        {rowPrice && (
+                                                            <Text style={styles.taskPrice}>
+                                                                {`$${(rowPrice.cents / 100).toFixed(0)}`}
+                                                                {rowPrice.unit ? `/${unitLabel(rowPrice.unit)}` : ''}
+                                                            </Text>
+                                                        )}
                                                         {needsLicense && (
                                                             <View style={styles.restrictedBadge}>
                                                                 <Text style={styles.restrictedIcon}>S</Text>
@@ -316,6 +524,143 @@ export default function ProviderOnboardingScreen() {
                     />
                 </View>
             </View>
+
+            {/* Service detail + price modal: enable AND price in one step. */}
+            <Modal
+                visible={modalTask != null}
+                transparent
+                animationType="slide"
+                onRequestClose={closeModal}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalRoot}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <Pressable style={styles.modalBackdrop} onPress={closeModal} />
+                    <View style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                        {modalTask && (
+                            modalLoading ? (
+                                <View style={styles.modalLoading}>
+                                    <ActivityIndicator color={Colors.primary} />
+                                    <Text style={[styles.modalLoadingText, { color: theme.textSecondary }]}>
+                                        {tr('providerOnboarding.loadingService') || 'Loading service…'}
+                                    </Text>
+                                </View>
+                            ) : (
+                                <>
+                                    <View style={styles.modalHeader}>
+                                        <Text style={[styles.modalTitle, { color: theme.textPrimary }]} numberOfLines={2}>
+                                            {modalTask.name}
+                                        </Text>
+                                        <Pressable onPress={closeModal} hitSlop={12} disabled={modalSaving}>
+                                            <Text style={[styles.modalClose, { color: theme.textSecondary }]}>{'\u2715'}</Text>
+                                        </Pressable>
+                                    </View>
+
+                                    <View style={styles.modalChips}>
+                                        {modalLevel ? (
+                                            <View style={[styles.modalChip, { borderColor: theme.border }]}>
+                                                <Text style={[styles.modalChipText, { color: theme.textSecondary }]}>
+                                                    {`L${modalLevel}`}
+                                                </Text>
+                                            </View>
+                                        ) : null}
+                                        {modalUnit ? (
+                                            <View style={[styles.modalChip, { borderColor: theme.border }]}>
+                                                <Text style={[styles.modalChipText, { color: theme.textSecondary }]}>
+                                                    {unitLabel(modalUnit)}
+                                                </Text>
+                                            </View>
+                                        ) : null}
+                                    </View>
+
+                                    <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                                        <Text style={[styles.modalDesc, { color: theme.textSecondary }]}>
+                                            {modalDescription}
+                                        </Text>
+                                    </ScrollView>
+
+                                    {modalPriceable && modalDetail ? (
+                                        <View style={styles.priceSection}>
+                                            <Text style={[styles.priceLabel, { color: theme.textPrimary }]}>
+                                                {tr('providerOnboarding.yourPrice') || 'Your price'}
+                                            </Text>
+                                            <Text style={[styles.rangeHint, { color: theme.textSecondary }]}>
+                                                {`${tr('myPricesScreen.allowed') || 'Allowed range'} · ${fmtRange(modalDetail.priceRangeMin, modalDetail.priceRangeMax)}`}
+                                            </Text>
+                                            <View style={[styles.inputBox, { borderColor: theme.border }]}>
+                                                <Text style={[styles.inputPrefix, { color: theme.textSecondary }]}>$</Text>
+                                                <TextInput
+                                                    style={[styles.input, { color: theme.textPrimary }]}
+                                                    value={priceInput}
+                                                    onChangeText={onPriceChange}
+                                                    keyboardType="decimal-pad"
+                                                    placeholder="0.00"
+                                                    placeholderTextColor="rgba(255,255,255,0.30)"
+                                                    editable={!modalSaving}
+                                                />
+                                                {modalUnit ? (
+                                                    <Text style={[styles.inputSuffix, { color: theme.textSecondary }]}>
+                                                        {`/${unitLabel(modalUnit)}`}
+                                                    </Text>
+                                                ) : null}
+                                            </View>
+                                            <Text style={[styles.priceHint, { color: theme.textSecondary }]}>
+                                                {tr('providerOnboarding.priceHint') || 'Set it now to start receiving offers right away.'}
+                                            </Text>
+                                        </View>
+                                    ) : modalIsContract ? (
+                                        <Text style={[styles.noteText, { color: theme.textSecondary }]}>
+                                            {tr('myPricesScreen.contractNote')}
+                                        </Text>
+                                    ) : modalIsCustomQuote ? (
+                                        <Text style={[styles.noteText, { color: theme.textSecondary }]}>
+                                            {tr('myPricesScreen.customBody') || 'Quoted per job — agreed with the customer before the job starts.'}
+                                        </Text>
+                                    ) : managedByCompany ? (
+                                        <Text style={[styles.noteText, { color: theme.textSecondary }]}>
+                                            {tr('myPricesScreen.companyManagedBody')}
+                                        </Text>
+                                    ) : null}
+
+                                    {modalError ? (
+                                        <Text style={[styles.modalError, { color: Colors.warning }]}>{modalError}</Text>
+                                    ) : null}
+
+                                    <View style={styles.modalActions}>
+                                        {modalSelected ? (
+                                            <Pressable onPress={handleRemove} disabled={modalSaving} hitSlop={8}>
+                                                <Text style={[styles.removeText, { color: theme.textSecondary }]}>
+                                                    {tr('providerOnboarding.remove') || 'Remove service'}
+                                                </Text>
+                                            </Pressable>
+                                        ) : (
+                                            <View />
+                                        )}
+                                        <View style={styles.modalButtons}>
+                                            <GlassButton
+                                                title={tr('common.cancel') || 'Cancel'}
+                                                variant="outline"
+                                                onPress={closeModal}
+                                                disabled={modalSaving}
+                                                style={styles.modalBtn}
+                                            />
+                                            <GlassButton
+                                                title={tr('myPricesScreen.save') || 'Save'}
+                                                variant="glow"
+                                                onPress={handleModalSave}
+                                                loading={modalSaving}
+                                                disabled={modalSaving || modalLoading}
+                                                style={styles.modalBtn}
+                                            />
+                                        </View>
+                                    </View>
+                                </>
+                            )
+                        )}
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </Screen>
     );
 }
@@ -481,6 +826,12 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontWeight: '600',
     },
+    taskPrice: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(180, 150, 255, 1)',
+        marginTop: 2,
+    },
 
     // ── Restricted badges ─────────────────────────────────────
     restrictedBadge: {
@@ -514,5 +865,143 @@ const styles = StyleSheet.create({
     },
     submitButton: {
         width: '100%',
+    },
+
+    // ── Modal ─────────────────────────────────────────────────
+    modalRoot: {
+        flex: 1,
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.60)',
+    },
+    modalCard: {
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        borderWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 28,
+        maxHeight: '88%',
+    },
+    modalLoading: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40,
+        gap: 12,
+    },
+    modalLoadingText: {
+        fontSize: 13,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 12,
+    },
+    modalTitle: {
+        flex: 1,
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    modalClose: {
+        fontSize: 18,
+        fontWeight: '600',
+        lineHeight: 24,
+    },
+    modalChips: {
+        flexDirection: 'row',
+        gap: 8,
+        marginTop: 10,
+    },
+    modalChip: {
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    modalChipText: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 0.4,
+    },
+    modalScroll: {
+        maxHeight: 200,
+        marginTop: 12,
+    },
+    modalDesc: {
+        fontSize: 14,
+        lineHeight: 20,
+    },
+    priceSection: {
+        marginTop: 16,
+    },
+    priceLabel: {
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    rangeHint: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    inputBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        marginTop: 10,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    inputPrefix: {
+        fontSize: 18,
+        fontWeight: '700',
+        marginRight: 4,
+    },
+    input: {
+        flex: 1,
+        fontSize: 18,
+        fontWeight: '600',
+        padding: 0,
+    },
+    inputSuffix: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    priceHint: {
+        fontSize: 12,
+        marginTop: 8,
+    },
+    noteText: {
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 16,
+    },
+    modalError: {
+        fontSize: 13,
+        fontWeight: '600',
+        marginTop: 12,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginTop: 20,
+    },
+    removeText: {
+        fontSize: 13,
+        fontWeight: '600',
+        textDecorationLine: 'underline',
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 10,
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    modalBtn: {
+        flex: 1,
     },
 });

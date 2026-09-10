@@ -72,7 +72,8 @@ export default function AddressEditScreen(): React.JSX.Element {
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res: GeocodeResult = await geolocationService.geocodeAddress(text);
+        // Saved-address search targets the Canadian launch market, regardless of device location.
+        const res: GeocodeResult = await geolocationService.geocodeAddress(text, undefined, 'CA');
         if (res && res.formatted_address) {
           const parsed = geolocationService.parseAddress(res.formatted_address);
           setSuggestions([

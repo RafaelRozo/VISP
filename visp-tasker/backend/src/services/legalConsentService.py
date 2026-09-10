@@ -78,12 +78,16 @@ CONSENT_VERSIONS: dict[ConsentType, str] = {
 # stops being true -- no migration, no data rescue.
 REQUIRE_CURRENT_CONTRACT_VERSION = False
 
-# Documents that require a drawn signature.  The customer agreement is
-# deliberately NOT here: its own acceptance clause is clickwrap ("By clicking
-# 'I Agree'…"), which is a valid acceptance under Ontario's Electronic
-# Commerce Act, 2000.  The stroke is extra evidence, not the acceptance.
+# Documents that require a drawn signature.  BOTH the provider and the customer
+# agreement are here: Ricardo's call (2026-09-09) is that the customer signs the
+# same way the provider does, so the stroke is captured and archived in the PDF
+# for the two parties.  The clickwrap clause in the customer text ("By clicking
+# 'I Agree'…") remains the acceptance under Ontario's Electronic Commerce Act,
+# 2000; the drawn signature is layered on top as extra evidence, exactly as it
+# already was for the provider.
 SIGNATURE_REQUIRED_CONSENTS: set[ConsentType] = {
     ConsentType.PROVIDER_IC_AGREEMENT,
+    ConsentType.CUSTOMER_SERVICE_AGREEMENT,
 }
 
 
@@ -217,6 +221,11 @@ async def sign_consent(
         comprobación se archivaría una versión distinta de la que se leyó.
     """
     from src.services import legalPdfService as pdf_service
+
+    if consent_type in SIGNATURE_REQUIRED_CONSENTS and (
+        signature is None or signature.is_empty()
+    ):
+        raise ValueError("signature_required")
 
     meta = get_document_metadata(consent_type)
     if document_hash.lower() != meta["hash"].lower():
@@ -426,6 +435,16 @@ async def has_valid_signature(
     """
     latest = await check_consent(db, user_id, consent_type)
     if latest is None:
+        return False
+    # Legacy checkbox/clickwrap records do not satisfy drawn-contract signing.
+    # Keep them immutable; /pending asks the user to create a new signed record.
+    if consent_type in SIGNATURE_REQUIRED_CONSENTS and not all((
+        latest.signed_full_name,
+        latest.signature_svg,
+        latest.signature_image_path,
+        latest.document_path,
+        latest.document_hash,
+    )):
         return False
     if REQUIRE_CURRENT_CONTRACT_VERSION:
         return latest.consent_version == get_latest_version(consent_type)
