@@ -137,8 +137,60 @@ export interface DistanceResult {
 }
 
 /**
+ * Canadian province / US state names as Mapbox returns them, mapped to the
+ * 2-letter codes we store. Migration 036 normalized the existing rows once;
+ * writing full names back from the app silently breaks every province filter.
+ */
+const PROVINCE_CODES: Record<string, string> = {
+    'alberta': 'AB', 'british columbia': 'BC', 'manitoba': 'MB',
+    'new brunswick': 'NB', 'newfoundland and labrador': 'NL', 'newfoundland': 'NL',
+    'nova scotia': 'NS', 'northwest territories': 'NT', 'nunavut': 'NU',
+    'ontario': 'ON', 'prince edward island': 'PE', 'quebec': 'QC', 'québec': 'QC',
+    'saskatchewan': 'SK', 'yukon': 'YT',
+    'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
+    'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
+    'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
+    'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS',
+    'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+    'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+    'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV',
+    'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+    'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK',
+    'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+    'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+    'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virgingia': 'WV',
+    'wisconsin': 'WI', 'wyoming': 'WY', 'district of columbia': 'DC',
+};
+
+/**
+ * Normalize a country to ISO 3166-1 alpha-2. Mapbox returns full names
+ * ("Canada", "United States"); the API and Stripe Connect both want codes.
+ */
+export function normalizeCountry(raw: string): string {
+    const c = (raw ?? '').trim().toLowerCase();
+    if (c.startsWith('canad') || c.startsWith('canadá')) return 'CA';
+    if (c.startsWith('united states') || c === 'usa' || c === 'us' || c === 'u.s.') return 'US';
+    if (c.startsWith('mexic') || c.startsWith('méxic')) return 'MX';
+    const upper = (raw ?? '').trim().toUpperCase();
+    return upper.length === 2 ? upper : upper.slice(0, 2);
+}
+
+/**
+ * Normalize a province/state to its 2-letter code, keeping an existing code
+ * untouched.
+ */
+export function normalizeProvince(raw: string): string {
+    const value = (raw ?? '').trim();
+    if (!value) return '';
+    const code = PROVINCE_CODES[value.toLowerCase()];
+    if (code) return code;
+    return value.toUpperCase();
+}
+
+/**
  * Parse a formatted address string like "123 Main Street, Ottawa, Ontario K1S 1B9, Canada"
- * into city, province, postal, country components.
+ * into street, city, province, postal and country components. Province and
+ * country come back as 2-letter codes.
  */
 function parseAddressComponents(formatted: string): {
     street: string;
@@ -147,15 +199,15 @@ function parseAddressComponents(formatted: string): {
     postalCode: string;
     country: string;
 } {
-    const parts = formatted.split(',').map(p => p.trim());
+    const parts = (formatted ?? '').split(',').map(p => p.trim()).filter(Boolean);
     const street = parts[0] ?? '';
     const city = parts[1] ?? '';
     const provincePostal = parts[2] ?? '';
-    const country = parts[3] ?? 'Canada';
+    const country = normalizeCountry(parts[3] ?? 'Canada');
 
-    // Split province from postal code (e.g. "Ontario K1S 1B9" → "Ontario", "K1S 1B9")
-    const ppMatch = provincePostal.match(/^([A-Za-z\s]+?)(?:\s+([A-Z]\d[A-Z]\s?\d[A-Z]\d|\d{5}(?:-\d{4})?))?$/);
-    const province = ppMatch?.[1]?.trim() ?? provincePostal;
+    // Split province from postal code (e.g. "Ontario K1S 1B9" → "ON", "K1S 1B9")
+    const ppMatch = provincePostal.match(/^([A-Za-zÀ-ÿ\s.]+?)(?:\s+([A-Z]\d[A-Z]\s?\d[A-Z]\d|\d{5}(?:-\d{4})?))?$/);
+    const province = normalizeProvince(ppMatch?.[1]?.trim() ?? provincePostal);
     const postalCode = ppMatch?.[2]?.trim() ?? '';
 
     return { street, city, province, postalCode, country };
@@ -167,11 +219,34 @@ function parseAddressComponents(formatted: string): {
 
 export const geolocationService = {
     /**
-     * Forward geocode an address to coordinates
+     * Forward geocode a structured address to coordinates (single best match).
      */
-    async geocodeAddress(address: string, city?: string, country: string = 'MX,CA,US'): Promise<GeocodeResult> {
+    async geocodeAddress(address: string, city?: string, country: string = 'CA,US,MX'): Promise<GeocodeResult> {
         const response = await apiClient.post('/geo/geocode', { address, city, country });
         return response.data;
+    },
+
+    /**
+     * Address autocomplete: returns up to `limit` candidates for the text the
+     * user is typing. An empty array is a normal answer, not an error.
+     *
+     * `proximity` only re-orders results — it never hides one — so passing a
+     * stale or approximate position is safe.
+     */
+    async searchAddresses(
+        query: string,
+        options?: { country?: string; limit?: number; proximity?: { lat: number; lng: number } },
+    ): Promise<GeocodeResult[]> {
+        const trimmed = query.trim();
+        if (trimmed.length < 3) return [];
+        const response = await apiClient.post('/geo/geocode/search', {
+            query: trimmed,
+            country: options?.country ?? 'CA,US,MX',
+            limit: options?.limit ?? 5,
+            lat: options?.proximity?.lat,
+            lng: options?.proximity?.lng,
+        });
+        return response.data?.results ?? [];
     },
 
     /**
@@ -220,4 +295,6 @@ export const geolocationService = {
      * Parse a formatted address into structured components
      */
     parseAddress: parseAddressComponents,
+    normalizeCountry,
+    normalizeProvince,
 };

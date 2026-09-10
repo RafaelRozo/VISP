@@ -20,20 +20,27 @@ import hashlib
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final, Generic, TypeVar
 
 from src.integrations.maps.mapboxService import (
     MapboxError,
     geocode_address,
+    relevance_to_location_type,
 )
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _CACHE_MAX_SIZE: Final[int] = 1000
+
+# Default country filter for the Canada/USA/Mexico service area.  Sent to
+# Mapbox as the ``country`` parameter — never appended to the query text.
+DEFAULT_COUNTRIES: Final[str] = "MX,CA,US"
 
 # Bounding boxes for Canada and USA (lat/lng rectangles).
 # These are generous bounds to avoid false negatives near borders.
@@ -80,7 +87,7 @@ class GeocodingResult:
 # ---------------------------------------------------------------------------
 
 
-class _GeocodingCache:
+class _GeocodingCache(Generic[_T]):
     """Simple LRU cache backed by an ``OrderedDict``.
 
     Thread-safety note: this is designed for single-threaded asyncio usage.
@@ -90,15 +97,15 @@ class _GeocodingCache:
 
     def __init__(self, max_size: int = _CACHE_MAX_SIZE) -> None:
         self._max_size = max_size
-        self._store: OrderedDict[str, GeocodingResult] = OrderedDict()
+        self._store: OrderedDict[str, _T] = OrderedDict()
 
-    def get(self, key: str) -> GeocodingResult | None:
+    def get(self, key: str) -> _T | None:
         if key in self._store:
             self._store.move_to_end(key)
             return self._store[key]
         return None
 
-    def put(self, key: str, value: GeocodingResult) -> None:
+    def put(self, key: str, value: _T) -> None:
         if key in self._store:
             self._store.move_to_end(key)
             self._store[key] = value
@@ -115,12 +122,14 @@ class _GeocodingCache:
         return len(self._store)
 
 
-_cache = _GeocodingCache()
+_cache: _GeocodingCache[GeocodingResult] = _GeocodingCache()
+_suggestion_cache: _GeocodingCache[list[GeocodingResult]] = _GeocodingCache(max_size=250)
 
 
 def clear_geocoding_cache() -> None:
-    """Clear the in-memory geocoding cache.  Useful in tests."""
+    """Clear the in-memory geocoding caches.  Useful in tests."""
     _cache.clear()
+    _suggestion_cache.clear()
     logger.info("Geocoding cache cleared")
 
 
@@ -156,10 +165,16 @@ def _compose_full_address(
     city: str,
     province: str,
     postal: str,
-    country: str,
 ) -> str:
-    """Build a comma-separated address string from components."""
-    parts = [p.strip() for p in (address, city, province, postal, country) if p.strip()]
+    """Build a comma-separated search string from the address components.
+
+    The country is deliberately **not** part of this string.  It travels as
+    the Mapbox ``country`` *filter*; appending it to the query text made
+    Mapbox tokenize "CA" as California and rank US matches above Canadian
+    ones for every ambiguous street — "25 York St" came back as San
+    Francisco instead of Toronto.
+    """
+    parts = [p.strip() for p in (address, city, province, postal) if p.strip()]
     return ", ".join(parts)
 
 
@@ -167,10 +182,9 @@ def _compose_partial_address(
     city: str,
     province: str,
     postal: str,
-    country: str,
 ) -> str:
-    """Build a fallback address without the street line."""
-    parts = [p.strip() for p in (city, province, postal, country) if p.strip()]
+    """Build a fallback search string without the street line."""
+    parts = [p.strip() for p in (city, province, postal) if p.strip()]
     return ", ".join(parts)
 
 
@@ -204,17 +218,18 @@ async def geocode_service_address(
     city: str,
     province: str,
     postal: str,
-    country: str = "MX,CA,US",
+    country: str = DEFAULT_COUNTRIES,
 ) -> GeocodingResult:
     """Geocode a structured service address with fallback and caching.
 
     Strategy:
-      1. Compose the full address and check the cache.
-      2. Call Google Maps Geocoding API with the full address.
-      3. If no results, fall back to a partial address (city + province +
-         postal + country) so the job can still be created with
-         approximate coordinates.
-      4. Validate that the resulting coordinates are within Canada/USA.
+      1. Compose the search string (street, city, province, postal — never
+         the country) and check the cache.
+      2. Call the Mapbox Geocoding API with the country as a *filter*.
+      3. If no results, fall back to a partial query (city + province +
+         postal) so the job can still be created with approximate
+         coordinates.
+      4. Warn — never block — if the coordinates fall outside the service area.
       5. Cache the result before returning.
 
     Args:
@@ -222,7 +237,7 @@ async def geocode_service_address(
         city: City name.
         province: Province or state code (e.g. "ON", "CA").
         postal: Postal or ZIP code.
-        country: ISO 3166-1 alpha-2 country code. Defaults to "CA".
+        country: Country filter — ISO 3166-1 alpha-2 code(s), comma-separated.
 
     Returns:
         GeocodingResult with coordinates, formatted address, and confidence.
@@ -230,11 +245,9 @@ async def geocode_service_address(
     Raises:
         MapboxError: If both full and partial geocoding fail at the
             API level (network errors, invalid key, etc.).
-        ValueError: If the geocoded coordinates are outside the
-            Canada/USA service area.
     """
-    full_address = _compose_full_address(address, city, province, postal, country)
-    key = _cache_key(full_address)
+    full_address = _compose_full_address(address, city, province, postal)
+    key = _cache_key(f"{full_address}|{country}")
 
     # -- Check cache ---
     cached = _cache.get(key)
@@ -247,14 +260,15 @@ async def geocode_service_address(
 
     # -- Fallback to partial address --
     if result is None:
-        partial = _compose_partial_address(city, province, postal, country)
+        partial = _compose_partial_address(city, province, postal)
         logger.info(
             "Full geocoding returned no results for '%s'; "
             "falling back to partial address '%s'",
             full_address,
             partial,
         )
-        result = await _try_geocode(partial, country=country)
+        if partial:
+            result = await _try_geocode(partial, country=country)
 
     if result is None:
         raise MapboxError(
@@ -303,3 +317,86 @@ async def _try_geocode(address_string: str, *, country: str = "") -> GeocodingRe
         place_id=data.get("place_id"),
         confidence=confidence,
     )
+
+
+def _feature_to_result(feature: dict[str, Any]) -> GeocodingResult | None:
+    """Convert one raw Mapbox feature into a GeocodingResult."""
+    center = feature.get("center") or []
+    place_name = feature.get("place_name")
+    if len(center) < 2 or not place_name:
+        return None
+
+    confidence = _LOCATION_TYPE_CONFIDENCE.get(
+        relevance_to_location_type(feature.get("relevance", 0)), "low"
+    )
+
+    return GeocodingResult(
+        lat=center[1],  # GeoJSON is [lng, lat]
+        lng=center[0],
+        formatted_address=place_name,
+        place_id=feature.get("id"),
+        confidence=confidence,
+    )
+
+
+async def search_address_suggestions(
+    query: str,
+    *,
+    country: str = DEFAULT_COUNTRIES,
+    proximity: tuple[float, float] | None = None,
+    limit: int = 5,
+) -> list[GeocodingResult]:
+    """Autocomplete-style address search returning up to ``limit`` candidates.
+
+    This is what the app's address pickers call while the user types.  Unlike
+    :func:`geocode_service_address` it never falls back to a coarser query and
+    never raises on "no results" — an empty list is the normal answer for a
+    half-typed street name.
+
+    Args:
+        query: Free text typed by the user.
+        country: Country filter — ISO 3166-1 alpha-2 code(s), comma-separated.
+        proximity: Optional ``(lat, lng)`` used to bias the ranking.  Bias
+            only, never a restriction, so a stale or coarse position is safe
+            to pass here.
+        limit: Maximum number of suggestions (1-10).
+
+    Returns:
+        List of GeocodingResult, best match first.
+
+    Raises:
+        MapboxError: On API-level failure (network, bad token).
+    """
+    text = query.strip()
+    if len(text) < 3:
+        return []
+
+    limit = max(1, min(limit, 10))
+    key = _cache_key(
+        f"{text}|{country}|{limit}|"
+        + (f"{proximity[0]:.2f},{proximity[1]:.2f}" if proximity else "-")
+    )
+
+    cached = _suggestion_cache.get(key)
+    if cached is not None:
+        return cached
+
+    data = await geocode_address(
+        text, country=country, proximity=proximity, limit=limit
+    )
+
+    results = [
+        converted
+        for converted in (
+            _feature_to_result(feature)
+            for feature in data.get("all_results", [])[:limit]
+        )
+        if converted is not None
+    ]
+
+    _suggestion_cache.put(key, results)
+    logger.info(
+        "Address search '%s' (country=%s) -> %d suggestion(s)",
+        text, country or "any", len(results),
+    )
+    return results

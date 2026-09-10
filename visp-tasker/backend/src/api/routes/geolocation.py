@@ -8,6 +8,7 @@ location updates in the ``/location`` namespace.
 
 Endpoints:
   - POST /api/v1/geo/geocode          Forward geocode (address → coords)
+  - POST /api/v1/geo/geocode/search   Address autocomplete suggestions
   - POST /api/v1/geo/reverse          Reverse geocode (coords → address)
   - POST /api/v1/geo/directions       Driving directions + polyline
   - POST /api/v1/geo/distance         Distance & ETA between two points
@@ -29,8 +30,10 @@ from pydantic import BaseModel, Field
 from src.api.deps import CurrentUser, DBSession
 from src.services import service_zone_service
 from src.integrations.maps import (
+    DEFAULT_COUNTRIES,
     MapboxError,
     geocode_service_address,
+    search_address_suggestions,
     calculate_driving_distance,
     reverse_geocode,
     get_directions,
@@ -52,7 +55,16 @@ class GeocodeRequest(BaseModel):
     city: str = Field(default="", description="City name")
     province: str = Field(default="", description="Province/state code")
     postal: str = Field(default="", description="Postal/ZIP code")
-    country: str = Field(default="MX,CA,US", description="Country codes (ISO 3166), comma-separated")
+    country: str = Field(default=DEFAULT_COUNTRIES, description="Country codes (ISO 3166), comma-separated")
+
+
+class AddressSearchRequest(BaseModel):
+    """Autocomplete request for the address pickers."""
+    query: str = Field(min_length=1, description="Free text typed by the user")
+    country: str = Field(default=DEFAULT_COUNTRIES, description="Country codes (ISO 3166), comma-separated")
+    limit: int = Field(default=5, ge=1, le=10, description="Max suggestions")
+    lat: float | None = Field(default=None, ge=-90, le=90, description="Optional bias latitude")
+    lng: float | None = Field(default=None, ge=-180, le=180, description="Optional bias longitude")
 
 
 class ReverseGeocodeRequest(BaseModel):
@@ -114,6 +126,48 @@ async def geocode_endpoint(body: GeocodeRequest) -> dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
+
+
+@router.post("/geocode/search", summary="Address autocomplete suggestions")
+async def address_search_endpoint(body: AddressSearchRequest) -> dict[str, Any]:
+    """Return up to ``limit`` address candidates for the text being typed.
+
+    Used by the customer's service-address picker and the profile address
+    editor.  The country list is applied as a Mapbox *filter*, never as part
+    of the query text, and ``lat``/``lng`` only bias the ranking — they never
+    exclude a match, so a stale device position cannot hide the right address.
+
+    An empty ``results`` list is a normal answer (the user is still typing),
+    not an error.
+    """
+    proximity = (
+        (body.lat, body.lng) if body.lat is not None and body.lng is not None else None
+    )
+    try:
+        results = await search_address_suggestions(
+            body.query,
+            country=body.country,
+            proximity=proximity,
+            limit=body.limit,
+        )
+    except MapboxError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Address search failed: {exc}",
+        )
+
+    return {
+        "results": [
+            {
+                "lat": r.lat,
+                "lng": r.lng,
+                "formatted_address": r.formatted_address,
+                "place_id": r.place_id,
+                "confidence": r.confidence,
+            }
+            for r in results
+        ]
+    }
 
 
 @router.post("/reverse", summary="Reverse geocode coordinates to an address")

@@ -21,7 +21,7 @@ import { GlassButton, GlassInput } from '../../components/glass';
 import { useTranslation } from '../../i18n';
 import { useAuthStore } from '../../stores/authStore';
 import { userService } from '../../services/userService';
-import { geolocationService, GeocodeResult } from '../../services/geolocationService';
+import { geolocationService } from '../../services/geolocationService';
 
 interface Suggestion {
   formattedAddress: string;
@@ -48,6 +48,7 @@ export default function AddressEditScreen(): React.JSX.Element {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
 
   const [street, setStreet] = useState(addr?.street ?? '');
   const [city, setCity] = useState(addr?.city ?? '');
@@ -63,8 +64,10 @@ export default function AddressEditScreen(): React.JSX.Element {
 
   const onSearchChange = useCallback((text: string) => {
     setSearch(text);
+    setSearchFailed(false);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim().length < 3) {
+      setSearching(false);
       setSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -73,45 +76,46 @@ export default function AddressEditScreen(): React.JSX.Element {
     debounceRef.current = setTimeout(async () => {
       try {
         // Saved-address search targets the Canadian launch market, regardless of device location.
-        const res: GeocodeResult = await geolocationService.geocodeAddress(text, undefined, 'CA');
-        if (res && res.formatted_address) {
-          const parsed = geolocationService.parseAddress(res.formatted_address);
-          setSuggestions([
-            {
-              formattedAddress: res.formatted_address,
+        const results = await geolocationService.searchAddresses(text, {
+          country: 'CA',
+          proximity:
+            addr?.latitude != null && addr?.longitude != null
+              ? { lat: addr.latitude, lng: addr.longitude }
+              : undefined,
+        });
+        setSuggestions(
+          results.map((r) => {
+            const parsed = geolocationService.parseAddress(r.formatted_address);
+            return {
+              formattedAddress: r.formatted_address,
               street: parsed.street,
               city: parsed.city,
               province: parsed.province,
               postalCode: parsed.postalCode,
               country: parsed.country || 'CA',
-              latitude: res.lat,
-              longitude: res.lng,
-            },
-          ]);
-          setShowSuggestions(true);
-        } else {
-          setSuggestions([]);
-          setShowSuggestions(false);
-        }
+              latitude: r.lat,
+              longitude: r.lng,
+            };
+          }),
+        );
+        setShowSuggestions(results.length > 0);
       } catch (err) {
         console.warn('[AddressEdit] geocode failed', err);
+        setSearchFailed(true);
         setSuggestions([]);
         setShowSuggestions(false);
       } finally {
         setSearching(false);
       }
     }, 300);
-  }, []);
+  }, [addr?.latitude, addr?.longitude]);
 
   const onPickSuggestion = useCallback((s: Suggestion) => {
     setStreet(s.street);
     setCity(s.city);
     setProvince(s.province);
     setPostalCode(s.postalCode);
-    // Mapbox sometimes returns "Canada" / "United States" — normalise to ISO-2.
-    const c = s.country.toLowerCase();
-    const iso = c.startsWith('canad') ? 'CA' : c.startsWith('united states') || c === 'usa' || c === 'us' ? 'US' : s.country.toUpperCase().slice(0, 2);
-    setCountry(iso);
+    setCountry(geolocationService.normalizeCountry(s.country));
     setLat(s.latitude);
     setLng(s.longitude);
     setFormatted(s.formattedAddress);
@@ -174,6 +178,11 @@ export default function AddressEditScreen(): React.JSX.Element {
           {searching && (
             <Text style={[VispText.caption, { color: t.text3, marginTop: 4 }]}>
               {tr('addressEdit.searching')}
+            </Text>
+          )}
+          {searchFailed && !searching && (
+            <Text style={[VispText.caption, { color: t.text2, marginTop: 4 }]}>
+              {tr('addressEdit.searchFailed')}
             </Text>
           )}
           {showSuggestions && suggestions.length > 0 && (

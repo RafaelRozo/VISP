@@ -204,6 +204,17 @@ def normalize_country_codes(country: str) -> str:
     return ",".join(codes)
 
 
+def relevance_to_location_type(relevance: float) -> str:
+    """Map a Mapbox ``relevance`` score to a Google-style location_type."""
+    if relevance >= 0.9:
+        return "ROOFTOP"
+    if relevance >= 0.7:
+        return "RANGE_INTERPOLATED"
+    if relevance >= 0.5:
+        return "GEOMETRIC_CENTER"
+    return "APPROXIMATE"
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -279,24 +290,13 @@ async def geocode_address(
 
     best = features[0]
     coords = best.get("center", [0, 0])  # [lng, lat] in GeoJSON
-    relevance = best.get("relevance", 0)
-
-    # Map Mapbox relevance to Google-style location_type
-    if relevance >= 0.9:
-        location_type = "ROOFTOP"
-    elif relevance >= 0.7:
-        location_type = "RANGE_INTERPOLATED"
-    elif relevance >= 0.5:
-        location_type = "GEOMETRIC_CENTER"
-    else:
-        location_type = "APPROXIMATE"
 
     return {
         "lat": coords[1],  # GeoJSON is [lng, lat]
         "lng": coords[0],
         "formatted_address": best.get("place_name"),
         "place_id": best.get("id"),
-        "location_type": location_type,
+        "location_type": relevance_to_location_type(best.get("relevance", 0)),
         "all_results": features,
     }
 

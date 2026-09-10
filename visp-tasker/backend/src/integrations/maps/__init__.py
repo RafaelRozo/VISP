@@ -28,9 +28,11 @@ from src.integrations.maps.distanceCalculator import (
     calculate_eta,
 )
 from src.integrations.maps.geocoder import (
+    DEFAULT_COUNTRIES,
     GeocodingResult,
     clear_geocoding_cache,
     geocode_service_address,
+    search_address_suggestions,
 )
 from src.integrations.maps.mapboxService import (
     MapboxError,
@@ -53,7 +55,9 @@ __all__ = [
     "validate_address",
     # geocoder
     "GeocodingResult",
+    "DEFAULT_COUNTRIES",
     "geocode_service_address",
+    "search_address_suggestions",
     "clear_geocoding_cache",
     # distanceCalculator
     "DistanceResult",

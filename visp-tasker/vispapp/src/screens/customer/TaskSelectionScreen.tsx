@@ -204,28 +204,30 @@ function TaskSelectionScreen(): React.JSX.Element {
     if (text.length >= 3) {
       debounceRef.current = setTimeout(async () => {
         try {
-          const result = await geolocationService.geocodeAddress(text);
-          if (result && result.formatted_address) {
-            const parsed = geolocationService.parseAddress(result.formatted_address);
-            setAddressSuggestions([
-              {
-                placeId: result.place_id || 'mapbox-result',
-                formattedAddress: result.formatted_address,
-                latitude: result.lat,
-                longitude: result.lng,
+          const results = await geolocationService.searchAddresses(text, {
+            proximity:
+              user?.defaultAddress?.latitude != null && user?.defaultAddress?.longitude != null
+                ? { lat: user.defaultAddress.latitude, lng: user.defaultAddress.longitude }
+                : undefined,
+          });
+          setAddressSuggestions(
+            results.map((r) => {
+              const parsed = geolocationService.parseAddress(r.formatted_address);
+              return {
+                placeId: r.place_id || 'mapbox-result',
+                formattedAddress: r.formatted_address,
+                latitude: r.lat,
+                longitude: r.lng,
                 streetNumber: '',
                 street: parsed.street,
                 city: parsed.city,
                 province: parsed.province,
                 postalCode: parsed.postalCode,
                 country: parsed.country || 'CA',
-              },
-            ]);
-            setShowSuggestions(true);
-          } else {
-            setShowSuggestions(false);
-            setAddressSuggestions([]);
-          }
+              };
+            }),
+          );
+          setShowSuggestions(results.length > 0);
         } catch (err) {
           console.warn('Geocoding failed:', err);
           setShowSuggestions(false);
@@ -236,7 +238,7 @@ function TaskSelectionScreen(): React.JSX.Element {
       setShowSuggestions(false);
       setAddressSuggestions([]);
     }
-  }, []);
+  }, [user?.defaultAddress?.latitude, user?.defaultAddress?.longitude]);
 
   // Select an address suggestion
   const handleSelectAddress = useCallback(

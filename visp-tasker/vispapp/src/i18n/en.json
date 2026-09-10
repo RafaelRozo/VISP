@@ -233,6 +233,7 @@
     "subtitle": "Used by Stripe Connect onboarding (CA / US only) and for matching providers to your jobs.",
     "search": "Search address",
     "searchPlaceholder": "Start typing your street...",
+    "searchFailed": "Address search is unavailable. Please try again or enter your address in the fields below.",
     "searching": "Searching...",
     "fieldsLabel": "Or edit each field",
     "street": "Street address",

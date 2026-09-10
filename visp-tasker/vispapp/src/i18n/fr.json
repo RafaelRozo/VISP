@@ -233,6 +233,7 @@
     "subtitle": "Utilisée par l'onboarding Stripe Connect (CA / US uniquement) et pour associer les prestataires à vos demandes.",
     "search": "Rechercher une adresse",
     "searchPlaceholder": "Commencez à taper votre rue...",
+    "searchFailed": "La recherche d’adresse est indisponible. Réessayez ou saisissez votre adresse dans les champs ci-dessous.",
     "searching": "Recherche...",
     "fieldsLabel": "Ou modifier chaque champ",
     "street": "Adresse",
