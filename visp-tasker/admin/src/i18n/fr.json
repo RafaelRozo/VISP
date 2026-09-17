@@ -236,6 +236,7 @@
     "type": "Type",
     "category": "Catégorie",
     "level": "Niveau",
+    "date": "Date",
     "clearAll": "Effacer les filtres"
   },
   "admins": {
@@ -352,7 +353,11 @@
     "outdatedVersion": "Version antérieure",
     "signed": "Signé",
     "download": "Télécharger",
-    "contractOpenFailed": "Impossible d'ouvrir le contrat."
+    "contractOpenFailed": "Impossible d'ouvrir le contrat.",
+    "contractSearchPlaceholder": "Rechercher par nom, courriel, nom légal ou entreprise…",
+    "contractsNoMatch": "Aucun contrat signé ne correspond à ces filtres.",
+    "contractDateFrom": "Du",
+    "contractDateTo": "Au"
   },
   "promotions": {
     "title": "Promotions",

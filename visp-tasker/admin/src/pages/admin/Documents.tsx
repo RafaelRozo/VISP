@@ -60,6 +60,14 @@ export default function Documents() {
   } | null>(null);
   const [contractLoading, setContractLoading] = useState<string | null>(null);
 
+  // Filtros de la cola de contratos. Son propios y no los de arriba: esa barra
+  // filtra credenciales por tipo/categoría/nivel, que aquí no existen, y un
+  // texto arrastrado de una pestaña a otra deja la lista vacía sin explicación.
+  const [contractSearch, setContractSearch] = useState('');
+  const [contractType, setContractType] = useState<string>('all');
+  const [contractFrom, setContractFrom] = useState('');
+  const [contractTo, setContractTo] = useState('');
+
   // Cada object-URL que no se libera se queda en memoria hasta recargar.
   useEffect(() => {
     return () => {
@@ -185,6 +193,70 @@ export default function Documents() {
 
   const hasActiveFilters = search.trim() !== '' || credType !== 'all' || category !== 'all' || level !== 'all';
 
+  // ── Contratos: filtrado en cliente ──────────────────────────────────────
+  //
+  // La lista llega completa en una sola petición, así que filtrar aquí evita
+  // un viaje al servidor por cada tecla. El día que haya miles de contratos
+  // esto se mueve a `GET /admin/signed-contracts` con los mismos parámetros.
+  const contracts = qContracts.data ?? [];
+
+  const contractTypeOptions = useMemo(
+    () => Array.from(new Set(contracts.map((c) => c.consentType))).sort(),
+    [contracts],
+  );
+
+  const contractsFiltered = useMemo(() => {
+    const needle = contractSearch.trim().toLowerCase();
+
+    // Las fechas se interpretan en la ZONA DEL NAVEGADOR, igual que el
+    // `toLocaleString()` con el que se pintan las filas. Compararlas en UTC
+    // dejaría un contrato firmado a las 21:00 de Ontario fuera de su propio
+    // día, que es exactamente lo que el validador va a buscar.
+    const from = contractFrom ? new Date(`${contractFrom}T00:00:00`) : null;
+    const to = contractTo ? new Date(`${contractTo}T23:59:59.999`) : null;
+
+    return contracts.filter((c) => {
+      if (contractType !== 'all' && c.consentType !== contractType) return false;
+
+      if (from || to) {
+        // Sin fecha no se puede situar en el rango: se oculta en vez de
+        // colarse en cualquier búsqueda por fecha.
+        if (!c.createdAt) return false;
+        const when = new Date(c.createdAt);
+        if (from && when < from) return false;
+        if (to && when > to) return false;
+      }
+
+      if (needle) {
+        const hay = [
+          c.userName,
+          c.userEmail,
+          c.signedFullName,
+          c.businessName,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+
+      return true;
+    });
+  }, [contracts, contractSearch, contractType, contractFrom, contractTo]);
+
+  const hasContractFilters =
+    contractSearch.trim() !== '' ||
+    contractType !== 'all' ||
+    contractFrom !== '' ||
+    contractTo !== '';
+
+  const clearContractFilters = () => {
+    setContractSearch('');
+    setContractType('all');
+    setContractFrom('');
+    setContractTo('');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div className="t-section-head" style={{ marginBottom: 0 }}>
@@ -222,12 +294,110 @@ export default function Documents() {
           <p className="t-lede" style={{ margin: 0 }}>
             {t('documents.contractsHelp')}
           </p>
+
+          {/* ── Filtros ── */}
+          {contracts.length > 0 && (
+            <>
+              <div className="t-search">
+                <SearchIcon />
+                <input
+                  type="search"
+                  placeholder={t('documents.contractSearchPlaceholder')}
+                  value={contractSearch}
+                  onChange={(e) => setContractSearch(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {contractTypeOptions.length > 1 && (
+                  <FilterGroup label={t('filters.type')}>
+                    <Pill
+                      active={contractType === 'all'}
+                      onClick={() => setContractType('all')}
+                    >
+                      {t('filters.all')}
+                    </Pill>
+                    {contractTypeOptions.map((ct) => (
+                      <Pill
+                        key={ct}
+                        active={contractType === ct}
+                        onClick={() => setContractType(ct)}
+                      >
+                        {ct.replaceAll('_', ' ')}
+                      </Pill>
+                    ))}
+                  </FilterGroup>
+                )}
+
+                <FilterGroup label={t('filters.date')}>
+                  <input
+                    type="date"
+                    className="t-input t-input-sm"
+                    aria-label={t('documents.contractDateFrom')}
+                    value={contractFrom}
+                    // El "desde" no puede pasar del "hasta": el navegador lo
+                    // impide y así no hay que explicar una lista vacía.
+                    max={contractTo || undefined}
+                    onChange={(e) => setContractFrom(e.target.value)}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--t-text-3)' }}>→</span>
+                  <input
+                    type="date"
+                    className="t-input t-input-sm"
+                    aria-label={t('documents.contractDateTo')}
+                    value={contractTo}
+                    min={contractFrom || undefined}
+                    onChange={(e) => setContractTo(e.target.value)}
+                  />
+                </FilterGroup>
+
+                {hasContractFilters && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: 4,
+                    }}
+                  >
+                    <span
+                      className="t-mono"
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--t-text-3)',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {t('documents.matchCount', {
+                        shown: contractsFiltered.length,
+                        total: contracts.length,
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      className="t-btn t-btn-ghost t-btn-sm"
+                      onClick={clearContractFilters}
+                    >
+                      {t('filters.clearAll')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {qContracts.isLoading ? (
             <div className="t-lede">{t('common.loading')}</div>
-          ) : (qContracts.data ?? []).length === 0 ? (
+          ) : contracts.length === 0 ? (
             <div className="t-lede">{t('documents.noContracts')}</div>
+          ) : contractsFiltered.length === 0 ? (
+            // Vacío por los filtros, no por falta de contratos: son dos cosas
+            // distintas y decir "no hay contratos" cuando sí los hay manda al
+            // validador a buscar un bug que no existe.
+            <div className="t-lede">{t('documents.contractsNoMatch')}</div>
           ) : (
-            (qContracts.data ?? []).map((c) => (
+            contractsFiltered.map((c) => (
               <div key={c.id} className="t-card" style={{ padding: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                   <div style={{ minWidth: 0 }}>

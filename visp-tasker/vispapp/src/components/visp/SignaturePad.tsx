@@ -20,11 +20,13 @@
  * cualquier resolución el día que haya que ampliar la firma para una disputa.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
+  Keyboard,
   LayoutChangeEvent,
   PanResponder,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -48,6 +50,15 @@ interface SignaturePadProps {
   caption?: string;
   clearLabel?: string;
   hintLabel?: string;
+  /**
+   * Avisa cuando el dedo entra y sale del lienzo.
+   *
+   * Existe porque el lienzo va DENTRO del scroll del contrato y ese scroll
+   * tiene que quedarse quieto mientras se firma: si el contenido se desplaza a
+   * mitad del trazo, la firma sale partida. El padre lo usa para
+   * `scrollEnabled={!drawing}` — ver `ContractSignScreen`.
+   */
+  onDrawStateChange?: (drawing: boolean) => void;
 }
 
 /**
@@ -75,8 +86,14 @@ export function SignaturePad({
   caption,
   clearLabel = 'Clear',
   hintLabel = 'Sign above',
+  onDrawStateChange,
 }: SignaturePadProps): React.JSX.Element {
   const t = useVispTheme();
+
+  // El aviso al padre va por ref y no en las dependencias del `PanResponder`:
+  // reconstruirlo a mitad de un trazo perdería el gesto.
+  const drawStateRef = useRef(onDrawStateChange);
+  drawStateRef.current = onDrawStateChange;
 
   // Los trazos cerrados viven en estado (repintan); el trazo en curso vive en
   // una ref y se refleja en `current` para que el dedo deje rastro inmediato.
@@ -86,6 +103,32 @@ export function SignaturePad({
 
   const [strokes, setStrokes] = useState<SignatureStroke[]>([]);
   const [current, setCurrent] = useState<SignatureStroke>([]);
+
+  // ── El teclado y el primer toque ──────────────────────────────────────
+  //
+  // Si el teclado está abierto (se viene de escribir el nombre legal), el
+  // primer toque sobre el lienzo SOLO lo cierra: no dibuja. Cerrarlo a mitad
+  // del trazo no sirve —el `KeyboardAvoidingView` del padre quita su relleno,
+  // el lienzo se recoloca y los puntos, que son relativos al lienzo, se van
+  // 300 px—. Así que se sacrifica ese primer toque y se firma sobre una
+  // pantalla ya quieta.
+  const keyboardOpenRef = useRef(false);
+  const swallowRef = useRef(false);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, () => {
+      keyboardOpenRef.current = true;
+    });
+    const hide = Keyboard.addListener(hideEvt, () => {
+      keyboardOpenRef.current = false;
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const emit = useCallback(() => {
     onChange({
@@ -113,6 +156,24 @@ export function SignaturePad({
     setCurrent([...stroke]);
   }, []);
 
+  /** Cierra el trazo en curso y devuelve el scroll al padre. */
+  const endStroke = useCallback(() => {
+    if (swallowRef.current) {
+      // Era el toque que cerró el teclado: no hay trazo que cerrar ni scroll
+      // que devolver, porque nunca se bloqueó.
+      swallowRef.current = false;
+      return;
+    }
+    if (currentRef.current.length > 0) {
+      strokesRef.current = [...strokesRef.current, currentRef.current];
+      setStrokes(strokesRef.current);
+    }
+    currentRef.current = [];
+    setCurrent([]);
+    emit();
+    drawStateRef.current?.(false);
+  }, [emit]);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -124,21 +185,29 @@ export function SignaturePad({
         onShouldBlockNativeResponder: () => true,
 
         onPanResponderGrant: (e) => {
+          // Teclado abierto: este toque solo lo cierra. Ver la nota de
+          // `swallowRef` arriba.
+          if (keyboardOpenRef.current) {
+            swallowRef.current = true;
+            Keyboard.dismiss();
+            return;
+          }
+          swallowRef.current = false;
+          drawStateRef.current?.(true);
           currentRef.current = [];
           addPoint(e);
         },
-        onPanResponderMove: (e) => addPoint(e),
-        onPanResponderRelease: () => {
-          if (currentRef.current.length > 0) {
-            strokesRef.current = [...strokesRef.current, currentRef.current];
-            setStrokes(strokesRef.current);
-          }
-          currentRef.current = [];
-          setCurrent([]);
-          emit();
+        onPanResponderMove: (e) => {
+          if (swallowRef.current) return;
+          addPoint(e);
         },
+        onPanResponderRelease: () => endStroke(),
+        // Sin esto el scroll del padre se quedaría bloqueado para siempre si el
+        // gesto muere sin soltar (una llamada entrante, un modal): el usuario ya
+        // no podría desplazarse por el contrato y la pantalla no tiene salida.
+        onPanResponderTerminate: () => endStroke(),
       }),
-    [addPoint, emit],
+    [addPoint, endStroke],
   );
 
   const handleClear = useCallback(() => {

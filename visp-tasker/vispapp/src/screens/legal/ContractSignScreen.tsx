@@ -31,8 +31,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -84,6 +86,8 @@ export function ContractSignScreen({
   const [accepted, setAccepted] = useState(false);
   const [reachedEnd, setReachedEnd] = useState(false);
   const [signature, setSignature] = useState<SignatureValue | null>(null);
+  // El dedo está sobre el lienzo: mientras dure, el scroll no se mueve.
+  const [drawing, setDrawing] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -135,6 +139,7 @@ export function ContractSignScreen({
       setAccepted(false);
       setReachedEnd(false);
       setSignature(null);
+      setDrawing(false);
       try {
         const d = await legalService.getLegalDocument(currentPending.consentType);
         if (!cancelled) {
@@ -298,151 +303,169 @@ export function ContractSignScreen({
         </View>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        onScroll={handleScroll}
-        scrollEventThrottle={64}
-        keyboardShouldPersistTaps="handled"
+      {/* El teclado se gestiona aquí y no en `Screen`: el footer con el botón
+          de firmar tiene que subir con él, y el lienzo de firma queda justo
+          debajo de los dos campos de texto. Sin esto iOS desplazaba el
+          contenido por su cuenta al enfocar el nombre legal y el lienzo se
+          movía bajo el dedo. */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {!!doc && <LegalMarkdown markdown={doc.text} replaceAcceptanceForm />}
-
-        {/* Aviso de idioma: los contratos solo existen en inglés todavía; el
-            francés está en revisión legal. Un contrato no se traduce a medias. */}
-        <Text style={[styles.langNote, { color: t.text3 }]}>
-          This agreement is currently available in English only.
-        </Text>
-
-        <View style={[styles.divider, { backgroundColor: t.border }]} />
-
-        {/* The final blank form is completed here; the original document/hash
-            stays intact and the server archives these fields with the drawing. */}
-        <View
-          style={[
-            styles.recordCard,
-            { backgroundColor: t.surface, borderColor: t.border },
-          ]}
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={handleScroll}
+          scrollEventThrottle={64}
+          keyboardShouldPersistTaps="handled"
+          // Arrastrar el contrato cierra el teclado: es el gesto natural para
+          // quitarlo de encima antes de llegar a la firma.
+          keyboardDismissMode="on-drag"
+          // Mientras el dedo dibuja, el contrato NO se mueve. Un trazo vertical
+          // rápido se lo llevaba el scroll a mitad de la firma.
+          scrollEnabled={!drawing}
         >
-          <Text style={[styles.recordTitle, { color: t.text }]}>
-            {currentPending?.consentType === 'provider_ic_agreement'
-              ? 'Service provider acceptance and signature'
-              : 'Customer acceptance and signature'}
+          {!!doc && <LegalMarkdown markdown={doc.text} replaceAcceptanceForm />}
+
+          {/* Aviso de idioma: los contratos solo existen en inglés todavía; el
+              francés está en revisión legal. Un contrato no se traduce a medias. */}
+          <Text style={[styles.langNote, { color: t.text3 }]}>
+            This agreement is currently available in English only.
           </Text>
-          {[
-            ['Legal name', legalName.trim() || '—'],
-            ['Business name (if applicable)', businessName.trim() || '—'],
-            ['Account email', accountEmail || '—'],
-            ['Account ID', user?.id || '—'],
-            ['Agreement version', doc ? `v${doc.version}` : '—'],
-            ['Acceptance date', 'Recorded when you sign (Ontario time)'],
-          ].map(([k, v]) => (
-            <View key={k} style={styles.recordRow}>
-              <Text style={[styles.recordKey, { color: t.text3 }]}>{k}</Text>
-              <Text style={[styles.recordValue, { color: t.text2 }]}>
-                {v}
-              </Text>
-            </View>
-          ))}
-          <Text style={[styles.recordNote, { color: t.text3 }]}>
-            Your signature, these details, the acceptance record ID, date and
-            time, IP address, device and agreement text will be archived in your signed PDF.
-          </Text>
-        </View>
 
-        {/* ── Nombre legal ── */}
-        <Text style={[styles.label, { color: t.text }]}>Full legal name</Text>
-        <Text style={[styles.help, { color: t.text3 }]}>
-          Must match your government-issued ID.
-        </Text>
-        <TextInput
-          value={legalName}
-          onChangeText={setLegalName}
-          placeholder="Full legal name"
-          placeholderTextColor={t.text4}
-          autoCapitalize="words"
-          autoCorrect={false}
-          style={[
-            styles.input,
-            { color: t.text, backgroundColor: t.surface, borderColor: t.border },
-          ]}
-        />
+          <View style={[styles.divider, { backgroundColor: t.border }]} />
 
-        <Text style={[styles.label, { color: t.text }]}>Business name (optional)</Text>
-        <TextInput
-          value={businessName}
-          onChangeText={setBusinessName}
-          placeholder="Business name, if applicable"
-          placeholderTextColor={t.text4}
-          autoCapitalize="words"
-          style={[
-            styles.input,
-            { color: t.text, backgroundColor: t.surface, borderColor: t.border },
-          ]}
-        />
-
-        {/* ── Firma ── */}
-        {needsSignature && (
-          <>
-            <Text style={[styles.label, { color: t.text }]}>Signature</Text>
-            <Text style={[styles.help, { color: t.text3 }]}>
-              Sign with your finger.
-            </Text>
-            <SignaturePad
-              key={`${currentPending?.consentType}:${doc?.version}`}
-              onChange={setSignature}
-              caption={legalName.trim() || undefined}
-            />
-          </>
-        )}
-
-        {/* ── Aceptación ── */}
-        <TouchableOpacity
-          style={styles.checkboxRow}
-          onPress={() => setAccepted((v) => !v)}
-          activeOpacity={0.7}
-        >
+          {/* The final blank form is completed here; the original document/hash
+              stays intact and the server archives these fields with the drawing. */}
           <View
             style={[
-              styles.checkbox,
-              { borderColor: accepted ? t.violet : t.borderStrong },
-              accepted && { backgroundColor: t.violet },
+              styles.recordCard,
+              { backgroundColor: t.surface, borderColor: t.border },
             ]}
           >
-            {accepted && <Text style={styles.checkMark}>✓</Text>}
+            <Text style={[styles.recordTitle, { color: t.text }]}>
+              {currentPending?.consentType === 'provider_ic_agreement'
+                ? 'Service provider acceptance and signature'
+                : 'Customer acceptance and signature'}
+            </Text>
+            {[
+              ['Legal name', legalName.trim() || '—'],
+              ['Business name (if applicable)', businessName.trim() || '—'],
+              ['Account email', accountEmail || '—'],
+              ['Account ID', user?.id || '—'],
+              ['Agreement version', doc ? `v${doc.version}` : '—'],
+              ['Acceptance date', 'Recorded when you sign (Ontario time)'],
+            ].map(([k, v]) => (
+              <View key={k} style={styles.recordRow}>
+                <Text style={[styles.recordKey, { color: t.text3 }]}>{k}</Text>
+                <Text style={[styles.recordValue, { color: t.text2 }]}>
+                  {v}
+                </Text>
+              </View>
+            ))}
+            <Text style={[styles.recordNote, { color: t.text3 }]}>
+              Your signature, these details, the acceptance record ID, date and
+              time, IP address, device and agreement text will be archived in your signed PDF.
+            </Text>
           </View>
-          <Text style={[styles.checkboxText, { color: t.text2 }]}>
-            I have read and agree to the {title} (version {doc?.version}).
-          </Text>
-        </TouchableOpacity>
 
-        {!reachedEnd && (
-          <Text style={[styles.gateHint, { color: t.text3 }]}>
-            Scroll to the end of the agreement to continue.
+          {/* ── Nombre legal ── */}
+          <Text style={[styles.label, { color: t.text }]}>Full legal name</Text>
+          <Text style={[styles.help, { color: t.text3 }]}>
+            Must match your government-issued ID.
           </Text>
-        )}
-      </ScrollView>
+          <TextInput
+            value={legalName}
+            onChangeText={setLegalName}
+            placeholder="Full legal name"
+            placeholderTextColor={t.text4}
+            autoCapitalize="words"
+            autoCorrect={false}
+            style={[
+              styles.input,
+              { color: t.text, backgroundColor: t.surface, borderColor: t.border },
+            ]}
+          />
 
-      <View style={[styles.footer, { borderTopColor: t.border, backgroundColor: t.bg }]}>
-        <GlassButton
-          title={
-            submitting
-              ? 'Submitting…'
-              : index + 1 < queue.length
-                ? 'Agree and continue'
-                : 'Agree and finish'
-          }
-          onPress={handleSubmit}
-          disabled={!canSubmit}
-          loading={submitting}
-          variant="glow"
-        />
-      </View>
+          <Text style={[styles.label, { color: t.text }]}>Business name (optional)</Text>
+          <TextInput
+            value={businessName}
+            onChangeText={setBusinessName}
+            placeholder="Business name, if applicable"
+            placeholderTextColor={t.text4}
+            autoCapitalize="words"
+            style={[
+              styles.input,
+              { color: t.text, backgroundColor: t.surface, borderColor: t.border },
+            ]}
+          />
+
+          {/* ── Firma ── */}
+          {needsSignature && (
+            <>
+              <Text style={[styles.label, { color: t.text }]}>Signature</Text>
+              <Text style={[styles.help, { color: t.text3 }]}>
+                Sign with your finger.
+              </Text>
+              <SignaturePad
+                key={`${currentPending?.consentType}:${doc?.version}`}
+                onChange={setSignature}
+                onDrawStateChange={setDrawing}
+                caption={legalName.trim() || undefined}
+              />
+            </>
+          )}
+
+          {/* ── Aceptación ── */}
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setAccepted((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                { borderColor: accepted ? t.violet : t.borderStrong },
+                accepted && { backgroundColor: t.violet },
+              ]}
+            >
+              {accepted && <Text style={styles.checkMark}>✓</Text>}
+            </View>
+            <Text style={[styles.checkboxText, { color: t.text2 }]}>
+              I have read and agree to the {title} (version {doc?.version}).
+            </Text>
+          </TouchableOpacity>
+
+          {!reachedEnd && (
+            <Text style={[styles.gateHint, { color: t.text3 }]}>
+              Scroll to the end of the agreement to continue.
+            </Text>
+          )}
+        </ScrollView>
+
+        <View style={[styles.footer, { borderTopColor: t.border, backgroundColor: t.bg }]}>
+          <GlassButton
+            title={
+              submitting
+                ? 'Submitting…'
+                : index + 1 < queue.length
+                  ? 'Agree and continue'
+                  : 'Agree and finish'
+            }
+            onPress={handleSubmit}
+            disabled={!canSubmit}
+            loading={submitting}
+            variant="glow"
+          />
+        </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   centerText: { fontSize: 13, marginTop: 12, textAlign: 'center' },
   errorTitle: { fontSize: 17, fontWeight: '700' },

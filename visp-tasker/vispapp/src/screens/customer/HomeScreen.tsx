@@ -71,6 +71,7 @@ import { get } from '../../services/apiClient';
 import taskService from '../../services/taskService';
 import type {
   Job,
+  JobStatus,
   RootStackParamList,
   CustomerTabParamList,
   ServiceCategory,
@@ -245,6 +246,40 @@ const TILE_GAP = 8;
 // ──────────────────────────────────────────────
 
 const VISIBLE_CATEGORY_COUNT = 8;
+
+/**
+ * Los estados que cuentan como "trabajo en curso" en el Home del cliente.
+ *
+ * Es una lista BLANCA, y ahí está el arreglo. Antes se descartaban `completed`
+ * y los `cancelled_*` —que `/jobs/active` ya no devuelve nunca, así que el
+ * filtro no quitaba nada— y no se descartaba nada más: los `expired` y los
+ * `draft` entraban por la puerta grande, tanto en las tarjetas como en el
+ * contador "NN OPEN". Con lista negra, cada estado nuevo del backend aparece en
+ * el Home hasta que alguien se acuerde de excluirlo; con lista blanca hay que
+ * quererlo para que salga.
+ *
+ * El filtro va aquí y NO en el backend a propósito: `/jobs/active` devuelve
+ * todo lo no terminal porque la misma respuesta alimenta las cinco pestañas de
+ * "My Jobs" —incluida la de caducados—, y filtrarlo allí dejaría esa pestaña
+ * vacía. Lo caducado no desaparece del producto; desaparece del Home.
+ *
+ * `pending` está en la lista porque es el valor por defecto que pone
+ * `taskService.getActiveJobs` cuando el backend no manda estado: sin él, un
+ * trabajo así se esfumaría del Home en silencio.
+ */
+const HOME_ACTIVE_STATUSES: readonly JobStatus[] = [
+  'pending',
+  'pending_match',
+  'matched',
+  'pending_approval',
+  'pending_price_agreement',
+  'scheduled',
+  'accepted',
+  'provider_accepted',
+  'en_route',
+  'provider_en_route',
+  'in_progress',
+];
 
 function HomeScreen({ navigation }: Props): React.JSX.Element {
   const t = useVispTheme();
@@ -451,7 +486,14 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   );
   const hasMoreCategories = categories.length > VISIBLE_CATEGORY_COUNT;
 
-  const openActiveJobsCount = activeJobs.filter((j) => !['completed', 'cancelled_by_customer', 'cancelled_by_provider', 'cancelled_by_system'].includes(j.status)).length;
+  // Una sola lista derivada para las tres cosas: el contador, el estado vacío y
+  // las tarjetas. Antes el contador filtraba y la lista no, así que podían
+  // discrepar —"01 OPEN" sobre tres tarjetas—.
+  const homeJobs = useMemo(
+    () => activeJobs.filter((j) => HOME_ACTIVE_STATUSES.includes(j.status)),
+    [activeJobs],
+  );
+  const openActiveJobsCount = homeJobs.length;
 
   // ──────────────────────────────────────────
   // Render
@@ -703,7 +745,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
           </View>
           {isLoadingJobs ? (
             <View style={[styles.skeletonRow, { backgroundColor: t.card, borderColor: t.border }]} />
-          ) : activeJobs.length === 0 ? (
+          ) : homeJobs.length === 0 ? (
             <Card>
               <Text style={[VispText.body, { color: t.text3, textAlign: 'center' }]}>
                 {tr('homeScreen.noActiveJobs')}
@@ -711,7 +753,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
             </Card>
           ) : (
             <FlatList
-              data={activeJobs}
+              data={homeJobs}
               horizontal
               // flexGrow:0 obligatorio: sin altura ni flexGrow un scroll
               // horizontal se expande y roba el espacio vertical del padre.

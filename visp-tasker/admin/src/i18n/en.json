@@ -236,6 +236,7 @@
     "type": "Type",
     "category": "Category",
     "level": "Level",
+    "date": "Date",
     "clearAll": "Clear filters"
   },
   "admins": {
@@ -352,7 +353,11 @@
     "outdatedVersion": "Older version",
     "signed": "Signed",
     "download": "Download",
-    "contractOpenFailed": "Could not open the contract."
+    "contractOpenFailed": "Could not open the contract.",
+    "contractSearchPlaceholder": "Search by name, email, legal name or business…",
+    "contractsNoMatch": "No signed contract matches these filters.",
+    "contractDateFrom": "From",
+    "contractDateTo": "To"
   },
   "promotions": {
     "title": "Promotions",
