@@ -41,7 +41,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFrom } from '../../services/imagePickerService';
@@ -55,6 +55,7 @@ import {
   Avatar,
   MenuItem,
   IconBtn,
+  SetupChecklist,
 } from '../../components/visp';
 import { useVispTheme, VispText, VispSpace, FontSansBold, FontMono } from '../../theme/visp';
 import { AnimatedSpinner } from '../../components/animations';
@@ -132,6 +133,9 @@ export default function ProfileScreen(): React.JSX.Element {
   const [bioOpen, setBioOpen] = useState(false);
   const [bioText, setBioText] = useState('');
   const [providerBio, setProviderBio] = useState<string | null>(null);
+  // El editor no puede abrirse solo ANTES de que llegue la bio: saldría vacío
+  // y el primer guardado borraría lo que el proveedor ya tenía escrito.
+  const [bioCargada, setBioCargada] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   useEffect(() => {
@@ -148,6 +152,27 @@ export default function ProfileScreen(): React.JSX.Element {
     setBioText(providerBio ?? '');
     setBioOpen(true);
   }, [providerBio]);
+
+  /**
+   * Entrar con el editor de bio ya abierto.
+   *
+   * La fila «Your bio and work photos» del checklist promete llevarte a
+   * escribir la bio. Llevaba a Credentials —donde están las fotos, no la bio— y
+   * el usuario se quedaba mirando una pantalla que no era la que pedía la fila.
+   * Ahora navega aquí con `openBio`, y esto abre el editor directamente en vez
+   * de dejarle buscar «About me» en una lista de siete entradas.
+   *
+   * Se espera a que la bio esté cargada: abrirlo antes lo dejaría vacío y el
+   * usuario pisaría lo que ya tenía escrito.
+   */
+  const route = useRoute<any>();
+  const pedidoAbrirBio = route.params?.openBio === true;
+  const [bioAutoAbierta, setBioAutoAbierta] = useState(false);
+  useEffect(() => {
+    if (!pedidoAbrirBio || bioAutoAbierta || !bioCargada) return;
+    setBioAutoAbierta(true);
+    openEditBio();
+  }, [pedidoAbrirBio, bioAutoAbierta, bioCargada, openEditBio]);
 
   /**
    * Cerrar el editor de bio sin perder lo escrito.
@@ -366,6 +391,8 @@ export default function ProfileScreen(): React.JSX.Element {
         if (vivo) setProviderBio(data?.bio ?? null);
       } catch {
         if (vivo) setProviderBio(null);
+      } finally {
+        if (vivo) setBioCargada(true);
       }
     })();
     return () => {
@@ -535,6 +562,16 @@ export default function ProfileScreen(): React.JSX.Element {
             <RoleSwitcher mode={activeMode} onChange={setActiveMode} />
           </View>
         ) : null}
+
+        {/* Estado de la cuenta — SIEMPRE, completo o no.
+            En el Home el checklist desaparece al terminar, y eso está bien allí:
+            es un empujón, no un panel. Pero al desaparecer no quedaba ningún
+            sitio donde consultar el estado de tu cuenta. Este es ese sitio.
+            El rol lo decide el modo activo: un `both` son dos configuraciones
+            distintas y no se mezclan. */}
+        <View style={styles.section}>
+          <SetupChecklist role={isProvider ? 'provider' : 'customer'} alwaysShow />
+        </View>
 
         {/* Customer settings */}
         {!isProvider ? (

@@ -21,7 +21,7 @@ const DEV_CONFIG: AppConfig = {
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
   mapboxAccessToken: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '',
-  stripePublishableKey: 'pk_test_51TMUEvI9nmjXITB8M1kWgFas5MW8AQJfqVwHQcpaThfS6tesyfbTVgIp74FdE61DzSFBpbABlZi1S1kd6kT6YEsa00O8FAMvlW',
+  stripePublishableKey: 'pk_live_51TMUEhIM8PF7U4XyPREAAWXywiaSmYYgchikQlNGoKAuwhUk43jyqHJwonOUODO42z3lT6QtGavR06EYuavdfkYA008EQSnGz0',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
   appStoreUrl: 'https://apps.apple.com/app/tasker/id000000000',
@@ -38,8 +38,13 @@ const STAGING_CONFIG: AppConfig = {
 
 const PROD_CONFIG: AppConfig = {
   ...DEV_CONFIG,
-  // Production API (server → Visp2026). For local-device testing swap these to
-  // the Mac LAN IP (e.g. http://192.168.1.69:8000), then revert before build.
+  // Producción. Para probar contra el Mac en un dispositivo, cambiar a la IP de
+  // la LAN (p. ej. http://192.168.1.71:8000) y REVERTIR antes de compilar para
+  // TestFlight.
+  //
+  // Ojo con una cosa que costó una tarde: los componentes embebidos de Stripe
+  // NO cargan sobre http, así que el alta de cobros del proveedor solo se puede
+  // probar contra esta URL https. Contra el Mac sale la página en blanco.
   apiBaseUrl: 'https://api.richieyanez.com/api/v1',
   wsBaseUrl: 'wss://api.richieyanez.com',
 };

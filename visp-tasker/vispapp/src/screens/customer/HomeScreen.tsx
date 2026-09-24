@@ -55,6 +55,7 @@ import {
   Card,
   Chip,
   Icon,
+  SetupChecklist,
 } from '../../components/visp';
 import {
   useVispTheme,
@@ -308,6 +309,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   const [recentProviders, setRecentProviders] = useState<RecentProvider[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
+  const [setupTick, setSetupTick] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -393,6 +395,7 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
+    setSetupTick((n) => n + 1);
     await loadAll();
     setIsRefreshing(false);
   }, [loadAll]);
@@ -541,6 +544,18 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
             <RoleSwitcher mode={activeMode} onChange={(m) => void setActiveMode(m)} />
           </View>
         )}
+
+        {/* — Qué le falta configurar —
+            DESDE EL PRIMER MOMENTO, no tras publicar el primer trabajo.
+            Se probó al revés —esperando a que hubiera un trabajo, para no
+            pedirle la tarjeta a quien solo viene a mirar— y en el dispositivo
+            resultó ser lo contrario de lo que hace falta: el cliente llegaba
+            hasta el final del embudo sin saber que le faltaba la tarjeta, y la
+            reserva es justo donde ahora se le exige. Enterarse al reservar es
+            peor que enterarse al entrar. */}
+        <View style={styles.sectionGutter}>
+          <SetupChecklist role="customer" reloadKey={setupTick} />
+        </View>
 
         {/* — Emergency —
             Apagado en esta versión (EMERGENCY_ENABLED). No es solo que no toque

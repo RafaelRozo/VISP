@@ -21,6 +21,7 @@ sys.path.insert(0, ".")
 
 from src.api.deps import async_session_factory  # noqa: E402
 from src.main import app  # noqa: E402
+from _smoke_card import ensure_customer_card, restore_cards  # noqa: E402
 
 passed = 0
 failed: list[str] = []
@@ -105,10 +106,35 @@ async def main() -> int:
         cust = (
             await db.execute(select(User).where(User.role_customer.is_(True)).limit(1))
         ).scalar_one()
+        # DETERMINISTA y SIN preguntas obligatorias.
+        #
+        # Antes era `LIMIT 1` a secas. Dos problemas en uno: sin `ORDER BY`,
+        # Postgres devuelve la fila que le quede más a mano, y este mismo smoke
+        # ACTUALIZA los flags del servicio, lo que reescribe la fila y cambia el
+        # orden físico — así que de una ejecución a otra salía otro servicio. Cayó
+        # en "Window Cleaning", que tiene 3 preguntas obligatorias, y el smoke
+        # empezó a fallar con «needs an answer to...» sin que nadie tocara el
+        # código. Solo 4 de los LEVEL_0 activos no tienen preguntas obligatorias.
+        #
+        # Lo que se prueba aquí son detalles y fotos, no el formulario de
+        # preguntas (eso es `smoke_service_questions`), así que se elige uno que
+        # no las pida y se fija el orden.
+        from src.models.taxonomy import ServiceTaskQuestion
+
+        sin_preguntas = ~select(ServiceTaskQuestion.id).where(
+            ServiceTaskQuestion.task_id == ServiceTask.id,
+            ServiceTaskQuestion.is_required.is_(True),
+            ServiceTaskQuestion.is_active.is_(True),
+        ).exists()
         task = (
             await db.execute(
                 select(ServiceTask)
-                .where(ServiceTask.is_active.is_(True), ServiceTask.level == "LEVEL_0")
+                .where(
+                    ServiceTask.is_active.is_(True),
+                    ServiceTask.level == "LEVEL_0",
+                    sin_preguntas,
+                )
+                .order_by(ServiceTask.id)
                 .limit(1)
             )
         ).scalar_one()
@@ -118,6 +144,8 @@ async def main() -> int:
         await _asegurar_proveedor(db, task_id)
 
     tok, _ = create_access_token(cust.id)
+    # Tarjeta del cliente: `POST /jobs/book` la exige desde el 24-09.
+    await ensure_customer_card(cust.id)
     H = {"Authorization": f"Bearer {tok}"}
     H_ADMIN = (
         {"Authorization": f"Bearer {create_admin_tokens(su.id)['accessToken']}"}
@@ -252,6 +280,7 @@ async def main() -> int:
                           (o.get("customer_extra_note") or "(vacío)")[:35])
 
     # ---- limpieza: flags del servicio y jobs de prueba ----
+    await restore_cards()
     async with async_session_factory() as db:
         t = (await db.execute(select(ServiceTask).where(ServiceTask.id == task_id))).scalar_one()
         t.requires_details, t.requires_evidence, t.details_prompt_en = orig_flags

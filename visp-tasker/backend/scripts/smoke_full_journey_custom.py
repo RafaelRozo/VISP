@@ -54,6 +54,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from src.main import app  # noqa: E402
 from src.services import auth_service  # noqa: E402
+from _smoke_card import ensure_customer_card, restore_cards  # noqa: E402
 from src.services.fee_service import compute_service_fee_cents  # noqa: E402
 
 from src.core.config import settings  # noqa: E402
@@ -142,6 +143,8 @@ async def run() -> None:
         customer = await conn.fetchrow("SELECT id, email FROM users WHERE email = $1", CUSTOMER_EMAIL)
         check(customer is not None, f"customer {CUSTOMER_EMAIL} not found")
         print(f"  {GREEN}✓{RESET} customer: {customer['email']} ({customer['id']})")
+        # Tarjeta del cliente: `POST /jobs/book` la exige desde el 24-09.
+        await ensure_customer_card(customer["id"])
 
         prov_user = await conn.fetchrow("SELECT id, email FROM users WHERE email = $1", PROVIDER_EMAIL)
         check(prov_user is not None, f"provider {PROVIDER_EMAIL} not found")
@@ -505,6 +508,7 @@ async def run() -> None:
         print(f"\n{GREEN}{BOLD}★ CUSTOM JOURNEY SMOKE PASSED — every stage ran with no errors.{RESET}")
 
     finally:
+        await restore_cards()
         print(f"\n{DIM}[cleanup] removing simulation data …{RESET}")
         try:
             if review_id:

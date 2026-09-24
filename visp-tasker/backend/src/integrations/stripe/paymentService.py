@@ -688,6 +688,32 @@ def account_can_accept_charges(account_id: str) -> tuple[bool, str | None]:
         return False, "transfers"
     if not bool(getattr(account, "charges_enabled", False)):
         return False, "charges_disabled"
+
+    # KYC SIN TERMINAR. Las capabilities NO bastan y esto costó descubrirlo con
+    # una cuenta real: Stripe dejaba `card_payments` y `transfers` en `active`
+    # mientras la identidad seguía SIN VERIFICAR, con
+    # `proof_of_liveness` en `past_due` y `payouts_enabled=False`.
+    #
+    # Si solo se miran las capabilities, el proveedor acepta trabajos, se le
+    # retiene el dinero al cliente, el cargo liquida en su cuenta... y ahí se
+    # queda: no puede retirarlo. Y VISP, que asume las pérdidas
+    # (`losses.payments = application`) y el cumplimiento del vendedor, habría
+    # dejado trabajar a alguien cuya identidad nadie comprobó.
+    #
+    # Por eso la puerta de VISP es MÁS ESTRICTA que la de Stripe: si no puede
+    # cobrar de verdad, no se le ofrece el trabajo.
+    if not bool(getattr(account, "payouts_enabled", False)):
+        return False, "payouts_disabled"
+
+    reqs = getattr(account, "requirements", None)
+    if reqs is not None:
+        vencidos = list(getattr(reqs, "past_due", None) or [])
+        if vencidos:
+            return False, f"requirements_past_due:{vencidos[0]}"
+        motivo = getattr(reqs, "disabled_reason", None)
+        if motivo:
+            return False, f"disabled:{motivo}"
+
     return True, None
 
 

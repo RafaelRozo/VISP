@@ -576,13 +576,39 @@ def _extract_requirements_due(account: Any) -> list[str]:
 
 
 def _extract_capabilities(account: Any) -> dict[str, Any]:
-    caps = getattr(account, "capabilities", None) or {}
+    """Las capabilities de la cuenta como diccionario llano.
+
+    Devolvía `{}` SIEMPRE. El SDK entrega un objeto tipado `Capabilities` que no
+    es un dict y no tiene `.keys()`, así que ni el `isinstance` ni el `caps[k]`
+    de antes acertaban: la rama buena era la `except`, y el resultado vacío se
+    guardaba en `provider_profiles.stripe_capabilities` para todo el mundo.
+
+    Lo que eso rompía, comprobado contra visp_prod (7 cuentas, las 7 en `{}`
+    mientras Stripe decía `card_payments=active` en 6 de ellas):
+
+      - `matchingEngine._payments_capability_blocks` veía "desconocido" y no
+        bloqueaba nunca. Ahí no se notó porque falla ABIERTO a propósito.
+      - `EarningsScreen.transfersCapability` era siempre `'unknown'`.
+      - Y cualquier cosa nueva que se fiara de la columna —como el paso de
+        cobros del checklist— habría dicho que nadie puede cobrar.
+
+    `to_dict()` es el camino en el SDK actual; se dejan los otros dos por si
+    una versión devuelve un StripeObject (que sí es dict) o un dict pelado.
+    """
+    caps = getattr(account, "capabilities", None)
+    if caps is None:
+        return {}
     if isinstance(caps, dict):
         return dict(caps)
-    # SDK sometimes returns a StripeObject — coerce via vars()
+    a_dict = getattr(caps, "to_dict", None)
+    if callable(a_dict):
+        try:
+            return dict(a_dict())
+        except Exception:  # noqa: BLE001
+            pass
     try:
         return {k: caps[k] for k in caps.keys()}
-    except Exception:
+    except Exception:  # noqa: BLE001
         return {}
 
 

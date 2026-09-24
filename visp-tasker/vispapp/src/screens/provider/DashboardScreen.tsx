@@ -25,14 +25,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../theme/colors';
 import { GlassStyles } from '../../theme/glass';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
-import { GlassCard, GlassButton } from '../../components/glass';
-import { Screen, ScreenTitle, Chip, Icon } from '../../components/visp';
+import { GlassCard } from '../../components/glass';
+import { Screen, ScreenTitle, Chip, Icon, SetupChecklist } from '../../components/visp';
+import { Readiness } from '../../services/readinessService';
 import { FontMono } from '../../theme/visp';
 import { AnimatedSpinner, MorphingBlob } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
@@ -41,7 +42,6 @@ import { useCompanyStore } from '../../stores/companyStore';
 import JobCard from '../../components/JobCard';
 import RoleSwitcher from '../../components/RoleSwitcher';
 import { resolveAvatarUrl } from '../../services/userService';
-import { taxonomyService } from '../../services/taxonomyService';
 import { providerService } from '../../services/providerService';
 import { ProviderTabParamList, ServiceLevel } from '../../types';
 
@@ -71,8 +71,12 @@ export default function DashboardScreen(): React.JSX.Element {
   const theme = useTheme();
   const { t } = useTranslation();
 
-  // Track whether the provider has selected any services
-  const [hasServices, setHasServices] = useState<boolean | null>(null);
+  // Preparación de la cuenta. Se guarda aquí porque la MISMA respuesta que
+  // pinta el checklist decide si la banda de verificado tiene derecho a
+  // aparecer: hasta hoy salía un «Verified · puedes ofertar» en verde a
+  // proveedores sin cuenta bancaria, que es lo contrario de lo que pasa.
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [setupTick, setSetupTick] = useState(0);
 
   const {
     isOnline,
@@ -99,29 +103,11 @@ export default function DashboardScreen(): React.JSX.Element {
     fetchOffers();
   }, [fetchDashboard, fetchOffers]);
 
-  // Re-check selected services every time the screen regains focus so the
-  // "Complete Your Profile" CTA disappears right after the user saves
-  // services in ProviderOnboarding and navigates back.
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      taxonomyService.getMyServices()
-        .then((res) => {
-          if (!cancelled) setHasServices(res.taskIds.length > 0);
-        })
-        .catch(() => {
-          if (!cancelled) setHasServices(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, []),
-  );
-
   // Pull-to-refresh
   const onRefresh = useCallback(() => {
     fetchDashboard();
     fetchOffers();
+    setSetupTick((n) => n + 1);
   }, [fetchDashboard, fetchOffers]);
 
   // User initials fallback for avatar
@@ -177,10 +163,6 @@ export default function DashboardScreen(): React.JSX.Element {
     };
     // Ya no depende del nivel: se pide para todos.
   }, [providerProfile?.id]);
-
-  // Show level banner only when the provider has finished onboarding
-  // (has at least one service selected). Until then the setup CTA does the job.
-  const showLevelBanner = providerProfile != null && hasServices === true;
 
   // 'both' users get a Customer/Provider toggle in the header
   const isBoth = user?.role === 'both';
@@ -252,127 +234,41 @@ export default function DashboardScreen(): React.JSX.Element {
   // ------------------------------------------
 
   /**
-   * Camino a L1, con estado real.
+   * La banda de «verificado».
    *
-   * En esta beta solo existen dos escalones, así que la tarjeta tiene dos caras:
-   * al que aún no está validado le dice exactamente qué le falta y le lleva
-   * allí de un toque; al validado le confirma que puede ofertar y se calla.
+   * Antes esta tarjeta hacía dos trabajos: enseñaba la lista de pasos hacia L1
+   * al que no estaba validado, y una banda verde al que sí. La lista se fue al
+   * `SetupChecklist`, que sale del backend y cuenta TODOS los pasos —incluida
+   * la cuenta bancaria, que aquí no estaba—.
    *
-   * Fuera los nombres comerciales ("Helper", "Experienced"): no aportaban nada y
-   * prometían una escalera que en esta versión no existe.
+   * Y el texto de la banda cambió. Decía «You can offer on jobs for the
+   * services you set up», que para un L1 sin cobros configurados era falso: su
+   * oferta se acepta y el cobro revienta. Ahora dice lo único que la validación
+   * garantiza —que los documentos están revisados— y de lo que falta se ocupa
+   * el checklist, que es quien lo sabe.
+   *
+   * Por eso solo aparece cuando NO queda nada por configurar: mientras el
+   * checklist esté en pantalla, un verde al lado sería una contradicción.
    */
-  const renderLevelCard = () => {
-    if (!providerProfile) return null;
-
-    const nivel = providerProfile.level;
-
-    if (nivel > 0) {
-      return (
-        <View style={[styles.levelBanner, { borderColor: `${Colors.success}55`, backgroundColor: `${Colors.success}12` }]}>
-          <View style={[styles.levelChipSmall, { backgroundColor: `${Colors.success}30`, borderColor: Colors.success }]}>
-            <Text style={[styles.levelChipSmallText, { color: Colors.success }]}>L{nivel}</Text>
-          </View>
-          <View style={styles.levelBannerInfo}>
-            <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
-              {t('dashboard.verifiedTitle') || 'Verified'}
-            </Text>
-            <Text style={[styles.levelBannerMsg, { color: theme.textSecondary }]}>
-              {t('dashboard.verifiedMsg') ||
-                'You can offer on jobs for the services you set up.'}
-            </Text>
-          </View>
-        </View>
-      );
-    }
-
-    const pasos = [
-      {
-        hecho: (bio ?? '').trim().length > 0,
-        label: t('dashboard.stepBio') || 'Write your bio',
-        hint: t('dashboard.stepBioHint') || 'The first thing a customer reads on your offer.',
-        ir: () => navigation.navigate('ProviderProfile' as any),
-      },
-      {
-        hecho: portfolioCount >= 3,
-        label: (t('dashboard.stepPortfolio') || 'Add 3 photos of your work')
-          .replace('{n}', String(portfolioCount)),
-        hint: portfolioCount > 0
-          ? (t('dashboard.stepPortfolioSome') || '{n} of 3 uploaded.').replace('{n}', String(portfolioCount))
-          : t('dashboard.stepPortfolioHint') || 'Past jobs, before and after — whatever shows the work.',
-        ir: () => navigation.navigate('ProviderProfile' as any, { screen: 'Credentials' }),
-      },
-      {
-        hecho: hasServices === true,
-        label: t('dashboard.stepServices') || 'Pick your services and set your price',
-        hint: t('dashboard.stepServicesHint') || 'You cannot receive jobs without them.',
-        ir: () => navigation.navigate('ProviderProfile' as any, { screen: 'ProviderOnboarding' }),
-      },
-    ];
-
-    const faltan = pasos.filter((p) => !p.hecho).length;
-    const enviado = faltan === 0;
+  const renderVerifiedBanner = () => {
+    if (!providerProfile || providerProfile.level <= 0) return null;
+    // `readiness === null` es "no lo sabemos" (el checklist no cargó): se
+    // enseña, porque callar por un fallo de red es peor que informar de más.
+    if (readiness !== null && !readiness.allDone) return null;
 
     return (
-      <View style={[styles.levelBanner, styles.levelCard, { borderColor: `${Colors.primary}55`, backgroundColor: `${Colors.primary}10` }]}>
-        <View style={styles.levelCardHead}>
-          <View style={[styles.levelChipSmall, { backgroundColor: `${Colors.primary}30`, borderColor: Colors.primary }]}>
-            <Text style={[styles.levelChipSmallText, { color: Colors.primary }]}>L0</Text>
-          </View>
-          <View style={styles.levelBannerInfo}>
-            <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
-              {enviado
-                ? t('dashboard.inReviewTitle') || 'In review'
-                : t('dashboard.toL1Title') || 'Get verified to receive more work'}
-            </Text>
-            <Text style={[styles.levelBannerMsg, { color: theme.textSecondary }]}>
-              {enviado
-                ? t('dashboard.inReviewMsg') ||
-                  'We are checking your documents. We will let you know as soon as it is done.'
-                : t('dashboard.toL1Msg') ||
-                  'Send us this and we verify your profile. It is your documents we check, not your skill.'}
-            </Text>
-          </View>
+      <View style={[styles.levelBanner, { borderColor: `${Colors.success}55`, backgroundColor: `${Colors.success}12` }]}>
+        <View style={[styles.levelChipSmall, { backgroundColor: `${Colors.success}30`, borderColor: Colors.success }]}>
+          <Text style={[styles.levelChipSmallText, { color: Colors.success }]}>L{providerProfile.level}</Text>
         </View>
-
-        {!enviado ? (
-          <View style={styles.stepList}>
-            {pasos.map((p) => (
-              <Pressable
-                key={p.label}
-                onPress={p.hecho ? undefined : p.ir}
-                disabled={p.hecho}
-                style={styles.stepRow}
-                accessibilityRole={p.hecho ? undefined : 'button'}
-                accessibilityLabel={p.label}
-              >
-                <View
-                  style={[
-                    styles.stepBox,
-                    {
-                      borderColor: p.hecho ? Colors.success : theme.textTertiary,
-                      backgroundColor: p.hecho ? Colors.success : 'transparent',
-                    },
-                  ]}
-                >
-                  {p.hecho ? <Text style={styles.stepTick}>✓</Text> : null}
-                </View>
-                <View style={styles.stepText}>
-                  <Text
-                    style={[
-                      styles.stepLabel,
-                      { color: p.hecho ? theme.textSecondary : theme.textPrimary },
-                    ]}
-                  >
-                    {p.label}
-                  </Text>
-                  {!p.hecho ? (
-                    <Text style={[styles.stepHint, { color: theme.textSecondary }]}>{p.hint}</Text>
-                  ) : null}
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
+        <View style={styles.levelBannerInfo}>
+          <Text style={[styles.levelBannerTitle, { color: theme.textPrimary }]}>
+            {t('dashboard.verifiedTitle') || 'Verified'}
+          </Text>
+          <Text style={[styles.levelBannerMsg, { color: theme.textSecondary }]}>
+            {t('dashboard.verifiedMsg')}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -602,28 +498,6 @@ export default function DashboardScreen(): React.JSX.Element {
   };
 
   // ------------------------------------------
-  // Setup services prompt
-  // ------------------------------------------
-
-  const renderSetupServicesPrompt = () => {
-    if (hasServices !== false) return null;
-    return (
-      <GlassCard variant="elevated" style={styles.setupCard}>
-        <Text style={styles.setupIcon}>&#x2699;&#xFE0F;</Text>
-        <Text style={[styles.setupTitle, { color: theme.textPrimary }]}>{t('dashboard.setupServices')}</Text>
-        <Text style={[styles.setupText, { color: theme.textSecondary }]}>
-          {t('dashboard.setupText')}
-        </Text>
-        <GlassButton
-          title={t('dashboard.selectMyServices')}
-          variant="glow"
-          onPress={() => navigation.navigate('ProviderProfile' as any, { screen: 'ProviderOnboarding' })}
-        />
-      </GlassCard>
-    );
-  };
-
-  // ------------------------------------------
   // Company entry (VISP for Business) — only for company members
   // ------------------------------------------
 
@@ -752,9 +626,17 @@ export default function DashboardScreen(): React.JSX.Element {
 
         {renderCompanyEntry()}
 
-        {renderSetupServicesPrompt()}
+        {/* El checklist guiado. Se pinta solo si falta algo: cuando está todo
+            hecho desaparece, no se queda en verde.
+            El margen lo pone ESTA pantalla, no el componente: aquí todas las
+            tarjetas llevan `marginHorizontal: 16` y en el Home del cliente el
+            hueco lo da su `sectionGutter`. Sin este envoltorio el checklist
+            salía a todo lo ancho, desalineado del resto. */}
+        <View style={styles.checklistWrap}>
+          <SetupChecklist role="provider" onLoaded={setReadiness} reloadKey={setupTick} />
+        </View>
 
-        {showLevelBanner && renderLevelCard()}
+        {renderVerifiedBanner()}
 
         {renderAvailabilityToggle()}
 
@@ -799,6 +681,11 @@ const styles = StyleSheet.create({
   welcomeCard: {
     marginHorizontal: 16,
     marginBottom: 12,
+  },
+  // Mismo margen que welcomeCard y levelBanner: el checklist tiene que alinear
+  // con el resto de la columna, no sobresalir.
+  checklistWrap: {
+    marginHorizontal: 16,
   },
   welcomeRow: {
     flexDirection: 'row',
@@ -907,23 +794,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   // --- Level progress banner ---
-  levelCard: { flexDirection: 'column', alignItems: 'stretch', gap: 14 },
-  levelCardHead: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  stepList: { gap: 12 },
-  stepRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  stepBox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
-  stepTick: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  stepText: { flex: 1, gap: 2 },
-  stepLabel: { fontSize: 14, fontWeight: '600' as const, lineHeight: 19 },
-  stepHint: { fontSize: 12, lineHeight: 16, marginTop: 1 },
   // Ficha tal como la ve el cliente
   customerCard: { flexDirection: 'row', gap: 12, alignItems: 'center', marginTop: 4 },
   customerAvatar: { width: 44, height: 44, borderRadius: 22 },
@@ -1124,28 +994,6 @@ const styles = StyleSheet.create({
     height: 32,
   },
   // Setup services prompt
-  setupCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    alignItems: 'center' as const,
-  },
-  setupIcon: {
-    fontSize: 36,
-    marginBottom: 12,
-  },
-  setupTitle: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  setupText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.6)',
-    textAlign: 'center' as const,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
   // Active job card wrapper
   activeJobCard: {
     marginHorizontal: 16,

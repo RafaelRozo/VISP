@@ -35,6 +35,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from src.core.config import settings  # noqa: E402
 from src.main import app  # noqa: E402
 from src.services import auth_service  # noqa: E402
+from _smoke_card import ensure_customer_card, restore_cards  # noqa: E402
 
 _DSN = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
 if "visp_prod" not in _DSN:
@@ -154,6 +155,8 @@ async def run() -> None:
         cust = await conn.fetchval(
             "SELECT id FROM users WHERE id<>$1 AND id<>$2 ORDER BY created_at NULLS LAST LIMIT 1",
             user_a, user_b)
+        # Tarjeta del cliente: `POST /jobs/book` la exige desde el 24-09.
+        await ensure_customer_card(cust)
         await _qualify(conn, prov_a, task_id)
         await _qualify(conn, prov_b, task_id)
         # Viven donde estará el trabajo (43.65, -79.38). Nada más se prepara: que
@@ -319,6 +322,7 @@ async def run() -> None:
 
     finally:
         print("\n[limpieza] borrando datos de prueba ...")
+        await restore_cards()
         try:
             for jid in jobs_creados:
                 await _drop_job(conn, jid)

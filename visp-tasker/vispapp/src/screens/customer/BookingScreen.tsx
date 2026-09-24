@@ -208,11 +208,69 @@ function BookingScreen(): React.JSX.Element {
     navigation.goBack();
   }, [navigation]);
 
+  /** Le lleva a añadir la tarjeta. La pantalla vive en el stack de perfil, que
+   *  cuelga del navegador raíz: la acción sube sola desde aquí, igual que hace
+   *  JobTrackingScreen con 'CustomerHome'. */
+  const irAlaTarjeta = useCallback(() => {
+    (navigation as any).navigate('CustomerHome', {
+      screen: 'CustomerProfile',
+      params: { screen: 'PaymentMethods' },
+    });
+  }, [navigation]);
+
+  const avisarFaltaTarjeta = useCallback(() => {
+    Alert.alert(
+      t('booking.needCardTitle') || 'Add a payment card first',
+      t('booking.needCardBody') ||
+        "Nothing is charged now. We only hold the amount when you accept an offer, and it's released when the job is done.",
+      [
+        { text: t('common.cancel') || 'Cancel', style: 'cancel' },
+        { text: t('booking.needCardCta') || 'Add card', onPress: irAlaTarjeta },
+      ],
+    );
+  }, [t, irAlaTarjeta]);
+
   // Submit booking
   const handleConfirmBooking = useCallback(async () => {
     if (!isFormValid) return;
 
     setIsSubmitting(true);
+
+    // LA TARJETA, ANTES DE PUBLICAR.
+    //
+    // El backend lo rechaza con 400 `payment_method_required`, y esa es la
+    // puerta de verdad. Esto es para que el cliente no llegue hasta el botón
+    // final para enterarse: se comprueba aquí y se le ofrece añadirla.
+    //
+    // El cliente de Stripe se crea PRIMERO porque sin él no puede haber tarjeta
+    // —antes esto se hacía después de reservar, cuando ya no servía de nada.
+    try {
+      let idCliente = stripeCustomerId;
+      if (!idCliente) {
+        idCliente = await paymentService.ensureStripeCustomer();
+        const usuario = useAuthStore.getState().user;
+        if (usuario && idCliente) {
+          useAuthStore.getState().setUser({ ...usuario, stripeCustomerId: idCliente });
+        }
+      }
+      if (!idCliente) {
+        // Sin cliente de Stripe no hay tarjeta posible.
+        setIsSubmitting(false);
+        avisarFaltaTarjeta();
+        return;
+      }
+      const { methods } = await paymentService.listPaymentMethods(idCliente);
+      if (methods.length === 0) {
+        setIsSubmitting(false);
+        avisarFaltaTarjeta();
+        return;
+      }
+    } catch (cardErr) {
+      // Si no se puede preguntar a Stripe NO se bloquea la reserva: el backend
+      // decide, y él también falla abierto. Perder un trabajo por una caída de
+      // red es peor que cobrar un poco más tarde.
+      console.warn('[BookingScreen] Card pre-check skipped:', cardErr);
+    }
 
     try {
       const result = await taskService.createBooking({
@@ -275,19 +333,8 @@ function BookingScreen(): React.JSX.Element {
       // La retención vive ahora en OffersScreen, al aceptar una oferta: primer
       // instante en que existe un precio real.
       //
-      // Lo único que sí conviene adelantar es el cliente de Stripe: crearlo aquí
-      // evita que ese trámite se cruce con la aceptación de la oferta.
-      if (!stripeCustomerId) {
-        try {
-          const nuevoId = await paymentService.ensureStripeCustomer();
-          const usuario = useAuthStore.getState().user;
-          if (usuario && nuevoId) {
-            useAuthStore.getState().setUser({ ...usuario, stripeCustomerId: nuevoId });
-          }
-        } catch (custErr) {
-          console.warn('[BookingScreen] Auto-create Stripe customer failed:', custErr);
-        }
-      }
+      // (El cliente de Stripe ya se creó arriba, antes de comprobar la tarjeta:
+      // sin cliente no puede haber tarjeta, así que crearlo aquí llegaba tarde.)
 
       // Auto-save address as default if user doesn't have one yet
       const currentUser = useAuthStore.getState().user;
@@ -327,7 +374,18 @@ function BookingScreen(): React.JSX.Element {
       const statusCode = error?.statusCode ?? error?.response?.status ?? 0;
       const detail = error?.message ?? error?.response?.data?.detail ?? 'Unknown error';
       console.error('[BookingScreen] Status:', statusCode, 'Detail:', detail);
-      if (statusCode === 401) {
+      const codigo =
+        error?.code ??
+        error?.response?.data?.detail?.code ??
+        (typeof error?.response?.data?.detail === 'object'
+          ? error.response.data.detail.code
+          : undefined);
+      if (codigo === 'payment_method_required') {
+        // La puerta del servidor. Se llega aquí cuando la comprobación previa no
+        // pudo hacerse (Stripe caído) o cuando la tarjeta desapareció entre
+        // medias. Mismo aviso, mismo destino.
+        avisarFaltaTarjeta();
+      } else if (statusCode === 401) {
         Alert.alert(
           'Session Expired',
           'Your session has expired. Please log in again to complete your booking.',
@@ -356,6 +414,7 @@ function BookingScreen(): React.JSX.Element {
     contractRate,
     contractHours,
     stripeCustomerId,
+    avisarFaltaTarjeta,
     resetBookingForm,
   ]);
 

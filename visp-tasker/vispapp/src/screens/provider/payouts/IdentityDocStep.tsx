@@ -1,13 +1,21 @@
 /**
  * VISP — Payouts onboarding · Identity / verification step.
  *
- * Opens Stripe's HOSTED account-onboarding flow (document + selfie + liveness)
- * in the system browser via Linking. This is required because a connected
- * account's `individual.verification.proof_of_liveness` can only be cleared
- * through Stripe's hosted verification — the native Identity sheet verifies the
- * standalone session but never satisfies the account's liveness requirement, so
- * the wizard used to loop on "Continue setup". In test mode the hosted page
- * completes with test data and clears the requirement.
+ * Abre, en el navegador del sistema, UNA PÁGINA DE VISP que monta el
+ * componente `account-onboarding` de Connect.
+ *
+ * Antes abría el alta ALOJADA de Stripe (`AccountLink`), y en live eso enseña
+ * el registro de Stripe: correo y contraseña. Es la superficie de las cuentas
+ * donde STRIPE recoge los requisitos; las nuestras declaran lo contrario
+ * (`requirement_collection: application`, `dashboard: none`) porque VISP asume
+ * las pérdidas y el KYC. Se le estaba pidiendo al proveedor una cuenta de
+ * Stripe que por diseño nunca tendrá, y ahí abandonaban.
+ *
+ * Por qué el navegador y no un WebView dentro de la app: Stripe NO permite
+ * montar los componentes integrados en un webview de una app móvil, y su
+ * propia recomendación para ese caso es enlazar a un navegador que los
+ * renderice. El SDK nativo de React Native existe y sería el paso siguiente
+ * si se quiere todo dentro de la app.
  *
  * We use Linking (core RN, always available) rather than expo-web-browser
  * (not linked in this build). When the provider returns to the app, AppState
@@ -61,7 +69,7 @@ export default function IdentityDocStep(): React.JSX.Element {
   const handleVerify = useCallback(async () => {
     setBusy(true);
     try {
-      const { url } = await payoutsV2Service.onboardingLink();
+      const { url } = await payoutsV2Service.embedUrl();
       if (!url) {
         Alert.alert(tr('common.error'), tr('payoutsV2.errorGeneric'));
         return;
@@ -95,6 +103,15 @@ export default function IdentityDocStep(): React.JSX.Element {
           <Text style={[VispText.body, { color: t.text, marginTop: 4 }]}>{tr('payoutsV2.idDocStep2')}</Text>
           <Text style={[VispText.body, { color: t.text, marginTop: 4 }]}>{tr('payoutsV2.idDocStep3')}</Text>
         </View>
+
+        {/* El enlace de Stripe caduca en ~5 minutos y es de un solo uso. Quien
+            lo abre tarde, o reabre la pestaña vieja, cae en la pantalla de
+            inicio de sesión de Stripe y cree que necesita una cuenta — no la
+            necesita. Decirlo ANTES de tocar el botón evita ese susto; el aviso
+            de `idDocHostedNote` lo repite por si ya le pasó. */}
+        <Text style={[VispText.caption, { color: t.text3, marginTop: 10 }]}>
+          {tr('payoutsV2.idDocExpiry')}
+        </Text>
 
         {busy && (
           <View style={{ alignItems: 'center', marginTop: VispSpace.section }}>

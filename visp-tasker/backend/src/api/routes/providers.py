@@ -26,6 +26,7 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, Query, Request, status, UploadFile, File, Form
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from src.api.schemas.payouts import (
     PayoutBankIn,
@@ -270,7 +271,13 @@ async def get_dashboard(
         "isOnCall": False,
         "completedJobs": completed_count,
         "rating": avg_rating,
-        "stripeConnectStatus": "not_connected" if not profile.stripe_account_id else "active",
+        # Antes: `"active" if stripe_account_id else "not_connected"`. Quien
+        # abandonaba el alta de cobros en el paso del banco leía "active" —el
+        # verde más caro de la app, porque es justo el que decide si le pueden
+        # pagar—. En visp_prod las 7 cuentas creadas están así: con id y sin una
+        # sola capability. El estado sale ahora de lo que Stripe dice que la
+        # cuenta PUEDE hacer, no de que exista.
+        "stripeConnectStatus": _connect_status(profile),
         "credentials": creds_out,
     }
 
@@ -2168,6 +2175,23 @@ async def _get_my_provider_profile(db, user):  # type: ignore[no-untyped-def]
     return profile
 
 
+def _connect_status(profile) -> str:  # type: ignore[no-untyped-def]
+    """`not_connected` | `pending` | `active`, según lo que la cuenta puede hacer.
+
+    `active` exige `card_payments` Y `transfers` activas, que es exactamente lo
+    que pide `account_can_accept_charges` al cobrar: nuestro cargo lleva
+    `on_behalf_of`, así que la cuenta conectada es el comercio que liquida.
+    Cualquier otra cosa —cuenta creada, alta a medias, capabilities vacías
+    porque el webhook no llegó— es `pending`: ni verde ni "no existe".
+    """
+    if not profile.stripe_account_id:
+        return "not_connected"
+    caps = profile.stripe_capabilities or {}
+    if caps.get("card_payments") == "active" and caps.get("transfers") == "active":
+        return "active"
+    return "pending"
+
+
 def _v2_status_dict(profile, status_result, has_external_account: bool) -> dict[str, Any]:  # type: ignore[no-untyped-def]
     """Shape a V2AccountResult into the JSON payload the mobile UI expects."""
     return {
@@ -2555,6 +2579,170 @@ async def get_payouts_v2_status(
     return _v2_status_dict(
         profile, result, has_external_account=bool(profile.stripe_external_account_id),
     )
+
+
+@router.post(
+    "/payouts/v2/embed-url",
+    summary="URL propia de VISP que monta el alta de Stripe embebida",
+    description=(
+        "Devuelve una URL de VISP (no de Stripe) que el proveedor abre en el "
+        "navegador y que renderiza el componente `account-onboarding` de "
+        "Connect. Lleva un token de un solo uso y vida corta porque el "
+        "navegador no manda la cabecera Authorization."
+    ),
+)
+async def create_payouts_v2_embed_url(
+    request: Request,
+    db: DBSession,
+    user: CurrentUser,
+) -> dict[str, Any]:
+    """La alternativa al `account_onboarding` alojado de Stripe.
+
+    POR QUÉ NO EL ENLACE ALOJADO
+    ----------------------------
+    `stripe.AccountLink.create(type="account_onboarding")` abre el alta DE
+    STRIPE: su registro, con correo y contraseña. Está pensado para cuentas
+    donde STRIPE recoge los requisitos. La nuestra declara lo contrario —
+    `requirement_collection = application`, `dashboard = none`— porque VISP
+    asume las pérdidas y el KYC. Mandar a esas cuentas al formulario de Stripe
+    es una incoherencia: al proveedor le pedían crearse una cuenta de Stripe
+    que, por diseño, nunca va a tener.
+
+    La superficie correcta para nuestra configuración son los **Connect
+    embedded components**. Y como Stripe NO permite montarlos dentro de un
+    webview de una app móvil, su propia recomendación es enlazar a un
+    navegador que los renderice. Eso es esta URL: una página de VISP, con la
+    marca de VISP, que monta el componente.
+    """
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Call /payouts/v2/init first.",
+        )
+
+    from src.services import auth_service
+
+    # El navegador no manda cabeceras nuestras, así que el permiso viaja en la
+    # URL. Es el token normal de la sesión: la página solo lee, y lo único que
+    # expone es el alta de cobros de su propio dueño.
+    token, _ = auth_service.create_access_token(user.id)
+    # La base sale de la propia petición: sirve igual contra el Mac en pruebas
+    # que contra api.richieyanez.com, sin otra variable de entorno que mantener.
+    base = str(request.base_url).rstrip("/")
+    return {"data": {"url": f"{base}/api/v1/provider/payouts/v2/embed?t={token}"}}
+
+
+@router.get(
+    "/payouts/v2/embed",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def payouts_v2_embed_page(db: DBSession, t: str) -> HTMLResponse:
+    """La página que monta el componente de alta de Connect.
+
+    El `client_secret` de la AccountSession se inyecta aquí, en el servidor:
+    `fetchClientSecret` solo lo devuelve. Así la página no necesita llamar a
+    ninguna API autenticada desde el navegador, que es justo lo que no puede
+    hacer sin la cabecera.
+    """
+    from src.integrations.stripe.paymentService import PaymentError
+    from src.services import auth_service
+
+    try:
+        user = await auth_service.get_current_user(db, t)
+    except ValueError:
+        return HTMLResponse(
+            "<h1>Link expired</h1><p>Go back to the VISP app and tap "
+            "&ldquo;Verify your ID&rdquo; again.</p>",
+            status_code=401,
+        )
+
+    profile = await _get_my_provider_profile(db, user)
+    if not profile.stripe_account_id:
+        return HTMLResponse("<h1>No payout account yet</h1>", status_code=400)
+
+    import stripe as _stripe
+
+    try:
+        sesion = _stripe.AccountSession.create(
+            account=profile.stripe_account_id,
+            components={"account_onboarding": {"enabled": True}},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("account session failed for %s: %s", profile.stripe_account_id, exc)
+        return HTMLResponse("<h1>Could not start verification</h1>", status_code=502)
+
+    html = f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VISP — Verify your identity</title>
+<script src="https://connect-js.stripe.com/v1.0/connect.js" async></script>
+<style>
+  body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          background:#1A1A2E; color:#fff; }}
+  header {{ padding:18px 20px; background:#16213E; }}
+  header b {{ font-size:17px; letter-spacing:.5px; }}
+  header p {{ margin:6px 0 0; font-size:13px; color:#A0A0A0; }}
+  #cont {{ background:#fff; min-height:70vh; }}
+  #cargando {{ padding:40px 20px; text-align:center; color:#A0A0A0; }}
+</style></head>
+<body>
+  <header>
+    <b>VISP</b>
+    <p>Verify your identity to receive payouts. You don't need a Stripe account.</p>
+  </header>
+  <div id="cargando">Loading…</div>
+  <div id="err" style="display:none;padding:24px 20px;color:#E74C3C;
+       background:#fff;font-size:14px;line-height:1.5"></div>
+  <div id="cont"></div>
+<script>
+  // Un fallo ANTES de `onLoaderStart` no pinta nada: el componente se queda en
+  // blanco y el proveedor no sabe qué hacer. Lo dice la propia doc de Stripe.
+  // Así que aquí se captura todo y se enseña, que es la diferencia entre
+  // "no funciona" y saber por qué.
+  function fallo(msg) {{
+    document.getElementById("cargando").style.display = "none";
+    document.getElementById("err").style.display = "block";
+    document.getElementById("err").textContent = msg;
+  }}
+  window.addEventListener("error", (e) => fallo("Script error: " + (e.message || e)));
+  setTimeout(() => {{
+    if (!window.StripeConnect || !window.__visp_ok) {{
+      fallo("Stripe could not start here. If this page is not on https, the "
+          + "verification form cannot load — open it from the VISP server.");
+    }}
+  }}, 6000);
+
+  window.StripeConnect = window.StripeConnect || {{}};
+  StripeConnect.onLoad = () => {{
+    try {{
+      const inst = StripeConnect.init({{
+        publishableKey: "{_settings.stripe_publishable_key}",
+        fetchClientSecret: async () => "{sesion.client_secret}",
+        appearance: {{ variables: {{ colorPrimary: "#4A90E2" }} }},
+      }});
+      const comp = inst.create("account-onboarding");
+      comp.setOnLoaderStart(() => {{
+        window.__visp_ok = true;
+        document.getElementById("cargando").style.display = "none";
+      }});
+      comp.setOnLoadError((e) => fallo("Stripe: " +
+        ((e && e.error && e.error.message) || "could not load the form")));
+      comp.setOnExit(() => {{
+        document.getElementById("cont").innerHTML =
+          "<p style='padding:40px 20px;color:#1A1A2E;text-align:center'>" +
+          "All done. You can close this page and return to VISP.</p>";
+      }});
+      document.getElementById("cont").appendChild(comp);
+    }} catch (e) {{
+      fallo("Init failed: " + (e && e.message ? e.message : e));
+    }}
+  }};
+</script>
+</body></html>"""
+    return HTMLResponse(html)
 
 
 @router.post(

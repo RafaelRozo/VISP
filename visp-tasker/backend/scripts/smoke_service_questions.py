@@ -20,6 +20,7 @@ sys.path.insert(0, ".")
 
 from src.api.deps import async_session_factory  # noqa: E402
 from src.main import app  # noqa: E402
+from _smoke_card import ensure_customer_card, restore_cards  # noqa: E402
 
 passed = 0
 failed: list[str] = []
@@ -117,6 +118,8 @@ async def main() -> int:  # noqa: C901
         await _asegurar_proveedor(db, task_id)
 
     tok, _ = create_access_token(cust.id)
+    # Tarjeta del cliente: `POST /jobs/book` la exige desde el 24-09.
+    await ensure_customer_card(cust.id)
     H = {"Authorization": f"Bearer {tok}"}
     H_ADMIN = (
         {"Authorization": f"Bearer {create_admin_tokens(su.id)['accessToken']}"}
@@ -270,6 +273,7 @@ async def main() -> int:  # noqa: C901
 
     # ---------------------------------------------------------------- limpieza
     print("\n[6] Limpieza")
+    await restore_cards()
     async with async_session_factory() as db:
         await db.execute(
             delete(ServiceTaskQuestion).where(ServiceTaskQuestion.task_id == task_id)

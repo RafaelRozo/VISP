@@ -379,6 +379,36 @@ async def book_job(
     body: MobileJobCreateRequest,
 ) -> dict[str, Any]:
     import traceback as tb_mod
+
+    # PUERTA DE LA TARJETA. Se publica el trabajo o no se publica; no hay medias.
+    #
+    # Hasta hoy se podía reservar sin tarjeta, y el agujero no acababa aquí: al
+    # aceptar la oferta, `OffersScreen` intenta retener el importe, no encuentra
+    # tarjeta, avisa con un Alert y **sigue adelante**. El trabajo quedaba
+    # AGENDADO sin autorización, el proveedor iba a trabajar, y el cobro fallaba
+    # al cerrar. Tres pantallas más tarde y con el trabajo hecho.
+    #
+    # Va en la creación y no en la aceptación a propósito: es donde el cliente
+    # aún no le ha prometido nada a nadie. Mismo criterio que la puerta de zona,
+    # que también vive aquí y también devuelve 400.
+    #
+    # 400 y no 5xx: Cloudflare envuelve los 5xx en su página y el cliente nunca
+    # leería el motivo. El `code` es para que la app sepa llevarle a la pantalla
+    # de la tarjeta en vez de enseñar un error genérico.
+    from src.services.readiness_service import customer_has_payment_method
+
+    if not await customer_has_payment_method(user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "payment_method_required",
+                "message": (
+                    "Add a payment card before posting a job. Nothing is charged "
+                    "now — we only hold the amount when you accept an offer."
+                ),
+            },
+        )
+
     try:
         # Determine priority from emergency flag
         priority = "emergency" if body.is_emergency else "standard"

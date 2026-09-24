@@ -39,6 +39,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from src.main import app  # noqa: E402
 from src.services import auth_service, provider_rate_service  # noqa: E402
+from _smoke_card import ensure_customer_card, restore_cards  # noqa: E402
 
 from src.core.config import settings  # noqa: E402
 
@@ -145,6 +146,8 @@ async def run() -> None:
 
         token_prov, _ = auth_service.create_access_token(provider_user)
         token_cust, _ = auth_service.create_access_token(customer["id"])
+        # Tarjeta del cliente: `POST /jobs/book` la exige desde el 24-09.
+        await ensure_customer_card(customer["id"])
         hdr_prov = {"Authorization": f"Bearer {token_prov}"}
         hdr_cust = {"Authorization": f"Bearer {token_cust}"}
 
@@ -242,6 +245,7 @@ async def run() -> None:
         print("\nAll quantity cases passed.")
 
     finally:
+        await restore_cards()
         print("\n[cleanup] removing test data ...")
         try:
             if booked_id is not None:

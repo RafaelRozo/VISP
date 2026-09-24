@@ -56,7 +56,12 @@ LEGAL_CONTENT_DIR = _BACKEND_ROOT / "content" / "legal"
 # add the corresponding text file to content/legal/.
 # ---------------------------------------------------------------------------
 CONSENT_VERSIONS: dict[ConsentType, str] = {
-    ConsentType.PLATFORM_TOS: "1.0",
+    # v2.0 (2026-09-08, FINAL del abogado): sustituye por completo a la v1.0.
+    # La v1.0 describía un sistema de "Tier 1-4" que ya no existe en el producto
+    # —los niveles son L0-L3 desde el 04-08— así que era texto legal que
+    # contradecía a la propia app. El .txt de la v1.0 se queda en disco: quien lo
+    # aceptó aceptó ESE, y `load_consent_text` lo sigue encontrando por versión.
+    ConsentType.PLATFORM_TOS: "2.0",
     ConsentType.PROVIDER_IC_AGREEMENT: "1.3",
     ConsentType.LEVEL_1_TERMS: "1.0",
     ConsentType.LEVEL_2_TERMS: "1.0",

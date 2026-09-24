@@ -43,6 +43,7 @@ import {
   Card,
   Chip,
   IconBtn,
+  SetupEmptyState,
   Avatar,
   OnlinePill,
   StatTile,
@@ -775,15 +776,17 @@ export default function JobOffersScreen(): React.JSX.Element {
           </View>
         }
         ListEmptyComponent={
+          // La bolsa vacía decía siempre lo mismo —"no hay ofertas"— aunque el
+          // motivo fuera que el proveedor no ha puesto su dirección, sus
+          // servicios o sus precios. Era mentira, y es el momento exacto en que
+          // abandona. Ahora dice cuál de los tres falta y lleva allí; solo
+          // cuando no falta ninguno el vacío es de verdad.
           isLoadingOffers ? null : (
-            <View style={styles.emptyContainer}>
-              <Text style={[VispText.headlineMid, { color: t.text, marginBottom: 8, textAlign: 'center' }]}>
-                {tr('jobOffers.noJobOffers') || 'No offers right now'}
-              </Text>
-              <Text style={[VispText.body, { color: t.text2, textAlign: 'center' }]}>
-                {tr('jobOffers.newOffersAppear') || "We'll ping you when something matches."}
-              </Text>
-            </View>
+            <SetupEmptyState
+              watch={['address', 'services', 'rates']}
+              fallbackTitle={tr('jobOffers.noJobOffers')}
+              fallbackBody={tr('setup.empty.quiet')}
+            />
           )
         }
       />

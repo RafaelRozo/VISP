@@ -193,6 +193,21 @@ async def update_me(
                     if provider:
                         provider.home_latitude = addr.latitude
                         provider.home_longitude = addr.longitude
+                        # Las señas, no solo las coordenadas. `home_city` y
+                        # compañía existían en la tabla desde el principio y no
+                        # las escribía NADIE: el perfil del proveedor sabía a
+                        # cuántos km cae un trabajo pero no desde qué ciudad.
+                        # Se nota en cuanto algo quiere enseñarlo —el checklist
+                        # dice "Toronto · 25 km"— y en el admin, que hasta ahora
+                        # tenía que deducir la base del proveedor por el mapa.
+                        provider.home_address = addr.street or provider.home_address
+                        provider.home_city = addr.city or provider.home_city
+                        provider.home_province_state = (
+                            addr.province or provider.home_province_state
+                        )
+                        provider.home_postal_zip = (
+                            addr.postalCode or provider.home_postal_zip
+                        )
                         logger.info(
                             "Updated provider %s home location: lat=%s, lng=%s",
                             provider.id, addr.latitude, addr.longitude,
@@ -643,3 +658,40 @@ async def rotate_my_recovery_code(
     await db.commit()
     await db.refresh(db_user)
     return {"data": {"recoveryCode": db_user.recovery_code}}
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/readiness
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/me/readiness",
+    summary="Setup steps still missing for the authenticated user",
+    description=(
+        "The guided checklist shown under the user's name on the Home screen, "
+        "and the source of the empty states on the offers/earnings screens. "
+        "Returns step keys and the data each step's text needs; the copy itself "
+        "lives in the app so it stays translated."
+    ),
+)
+async def get_my_readiness(
+    db: DBSession,
+    user: CurrentUser,
+    role: Optional[str] = None,
+) -> dict[str, Any]:
+    from src.services import readiness_service
+
+    # `role` es explícito porque una cuenta `both` es proveedor Y cliente: dos
+    # relaciones con VISP y dos listas distintas. Si no llega, se deduce, y un
+    # `both` sin parámetro ve la de proveedor —es la que tiene pasos que le
+    # impiden trabajar.
+    if role is None:
+        role = "provider" if user.role_provider else "customer"
+    if role not in ("provider", "customer"):
+        raise HTTPException(status_code=400, detail="role must be 'provider' or 'customer'")
+    if role == "provider" and not user.role_provider:
+        raise HTTPException(status_code=403, detail="Not a provider account")
+    if role == "customer" and not user.role_customer:
+        raise HTTPException(status_code=403, detail="Not a customer account")
+
+    return {"data": await readiness_service.get_readiness(db, user, role=role)}

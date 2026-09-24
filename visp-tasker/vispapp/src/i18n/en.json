@@ -70,7 +70,7 @@
     "bioEmpty": "You have not written a bio yet. It is the first thing customers read when they compare offers.",
     "firstJobHint": "Ratings start after your first completed job. Until then, a clear bio and a fair price are what win offers.",
     "verifiedTitle": "Verified",
-    "verifiedMsg": "You can offer on jobs for the services you set up.",
+    "verifiedMsg": "Your documents are checked. Anything still missing to work is in the setup list.",
     "inReviewTitle": "In review",
     "inReviewMsg": "We are checking your documents. We will let you know as soon as it is done.",
     "toL1Title": "Get verified to receive more work",
@@ -82,6 +82,59 @@
     "stepPortfolioHint": "Past jobs, before and after — whatever shows the work.",
     "stepServices": "Pick your services and set your price",
     "stepServicesHint": "You cannot receive jobs without them."
+  },
+  "setup": {
+    "title": "Set up your account",
+    "progress": "%{done} of %{total}",
+    "next": "Next: %{step}",
+    "footerBlocking": "%{n} of these stop you from working until they're done.",
+    "footerOptional": "Nothing is blocking you. These just help you win more jobs.",
+    "inReview": "We're checking it. Usually under 24 hours.",
+    "step": {
+      "contract": "Sign your provider agreement",
+      "address": "Where you work from",
+      "services": "What you can do",
+      "rates": "Your price per service",
+      "payouts": "Where we pay you",
+      "profile": "Write your bio",
+      "customer_address": "Your address",
+      "payment_method": "Your payment card",
+      "phone": "Your phone number"
+    },
+    "contractHint": "You can't receive any job until it's signed.",
+    "contractDone": "Signed and filed.",
+    "addressHint": "We can't show you jobs nearby until we know where you work from. It's never shared.",
+    "servicesHint": "Pick everything you do. Without this you get no jobs.",
+    "servicesDone": "%{n} services",
+    "ratesHint": "You set the price. Without it you can't send offers.",
+    "ratesSome": "%{n} services still have no price, so you can't offer on them.",
+    "ratesDone": "%{n} services priced",
+    "payoutsHint": "You can't get paid until you add your bank account. About 2 minutes.",
+    "payoutsSome": "You stopped at step %{done} of %{total}. Pick up where you left off.",
+    "payoutsReview": "Stripe is verifying your details. Nothing for you to do.",
+    "payoutsDone": "Ready to receive payments.",
+    "profileHint": "Customers compare offers. A few lines about your work win more of them.",
+    "profileDone": "Bio written.",
+    "customerAddressHint": "So we know where the job is and who's available for it.",
+    "cardHint": "Nothing is charged now. Only when you accept an offer, and it's just held until the job is done.",
+    "cardDone": "Card saved.",
+    "phoneHint": "So your provider can reach you on the day.",
+    "empty": {
+      "noAddress": "We don't know where you work yet",
+      "noAddressBody": "Add the address you work from and we'll show you the jobs around it.",
+      "noAddressCta": "Set my address",
+      "noServices": "Tell us what you can do",
+      "noServicesBody": "Pick your services and the jobs you can take will show up here.",
+      "noServicesCta": "Choose my services",
+      "noRates": "Set your prices to start offering",
+      "noRatesBody": "%{n} of your services have no price yet. Without a price you can't send an offer.",
+      "noRatesCta": "Set my prices",
+      "quiet": "Nothing right now. We'll let you know the moment a job comes in.",
+      "noPayouts": "We can't pay you yet",
+      "noPayoutsBody": "Add your bank account and your earnings land there 1-2 days after each job.",
+      "noPayoutsCta": "Set up payouts"
+    },
+    "allDone": "All set"
   },
   "jobOffers": {
     "title": "Jobs",
@@ -292,7 +345,7 @@
     "idDocStep3": "3. A few minutes — the camera will guide you",
     "idDocStart": "Continue to verification",
     "idDocRefresh": "I've finished — check status",
-    "idDocHostedNote": "Stripe will guide you through ID capture and selfie. You'll return here when done.",
+    "idDocHostedNote": "Stripe will guide you through ID capture and selfie, then bring you back here. You never need a Stripe account or password — if you're asked to sign in, the link expired: come back and tap the button again for a fresh one.",
     "idDocRetry": "Try again",
     "idDocCanceled": "Verification cancelled. Tap try again to retry.",
     "idDocFailedTitle": "Verification failed",
@@ -305,7 +358,8 @@
     "tosCheckLabel": "I have read and accept Stripe's terms.",
     "tosAcceptCta": "Accept and finish",
     "tosNotAcceptedTitle": "Please accept the terms",
-    "tosNotAcceptedBody": "You must check the box to continue."
+    "tosNotAcceptedBody": "You must check the box to continue.",
+    "idDocExpiry": "The link is valid for about 5 minutes and can only be used once. Have your ID ready before you tap."
   },
   "scheduleScreen": {
     "schedule": "Schedule",
@@ -740,7 +794,10 @@
     "ownService": {
       "title": "You offer this service too",
       "body": "You won't see this job in your provider job list: you can't make an offer on your own job. Other providers will."
-    }
+    },
+    "needCardTitle": "Add a payment card first",
+    "needCardBody": "Nothing is charged now. We only hold the amount when you accept an offer, and it's released when the job is done.",
+    "needCardCta": "Add card"
   },
   "bookingDetails": {
     "title": "More info",
@@ -883,5 +940,9 @@
     "viewJobs": "View my jobs",
     "backHome": "Back to home",
     "disclaimer": "VISP acts as a platform intermediary only. Providers are independent service professionals."
+  },
+  "termsScreen": {
+    "version": "Version %{version}",
+    "loadFailed": "We couldn't load the terms. Check your connection and try again."
   }
 }

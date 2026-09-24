@@ -70,7 +70,7 @@
     "bioEmpty": "Vous n'avez pas encore écrit de présentation. C'est la première chose que lisent les clients quand ils comparent les offres.",
     "firstJobHint": "Les évaluations commencent après votre premier travail terminé. D'ici là, ce sont une présentation claire et un prix juste qui remportent les offres.",
     "verifiedTitle": "Vérifié",
-    "verifiedMsg": "Vous pouvez faire des offres sur les services que vous avez configurés.",
+    "verifiedMsg": "Vos documents sont vérifiés. Ce qu'il reste à faire pour travailler est dans la liste de configuration.",
     "inReviewTitle": "En cours d'examen",
     "inReviewMsg": "Nous vérifions vos documents. Nous vous préviendrons dès que ce sera terminé.",
     "toL1Title": "Faites-vous vérifier pour recevoir plus de travail",
@@ -82,6 +82,59 @@
     "stepPortfolioHint": "Des travaux passés, avant et après — tout ce qui montre le travail.",
     "stepServices": "Choisissez vos services et fixez votre prix",
     "stepServicesHint": "Sans cela, vous ne pouvez pas recevoir de travaux."
+  },
+  "setup": {
+    "title": "Configurez votre compte",
+    "progress": "%{done} sur %{total}",
+    "next": "Ensuite : %{step}",
+    "footerBlocking": "%{n} de ces étapes vous empêchent de travailler tant qu'elles ne sont pas faites.",
+    "footerOptional": "Rien ne vous bloque. Celles-ci vous aident simplement à décrocher plus de missions.",
+    "inReview": "Nous le vérifions. En général moins de 24 heures.",
+    "step": {
+      "contract": "Signez votre contrat de prestataire",
+      "address": "D'où vous travaillez",
+      "services": "Ce que vous savez faire",
+      "rates": "Votre prix par service",
+      "payouts": "Où nous vous payons",
+      "profile": "Rédigez votre bio",
+      "customer_address": "Votre adresse",
+      "payment_method": "Votre carte de paiement",
+      "phone": "Votre numéro de téléphone"
+    },
+    "contractHint": "Vous ne recevrez aucune mission tant qu'il n'est pas signé.",
+    "contractDone": "Signé et archivé.",
+    "addressHint": "Nous ne pouvons pas vous montrer les missions proches sans savoir d'où vous travaillez. Jamais partagée.",
+    "servicesHint": "Choisissez tout ce que vous faites. Sans cela, aucune mission.",
+    "servicesDone": "%{n} services",
+    "ratesHint": "C'est vous qui fixez le prix. Sans lui, pas d'offre possible.",
+    "ratesSome": "%{n} services n'ont pas encore de prix : vous ne pouvez pas y faire d'offre.",
+    "ratesDone": "%{n} services tarifés",
+    "payoutsHint": "Vous ne pouvez pas être payé sans compte bancaire. Environ 2 minutes.",
+    "payoutsSome": "Vous vous êtes arrêté à l'étape %{done} sur %{total}. Reprenez où vous en étiez.",
+    "payoutsReview": "Stripe vérifie vos informations. Rien à faire de votre côté.",
+    "payoutsDone": "Prêt à recevoir les paiements.",
+    "profileHint": "Les clients comparent les offres. Quelques lignes sur votre travail en font gagner davantage.",
+    "profileDone": "Bio rédigée.",
+    "customerAddressHint": "Pour savoir où se trouve la mission et qui est disponible.",
+    "cardHint": "Rien n'est débité maintenant. Uniquement quand vous acceptez une offre, et le montant est seulement retenu jusqu'à la fin de la mission.",
+    "cardDone": "Carte enregistrée.",
+    "phoneHint": "Pour que votre prestataire puisse vous joindre le jour même.",
+    "empty": {
+      "noAddress": "Nous ne savons pas encore d'où vous travaillez",
+      "noAddressBody": "Ajoutez l'adresse d'où vous travaillez et nous vous montrerons les missions autour.",
+      "noAddressCta": "Indiquer mon adresse",
+      "noServices": "Dites-nous ce que vous savez faire",
+      "noServicesBody": "Choisissez vos services et les missions que vous pouvez prendre apparaîtront ici.",
+      "noServicesCta": "Choisir mes services",
+      "noRates": "Fixez vos prix pour commencer à faire des offres",
+      "noRatesBody": "%{n} de vos services n'ont pas encore de prix. Sans prix, pas d'offre possible.",
+      "noRatesCta": "Fixer mes prix",
+      "quiet": "Rien pour l'instant. Nous vous prévenons dès qu'une mission arrive.",
+      "noPayouts": "Nous ne pouvons pas encore vous payer",
+      "noPayoutsBody": "Ajoutez votre compte bancaire : vos gains y arrivent 1 à 2 jours après chaque mission.",
+      "noPayoutsCta": "Configurer les paiements"
+    },
+    "allDone": "Tout est prêt"
   },
   "jobOffers": {
     "title": "Travaux",
@@ -292,7 +345,7 @@
     "idDocStep3": "3. Quelques minutes — la caméra vous guidera",
     "idDocStart": "Continuer à la vérification",
     "idDocRefresh": "J'ai terminé — vérifier le statut",
-    "idDocHostedNote": "Stripe vous guidera pour la capture d'ID et le selfie. Vous reviendrez ici une fois terminé.",
+    "idDocHostedNote": "Stripe vous guidera pour la photo de votre pièce d'identité et le selfie, puis vous ramènera ici. Vous n'avez jamais besoin d'un compte ni d'un mot de passe Stripe — si on vous demande de vous connecter, c'est que le lien a expiré : revenez et appuyez à nouveau sur le bouton.",
     "idDocRetry": "Réessayer",
     "idDocCanceled": "Vérification annulée. Touchez réessayer pour recommencer.",
     "idDocFailedTitle": "Échec de la vérification",
@@ -305,7 +358,8 @@
     "tosCheckLabel": "J'ai lu et j'accepte les conditions de Stripe.",
     "tosAcceptCta": "Accepter et terminer",
     "tosNotAcceptedTitle": "Veuillez accepter les conditions",
-    "tosNotAcceptedBody": "Vous devez cocher la case pour continuer."
+    "tosNotAcceptedBody": "Vous devez cocher la case pour continuer.",
+    "idDocExpiry": "Le lien est valide environ 5 minutes et à usage unique. Préparez votre pièce d'identité avant d'appuyer."
   },
   "scheduleScreen": {
     "schedule": "Horaire",
@@ -740,7 +794,10 @@
     "ownService": {
       "title": "Vous offrez aussi ce service",
       "body": "Ce travail n'apparaîtra pas dans votre liste de prestataire : vous ne pouvez pas faire d'offre sur votre propre travail. D'autres prestataires le pourront."
-    }
+    },
+    "needCardTitle": "Ajoutez d'abord une carte de paiement",
+    "needCardBody": "Rien n'est débité maintenant. Le montant est seulement retenu quand vous acceptez une offre, et libéré à la fin de la mission.",
+    "needCardCta": "Ajouter une carte"
   },
   "bookingDetails": {
     "title": "Plus d'infos",
@@ -883,5 +940,9 @@
     "viewJobs": "Voir mes travaux",
     "backHome": "Retour à l'accueil",
     "disclaimer": "VISP agit uniquement comme intermédiaire. Les prestataires sont des professionnels indépendants."
+  },
+  "termsScreen": {
+    "version": "Version %{version}",
+    "loadFailed": "Impossible de charger les conditions. Vérifiez votre connexion et réessayez."
   }
 }

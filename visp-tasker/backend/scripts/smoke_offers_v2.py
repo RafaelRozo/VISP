@@ -23,6 +23,7 @@ Las credenciales salen del .env — este script no lleva ninguna dentro.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import sys
 import uuid
 from decimal import Decimal
@@ -38,6 +39,12 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from src.core.config import settings  # noqa: E402
 from src.main import app  # noqa: E402
 from src.services import auth_service  # noqa: E402
+from _smoke_card import ensure_customer_card, restore_cards  # noqa: E402
+from src.models.verification import ConsentType  # noqa: E402
+from src.services.legalConsentService import (  # noqa: E402
+    get_latest_version,
+    load_consent_text,
+)
 
 API = "/api/v1"
 _DSN = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
@@ -123,6 +130,7 @@ async def run() -> None:
     prov_a = prov_b = None
     tax_reg_original = None
     created_tasks: list[uuid.UUID] = []
+    consents_sembrados: list[uuid.UUID] = []
     # Vacío hasta que se elijan los proveedores: el `finally` corre igual si el
     # smoke se cae antes de llegar ahí.
     home_original: dict = {}
@@ -160,13 +168,20 @@ async def run() -> None:
         # tocaban L3, que exige licencia y seguro verificados, y el smoke fallaba
         # sin que hubiera cambiado nada. Lo que se prueba aquí es el ciclo de
         # ofertas, no la verificación de credenciales.
+        # `status = 'ACTIVE'` era demasiado estrecho: la bolsa admite a cualquiera
+        # que no esté SUSPENDED/INACTIVE en L0-L2 (ver `_evaluate_candidate`), y
+        # de hecho los 45 proveedores de visp_prod que han firmado están todos en
+        # ONBOARDING. Pidiendo ACTIVE el smoke escogía a dos que la bolsa sí
+        # acepta pero que no cumplían OTRA condición, y fallaba por el sitio
+        # equivocado.
         provs = await conn.fetch(
             "SELECT id, user_id, home_latitude, home_longitude, service_radius_km "
             "FROM provider_profiles "
-            "WHERE status = 'ACTIVE' AND current_level IN ('LEVEL_0', 'LEVEL_1') "
+            "WHERE status NOT IN ('SUSPENDED', 'INACTIVE') "
+            "  AND current_level IN ('LEVEL_0', 'LEVEL_1') "
             "ORDER BY id LIMIT 2"
         )
-        check(len(provs) >= 2, "hacen falta 2 provider_profiles ACTIVE de nivel L0/L1")
+        check(len(provs) >= 2, "hacen falta 2 provider_profiles no suspendidos de nivel L0/L1")
         # Se devuelven a su sitio en la limpieza: son perfiles reales de la base.
         home_original = {
             p["id"]: (p["home_latitude"], p["home_longitude"], p["service_radius_km"])
@@ -181,9 +196,43 @@ async def run() -> None:
         )
         check(customer is not None, "hace falta un usuario cliente")
         cust_id = customer["id"]
+        # Tarjeta del cliente: `POST /jobs/book` la exige desde el 24-09.
+        await ensure_customer_card(cust_id)
 
         await _qualify(conn, prov_a, task_id)
         await _qualify(conn, prov_b, task_id)
+
+        # CONTRATO FIRMADO — precondición, no objeto de prueba.
+        #
+        # Desde el 2026-09-08 `provider_can_bid` devuelve `no_contract` a quien no
+        # ha firmado, así que sin esto el trabajo no llega NUNCA a la bolsa y el
+        # smoke fallaba en B1 con "el trabajo no aparece", que no dice nada de lo
+        # que pasa. La firma de verdad tiene su propio smoke
+        # (`smoke_contract_signature`); aquí solo se siembra la fila con los
+        # campos que `has_valid_signature` exige, y la limpieza la borra.
+        for pid, uid in ((prov_a, user_a), (prov_b, user_b)):
+            ya = await conn.fetchval(
+                "SELECT 1 FROM legal_consents WHERE user_id=$1 "
+                "AND consent_type='PROVIDER_IC_AGREEMENT' AND signature_svg IS NOT NULL",
+                uid)
+            if ya:
+                continue
+            texto = load_consent_text(ConsentType.PROVIDER_IC_AGREEMENT)
+            cid = uuid.uuid4()
+            await conn.execute(
+                """INSERT INTO legal_consents
+                     (id, user_id, consent_type, consent_version, consent_text_hash,
+                      consent_text, granted, signed_full_name, signature_svg,
+                      signature_image_path, document_path, document_hash, created_at)
+                   VALUES ($1,$2,'PROVIDER_IC_AGREEMENT',$3,$4,$5,TRUE,
+                           'Smoke Offers Tester','<svg data-smoke="1"/>',
+                           'smoke/signature.png','smoke/contract.pdf',$6, now())""",
+                cid, uid, get_latest_version(ConsentType.PROVIDER_IC_AGREEMENT),
+                hashlib.sha256(texto.encode()).hexdigest(), texto,
+                hashlib.sha256(b"smoke-offers-v2").hexdigest())
+            consents_sembrados.append(cid)
+        if consents_sembrados:
+            print(f"        -> contrato sembrado para {len(consents_sembrados)} proveedor(es)")
 
         # El smoke arranca comprobando que SIN tarifa no se puede ofertar, así que
         # necesita que estos dos proveedores no la tengan para este servicio. No es
@@ -683,6 +732,7 @@ async def run() -> None:
     finally:
         print("\n[limpieza] borrando datos de prueba ...")
         try:
+            await restore_cards()
             await _drop_job(conn, job_id)
             await _drop_job(conn, mat_job_id)
             for tid in created_tasks:
@@ -706,6 +756,8 @@ async def run() -> None:
                         "VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,now(),now())",
                         tp["provider_id"], task_id, tp["rate_cents"],
                         tp["min_charge_cents"], tp["is_active"])
+            for cid in consents_sembrados:
+                await conn.execute("DELETE FROM legal_consents WHERE id=$1", cid)
             # Los proveedores vuelven a donde vivían: `_place_near` los mudó junto
             # al trabajo de prueba, y dejarlos ahí falsearía el matching real.
             for pid, (lat, lng, radius) in home_original.items():

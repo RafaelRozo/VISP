@@ -26,3 +26,5 @@ export { VispTabBar } from './VispTabBar';
 export { SignaturePad } from './SignaturePad';
 export type { SignatureValue } from './SignaturePad';
 export { LegalMarkdown, parseLegalMarkdown } from './LegalMarkdown';
+export { SetupChecklist } from './SetupChecklist';
+export { SetupEmptyState } from './SetupEmptyState';

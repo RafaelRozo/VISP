@@ -101,6 +101,17 @@ export const payoutsV2Service = {
   /** Hosted Stripe onboarding link to finish verification (incl. the liveness
    * check that the native Identity sheet cannot satisfy on a connected account).
    * Open with WebBrowser; in test mode the page completes with test data. */
+  /** URL de VISP que monta el alta de Stripe embebida.
+   *
+   *  Sustituye a `onboardingLink()`, que devolvía el alta ALOJADA de Stripe —
+   *  su registro, con correo y contraseña. Eso es para cuentas donde Stripe
+   *  recoge los requisitos; las nuestras declaran `requirement_collection:
+   *  application`, así que al proveedor le pedían crearse una cuenta de Stripe
+   *  que por diseño nunca va a tener. */
+  embedUrl(): Promise<{ url: string }> {
+    return post<{ url: string }>(`${BASE}/embed-url`);
+  },
+
   onboardingLink(): Promise<{ url: string }> {
     return post<{ url: string }>(`${BASE}/onboarding-link`);
   },

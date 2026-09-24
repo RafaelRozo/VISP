@@ -159,6 +159,31 @@ async def main() -> int:
                   "A: el acuerdo del cliente también debe exigir trazo")
             step("A", f"acuerdo del cliente v{r.json()['version']} (con firma)")
 
+            # ---- A: los Terms of Service (v2.0 del abogado, 2026-09-08) --
+            # No piden firma: se aceptan por uso, y la pantalla de Ajustes solo
+            # los MUESTRA. Lo que se comprueba es que el servidor los sirve —
+            # hasta el 24-09 la app los llevaba incrustados, describiendo un
+            # sistema de "Tier 1-4" retirado del producto, y era la pantalla de
+            # las reglas contradiciendo a la propia app.
+            r = await c.get(f"{API}/consents/document/platform_tos")
+            check(r.status_code == 200, f"A: platform_tos {r.status_code}")
+            tos = r.json()
+            check(tos["version"] == "2.0", f"A: ToS versión {tos['version']!r}, esperaba 2.0")
+            check(tos["requires_signature"] is False,
+                  "A: los ToS no se firman con trazo; se aceptan por uso")
+            check(tos["hash"] == hashlib.sha256(tos["text"].encode()).hexdigest(),
+                  "A: el hash de los ToS no corresponde al texto entregado")
+            check(not tos["text"].lstrip().startswith("---"),
+                  "A: el front-matter YAML llegó al usuario")
+            check(tos["text"].count("\n## ") == 39,
+                  f"A: el ToS trae {tos['text'].count(chr(10) + '## ')} secciones, esperaba 39")
+            check("Tier 1" not in tos["text"] and "Tier 4" not in tos["text"],
+                  "A: el ToS sigue hablando de Tier 1-4, que no existe desde el 04-08")
+            check("Approved Job Scope" in tos["text"],
+                  "A: no parece el texto v2 del abogado")
+            step("A", f"Terms of Service v{tos['version']}, 39 secciones, "
+                      f"{len(tos['text'])} chars, sin Tier 1-4")
+
             cuerpo = {
                 "consent_type": PROVIDER_DOC,
                 "signed_full_name": "Smoke Contract Tester",

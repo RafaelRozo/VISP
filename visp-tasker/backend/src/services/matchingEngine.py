@@ -226,6 +226,19 @@ def _payments_capability_blocks(provider: ProviderProfile) -> bool:
     ``job_payment_service.authorize_job`` is the hard backstop at charge time.
     """
     caps = provider.stripe_capabilities or {}
+
+    # Requisitos VENCIDOS de Stripe (KYC sin terminar). Se comprueba ANTES que
+    # las capabilities porque Stripe las deja en `active` con la identidad sin
+    # verificar: visto con una cuenta real el 2026-09-24, `proof_of_liveness`
+    # en `past_due`, `payouts_enabled=False` y aun así `card_payments: active`.
+    # Ofrecerle trabajo a ese proveedor es dejar que cobre un dinero que no
+    # puede retirar, con la identidad sin comprobar y con VISP asumiendo las
+    # pérdidas. A diferencia de las capabilities, esta lista sí es evidencia
+    # positiva: si tiene algo dentro, se bloquea.
+    pendientes = provider.stripe_requirements_due or []
+    if isinstance(pendientes, (list, tuple)) and pendientes:
+        return True
+
     if not isinstance(caps, dict) or not caps:
         return False  # unknown → don't block
     return caps.get("card_payments") != "active"
