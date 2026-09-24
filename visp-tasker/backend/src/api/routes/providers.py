@@ -2676,7 +2676,29 @@ async def payouts_v2_embed_page(db: DBSession, t: str) -> HTMLResponse:
     try:
         sesion = _stripe.AccountSession.create(
             account=profile.stripe_account_id,
-            components={"account_onboarding": {"enabled": True}},
+            components={
+                "account_onboarding": {
+                    "enabled": True,
+                    "features": {
+                        # SIN ESTO, el componente mete un paso
+                        # `stripe_user_authentication`: una ventana de Stripe
+                        # pidiéndole al proveedor que se autentique, que es lo
+                        # que parecía "crearse una cuenta de Stripe".
+                        #
+                        # Stripe solo permite quitarlo cuando la plataforma
+                        # recoge los requisitos (`requirement_collection =
+                        # application`), que es justo nuestro caso. Por defecto
+                        # va en false porque es lo contrario de
+                        # `external_account_collection`, que vale true si no se
+                        # toca — o sea que había que pedirlo explícitamente.
+                        #
+                        # La contrapartida la asumimos ya: VISP responde de los
+                        # saldos negativos (`losses.payments = application`).
+                        "disable_stripe_user_authentication": True,
+                        "external_account_collection": True,
+                    },
+                }
+            },
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("account session failed for %s: %s", profile.stripe_account_id, exc)
