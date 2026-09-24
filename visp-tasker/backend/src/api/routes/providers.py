@@ -2627,9 +2627,18 @@ async def create_payouts_v2_embed_url(
     # URL. Es el token normal de la sesión: la página solo lee, y lo único que
     # expone es el alta de cobros de su propio dueño.
     token, _ = auth_service.create_access_token(user.id)
-    # La base sale de la propia petición: sirve igual contra el Mac en pruebas
-    # que contra api.richieyanez.com, sin otra variable de entorno que mantener.
-    base = str(request.base_url).rstrip("/")
+
+    # La base sale de la propia petición, así sirve igual contra el Mac en
+    # pruebas que contra api.richieyanez.com sin otra variable que mantener.
+    #
+    # PERO hay que mirar `X-Forwarded-Proto`: detrás de Cloudflare el TLS se
+    # termina en el proxy y al backend le llega HTTP, así que `base_url` decía
+    # `http://api.richieyanez.com` y el enlace moría en un 301. Y esta página en
+    # concreto NO puede ir sobre http: los componentes embebidos de Stripe no
+    # cargan y el proveedor se queda mirando una pantalla en blanco.
+    esquema = request.headers.get("x-forwarded-proto") or request.url.scheme
+    anfitrion = request.headers.get("x-forwarded-host") or request.url.netloc
+    base = f"{esquema.split(',')[0].strip()}://{anfitrion}"
     return {"data": {"url": f"{base}/api/v1/provider/payouts/v2/embed?t={token}"}}
 
 
