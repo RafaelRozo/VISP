@@ -2548,6 +2548,11 @@ async def get_payouts_v2_status(
                 "disabledReason": None,
                 "hasExternalAccount": False,
                 "identitySessionId": None,
+                # Mismos campos que `_v2_status_dict`. Este atajo se escribe a
+                # mano y ya se ha quedado corto antes: si falta una clave, el
+                # tipo de la app la declara y en ejecución llega `undefined`.
+                "verificationCode": None,
+                "verificationMessage": None,
             }
         }
 
