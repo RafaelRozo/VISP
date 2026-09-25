@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.api.deps import CurrentUser, DBSession
@@ -1626,3 +1626,127 @@ async def approve_overage(
     await db.commit()
     logger.info("Customer %s approved overage for job %s", user.id, job_id)
     return {"data": {"ok": True, "overageApprovedAt": job.overage_approved_at.isoformat()}}
+
+
+# ---------------------------------------------------------------------------
+# GET /jobs/{job_id}/invoice
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{job_id}/invoice",
+    summary="El comprobante del trabajo para quien lo pide",
+    description=(
+        "Devuelve el PDF que le corresponde al solicitante: al cliente la "
+        "factura del servicio, al proveedor su liquidación. Cada parte ve solo "
+        "el suyo — en la liquidación va la comisión de VISP y el neto del "
+        "proveedor, que no es asunto del cliente."
+    ),
+)
+async def get_job_invoice(
+    db: DBSession,
+    job_id: uuid.UUID,
+    t: str,
+) -> Any:
+    """El permiso viaja en la URL porque el destino es el NAVEGADOR.
+
+    El PDF se abre en Safari para que iOS ofrezca «Guardar en Archivos» y
+    compartir, y el navegador no manda nuestra cabecera `Authorization`. Mismo
+    patrón que la página del alta de cobros, y el token es el de la sesión: lo
+    único que expone es el comprobante de su propio dueño.
+    """
+    from pathlib import Path as _Path
+
+    from fastapi.responses import FileResponse
+    from sqlalchemy import select, text
+
+    from src.services import auth_service as _auth
+
+    try:
+        user = await _auth.get_current_user(db, t)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Link expired")
+
+    from src.models.job import AssignmentStatus, Job, JobAssignment
+    from src.models.provider import ProviderProfile
+
+    job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Qué documento le toca. Se decide por el papel que tuvo EN ESTE trabajo,
+    # no por el rol de la cuenta: un usuario `both` puede ser cliente aquí y
+    # proveedor en otro sitio.
+    if job.customer_id == user.id:
+        tipo = "customer"
+    else:
+        perfil = (await db.execute(
+            select(ProviderProfile).where(ProviderProfile.user_id == user.id)
+        )).scalars().first()
+        asignado = perfil is not None and (await db.execute(
+            select(JobAssignment.id).where(
+                JobAssignment.job_id == job_id,
+                JobAssignment.provider_id == perfil.id,
+                JobAssignment.status == AssignmentStatus.ACCEPTED,
+            ).limit(1)
+        )).scalars().first() is not None
+        if not asignado:
+            # 404 y no 403: un 403 le confirmaría a un tercero que el trabajo
+            # existe. Mismo criterio que la descarga de contratos firmados.
+            raise HTTPException(status_code=404, detail="Job not found")
+        tipo = "provider"
+
+    fila = (await db.execute(text(
+        "SELECT number, document_path FROM job_invoices WHERE job_id = :j AND kind = :k"
+    ), {"j": str(job_id), "k": tipo})).mappings().first()
+    if fila is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No receipt yet. It is issued when the payment is captured.",
+        )
+
+    ruta = _Path(__file__).resolve().parent.parent.parent.parent / fila["document_path"]
+    if not ruta.is_file():
+        logger.error("Comprobante %s sin fichero en %s", fila["number"], ruta)
+        raise HTTPException(status_code=404, detail="Receipt file missing")
+
+    return FileResponse(
+        path=str(ruta),
+        media_type="application/pdf",
+        filename=f"{fila['number']}.pdf",
+    )
+
+
+@router.post(
+    "/{job_id}/invoice-url",
+    summary="URL firmada para abrir el comprobante en el navegador",
+    description=(
+        "Devuelve una URL de vida corta que la app abre con Linking. El PDF se "
+        "sirve en el navegador para que iOS ofrezca guardarlo y compartirlo."
+    ),
+)
+async def create_job_invoice_url(
+    request: Request,
+    db: DBSession,
+    user: CurrentUser,
+    job_id: uuid.UUID,
+) -> dict[str, Any]:
+    from sqlalchemy import text
+
+    from src.services import auth_service
+
+    existe = (await db.execute(text(
+        "SELECT 1 FROM job_invoices WHERE job_id = :j LIMIT 1"
+    ), {"j": str(job_id)})).first()
+    if existe is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No receipt yet. It is issued when the payment is captured.",
+        )
+
+    token, _ = auth_service.create_access_token(user.id)
+    # `X-Forwarded-Proto`: detrás de Cloudflare el TLS muere en el proxy y
+    # `base_url` diría http, que acaba en un 301.
+    esquema = request.headers.get("x-forwarded-proto") or request.url.scheme
+    anfitrion = request.headers.get("x-forwarded-host") or request.url.netloc
+    base = f"{esquema.split(',')[0].strip()}://{anfitrion}"
+    return {"data": {"url": f"{base}/api/v1/jobs/{job_id}/invoice?t={token}"}}

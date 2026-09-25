@@ -335,6 +335,26 @@ async function uploadBookingEvidence(
   return (data?.urls ?? []) as string[];
 }
 
+/**
+ * URL de vida corta para abrir el comprobante del trabajo en el navegador.
+ *
+ * El PDF NO se descarga dentro de la app: se abre en Safari para que iOS
+ * ofrezca «Guardar en Archivos» y compartir sin añadir dependencias nativas.
+ * Por eso el permiso viaja en la URL — el navegador no manda la cabecera
+ * `Authorization`. Mismo patrón que el alta de cobros embebida.
+ *
+ * Devuelve `null` si todavía no hay comprobante: se emite al capturar el
+ * cobro, así que un trabajo recién terminado puede no tenerlo aún.
+ */
+async function getInvoiceUrl(jobId: string): Promise<string | null> {
+  try {
+    const r = await post<{ url: string }>(`/jobs/${jobId}/invoice-url`);
+    return r?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function createBooking(
   request: BookingRequest,
 ): Promise<{ bookingId: string; estimatedPrice: number }> {
@@ -651,6 +671,7 @@ export const taskService = {
   fetchTaskDetail,
   fetchTimeSlots,
   createBooking,
+  getInvoiceUrl,
   uploadBookingEvidence,
   searchTasks,
   searchAllTasks,

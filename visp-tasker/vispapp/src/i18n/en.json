@@ -359,7 +359,8 @@
     "tosAcceptCta": "Accept and finish",
     "tosNotAcceptedTitle": "Please accept the terms",
     "tosNotAcceptedBody": "You must check the box to continue.",
-    "idDocExpiry": "The link is valid for about 5 minutes and can only be used once. Have your ID ready before you tap."
+    "idDocExpiry": "The link is valid for about 5 minutes and can only be used once. Have your ID ready before you tap.",
+    "addressSearch": "Search your address"
   },
   "scheduleScreen": {
     "schedule": "Schedule",
@@ -915,7 +916,12 @@
     "overdueTitle": "This job has run past its end time",
     "overdueBody": "It was booked for {hours}. Close it to get paid.",
     "contractCancelTitle": "Cancel this contract?",
-    "contractCancelBody": "You have worked {worked}. {hours} started hours will be charged: {total}."
+    "contractCancelBody": "You have worked {worked}. {hours} started hours will be charged: {total}.",
+    "doneTitle": "Job completed",
+    "doneBody": "The payment is being processed. Your payout statement shows exactly what you earned and what was deducted.",
+    "viewStatement": "View statement",
+    "statementPendingTitle": "Statement not ready",
+    "statementPendingBody": "It is issued once the payment is finalised. You'll find it on the job later."
   },
   "tracking": {
     "materials": "Materials",
@@ -944,5 +950,11 @@
   "termsScreen": {
     "version": "Version %{version}",
     "loadFailed": "We couldn't load the terms. Check your connection and try again."
+  },
+  "jobTracking": {
+    "viewReceipt": "View receipt",
+    "receiptPendingTitle": "Receipt not ready",
+    "receiptPendingBody": "Your receipt is issued once the payment is finalised. Try again in a moment.",
+    "receiptFailed": "Could not open the receipt."
   }
 }

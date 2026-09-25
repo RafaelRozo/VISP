@@ -359,7 +359,8 @@
     "tosAcceptCta": "Accepter et terminer",
     "tosNotAcceptedTitle": "Veuillez accepter les conditions",
     "tosNotAcceptedBody": "Vous devez cocher la case pour continuer.",
-    "idDocExpiry": "Le lien est valide environ 5 minutes et à usage unique. Préparez votre pièce d'identité avant d'appuyer."
+    "idDocExpiry": "Le lien est valide environ 5 minutes et à usage unique. Préparez votre pièce d'identité avant d'appuyer.",
+    "addressSearch": "Cherchez votre adresse"
   },
   "scheduleScreen": {
     "schedule": "Horaire",
@@ -915,7 +916,12 @@
     "overdueTitle": "Ce travail a dépassé son heure de fin",
     "overdueBody": "Il était prévu pour {hours}. Terminez-le pour être payé.",
     "contractCancelTitle": "Annuler ce contrat ?",
-    "contractCancelBody": "Vous avez travaillé {worked}. {hours} heures commencées seront facturées : {total}."
+    "contractCancelBody": "Vous avez travaillé {worked}. {hours} heures commencées seront facturées : {total}.",
+    "doneTitle": "Mission terminée",
+    "doneBody": "Le paiement est en cours. Votre relevé de versement indique exactement ce que vous avez gagné et ce qui a été déduit.",
+    "viewStatement": "Voir le relevé",
+    "statementPendingTitle": "Relevé pas encore prêt",
+    "statementPendingBody": "Il est émis une fois le paiement finalisé. Vous le retrouverez sur la mission."
   },
   "tracking": {
     "materials": "Matériaux",
@@ -944,5 +950,11 @@
   "termsScreen": {
     "version": "Version %{version}",
     "loadFailed": "Impossible de charger les conditions. Vérifiez votre connexion et réessayez."
+  },
+  "jobTracking": {
+    "viewReceipt": "Voir le reçu",
+    "receiptPendingTitle": "Reçu pas encore prêt",
+    "receiptPendingBody": "Votre reçu est émis une fois le paiement finalisé. Réessayez dans un instant.",
+    "receiptFailed": "Impossible d'ouvrir le reçu."
   }
 }

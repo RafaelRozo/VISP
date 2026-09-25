@@ -20,6 +20,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Linking,
   Alert,
   Pressable,
   ScrollView,
@@ -609,7 +610,33 @@ export default function ActiveJobScreen(): React.JSX.Element {
         Alert.alert(tr('activeJob.completeFailedTitle') || "Couldn't complete the job", err);
         return;
       }
-      navigation.goBack();
+      // El comprobante se ofrece AQUÍ, en el único momento en que el proveedor
+      // acaba de terminar y tiene el trabajo en la cabeza. Si no, tendría que
+      // buscarlo después y probablemente no lo haría.
+      //
+      // No se bloquea la salida: el documento se emite al capturar el cobro, y
+      // esa captura puede tardar unos segundos más que el cierre. Por eso se
+      // pregunta y, si aún no está, se dice sin drama.
+      Alert.alert(
+        tr('activeJob.doneTitle'),
+        tr('activeJob.doneBody'),
+        [
+          {
+            text: tr('activeJob.viewStatement'),
+            onPress: async () => {
+              const url = await taskService.getInvoiceUrl(job.id);
+              if (!url) {
+                Alert.alert(tr('activeJob.statementPendingTitle'),
+                            tr('activeJob.statementPendingBody'));
+              } else {
+                Linking.openURL(url).catch(() => undefined);
+              }
+              navigation.goBack();
+            },
+          },
+          { text: tr('common.done') || 'Done', onPress: () => navigation.goBack() },
+        ],
+      );
     } finally {
       setIsUpdating(false);
     }

@@ -300,4 +300,15 @@ async def capture_job(
                 job.final_price_cents = (job.final_price_cents or 0) + delta_cap.amount_captured_cents
 
     await db.flush()
+
+    # Los comprobantes se emiten AQUÍ y no antes: hasta la captura el importe
+    # puede cambiar por materiales o por un sobrecoste aprobado, y un documento
+    # que cambia no es un comprobante. Ahora las cifras ya están congeladas.
+    #
+    # No puede tumbar el cobro: `emitir_comprobantes` se traga sus errores y
+    # devuelve una lista vacía. El dinero ya está capturado; un PDF se rehace.
+    from src.services import invoiceService
+
+    await invoiceService.emitir_comprobantes(db, job)
+
     return result

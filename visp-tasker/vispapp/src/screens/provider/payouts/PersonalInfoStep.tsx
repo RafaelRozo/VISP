@@ -4,10 +4,17 @@
  * Collects first/last name, DOB, full address, phone and email. Posts to
  * /v2/identity. On success, advances to the next step based on the server's
  * `onboardingStep`.
+ *
+ * La dirección se busca, no se teclea. Antes eran cinco campos en blanco y
+ * solo se rellenaban si el proveedor YA tenía dirección guardada; quien no la
+ * tenía escribía calle, ciudad, provincia y código postal a mano, con lo que
+ * eso implica en un formulario que Stripe valida contra registros oficiales.
+ * Es el mismo buscador de `AddressEditScreen`, y los campos siguen editables
+ * debajo porque Mapbox a veces se deja el número de unidad.
  */
 
-import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
 import { Screen } from '../../../components/visp';
@@ -16,6 +23,7 @@ import { GlassButton, GlassInput } from '../../../components/glass';
 import { useTranslation } from '../../../i18n';
 import { useAuthStore } from '../../../stores/authStore';
 import { payoutsV2Service } from '../../../services/payoutsV2Service';
+import { geolocationService } from '../../../services/geolocationService';
 import { advanceToStep } from './navigation';
 
 export default function PersonalInfoStep(): React.JSX.Element {
@@ -39,6 +47,64 @@ export default function PersonalInfoStep(): React.JSX.Element {
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [submitting, setSubmitting] = useState(false);
+
+  // --- Buscador de dirección (mismo patrón que AddressEditScreen) ---
+  const [busqueda, setBusqueda] = useState(
+    addr?.formattedAddress ??
+      [addr?.street, addr?.city, addr?.province, addr?.postalCode].filter(Boolean).join(', '),
+  );
+  const [sugerencias, setSugerencias] = useState<
+    { formatted: string; street: string; city: string; province: string; postalCode: string; country: string }[]
+  >([]);
+  const [buscando, setBuscando] = useState(false);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const alEscribir = useCallback((texto: string) => {
+    setBusqueda(texto);
+    if (debounce.current) clearTimeout(debounce.current);
+    if (texto.trim().length < 3) {
+      setSugerencias([]);
+      setBuscando(false);
+      return;
+    }
+    setBuscando(true);
+    debounce.current = setTimeout(async () => {
+      try {
+        // Canadá: la cuenta conectada se crea con country=CA y Stripe valida la
+        // dirección contra registros canadienses. Ofrecer otras sería llevar al
+        // proveedor a un dato que le van a rechazar.
+        const res = await geolocationService.searchAddresses(texto, { country: 'CA' });
+        setSugerencias(
+          res.map((r) => {
+            const p = geolocationService.parseAddress(r.formatted_address);
+            return {
+              formatted: r.formatted_address,
+              street: p.street,
+              city: p.city,
+              province: p.province,
+              postalCode: p.postalCode,
+              country: p.country || 'CA',
+            };
+          }),
+        );
+      } catch {
+        // Sin sugerencias se escribe a mano: los campos siguen ahí debajo.
+        setSugerencias([]);
+      } finally {
+        setBuscando(false);
+      }
+    }, 300);
+  }, []);
+
+  const alElegir = useCallback((s: (typeof sugerencias)[number]) => {
+    setLine1(s.street);
+    setCity(s.city);
+    setState(s.province);
+    setPostal(s.postalCode);
+    setCountry(geolocationService.normalizeCountry(s.country));
+    setBusqueda(s.formatted);
+    setSugerencias([]);
+  }, []);
 
   const onSubmit = async () => {
     const year = parseInt(dobYear, 10);
@@ -97,6 +163,31 @@ export default function PersonalInfoStep(): React.JSX.Element {
             </View>
           </View>
 
+          <GlassInput
+            label={tr('payoutsV2.addressSearch')}
+            value={busqueda}
+            onChangeText={alEscribir}
+            autoCapitalize="words"
+          />
+          {buscando ? (
+            <View style={{ paddingVertical: 8 }}>
+              <ActivityIndicator size="small" color={t.violet} />
+            </View>
+          ) : null}
+          {sugerencias.length > 0 ? (
+            <View style={[styles.sugerencias, { backgroundColor: t.card, borderColor: t.border }]}>
+              {sugerencias.map((s, i) => (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() => alElegir(s)}
+                  style={[styles.sugerencia, { borderBottomColor: t.border }]}
+                >
+                  <Text style={[VispText.body, { color: t.text }]}>{s.formatted}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+
           <GlassInput label={tr('payoutsV2.addressLine1')} value={line1} onChangeText={setLine1} textContentType="streetAddressLine1" />
           <GlassInput label={tr('payoutsV2.addressCity')} value={city} onChangeText={setCity} textContentType="addressCity" />
           <View style={styles.dobRow}>
@@ -134,6 +225,8 @@ function Header({ onBack, title }: { onBack: () => void; title: string }) {
 }
 
 const styles = StyleSheet.create({
+  sugerencias: { marginTop: 6, marginBottom: 8, borderRadius: 10, borderWidth: 1, overflow: 'hidden' },
+  sugerencia: { paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   scroll: { paddingHorizontal: VispSpace.gutter, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: VispSpace.gutter, paddingTop: 12, paddingBottom: VispSpace.section },
   dobRow: { flexDirection: 'row', gap: 10 },

@@ -324,6 +324,23 @@ function JobTrackingScreen(): React.JSX.Element {
 
   const providerName = tracking?.providerName ?? jobProviderName ?? 'Finding provider...';
 
+  /** Abre el comprobante en el navegador. */
+  const handleOpenReceipt = useCallback(async () => {
+    const url = await taskService.getInvoiceUrl(jobId);
+    if (!url) {
+      Alert.alert(
+        t('jobTracking.receiptPendingTitle') || 'Receipt not ready',
+        t('jobTracking.receiptPendingBody') ||
+          'Your receipt is issued once the payment is finalised. Try again in a moment.',
+      );
+      return;
+    }
+    Linking.openURL(url).catch(() =>
+      Alert.alert(t('common.error') || 'Error',
+                  t('jobTracking.receiptFailed') || 'Could not open the receipt.'),
+    );
+  }, [jobId, t]);
+
   const formattedTimer = useMemo(() => {
     const mins = Math.floor(elapsedSeconds / 60);
     const secs = elapsedSeconds % 60;
@@ -776,6 +793,14 @@ function JobTrackingScreen(): React.JSX.Element {
                     variant="glow"
                     onPress={handleRateProvider}
                   />
+                  {/* El comprobante se emite al CAPTURAR el cobro, así que un
+                      trabajo recién terminado puede no tenerlo todavía. Por eso
+                      el botón avisa en vez de fallar en silencio. */}
+                  <TouchableOpacity onPress={handleOpenReceipt} style={{ marginTop: 12 }}>
+                    <Text style={[styles.completedSubtext, { color: Colors.primary }]}>
+                      {t('jobTracking.viewReceipt')}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </GlassCard>
             </View>
