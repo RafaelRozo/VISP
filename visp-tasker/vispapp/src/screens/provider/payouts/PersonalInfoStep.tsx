@@ -130,6 +130,30 @@ export default function PersonalInfoStep(): React.JSX.Element {
         phone: phone.trim(),
         email: email.trim(),
       });
+      // Stripe no pudo confirmar los datos con los registros oficiales y pide
+      // documento. En Canadá la verificación es por coincidencia de datos, así
+      // que esto es casi siempre el nombre — un diminutivo basta. Aquí es donde
+      // hay que decirlo: si lo dejamos pasar, se enterará tres pantallas más
+      // tarde con una foto rechazada y sin saber qué corregir.
+      //
+      // No se le bloquea: puede insistir y seguir al documento. Hay nombres
+      // legales que de verdad no están en los registros.
+      if (res.documentRequired) {
+        Alert.alert(
+          tr('payoutsV2.nameNotMatchedTitle'),
+          tr('payoutsV2.nameNotMatchedBody', {
+            name: `${firstName.trim()} ${lastName.trim()}`,
+          }),
+          [
+            { text: tr('payoutsV2.nameNotMatchedFix'), style: 'cancel' },
+            {
+              text: tr('payoutsV2.nameNotMatchedContinue'),
+              onPress: () => advanceToStep(navigation, res.onboardingStep),
+            },
+          ],
+        );
+        return;
+      }
       advanceToStep(navigation, res.onboardingStep);
     } catch (err: any) {
       Alert.alert(tr('common.error'), err?.message ?? tr('payoutsV2.errorGeneric'));

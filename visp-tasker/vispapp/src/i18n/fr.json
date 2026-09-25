@@ -365,7 +365,15 @@
     "idDocNameMismatch": "Le nom de votre compte ne correspond pas à celui de votre pièce d'identité. Stripe les compare lettre par lettre : saisissez votre nom légal complet exactement comme il est imprimé sur le document, y compris les prénoms intermédiaires.",
     "idDocRejectedGeneric": "Stripe n'a pas pu vérifier votre pièce d'identité. Réessayez avec une photo nette et bien éclairée du document entier.",
     "idDocFixName": "Corriger mon nom",
-    "legalNameNote": "Utilisez votre nom légal complet, exactement tel qu'il figure sur votre pièce d'identité — Stripe les compare et refusera la vérification s'ils diffèrent."
+    "legalNameNote": "Saisissez votre nom légal complet, exactement tel qu'il figure sur votre compte bancaire et dans les registres officiels — pas un surnom ni une forme abrégée. Par exemple : si vos documents indiquent Ekaterina, n'écrivez pas Katia. Une différence bloque vos versements.",
+    "bankNameConfirmTitle": "Les versements iront à",
+    "bankNameConfirmAsk": "Est-ce le nom de votre compte bancaire ?",
+    "bankNameConfirmFix": "Non, corriger mon nom",
+    "nameNotMatchedTitle": "Nous n'avons pas pu confirmer vos informations",
+    "nameNotMatchedBody": "Stripe n'a pas pu faire correspondre %{name} aux registres officiels. Il s'agit presque toujours du nom : vérifiez qu'il s'agit de votre nom légal complet, exactement tel que votre banque et les registres officiels l'ont.",
+    "nameNotMatchedFix": "Corriger mes informations",
+    "nameNotMatchedContinue": "Mes informations sont correctes — continuer",
+    "idDocDataMismatchNote": "Vos informations n'ont pas pu être vérifiées auprès des registres officiels, donc Stripe demande une pièce d'identité. Corriger votre nom règle généralement le problème — et c'est plus rapide que de téléverser un document."
   },
   "scheduleScreen": {
     "schedule": "Horaire",

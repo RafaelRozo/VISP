@@ -35,6 +35,21 @@ export interface PayoutStatus {
    */
   verificationCode: string | null;
   verificationMessage: string | null;
+  /**
+   * Stripe está pidiendo un documento de identidad. En Canadá Stripe verifica
+   * por coincidencia de datos (nombre + fecha + dirección contra registros
+   * oficiales), así que esto significa que los datos NO cuadraron — y el
+   * culpable casi siempre es el nombre. Llega ya en la respuesta de
+   * `submitIdentity`, que es el momento de mandarlo a corregir el nombre en vez
+   * de a pelearse con una foto.
+   */
+  documentRequired: boolean;
+  /**
+   * El nombre que Stripe tiene en la cuenta, que es el que compara contra los
+   * registros oficiales. No es el de la ficha de VISP: ahí puede estar el
+   * nombre con el que el proveedor quiere que le vean los clientes.
+   */
+  legalName: string | null;
 }
 
 export interface PayoutIdentityIn {

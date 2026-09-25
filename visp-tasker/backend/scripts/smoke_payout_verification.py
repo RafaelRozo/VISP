@@ -23,6 +23,14 @@ Lo que se comprueba:
   E — La página embebida ya no canta éxito en `onExit`: ese evento salta también
       cuando el proveedor abandona a medias. Debe consultar el estado y contar
       los dos desenlaces.
+  G — LA SEÑAL TEMPRANA: `documentRequired`. En Canadá Stripe verifica por
+      coincidencia de datos y no pide documento cuando cuadran, así que pedirlo
+      significa que NO cuadraron — y el culpable casi siempre es el nombre. Se
+      comprueba que sale de la misma lista que el paso `identity_doc`, sin una
+      segunda copia que se separe, y que llega al JSON.
+  H — `legalName`: el nombre que Stripe compara, para que el paso del banco lo
+      enseñe y el proveedor lo confirme contra su cuenta bancaria ANTES de que
+      Stripe lo rechace.
   F — Contra Stripe de VERDAD (si hay cuentas): ninguna cuenta con cobros
       activos inventa un motivo, y si alguna está rechazada, el motivo se lee.
       Esta es la única parte que habla con Stripe, y es de solo lectura.
@@ -84,6 +92,7 @@ def _cuenta(
     documento: tuple[str | None, str | None] = (None, None),
     payouts: bool = False,
     due: tuple[str, ...] = (),
+    nombre: tuple[str | None, str | None] = (None, None),
 ) -> SimpleNamespace:
     """Una cuenta de Stripe con la forma que devuelve el SDK v1.
 
@@ -102,6 +111,8 @@ def _cuenta(
             currently_due=list(due), past_due=[], disabled_reason=None,
         ),
         individual=SimpleNamespace(
+            first_name=nombre[0],
+            last_name=nombre[1],
             verification=SimpleNamespace(
                 details_code=p_code,
                 details=p_msg,
@@ -144,6 +155,24 @@ async def main() -> int:  # noqa: C901 — un smoke es una lista de comprobacion
               "A: sin `individual` debe callarse, no petar")
         step("A", "extractor: manda el veredicto de la persona, cae al del documento, calla si no hay")
 
+        # ---- G (parte 1): una sola lista de requisitos de documento ------
+        # Si esta lista se duplica, el día que Stripe añada un requisito nuevo
+        # el paso `identity_doc` lo reconocerá y la señal temprana no, o al
+        # revés. Se comprueba que las dos leen lo MISMO.
+        del_paso = set(dict(c2._STEP_REQUIREMENTS)["identity_doc"])
+        check(c2._REQUISITOS_DOCUMENTO == frozenset(del_paso),
+              "G: la señal temprana tiene su propia copia de la lista")
+        for r in del_paso:
+            check(c2.requires_identity_document([r]),
+                  f"G: {r} es del paso del documento y no dispara la señal")
+        check(not c2.requires_identity_document([]), "G: sin requisitos no debe disparar")
+        check(not c2.requires_identity_document(["external_account", "individual.phone"]),
+              "G: requisitos que no son de documento disparan la señal")
+        check(c2.requires_identity_document(["individual.phone",
+                                             "individual.verification.proof_of_liveness"]),
+              "G: mezclado con otros requisitos debe seguir disparando")
+        step("G1", f"la señal temprana y el paso `identity_doc` leen la misma lista ({len(del_paso)})")
+
         # ---- semilla: un proveedor con cuenta de cobros -------------------
         uid = uuid.uuid4()
         await conn.execute(
@@ -183,13 +212,30 @@ async def main() -> int:  # noqa: C901 — un smoke es una lista de comprobacion
             check(d["payoutsEnabled"] is False, "B: no debería dar los cobros por activos")
             step("B", "GET /payouts/v2/status trae el motivo hasta el JSON (ruta+servicio reales)")
 
+            # ---- G: la señal temprana llega al JSON ----------------------
+            check(d["documentRequired"] is True,
+                  "G: Stripe pide documento y `documentRequired` no lo dice")
+            check(d["legalName"] is None,
+                  f"H: sin nombre en la cuenta simulada debería ser null: {d['legalName']!r}")
+            step("G", "`documentRequired` True cuando Stripe escala a documento")
+
             # ---- C: cuenta sana, sin aviso falso -------------------------
             stripe.Account.retrieve = lambda *a, **k: _cuenta(payouts=True)  # type: ignore[assignment]
             d = (await cli.get(f"{API}/provider/payouts/v2/status", headers=hdr)).json()["data"]
             check(d["verificationCode"] is None and d["verificationMessage"] is None,
                   f"C: cuenta verificada con aviso falso: {d['verificationCode']!r}")
             check(d["payoutsEnabled"] is True, "C: cuenta buena marcada como no habilitada")
-            step("C", "cuenta verificada: sin motivo, sin aviso falso")
+            check(d["documentRequired"] is False,
+                  "C: cuenta sana pidiendo documento — mandaría a corregir sin motivo")
+            step("C", "cuenta verificada: sin motivo, sin aviso falso, sin pedir documento")
+
+            # ---- H: el nombre que Stripe compara llega al JSON -----------
+            stripe.Account.retrieve = lambda *a, **k: _cuenta(  # type: ignore[assignment]
+                payouts=True, nombre=("Ekaterina", "Zabelina"))
+            d = (await cli.get(f"{API}/provider/payouts/v2/status", headers=hdr)).json()["data"]
+            check(d["legalName"] == "Ekaterina Zabelina",
+                  f"H: el nombre de la cuenta no llega al JSON: {d['legalName']!r}")
+            step("H", "`legalName` llega al JSON para confirmarlo en el paso del banco")
 
             # ---- E: la página embebida no canta éxito --------------------
             if sesion_real is not None:

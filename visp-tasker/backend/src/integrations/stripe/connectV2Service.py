@@ -96,6 +96,10 @@ class V2AccountResult:
     # para no quedarnos callados ante uno que no conozcamos.
     verification_code: str | None = None
     verification_message: str | None = None
+    # El nombre que Stripe tiene en la cuenta, que es el que COMPARA contra los
+    # registros oficiales. No es necesariamente el de la ficha de VISP: ahí
+    # puede estar el nombre con el que quiere que le vean los clientes.
+    legal_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -624,6 +628,31 @@ def _extract_disabled_reason(account: Any) -> str | None:
     return getattr(reqs, "disabled_reason", None) if reqs else None
 
 
+_REQUISITOS_DOCUMENTO: frozenset[str] = frozenset(
+    dict(_STEP_REQUIREMENTS)["identity_doc"]
+)
+
+
+def requires_identity_document(requirements_due: list[str]) -> bool:
+    """¿Stripe está pidiendo un documento de identidad?
+
+    En Canadá Stripe verifica por COINCIDENCIA DE DATOS: nombre, fecha de
+    nacimiento y dirección contra los registros oficiales. No pide documento.
+    Cuando aparece este requisito es porque la coincidencia falló, y en la
+    práctica el motivo casi siempre es el nombre — un diminutivo («Katia» por
+    «Ekaterina») basta para que no cuadre.
+
+    Por eso esto vale como señal TEMPRANA: se sabe al enviar los datos
+    personales, tres pantallas antes de que el documento sea rechazado, y a
+    tiempo de que el proveedor corrija el nombre en nuestro formulario en vez de
+    pelearse con una foto que nunca va a cuadrar.
+
+    La lista sale de `_STEP_REQUIREMENTS`, que ya la tenía: duplicarla aquí
+    dejaría dos verdades que se separan en la primera que Stripe añada.
+    """
+    return any(r in _REQUISITOS_DOCUMENTO for r in requirements_due)
+
+
 def _extract_verification_error(account: Any) -> tuple[str | None, str | None]:
     """El motivo por el que Stripe no da por buena la identidad, si lo hay.
 
@@ -664,6 +693,10 @@ def _to_status_result(account_id: str, account: Any) -> V2AccountResult:
     if step == "complete" and not payouts_enabled and disabled_reason:
         step = "pending_verification"
     v_code, v_msg = _extract_verification_error(account)
+    ind = getattr(account, "individual", None)
+    nombre = " ".join(
+        p for p in (getattr(ind, "first_name", None), getattr(ind, "last_name", None)) if p
+    ).strip() or None if ind else None
     return V2AccountResult(
         account_id=account_id,
         onboarding_step=step,
@@ -674,6 +707,7 @@ def _to_status_result(account_id: str, account: Any) -> V2AccountResult:
         disabled_reason=disabled_reason,
         verification_code=v_code,
         verification_message=v_msg,
+        legal_name=nombre,
     )
 
 

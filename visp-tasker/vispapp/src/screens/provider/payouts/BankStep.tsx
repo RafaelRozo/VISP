@@ -32,13 +32,25 @@ export default function BankStep(): React.JSX.Element {
   const [account, setAccount] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Pull current onboarding country from status to be safe.
+  // El nombre que Stripe tiene en la cuenta es el que COMPARA contra los
+  // registros oficiales, y no tiene por qué ser el de la ficha de VISP — ahí
+  // puede estar el nombre con el que quiere que le vean los clientes. Se trae
+  // para confirmarlo aquí, que es el último paso barato antes de que Stripe
+  // pida documento: si el titular del banco no coincide, el payout rebota.
+  const [nombreLegal, setNombreLegal] = useState<string | null>(null);
+
   useEffect(() => {
-    let cancelled = false;
-    payoutsV2Service.getStatus().then(() => {
-      if (cancelled) return;
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    let cancelado = false;
+    payoutsV2Service.getStatus().then((st) => {
+      if (cancelado) return;
+      if (st.legalName) {
+        setNombreLegal(st.legalName);
+        // El titular por defecto pasa a ser el nombre que Stripe ya tiene, no
+        // el de la ficha: así los dos coinciden salvo que él lo cambie a mano.
+        setHolder((actual) => (actual.trim() ? actual : st.legalName!));
+      }
+    }).catch(() => { /* la pantalla funciona igual sin el nombre */ });
+    return () => { cancelado = true; };
   }, []);
 
   const onSubmit = async () => {
@@ -122,6 +134,29 @@ export default function BankStep(): React.JSX.Element {
             })}
           </View>
 
+          {nombreLegal && (
+            <View style={[styles.confirma, { backgroundColor: t.card, borderColor: t.border }]}>
+              <Text style={[VispText.caption, { color: t.text3 }]}>
+                {tr('payoutsV2.bankNameConfirmTitle')}
+              </Text>
+              <Text style={[VispText.bodyStrong, { color: t.text, marginTop: 2 }]}>
+                {nombreLegal}
+              </Text>
+              <Text style={[VispText.caption, { color: t.text2, marginTop: 6 }]}>
+                {tr('payoutsV2.bankNameConfirmAsk')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => advanceToStep(navigation, 'identity')}
+                hitSlop={8}
+                style={{ marginTop: 8 }}
+              >
+                <Text style={[VispText.caption, { color: t.violet }]}>
+                  {tr('payoutsV2.bankNameConfirmFix')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <GlassInput label={tr('payoutsV2.bankHolder')} value={holder} onChangeText={setHolder} autoCapitalize="words" />
 
           {country === 'CA' ? (
@@ -157,4 +192,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   countryRow: { flexDirection: 'row', gap: 10, marginBottom: VispSpace.section },
   countryPill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1 },
+  confirma: { borderRadius: 14, borderWidth: 1, padding: VispSpace.card, marginBottom: VispSpace.section },
 });

@@ -365,7 +365,15 @@
     "idDocNameMismatch": "The name on your account doesn't match the name on your ID. Stripe compares them letter by letter, so enter your full legal name exactly as it is printed on the document — including middle names.",
     "idDocRejectedGeneric": "Stripe couldn't verify your ID. Try again with a clear, well-lit photo of the full document.",
     "idDocFixName": "Correct my name",
-    "legalNameNote": "Use your full legal name exactly as it appears on your government ID — Stripe compares them and will reject the verification if they differ."
+    "legalNameNote": "Enter your full legal name, exactly as it appears on your bank account and government records — not a nickname or short form. For example: if your records say Ekaterina, don't enter Katia. A mismatch blocks your payouts.",
+    "bankNameConfirmTitle": "Payouts will go to",
+    "bankNameConfirmAsk": "Is this the name on your bank account?",
+    "bankNameConfirmFix": "No, correct my name",
+    "nameNotMatchedTitle": "We couldn't confirm your details",
+    "nameNotMatchedBody": "Stripe couldn't match %{name} against official records. Almost always this is the name: check it is your full legal name, exactly as your bank and government records have it.",
+    "nameNotMatchedFix": "Correct my details",
+    "nameNotMatchedContinue": "My details are correct — continue",
+    "idDocDataMismatchNote": "Your details couldn't be matched against official records, so Stripe is asking for an ID. Correcting your name usually solves it — and is faster than uploading a document."
   },
   "scheduleScreen": {
     "schedule": "Schedule",

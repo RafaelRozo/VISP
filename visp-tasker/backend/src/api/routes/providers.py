@@ -2194,6 +2194,8 @@ def _connect_status(profile) -> str:  # type: ignore[no-untyped-def]
 
 def _v2_status_dict(profile, status_result, has_external_account: bool) -> dict[str, Any]:  # type: ignore[no-untyped-def]
     """Shape a V2AccountResult into the JSON payload the mobile UI expects."""
+    from src.integrations.stripe.connectV2Service import requires_identity_document
+
     return {
         "data": {
             "accountId": status_result.account_id,
@@ -2207,6 +2209,17 @@ def _v2_status_dict(profile, status_result, has_external_account: bool) -> dict[
             "identitySessionId": profile.stripe_identity_session_id,
             "verificationCode": status_result.verification_code,
             "verificationMessage": status_result.verification_message,
+            # Señal temprana: en Canadá Stripe verifica por coincidencia de
+            # datos, así que pedir documento significa que los datos no
+            # cuadraron. Viaja también en la respuesta de /payouts/v2/identity,
+            # que es donde la app puede reaccionar a tiempo.
+            "documentRequired": requires_identity_document(
+                status_result.requirements_due
+            ),
+            # El nombre que Stripe compara. Se enseña en el paso del banco para
+            # que el proveedor lo confirme contra su cuenta bancaria ANTES de
+            # que Stripe lo rechace.
+            "legalName": status_result.legal_name,
         }
     }
 
@@ -2553,6 +2566,8 @@ async def get_payouts_v2_status(
                 # tipo de la app la declara y en ejecución llega `undefined`.
                 "verificationCode": None,
                 "verificationMessage": None,
+                "documentRequired": False,
+                "legalName": None,
             }
         }
 

@@ -49,6 +49,10 @@ export default function IdentityDocStep(): React.JSX.Element {
   // proveedor reintenta a ciegas: le pasó a una proveedora real cuyo documento
   // no coincidía con el nombre de la cuenta, y la app solo le decía "falta".
   const [problema, setProblema] = useState<{ code: string | null; message: string | null } | null>(null);
+  // Llegar a esta pantalla en Canadá significa que la coincidencia de datos
+  // falló: Stripe no pide documento cuando nombre, fecha y dirección cuadran.
+  // Así que el camino principal aquí es CORREGIR, no subir una foto.
+  const [porDatos, setPorDatos] = useState(false);
 
   const refreshAndRoute = useCallback(async () => {
     const fresh = await payoutsV2Service.getStatus();
@@ -62,8 +66,10 @@ export default function IdentityDocStep(): React.JSX.Element {
       navigation.goBack();
     } else if (fresh.verificationCode || fresh.verificationMessage) {
       setProblema({ code: fresh.verificationCode, message: fresh.verificationMessage });
+      setPorDatos(fresh.documentRequired);
     } else {
       setProblema(null);
+      setPorDatos(fresh.documentRequired);
     }
     // else: still pending → stay on screen, let them retry / check again.
   }, [navigation]);
@@ -77,6 +83,7 @@ export default function IdentityDocStep(): React.JSX.Element {
         if (s.verificationCode || s.verificationMessage) {
           setProblema({ code: s.verificationCode, message: s.verificationMessage });
         }
+        setPorDatos(s.documentRequired);
       })
       .catch(() => { /* la pantalla funciona igual sin el motivo */ });
   }, []);
@@ -150,6 +157,18 @@ export default function IdentityDocStep(): React.JSX.Element {
           </View>
         )}
 
+        {/* En Canadá Stripe verifica por coincidencia de datos y NO pide
+            documento cuando cuadran. Si estamos aquí es porque no cuadraron, y
+            corregir el nombre es más rápido y más probable que la foto. Se
+            omite si ya hay una tarjeta de rechazo arriba diciendo lo mismo. */}
+        {porDatos && !problema && (
+          <View style={[styles.card, styles.aviso, { backgroundColor: t.card, borderColor: AVISO, marginBottom: VispSpace.section }]}>
+            <Text style={[VispText.body, { color: t.text }]}>
+              {tr('payoutsV2.idDocDataMismatchNote')}
+            </Text>
+          </View>
+        )}
+
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
           <Text style={[VispText.caption, { color: t.text3, marginBottom: 6 }]}>{tr('payoutsV2.idDocWhatYouNeed')}</Text>
           <Text style={[VispText.body, { color: t.text }]}>{tr('payoutsV2.idDocStep1')}</Text>
@@ -173,9 +192,19 @@ export default function IdentityDocStep(): React.JSX.Element {
         )}
 
         <View style={{ height: VispSpace.section * 2 }} />
+        {porDatos && (
+          <>
+            <GlassButton
+              title={tr('payoutsV2.nameNotMatchedFix')}
+              variant="glow"
+              onPress={() => advanceToStep(navigation, 'identity')}
+            />
+            <View style={{ height: VispSpace.section }} />
+          </>
+        )}
         <GlassButton
           title={tr('payoutsV2.idDocStart')}
-          variant="glow"
+          variant={porDatos ? 'outline' : 'glow'}
           loading={busy}
           onPress={handleVerify}
         />
