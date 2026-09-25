@@ -24,6 +24,7 @@ sys.path.insert(0, ".")
 import stripe  # noqa: E402
 
 from src.api.deps import async_session_factory  # noqa: E402
+from scripts._stripe_guard import exigir_stripe_test  # noqa: E402
 
 passed = 0
 failed: list[str] = []
@@ -44,6 +45,7 @@ def money(cents: int | None) -> str:
 
 
 async def main() -> int:  # noqa: C901
+    exigir_stripe_test()
     print("=" * 72)
     print("SMOKE — ciclo de dinero (Stripe test real)")
     print("=" * 72)

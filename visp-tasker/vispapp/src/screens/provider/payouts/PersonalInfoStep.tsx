@@ -147,6 +147,15 @@ export default function PersonalInfoStep(): React.JSX.Element {
             {tr('payoutsV2.personalInfoSubtitle')}
           </Text>
 
+          {/* Aviso ANTES de los campos, no después: Stripe compara este nombre
+              con el del documento letra por letra y rechaza la verificación si
+              no cuadra (`document_name_mismatch`). Quien escribe aquí su
+              apodo lo descubre tres pasos más tarde, ya con el documento
+              subido, y no sabe qué falló. Decirlo aquí cuesta una línea. */}
+          <Text style={[VispText.caption, { color: t.text3, marginBottom: 10 }]}>
+            {tr('payoutsV2.legalNameNote')}
+          </Text>
+
           <GlassInput label={tr('payoutsV2.firstName')} value={firstName} onChangeText={setFirstName} autoCapitalize="words" textContentType="givenName" />
           <GlassInput label={tr('payoutsV2.lastName')} value={lastName} onChangeText={setLastName} autoCapitalize="words" textContentType="familyName" />
 

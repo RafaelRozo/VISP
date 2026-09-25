@@ -2205,6 +2205,8 @@ def _v2_status_dict(profile, status_result, has_external_account: bool) -> dict[
             "disabledReason": status_result.disabled_reason,
             "hasExternalAccount": has_external_account,
             "identitySessionId": profile.stripe_identity_session_id,
+            "verificationCode": status_result.verification_code,
+            "verificationMessage": status_result.verification_message,
         }
     }
 
@@ -2739,6 +2741,14 @@ async def payouts_v2_embed_page(db: DBSession, t: str) -> HTMLResponse:
     document.getElementById("err").textContent = msg;
   }}
   window.addEventListener("error", (e) => fallo("Script error: " + (e.message || e)));
+
+  function pinta(color, titulo, cuerpo) {{
+    document.getElementById("cont").innerHTML =
+      "<div style='padding:40px 24px;text-align:center;color:#1A1A2E'>"
+      + "<p style='margin:0 0 10px;font-size:17px;font-weight:600;color:" + color + "'>"
+      + titulo + "</p>"
+      + "<p style='margin:0;font-size:14px;line-height:1.5'>" + cuerpo + "</p></div>";
+  }}
   setTimeout(() => {{
     if (!window.StripeConnect || !window.__visp_ok) {{
       fallo("Stripe could not start here. If this page is not on https, the "
@@ -2762,9 +2772,31 @@ async def payouts_v2_embed_page(db: DBSession, t: str) -> HTMLResponse:
       comp.setOnLoadError((e) => fallo("Stripe: " +
         ((e && e.error && e.error.message) || "could not load the form")));
       comp.setOnExit(() => {{
-        document.getElementById("cont").innerHTML =
-          "<p style='padding:40px 20px;color:#1A1A2E;text-align:center'>" +
-          "All done. You can close this page and return to VISP.</p>";
+        // OJO: `onExit` salta cuando el proveedor SALE del formulario, haya
+        // terminado o no. Aquí antes se cantaba "All done" siempre, y una
+        // proveedora real que se quedó a medias vio un mensaje de éxito y
+        // luego la app diciéndole que le faltaba — con razón. Así que se
+        // pregunta el estado de verdad y se dice lo que hay, con el motivo de
+        // Stripe cuando lo da (p. ej. el nombre no coincide con el documento).
+        pinta("#1A1A2E", "Checking\\u2026", "One moment.");
+        fetch("/api/v1/provider/payouts/v2/status", {{
+          headers: {{ "Authorization": "Bearer {t}" }},
+        }})
+          .then((r) => r.json())
+          .then((j) => {{
+            const d = (j && j.data) || {{}};
+            const pendientes = (d.requirementsDue || []).length;
+            if (d.payoutsEnabled && !pendientes) {{
+              pinta("#27AE60", "You're verified",
+                "Payouts are enabled. Close this page and return to VISP.");
+            }} else {{
+              pinta("#E67E22", "Not finished yet",
+                (d.verificationMessage ? d.verificationMessage + " " : "")
+                + "Return to VISP and tap \\u201cVerify your ID\\u201d to continue.");
+            }}
+          }})
+          .catch(() => pinta("#1A1A2E", "Return to VISP",
+            "Close this page and open VISP to see whether anything is still missing."));
       }});
       document.getElementById("cont").appendChild(comp);
     }} catch (e) {{

@@ -89,6 +89,13 @@ class V2AccountResult:
     payouts_enabled: bool
     details_submitted: bool
     disabled_reason: str | None = None
+    # Por qué Stripe rechazó la verificación, en sus palabras. Sin esto el
+    # proveedor solo ve "falta verificar" y no tiene NADA que corregir: le pasó
+    # a una proveedora real con `document_name_mismatch` y estuvo dando vueltas
+    # subiendo el mismo documento. El código sirve para traducir, el mensaje
+    # para no quedarnos callados ante uno que no conozcamos.
+    verification_code: str | None = None
+    verification_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -617,6 +624,33 @@ def _extract_disabled_reason(account: Any) -> str | None:
     return getattr(reqs, "disabled_reason", None) if reqs else None
 
 
+def _extract_verification_error(account: Any) -> tuple[str | None, str | None]:
+    """El motivo por el que Stripe no da por buena la identidad, si lo hay.
+
+    Vive en dos sitios y hay que mirar los dos: `individual.verification` lleva
+    el veredicto de la persona (ahí sale `document_name_mismatch`, el nombre de
+    la cuenta no coincide con el del documento) y `individual.verification.
+    document` el del archivo en sí (borroso, recortado, caducado).
+
+    Se devuelve `(code, message)` y se prefiere el de la persona, que es el que
+    explica el fallo cuando el documento se subió bien pero no cuadra.
+    """
+    individual = getattr(account, "individual", None)
+    if individual is None:
+        return None, None
+    verification = getattr(individual, "verification", None)
+    if verification is None:
+        return None, None
+    for fuente in (verification, getattr(verification, "document", None)):
+        if fuente is None:
+            continue
+        codigo = getattr(fuente, "details_code", None)
+        mensaje = getattr(fuente, "details", None)
+        if codigo or mensaje:
+            return codigo, mensaje
+    return None, None
+
+
 def _to_status_result(account_id: str, account: Any) -> V2AccountResult:
     requirements_due = _extract_requirements_due(account)
     capabilities = _extract_capabilities(account)
@@ -629,6 +663,7 @@ def _to_status_result(account_id: str, account: Any) -> V2AccountResult:
     # truly done — keep it out of 'complete' so the UI doesn't show finished.
     if step == "complete" and not payouts_enabled and disabled_reason:
         step = "pending_verification"
+    v_code, v_msg = _extract_verification_error(account)
     return V2AccountResult(
         account_id=account_id,
         onboarding_step=step,
@@ -637,6 +672,8 @@ def _to_status_result(account_id: str, account: Any) -> V2AccountResult:
         payouts_enabled=payouts_enabled,
         details_submitted=bool(getattr(account, "details_submitted", False)),
         disabled_reason=disabled_reason,
+        verification_code=v_code,
+        verification_message=v_msg,
     )
 
 

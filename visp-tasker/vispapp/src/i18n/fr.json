@@ -360,7 +360,12 @@
     "tosNotAcceptedTitle": "Veuillez accepter les conditions",
     "tosNotAcceptedBody": "Vous devez cocher la case pour continuer.",
     "idDocExpiry": "Le lien est valide environ 5 minutes et à usage unique. Préparez votre pièce d'identité avant d'appuyer.",
-    "addressSearch": "Cherchez votre adresse"
+    "addressSearch": "Cherchez votre adresse",
+    "idDocRejectedTitle": "La vérification n'a pas pu être effectuée",
+    "idDocNameMismatch": "Le nom de votre compte ne correspond pas à celui de votre pièce d'identité. Stripe les compare lettre par lettre : saisissez votre nom légal complet exactement comme il est imprimé sur le document, y compris les prénoms intermédiaires.",
+    "idDocRejectedGeneric": "Stripe n'a pas pu vérifier votre pièce d'identité. Réessayez avec une photo nette et bien éclairée du document entier.",
+    "idDocFixName": "Corriger mon nom",
+    "legalNameNote": "Utilisez votre nom légal complet, exactement tel qu'il figure sur votre pièce d'identité — Stripe les compare et refusera la vérification s'ils diffèrent."
   },
   "scheduleScreen": {
     "schedule": "Horaire",

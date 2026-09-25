@@ -360,7 +360,12 @@
     "tosNotAcceptedTitle": "Please accept the terms",
     "tosNotAcceptedBody": "You must check the box to continue.",
     "idDocExpiry": "The link is valid for about 5 minutes and can only be used once. Have your ID ready before you tap.",
-    "addressSearch": "Search your address"
+    "addressSearch": "Search your address",
+    "idDocRejectedTitle": "Verification couldn't be completed",
+    "idDocNameMismatch": "The name on your account doesn't match the name on your ID. Stripe compares them letter by letter, so enter your full legal name exactly as it is printed on the document — including middle names.",
+    "idDocRejectedGeneric": "Stripe couldn't verify your ID. Try again with a clear, well-lit photo of the full document.",
+    "idDocFixName": "Correct my name",
+    "legalNameNote": "Use your full legal name exactly as it appears on your government ID — Stripe compares them and will reject the verification if they differ."
   },
   "scheduleScreen": {
     "schedule": "Schedule",

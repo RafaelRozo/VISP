@@ -34,12 +34,21 @@ import { useTranslation } from '../../../i18n';
 import { payoutsV2Service } from '../../../services/payoutsV2Service';
 import { advanceToStep } from './navigation';
 
+// Naranja de aviso. No está en la paleta de VISP (que solo tiene `ok` y
+// `danger`) y esto no es ninguna de las dos: el alta no ha fallado, falta un
+// dato. Literal aquí en vez de ampliar la paleta por un solo uso.
+const AVISO = '#E67E22';
+
 export default function IdentityDocStep(): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
   const navigation = useNavigation<any>();
   const [busy, setBusy] = useState(false);
   const awaitingReturn = useRef(false);
+  // Motivo por el que Stripe rechazó la identidad, si lo hay. Sin esto el
+  // proveedor reintenta a ciegas: le pasó a una proveedora real cuyo documento
+  // no coincidía con el nombre de la cuenta, y la app solo le decía "falta".
+  const [problema, setProblema] = useState<{ code: string | null; message: string | null } | null>(null);
 
   const refreshAndRoute = useCallback(async () => {
     const fresh = await payoutsV2Service.getStatus();
@@ -51,9 +60,26 @@ export default function IdentityDocStep(): React.JSX.Element {
     } else if (fresh.onboardingStep === 'complete' || fresh.payoutsEnabled) {
       navigation.popToTop();
       navigation.goBack();
+    } else if (fresh.verificationCode || fresh.verificationMessage) {
+      setProblema({ code: fresh.verificationCode, message: fresh.verificationMessage });
+    } else {
+      setProblema(null);
     }
     // else: still pending → stay on screen, let them retry / check again.
   }, [navigation]);
+
+  // Al entrar, mirar si ya hay un rechazo pendiente de un intento anterior:
+  // quien vuelve a esta pantalla días después tiene derecho a saber por qué.
+  useEffect(() => {
+    payoutsV2Service
+      .getStatus()
+      .then((s) => {
+        if (s.verificationCode || s.verificationMessage) {
+          setProblema({ code: s.verificationCode, message: s.verificationMessage });
+        }
+      })
+      .catch(() => { /* la pantalla funciona igual sin el motivo */ });
+  }, []);
 
   // When the provider comes back from the hosted Stripe page, re-read status.
   useEffect(() => {
@@ -96,6 +122,33 @@ export default function IdentityDocStep(): React.JSX.Element {
         <Text style={[VispText.body, { color: t.text2, marginBottom: VispSpace.section }]}>
           {tr('payoutsV2.idDocSubtitle')}
         </Text>
+
+        {/* El motivo de Stripe, traducido cuando conocemos el código y en sus
+            palabras cuando no. `document_name_mismatch` se lleva además un
+            botón: el arreglo no es volver a subir el documento, es corregir el
+            nombre de la cuenta, y eso se hace en el primer paso. */}
+        {problema && (
+          <View style={[styles.card, styles.aviso, { backgroundColor: t.card, borderColor: AVISO, marginBottom: VispSpace.section }]}>
+            <Text style={[VispText.caption, { color: AVISO, marginBottom: 6 }]}>
+              {tr('payoutsV2.idDocRejectedTitle')}
+            </Text>
+            <Text style={[VispText.body, { color: t.text }]}>
+              {problema.code === 'document_name_mismatch'
+                ? tr('payoutsV2.idDocNameMismatch')
+                : problema.message ?? tr('payoutsV2.idDocRejectedGeneric')}
+            </Text>
+            {problema.code === 'document_name_mismatch' && (
+              <>
+                <View style={{ height: 12 }} />
+                <GlassButton
+                  title={tr('payoutsV2.idDocFixName')}
+                  variant="outline"
+                  onPress={() => advanceToStep(navigation, 'identity')}
+                />
+              </>
+            )}
+          </View>
+        )}
 
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
           <Text style={[VispText.caption, { color: t.text3, marginBottom: 6 }]}>{tr('payoutsV2.idDocWhatYouNeed')}</Text>
@@ -141,4 +194,5 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: VispSpace.gutter, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: VispSpace.gutter, paddingTop: 12, paddingBottom: VispSpace.section },
   card: { borderRadius: 14, borderWidth: 1, padding: VispSpace.card },
+  aviso: { borderWidth: 1.5 },
 });

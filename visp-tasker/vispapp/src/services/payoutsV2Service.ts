@@ -27,6 +27,14 @@ export interface PayoutStatus {
   detailsSubmitted: boolean;
   hasExternalAccount: boolean;
   identitySessionId: string | null;
+  /**
+   * Por qué Stripe no da por buena la identidad. `verificationCode` es su
+   * código (`document_name_mismatch`, `document_expired`…) y se traduce;
+   * `verificationMessage` es su frase en inglés y se usa de reserva para los
+   * códigos que no tengamos traducidos, que es mejor que no decir nada.
+   */
+  verificationCode: string | null;
+  verificationMessage: string | null;
 }
 
 export interface PayoutIdentityIn {
