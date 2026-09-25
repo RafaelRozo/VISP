@@ -373,7 +373,11 @@
     "nameNotMatchedBody": "Stripe couldn't match %{name} against official records. Almost always this is the name: check it is your full legal name, exactly as your bank and government records have it.",
     "nameNotMatchedFix": "Correct my details",
     "nameNotMatchedContinue": "My details are correct — continue",
-    "idDocDataMismatchNote": "Your details couldn't be matched against official records, so Stripe is asking for an ID. Correcting your name usually solves it — and is faster than uploading a document."
+    "idDocDataMismatchNote": "Your details couldn't be matched against official records, so Stripe is asking for an ID. Correcting your name usually solves it — and is faster than uploading a document.",
+    "confirmNameTitle": "Check your name",
+    "confirmNameBody": "%{name}\n\nStripe compares this with official records and your bank account. If it isn't exactly right — including middle names — your payouts stay blocked.",
+    "confirmNameReview": "Let me check",
+    "confirmNameGo": "Yes, that's my legal name"
   },
   "scheduleScreen": {
     "schedule": "Schedule",

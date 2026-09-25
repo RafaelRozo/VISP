@@ -373,7 +373,11 @@
     "nameNotMatchedBody": "Stripe n'a pas pu faire correspondre %{name} aux registres officiels. Il s'agit presque toujours du nom : vérifiez qu'il s'agit de votre nom légal complet, exactement tel que votre banque et les registres officiels l'ont.",
     "nameNotMatchedFix": "Corriger mes informations",
     "nameNotMatchedContinue": "Mes informations sont correctes — continuer",
-    "idDocDataMismatchNote": "Vos informations n'ont pas pu être vérifiées auprès des registres officiels, donc Stripe demande une pièce d'identité. Corriger votre nom règle généralement le problème — et c'est plus rapide que de téléverser un document."
+    "idDocDataMismatchNote": "Vos informations n'ont pas pu être vérifiées auprès des registres officiels, donc Stripe demande une pièce d'identité. Corriger votre nom règle généralement le problème — et c'est plus rapide que de téléverser un document.",
+    "confirmNameTitle": "Vérifiez votre nom",
+    "confirmNameBody": "%{name}\n\nStripe le compare aux registres officiels et à votre compte bancaire. S'il n'est pas exact — prénoms intermédiaires inclus — vos versements resteront bloqués.",
+    "confirmNameReview": "Je vérifie",
+    "confirmNameGo": "Oui, c'est mon nom légal"
   },
   "scheduleScreen": {
     "schedule": "Horaire",

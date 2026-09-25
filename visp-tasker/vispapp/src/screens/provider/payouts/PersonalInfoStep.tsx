@@ -106,7 +106,7 @@ export default function PersonalInfoStep(): React.JSX.Element {
     setSugerencias([]);
   }, []);
 
-  const onSubmit = async () => {
+  const onSubmit = () => {
     const year = parseInt(dobYear, 10);
     const month = parseInt(dobMonth, 10);
     const day = parseInt(dobDay, 10);
@@ -114,6 +114,22 @@ export default function PersonalInfoStep(): React.JSX.Element {
       Alert.alert(tr('payoutsV2.fillAllTitle'), tr('payoutsV2.fillAllBody'));
       return;
     }
+    // Última parada antes de que Stripe lo compare. Se le DEVUELVE el nombre
+    // escrito en vez de preguntarle si está seguro: «¿seguro que coincide?» se
+    // contesta de memoria y siempre con un sí — a la proveedora que lo sufrió
+    // le parecía que su nombre era el diminutivo. Leer «Katia Zabelina» en
+    // pantalla es lo que da la oportunidad de caer.
+    Alert.alert(
+      tr('payoutsV2.confirmNameTitle'),
+      tr('payoutsV2.confirmNameBody', { name: `${firstName.trim()} ${lastName.trim()}` }),
+      [
+        { text: tr('payoutsV2.confirmNameReview'), style: 'cancel' },
+        { text: tr('payoutsV2.confirmNameGo'), onPress: () => { void enviar(year, month, day); } },
+      ],
+    );
+  };
+
+  const enviar = async (year: number, month: number, day: number) => {
     setSubmitting(true);
     try {
       const res = await payoutsV2Service.submitIdentity({
