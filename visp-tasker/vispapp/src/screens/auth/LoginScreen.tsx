@@ -18,6 +18,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -65,7 +66,13 @@ function validateForm(email: string, password: string): FormErrors {
 // Component
 // ──────────────────────────────────────────────
 
+/** hero-home.jpg mide 1200×600. Desde qué píxel horizontal empieza a verse. */
+const HERO_WIDTH_PX = 1200;
+const HERO_HEIGHT_PX = 600;
+const HERO_START_PX = 260;
+
 function LoginScreen({ navigation }: Props): React.JSX.Element {
+  const { height: windowHeight } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -205,10 +212,22 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
 
   // ── Render ───────────────────────────────
 
+  // Encuadre de la foto. `cover` la centraba y en vertical solo se veía la
+  // ventana con las persianas (px ~461–739 de 1200). RN no tiene
+  // object-position, así que se escala a lo alto de la pantalla y se desplaza a
+  // mano para empezar en HERO_START_PX: la persona y la pared, menos persianas.
+  const heroScale = windowHeight / HERO_HEIGHT_PX;
+  const heroImageStyle = {
+    width: HERO_WIDTH_PX * heroScale,
+    height: windowHeight,
+    left: -HERO_START_PX * heroScale,
+  };
+
   return (
     <ImageBackground
       source={require('../../../assets/hero-home.jpg')}
       style={styles.flex}
+      imageStyle={heroImageStyle}
       resizeMode="cover"
     >
       <View style={styles.imageOverlay} />
@@ -233,10 +252,12 @@ function LoginScreen({ navigation }: Props): React.JSX.Element {
           >
             {/* Logo / Brand */}
             <View style={styles.logoSection}>
+              {/* Halo negro translúcido detrás del logo: lo separa de la foto
+                  sin teñir la pantalla de color. */}
               <MorphingBlob
                 size={250}
-                color="#7850FF"
-                opacity={0.15}
+                color="#000000"
+                opacity={0.45}
                 style={styles.morphingBlob}
               />
               <AnimatedLogo size={100} />
@@ -389,7 +410,9 @@ const styles = StyleSheet.create({
   },
   imageOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 10, 30, 0.85)',
+    // Velo negro neutro (antes azul-morado): la foto se lee en gris, a juego
+    // con el negro del resto de la app y de la splash.
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
   },
   scrollContent: {
     flexGrow: 1,

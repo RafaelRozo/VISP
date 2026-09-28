@@ -5,6 +5,7 @@
  *   import { Screen, TopBar, Headline, Card, Chip } from '../../components/visp';
  */
 
+export { VispLogo, VISP_LOGO } from './VispLogo';
 export { Icon } from './Icon';
 export type { VispIconName } from './Icon';
 export { Screen } from './Screen';

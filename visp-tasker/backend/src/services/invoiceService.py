@@ -26,9 +26,11 @@ otro documento.
 
 EL LOGO ES VECTOR
 -----------------
-La "V" del login (`AnimatedLogo.tsx`) redibujada con líneas. Incrustar el icono
-PNG de la app metía 580 KB en un documento de una página — catorce veces el
-resto del PDF. En vector pesa cero y además se imprime nítida.
+El logo de VISP (V dentro de un anillo abierto) redibujado con la misma
+geometría que `vispapp/src/components/visp/VispLogo.tsx` y
+`vispapp/assets/brand/visp-logo-light.svg`: si cambia el logo, cambian los tres.
+Incrustar un PNG metía cientos de KB en un documento de una página; en vector
+pesa casi nada y además se imprime nítido.
 """
 
 from __future__ import annotations
@@ -43,7 +45,8 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from fpdf import FPDF
-from fpdf.enums import XPos, YPos
+from fpdf.drawing import DeviceRGB
+from fpdf.enums import PathPaintRule, StrokeCapStyle, XPos, YPos
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +61,10 @@ ZONA = ZoneInfo("America/Toronto")
 
 TINTA = (26, 26, 46)
 AZUL = (74, 144, 226)
-VIOLETA = (120, 80, 255)      # #7850FF — el tono medio del logo
+NEGRO = (0, 0, 0)             # fondo de la cabecera, como la splash y el login
+# El anillo de fondo del logo es blanco al 14 % en la app; sobre el negro de la
+# cabecera eso es este gris. Sólido y no transparente: más simple y es lo mismo.
+GRIS_ANILLO = (36, 36, 36)
 GRIS = (110, 110, 125)
 GRIS_CLARO = (236, 238, 243)
 VERDE = (39, 174, 96)
@@ -95,23 +101,58 @@ class ComprobantePDF(FPDF):
 
 
 def _logo(pdf: ComprobantePDF, x: float, y: float, lado: float) -> None:
-    """La "V" del login, a escala, en vector.
+    """El logo de VISP en blanco, a escala, en vector, en un cuadrado de `lado`.
 
-    El SVG original vive en un lienzo de 100×100: trazo de (20,20) a (50,80) a
-    (80,20) con grosor 6 y extremos redondeados.
+    Coordenadas del original (lienzo 1280, recortado a 225..1055): anillo de
+    centro (640,640), radio 390 y grosor 35; tramo blanco desde las 12 en punto
+    en sentido horario hasta ~148°; la V como polígono con tres esquinas curvas.
     """
-    e = lado / 100.0
-    pdf.set_draw_color(*VIOLETA)
-    pdf.set_line_width(6 * e)
-    pdf._out("1 J")   # extremo redondeado
-    pdf._out("1 j")   # unión redondeada
-    pdf.line(x + 20 * e, y + 20 * e, x + 50 * e, y + 80 * e)
-    pdf.line(x + 50 * e, y + 80 * e, x + 80 * e, y + 20 * e)
+    e = lado / 830.0
+
+    def p(u: float, v: float) -> tuple[float, float]:
+        return x + (u - 225) * e, y + (v - 225) * e
+
+    grosor = 35 * e
+    radio = 390 * e
+
+    # Anillo de fondo: círculo completo en dos medias vueltas.
+    with pdf.new_path(*p(640, 250)) as trazo:
+        trazo.style.paint_rule = PathPaintRule.STROKE
+        trazo.style.stroke_color = DeviceRGB(*(c / 255 for c in GRIS_ANILLO))
+        trazo.style.stroke_width = grosor
+        trazo.arc_to(radio, radio, 0, False, True, *p(640, 1030))
+        trazo.arc_to(radio, radio, 0, False, True, *p(640, 250))
+
+    # Tramo blanco con extremos redondeados.
+    with pdf.new_path(*p(640, 250)) as trazo:
+        trazo.style.paint_rule = PathPaintRule.STROKE
+        trazo.style.stroke_color = DeviceRGB(1, 1, 1)
+        trazo.style.stroke_width = grosor
+        trazo.style.stroke_cap_style = StrokeCapStyle.ROUND
+        # fpdf2 cierra los trazos por defecto: uniría los dos extremos del arco
+        # con una recta que cruza el logo.
+        trazo.style.auto_close = False
+        trazo.arc_to(radio, radio, 0, True, True, *p(307.8, 844.4))
+
+    # La V.
+    with pdf.new_path(*p(453, 453)) as v:
+        v.style.paint_rule = PathPaintRule.FILL_NONZERO
+        v.style.fill_color = DeviceRGB(1, 1, 1)
+        v.line_to(*p(519, 453))
+        v.quadratic_curve_to(*p(547, 453), *p(556, 479.5))
+        v.line_to(*p(640, 728))
+        v.line_to(*p(722.7, 479.5))
+        v.quadratic_curve_to(*p(731.5, 453), *p(759.5, 453))
+        v.line_to(*p(826, 453))
+        v.line_to(*p(710.3, 780.8))
+        v.quadratic_curve_to(*p(693.6, 828), *p(643.6, 828))
+        v.line_to(*p(587, 828))
+        v.close()
 
 
 def _cabecera(pdf: ComprobantePDF, titulo_en: str, titulo_fr: str,
               numero: str, fecha: str) -> None:
-    pdf.set_fill_color(*TINTA)
+    pdf.set_fill_color(*NEGRO)
     pdf.rect(0, 0, 210, 34, "F")
     _logo(pdf, x=15, y=7, lado=19)
 

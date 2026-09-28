@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AnimatedSpinner } from '../components/animations';
-import Svg, { Defs, LinearGradient, Stop, Path } from 'react-native-svg';
+import { VispLogo } from '../components/visp/VispLogo';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -209,24 +209,12 @@ function useThemedTabOptions() {
 // ---------------------------------------------------------------------------
 
 function HeaderLogo(): React.JSX.Element {
+  // Color del texto del tema: blanco en oscuro, casi negro en claro.
+  const theme = useTheme();
   return (
-    <Svg viewBox="0 0 100 100" width={24} height={24} style={{ marginRight: 12 }}>
-      <Defs>
-        <LinearGradient id="hdrGrad" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0%" stopColor="#a78bfa" />
-          <Stop offset="50%" stopColor="#7850FF" />
-          <Stop offset="100%" stopColor="#4f46e5" />
-        </LinearGradient>
-      </Defs>
-      <Path
-        d="M 20 20 L 50 80 L 80 20"
-        fill="none"
-        stroke="url(#hdrGrad)"
-        strokeWidth={8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
+    <View style={{ marginRight: 12 }}>
+      <VispLogo size={26} color={theme.textPrimary} />
+    </View>
   );
 }
 

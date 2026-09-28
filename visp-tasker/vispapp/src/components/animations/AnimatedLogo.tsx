@@ -1,24 +1,28 @@
 /**
  * AnimatedLogo
  *
- * VISP "V" logo with stroke draw-on effect + glow pulse.
- * Pure code SVG animation — crisp at any scale, tiny file size.
- * Uses react-native-svg + react-native-reanimated.
+ * El logo de VISP con entrada animada: el anillo de fondo aparece, el tramo
+ * blanco se dibuja desde las 12 en punto en sentido horario —como un progreso
+ * que se completa— y la V entra mientras tanto. Una sola vez, sin bucle: es la
+ * pantalla de login, no un indicador de carga.
+ *
+ * La geometría es la de `VispLogo` (una sola fuente). react-native-svg +
+ * react-native-reanimated.
  */
 
 import React, { useEffect } from 'react';
 import { View, ViewStyle } from 'react-native';
-import Svg, { Defs, LinearGradient, Stop, Path, Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
   withTiming,
   withDelay,
-  withRepeat,
-  withSequence,
   Easing,
   interpolate,
 } from 'react-native-reanimated';
+
+import { VISP_LOGO } from '../visp/VispLogo';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -26,106 +30,70 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 interface AnimatedLogoProps {
   size?: number;
   color?: string;
-  glowColor?: string;
   style?: ViewStyle;
   animate?: boolean;
 }
 
 const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
   size = 120,
-  color = '#7850FF',
-  glowColor = 'rgba(120, 80, 255, 0.4)',
+  color = '#FFFFFF',
   style,
   animate = true,
 }) => {
-  const drawProgress = useSharedValue(animate ? 0 : 1);
-  const glowScale = useSharedValue(1);
-  const glowOpacity = useSharedValue(animate ? 0 : 0.3);
+  const g = VISP_LOGO;
+  const track = useSharedValue(animate ? 0 : 1);
+  const draw = useSharedValue(animate ? 0 : 1);
+  const mark = useSharedValue(animate ? 0 : 1);
 
   useEffect(() => {
     if (!animate) return;
-
-    // Stroke draw-on: 0 → 1 over 1.5s with ease-out
-    drawProgress.value = withTiming(1, {
-      duration: 1500,
-      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-    });
-
-    // Glow pulse: starts after draw completes
-    glowOpacity.value = withDelay(
-      1400,
-      withRepeat(
-        withSequence(
-          withTiming(0.6, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0.2, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-        ),
-        -1,
-        true,
-      ),
+    track.value = withTiming(1, { duration: 400 });
+    draw.value = withDelay(
+      150,
+      withTiming(1, { duration: 1300, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }),
     );
-
-    glowScale.value = withDelay(
-      1400,
-      withRepeat(
-        withSequence(
-          withTiming(1.15, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-          withTiming(1.0, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-        ),
-        -1,
-        true,
-      ),
-    );
+    mark.value = withDelay(350, withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) }));
+    // Los shared values son estables; solo depende de `animate`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animate]);
 
-  // V path — total length ~200 units in a 100x100 viewBox
-  const PATH_LENGTH = 200;
+  const trackProps = useAnimatedProps(() => ({
+    strokeOpacity: g.trackOpacity * track.value,
+  }));
 
-  const animatedPathProps = useAnimatedProps(() => {
-    const offset = interpolate(drawProgress.value, [0, 1], [PATH_LENGTH, 0]);
-    return {
-      strokeDashoffset: offset,
-    };
-  });
+  const arcProps = useAnimatedProps(() => ({
+    strokeDashoffset: interpolate(draw.value, [0, 1], [g.arcLength, 0]),
+    // Con el trazo a longitud cero, el extremo redondeado seguiría pintando un
+    // punto en las 12 antes de empezar: se oculta hasta que arranca.
+    strokeOpacity: draw.value > 0.001 ? 1 : 0,
+  }));
 
-  const animatedGlowProps = useAnimatedProps(() => {
-    return {
-      opacity: glowOpacity.value,
-      r: interpolate(glowScale.value, [1, 1.15], [35, 42]),
-    };
-  });
+  const markProps = useAnimatedProps(() => ({
+    fillOpacity: mark.value,
+  }));
 
   return (
     <View style={[{ width: size, height: size }, style]}>
-      <Svg viewBox="0 0 100 100" width={size} height={size}>
-        <Defs>
-          <LinearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor="#a78bfa" />
-            <Stop offset="50%" stopColor={color} />
-            <Stop offset="100%" stopColor="#4f46e5" />
-          </LinearGradient>
-        </Defs>
-
-        {/* Glow circle behind the V (hidden when not animating) */}
-        {animate && (
-          <AnimatedCircle
-            cx="50"
-            cy="50"
-            fill={glowColor}
-            animatedProps={animatedGlowProps}
-          />
-        )}
-
-        {/* The V shape — stroke draw-on */}
-        <AnimatedPath
-          d="M 20 20 L 50 80 L 80 20"
+      <Svg viewBox={g.viewBox} width={size} height={size} accessibilityLabel="VISP">
+        <AnimatedCircle
+          cx={g.cx}
+          cy={g.cy}
+          r={g.r}
           fill="none"
-          stroke="url(#logoGrad)"
-          strokeWidth={6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={PATH_LENGTH}
-          animatedProps={animatedPathProps}
+          stroke={color}
+          strokeWidth={g.stroke}
+          animatedProps={trackProps}
         />
+        <AnimatedPath
+          d={g.arc}
+          fill="none"
+          stroke={color}
+          strokeWidth={g.stroke}
+          strokeLinecap="round"
+          strokeDasharray={g.arcLength}
+          animatedProps={arcProps}
+        />
+        <AnimatedPath d={g.v} fill={color} animatedProps={markProps} />
       </Svg>
     </View>
   );
