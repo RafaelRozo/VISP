@@ -428,8 +428,10 @@
 
 /* ===== CATEGORY GRID ===== */
 .visp-landing .cats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+/* 3 columnas cuando hay 9 categorías (rejilla completa, sin fila coja). */
+.visp-landing .cats.cats-3 { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 980px) { .visp-landing .cats { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 680px) { .visp-landing .cats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 680px) { .visp-landing .cats, .visp-landing .cats.cats-3 { grid-template-columns: repeat(2, 1fr); } }
 .visp-landing .cat {
   padding: 24px 22px;
   border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);

@@ -10,7 +10,8 @@ const NAV_LINKS = [
   { href: '#how', label: 'How It Works' },
   { href: '#customers', label: 'Customers' },
   { href: '#providers', label: 'Providers' },
-  { href: '#pricing', label: 'Pricing' },
+  // Planes de proveedor sin implementar: la sección está comentada más abajo.
+  // { href: '#pricing', label: 'Pricing' },
   { href: '#safety', label: 'Safety' },
   { href: '#faq', label: 'FAQ' },
 ];
@@ -76,18 +77,20 @@ export default function Landing() {
       <section className="hero" id="hero">
         <div className="wrap hero-grid">
           <div>
+            {/* Antes: "14 cities · 4,200+ verified providers · ISO-certified
+                payments" — cifras que no eran reales. Solo hechos. */}
             <div className="hero-tag">
-              <span>14 cities</span>
+              <span>Canada</span>
               <span className="div"></span>
-              <span><b>4,200+</b> verified providers</span>
+              <span>ID-verified providers</span>
               <span className="div"></span>
-              <span>ISO-certified payments</span>
+              <span>Secure payments by Stripe</span>
             </div>
             <h1 className="hero-title">
-              Hire verified people<br />to <span className="accent">get any job done</span> near you.
+              Hire experienced people<br />to <span className="accent">get any job done</span> near you.
             </h1>
             <p className="hero-sub">
-              VISP is a marketplace for everyday work — cleaning, moving, repairs, deliveries, errands and more. Post the job. Get matched with verified providers nearby. Pay securely when it's done.
+              VISP is a marketplace for everyday work — cleaning, moving, repairs, deliveries, errands and more. Post the job. Get matched with experienced providers nearby. Pay securely when it's done.
             </p>
             <div className="hero-cta">
               <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
@@ -124,7 +127,7 @@ export default function Landing() {
                   <div><span className="l">Estimate</span><span className="v">$45–$70</span></div>
                 </div>
                 <div className="job-cats">
-                  <span className="chip live">3 verified providers available</span>
+                  <span className="chip live">3 providers available</span>
                   <span className="chip">Moving</span>
                   <span className="chip">Heavy lift</span>
                   <span className="chip">Same day</span>
@@ -142,7 +145,7 @@ export default function Landing() {
                     <div className="provider-info">
                       <div className="provider-name">
                         <b>{p.name}</b>
-                        <span className="vbadge"><svg><use href="#i-check" /></svg> Verified</span>
+                        <span className="vbadge"><svg><use href="#i-check" /></svg> ID verified</span>
                       </div>
                       <div className="provider-meta-line"><b>★ {p.rating}</b> · {p.jobs} jobs · {p.distance}</div>
                     </div>
@@ -156,7 +159,9 @@ export default function Landing() {
                   <svg><use href="#i-lock" /></svg>
                   <span className="label-txt">Secure payment ready</span>
                 </div>
-                <span className="escrow-tag">ESCROW · ENABLED</span>
+                {/* No es escrow: el cobro se autoriza en la tarjeta al reservar
+                    y se captura al completar el trabajo. */}
+                <span className="escrow-tag">CARD · AUTHORIZED</span>
               </div>
             </div>
           </div>
@@ -166,7 +171,7 @@ export default function Landing() {
       {/* ============ TRUST BAR ============ */}
       <div className="trust">
         <div className="wrap trust-row">
-          <span className="trust-item"><svg><use href="#i-shield" /></svg> Verified profiles</span>
+          <span className="trust-item"><svg><use href="#i-shield" /></svg> ID-verified providers</span>
           <span className="trust-item"><svg><use href="#i-lock" /></svg> Secure in-app payments</span>
           <span className="trust-item"><svg><use href="#i-pin" /></svg> Local matching</span>
           <span className="trust-item"><svg><use href="#i-star" /></svg> Reviews &amp; ratings</span>
@@ -184,10 +189,10 @@ export default function Landing() {
           </div>
           <div className="problem-grid">
             {[
-              { n: '01', h: 'Asking around is slow.', p: 'Group chats and "got anyone for this?" eat your week. Half the responses never arrive.' },
-              { n: '02', h: 'Random listings feel risky.', p: "No identity verification, no recourse, no clear pricing. You're guessing on every booking." },
-              { n: '03', h: "Providers can't find consistent work.", p: 'Real skills, scattered demand. No easy way to fill gaps in the calendar or get paid on time.' },
-              { n: '04', h: 'Local jobs need a better system.', p: 'Identity, matching, payment, reviews, dispute support — in one place. Built for both sides.' },
+              { n: '01', h: "There's always something to do at home.", p: "Furniture to assemble. A yard to tidy. Cleaning you haven't had time for. Get help with the tasks standing between you and enjoying your home." },
+              { n: '02', h: 'Small errands take up real time.', p: "A package to drop off. An order to collect. One more stop across town. Everyday errands shouldn't have to take over your day." },
+              { n: '03', h: 'Your business could use an extra hand.', p: 'Preparing for an event, organizing supplies, or keeping your workspace clean — sometimes your team needs extra help to keep things moving.' },
+              { n: '04', h: 'You want to know what to expect.', p: "Who's coming? What's included? What will it cost? Getting help should start with clear details, not unanswered questions." },
             ].map((it) => (
               <div className="problem-item" key={it.n}>
                 <span className="problem-num">{it.n}</span>
@@ -210,8 +215,10 @@ export default function Landing() {
           </div>
           <div className="steps">
             {[
-              { n: 'STEP 01', h: 'Post the job', p: 'Describe what you need, when you need it, and where. Photos and budget optional.' },
-              { n: 'STEP 02', h: 'Get matched', p: 'VISP surfaces verified providers nearby who fit your job, schedule, and budget.' },
+              // Catálogo cerrado: el cliente ELIGE un servicio, no lo describe.
+              // Los detalles y fotos son para que el proveedor vea el trabajo.
+              { n: 'STEP 01', h: 'Post the job', p: 'Pick the service you need, when, and where. Add details and photos so providers can see the job.' },
+              { n: 'STEP 02', h: 'Get matched', p: 'VISP shows experienced providers nearby who offer that service, with their price.' },
               { n: 'STEP 03', h: 'Choose your provider', p: 'Compare ratings, distance, availability, and estimated pricing side by side.' },
               { n: 'STEP 04', h: 'Get it done', p: 'Track the job, message the provider, pay securely, leave a review when complete.' },
             ].map((s) => (
@@ -232,9 +239,10 @@ export default function Landing() {
             <div className="audience-text">
               <span className="eyebrow" style={{ display: 'block', marginBottom: 14 }}>§ For Customers</span>
               <h2 className="h2">Need help? VISP it.</h2>
-              <p className="lede">Request almost any job and get matched with verified people nearby. Real help, ready when you need it.</p>
+              <p className="lede">Request almost any job and get matched with experienced people nearby. Real help, ready when you need it.</p>
               <div className="usecase-list">
-                {['Moving furniture','Same-day errands','Cleaning help','Home repairs','Yard work','Event support','Local deliveries','Custom tasks']
+                {/* Solo servicios del catálogo activo (igual que § Categories). */}
+                {['Home cleaning','Furniture assembly','Moving help','Yard work','Painting','Pet care','Snow removal','Junk removal']
                   .map((u) => <span className="uc" key={u}>{u}</span>)}
               </div>
               <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
@@ -282,7 +290,8 @@ export default function Landing() {
               <h2 className="h2">Earn with the skills you already have.</h2>
               <p className="lede">Turn your time, tools, experience, or trade into flexible income. Built for everyday jobs and serious service providers.</p>
               <div className="usecase-list">
-                {['Cleaners','Movers','Handymen','Drivers','Tutors','Beauty pros','Tech help','Small businesses']
+                {/* Perfiles que hoy tienen servicios en el catálogo activo. */}
+                {['Cleaners','Movers','Handymen','Gardeners','Painters','Pet sitters','HVAC technicians','General labourers']
                   .map((u) => <span className="uc" key={u}>{u}</span>)}
               </div>
               <a href={PROVIDER_URL} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
@@ -345,22 +354,24 @@ export default function Landing() {
           <div className="section-head">
             <span className="eyebrow">§ Categories</span>
             <h2 className="h2">Built for everyday jobs — and serious service providers.</h2>
-            <p className="lede">From a single errand to a full-day project, VISP covers the work people actually need done.</p>
+            <p className="lede">From a quick job to a full-day project — these are the services available today, with more on the way.</p>
           </div>
-          <div className="cats">
+          {/* Solo las categorías con servicios ACTIVOS en el catálogo (visp_prod,
+              2026-09-28). Al activar servicios de otra categoría (Errands &
+              Delivery, Events, Plumbing, Electrical…), añadirla aquí. Custom Jobs
+              no vuelve nunca: el catálogo es cerrado. `cats-3` = rejilla 3×3
+              para 9 tarjetas; con otro número, quitarla vuelve a 4 columnas. */}
+          <div className="cats cats-3">
             {[
-              { n: '01', icon: 'i-broom', h: 'Cleaning', p: 'Homes, offices, post-move, deep cleans.' },
-              { n: '02', icon: 'i-truck', h: 'Moving', p: 'Heavy lifting, full moves, single items.' },
-              { n: '03', icon: 'i-wrench', h: 'Handyman', p: 'Repairs, mounting, assembly, fixes.' },
-              { n: '04', icon: 'i-package', h: 'Delivery', p: 'Pickups, drop-offs, courier runs.' },
-              { n: '05', icon: 'i-bolt', h: 'Errands', p: 'Shopping, returns, line-waiting.' },
-              { n: '06', icon: 'i-paw', h: 'Pet Care', p: 'Walks, sitting, drop-ins, transport.' },
-              { n: '07', icon: 'i-leaf', h: 'Yard Work', p: 'Lawns, leaves, snow, seasonal cleanup.' },
-              { n: '08', icon: 'i-laptop', h: 'Tech Help', p: 'Setup, troubleshooting, smart home.' },
-              { n: '09', icon: 'i-spark', h: 'Beauty', p: 'Hair, nails, lash, at-home services.' },
-              { n: '10', icon: 'i-book', h: 'Tutoring', p: 'K–12, test prep, languages, music.' },
-              { n: '11', icon: 'i-cal', h: 'Event Help', p: 'Setup, staffing, teardown, day-of.' },
-              { n: '12', icon: 'i-grid', h: 'Custom Jobs', p: 'If a person can do it, post it.' },
+              { n: '01', icon: 'i-broom', h: 'Cleaning', p: 'Homes, deep cleans, move-outs, windows, carpets.' },
+              { n: '02', icon: 'i-package', h: 'Assembly', p: 'Furniture, shelving, TV mounts, blinds.' },
+              { n: '03', icon: 'i-truck', h: 'Moving & Hauling', p: 'Small moves, heavy items, junk removal.' },
+              { n: '04', icon: 'i-leaf', h: 'Gardening & Landscaping', p: 'Lawns, weeding, hedges, pressure washing.' },
+              { n: '05', icon: 'i-brush', h: 'Painting', p: 'Touch-ups, rooms, drywall patching, decks.' },
+              { n: '06', icon: 'i-paw', h: 'Pet Care', p: 'Dog walking, pet sitting, feeding visits.' },
+              { n: '07', icon: 'i-snow', h: 'Seasonal', p: 'Snow shovelling, de-icing, holiday decorations.' },
+              { n: '08', icon: 'i-thermo', h: 'HVAC', p: 'Annual tune-ups and duct cleaning.' },
+              { n: '09', icon: 'i-wrench', h: 'Helper', p: 'General labour to support contractors on site.' },
             ].map((c) => (
               <div className="cat" key={c.n}>
                 <span className="cat-num">{c.n}</span>
@@ -379,16 +390,25 @@ export default function Landing() {
           <div className="section-head">
             <span className="eyebrow">§ Safety &amp; Verification</span>
             <h2 className="h2">Built around trust — not random gig work.</h2>
-            <p className="lede">Every provider is verified before they can accept a job. Every payment runs through VISP. Every job is reviewed.</p>
+            <p className="lede">Every provider verifies their identity before they can accept a job. Every payment runs through VISP. Every job can be rated.</p>
           </div>
           <div className="safety-grid">
             {[
-              { tag: 'VER-01 · Identity', h: 'Verified provider profiles', p: 'ID checks, background screening on eligible categories, and credential review before any provider goes live.' },
+              // Texto del cliente sin "background screening": no está implementado
+              // (backgroundCheckIntegration.py son stubs). Original:
+              // "…additional checks include background screening and verification
+              //  of relevant licences or qualifications."
+              { tag: 'VER-01 · Identity', h: "Know who you're booking", p: 'Every provider completes identity verification before accepting jobs. Depending on the service, providers must also submit relevant licences or qualifications.' },
               { tag: 'REV-02 · Reputation', h: 'Ratings and reviews', p: 'Every job ends with a real review. Providers earn their place. Customers see the truth before they book.' },
               { tag: 'PAY-03 · Payment', h: 'Secure in-app payments', p: 'Funds are held until the job is marked complete. No cash awkwardness. No payment chasing.' },
               { tag: 'SCP-04 · Scope', h: 'Clear job details', p: 'Scope, schedule, address, budget — agreed before the job starts. No silent scope creep.' },
-              { tag: 'BDG-05 · Trust', h: 'Provider trust badges', p: 'Top Rated, Background Verified, Insured, Pro Account — badges customers can read at a glance.' },
-              { tag: 'SUP-06 · Support', h: 'Dispute support', p: 'Real humans on standby. If something goes sideways, our team mediates and protects both sides.' },
+              // Insignias sin implementar. Vuelve cuando existan:
+              // { tag: 'BDG-05 · Trust', h: 'Provider trust badges', p: 'Top Rated, Background Verified, Insured, Pro Account — badges customers can read at a glance.' },
+              { tag: 'AGR-05 · Agreement', h: 'Signed provider agreement', p: 'Every provider signs the VISP Provider Agreement before taking jobs — clear rules on conduct, scope, and payment.' },
+              // No hay flujo de disputas (ni pantalla ni endpoint para abrirla).
+              // Vuelve cuando exista:
+              // { tag: 'SUP-06 · Support', h: 'Dispute support', p: 'Real humans on standby. If something goes sideways, our team mediates and protects both sides.' },
+              { tag: 'SUP-06 · Support', h: 'Human support', p: 'Questions or a problem with a job? Our team is a message away, and every cancellation is reviewed by a person.' },
             ].map((s) => (
               <div className="safety-item" key={s.tag}>
                 <span className="tag">{s.tag}</span>
@@ -400,7 +420,10 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ============ PRICING ============ */}
+      {/* ============ PRICING ============
+          Comentada entera: los planes Starter/Pro/Elite no están implementados
+          (el proveedor paga comisión por trabajo, no suscripción). Vuelve cuando
+          existan; el enlace del menú y el del pie también están comentados.
       <section id="pricing" className="pricing">
         <div className="wrap">
           <div className="section-head" style={{ paddingTop: 0, marginBottom: 48 }}>
@@ -468,6 +491,7 @@ export default function Landing() {
           <p className="pricing-foot mono">Cancel anytime · No long-term contract · Switch tiers monthly</p>
         </div>
       </section>
+      */}
 
       {/* ============ APP PREVIEW ============ */}
       <section>
@@ -494,13 +518,13 @@ export default function Landing() {
             <div className="preview-card w2">
               <div className="pv-head">
                 <span className="l">Provider profile</span>
-                <span className="r">PRO</span>
+                <span className="r">CLEANING</span>
               </div>
               <div className="profile-block">
                 <div className="av-lg">SK</div>
                 <div>
                   <b>Sarah K.</b>
-                  <small>VERIFIED · 0.8 KM</small>
+                  <small>ID VERIFIED · 0.8 KM</small>
                 </div>
               </div>
               <div className="profile-stats">
@@ -517,18 +541,20 @@ export default function Landing() {
               </div>
               <div className="pv-row"><span className="label">Job total</span><span className="value">$148.00</span></div>
               <div className="pv-row"><span className="label">Service fee</span><span className="value">$7.40</span></div>
-              <div className="pv-row"><span className="label">Held in escrow</span><span className="value violet">$155.40</span></div>
+              <div className="pv-row"><span className="label">Authorized on card</span><span className="value violet">$155.40</span></div>
               <div className="pv-row"><span className="label">Releases on</span><span className="value">COMPLETION</span></div>
             </div>
 
             <div className="preview-card w2">
               <div className="pv-head">
-                <span className="l">Match strength</span>
+                {/* Antes "Match strength 78 %": esa métrica no existe. La lista
+                    de proveedores disponibles con su precio, sí. */}
+                <span className="l">Available now</span>
                 <span className="r">RT-7821</span>
               </div>
               <div className="match-block">
-                <div className="match-num">78<span className="pct">%</span></div>
-                <p><b>3 providers</b> matched<br />within 1.5 km</p>
+                <div className="match-num">3</div>
+                <p><b>providers</b> available<br />within 1.5 km</p>
               </div>
             </div>
 
@@ -575,7 +601,7 @@ export default function Landing() {
             <div>
               <span className="eyebrow" style={{ display: 'block', marginBottom: 14 }}>§ For Business</span>
               <h2 className="h2">Need extra hands for your business?</h2>
-              <p className="lede" style={{ marginBottom: 28 }}>Local cafes, retail shops, event teams, property managers and small operations use VISP to find verified help fast — without recruiters or long contracts.</p>
+              <p className="lede" style={{ marginBottom: 28 }}>Local cafes, retail shops, event teams, property managers and small operations use VISP to find experienced help fast — without recruiters or long contracts.</p>
               <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
                 Find Help for Your Business <span className="arrow"><svg width="14" height="14"><use href="#i-arrow" /></svg></span>
               </a>
@@ -592,7 +618,7 @@ export default function Landing() {
       <section className="final">
         <div className="wrap final-inner">
           <h2>Need something done? <span className="accent">VISP it.</span></h2>
-          <p>Request a job in minutes — or become a verified provider and start earning from local opportunities.</p>
+          <p>Request a job in minutes — or become a provider and start earning from local opportunities.</p>
           <div className="final-cta">
             <a href={REQUEST_URL} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
               Request a Job <span className="arrow"><svg width="14" height="14"><use href="#i-arrow" /></svg></span>
@@ -611,14 +637,29 @@ export default function Landing() {
           </div>
           <div className="faq-grid">
             {[
-              { n: '01', q: 'What kind of jobs can I request?', a: 'Almost anything a real person can do — cleaning, moving, repairs, errands, deliveries, pet care, yard work, tech help, beauty services, tutoring, event support, admin work, and fully custom tasks. If a person can do it, you can post it.', open: true },
+              // Texto del cliente con el cierre cambiado: "if you can think it, VISP
+              // has it" choca con el catálogo cerrado (no hay trabajos a medida).
+              { n: '01', q: 'What kind of jobs can I request?', a: 'Almost anything a real person can do — cleaning, moving, repairs, errands, deliveries, pet care, yard work and more. Browse the catalog in the app to see what’s available near you.', open: true },
               { n: '02', q: 'Who can become a provider?', a: 'Anyone 18+ with a verifiable identity and the skills to do the work they list. Tradespeople, freelancers, students, drivers, cleaners, beauty pros, tutors, and small service businesses all use VISP. Some categories require additional credentials before going live.' },
-              { n: '03', q: 'How does verification work?', a: 'Every provider verifies their identity with a government-issued ID. Eligible categories also include background screening and credential review (trade licenses, insurance, references). Verified providers receive a badge customers can see on every offer.' },
+              // Sin "background screening" ni insignia: no existen todavía. Original:
+              // "…Eligible categories also include background screening and credential
+              //  review (trade licenses, insurance, references). Verified providers
+              //  receive a badge customers can see on every offer."
+              { n: '03', q: 'How does verification work?', a: 'Every provider verifies their identity with a government-issued ID before they can accept jobs. Services that require a licence, qualification or insurance ask the provider to submit it before they can take those jobs.' },
               { n: '04', q: 'How do providers get paid?', a: "Customers pay through VISP. Funds are held securely until the job is marked complete, then released to the provider's connected account. Payouts typically arrive within 1–2 business days." },
-              { n: '05', q: 'Can businesses use VISP?', a: 'Yes. Businesses use VISP for event staffing, deliveries, cleaning, setup and teardown, maintenance, admin overflow, and seasonal help. Business accounts unlock multi-job posting and team management.' },
-              { n: '06', q: 'Is VISP available in my city?', a: "VISP is live in 14 cities and expanding monthly. Drop your postal code on the request page to see the active provider pool near you — if we're not live in your area yet, we'll notify you the moment we are." },
-              { n: '07', q: 'What happens if there is a problem with a job?', a: 'Open a dispute from the job page and our support team steps in. Payment is held until the issue is resolved. Both customers and providers are protected by clear policies and human review.' },
-              { n: '08', q: 'Can providers offer multiple services?', a: "Yes. Add as many service categories as you're qualified for. Providers offering multiple verified services typically receive more matches and higher weekly earnings." },
+              // Sin la última frase: las cuentas de empresa para CLIENTES (varios
+              // trabajos, gestión de equipo) no existen. Original: "…Business
+              // accounts unlock multi-job posting and team management."
+              { n: '05', q: 'Can businesses use VISP?', a: 'Yes. Businesses use VISP for event staffing, deliveries, cleaning, setup and teardown, maintenance, admin overflow, and seasonal help.' },
+              // Texto del cliente con la zona real: la app solo acepta direcciones
+              // de la zona GTA (service_zones), no toda la provincia.
+              { n: '06', q: 'Is VISP available in my city?', a: 'VISP is currently available in the Greater Toronto Area, Ontario, Canada. We are working with provincial governments to expand across all of Canada.' },
+              // No hay flujo de disputas. Original: "Open a dispute from the job page
+              // and our support team steps in. Payment is held until the issue is
+              // resolved. Both customers and providers are protected by clear
+              // policies and human review."
+              { n: '07', q: 'What happens if there is a problem with a job?', a: 'Contact our support team and we’ll step in. Cancellations are reviewed by a person, and both customers and providers are covered by clear policies.' },
+              { n: '08', q: 'Can providers offer multiple services?', a: "Yes. Add as many services as you're qualified for. Providers offering multiple services typically receive more matches and higher weekly earnings." },
             ].map((f) => (
               <details className="faq-item" key={f.n} {...(f.open ? { open: true } : {})}>
                 <summary>
@@ -642,14 +683,14 @@ export default function Landing() {
                 <svg className="logo-mark"><use href="#visp-mark" /></svg>
                 <span className="logo-text">VISP</span>
               </a>
-              <p>The verified local service marketplace. Post the job. Get matched. Get it done.</p>
+              <p>The local marketplace for everyday jobs. Post the job. Get matched. Get it done.</p>
             </div>
             <div>
               <h5>For Providers</h5>
               <ul>
                 <li><a href="#providers">Become a Provider</a></li>
-                <li><a href="#pricing">Provider Pricing</a></li>
-                <li><a href="#safety">Verification</a></li>
+                {/* <li><a href="#pricing">Provider Pricing</a></li> — sección comentada */}
+                <li><a href="#safety">Identity verification</a></li>
                 <li><a href="/legal/terms">Provider Terms</a></li>
               </ul>
             </div>
@@ -674,7 +715,7 @@ export default function Landing() {
           </div>
           <div className="footer-bottom">
             <div>© 2026 VISP TECHNOLOGIES, INC.</div>
-            <div>VERIFIED LOCAL HELP FOR EVERYDAY JOBS</div>
+            <div>EXPERIENCED LOCAL HELP FOR EVERYDAY JOBS</div>
           </div>
         </div>
       </footer>
@@ -690,11 +731,11 @@ function SvgSprite() {
   return (
     <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
       <defs>
-        <symbol id="visp-mark" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r="26" fill="none" stroke="#2A2A2A" strokeWidth="2.5" />
-          <path d="M 32 6 A 26 26 0 0 1 26 57.3" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-          <path d="M 9.2 22.5 A 26 26 0 0 1 12.5 16.4" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-          <path d="M 19.5 22 L 32 45 L 44.5 22" fill="none" stroke="#FFFFFF" strokeWidth="5.5" strokeLinejoin="miter" strokeLinecap="butt" />
+        {/* Logo oficial; misma geometría que components/Logo.tsx y la app. */}
+        <symbol id="visp-mark" viewBox="225 225 830 830">
+          <circle cx="640" cy="640" r="390" fill="none" stroke="#FFFFFF" strokeOpacity="0.14" strokeWidth="35" />
+          <path d="M 640 250 A 390 390 0 1 1 307.8 844.4" fill="none" stroke="#FFFFFF" strokeWidth="35" strokeLinecap="round" />
+          <path d="M 453 453 L 519 453 Q 547 453 556 479.5 L 640 728 L 722.7 479.5 Q 731.5 453 759.5 453 L 826 453 L 710.3 780.8 Q 693.6 828 643.6 828 L 587 828 Z" fill="#FFFFFF" />
         </symbol>
 
         <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9,12 11,14 15,10" /></symbol>
@@ -715,7 +756,10 @@ function SvgSprite() {
         <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /></symbol>
         <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></symbol>
         <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></symbol>
-        <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></symbol>
+        <symbol id="i-brush" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="15" height="6" rx="1" /><path d="M18 6h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-8v3" /><rect x="10" y="14" width="4" height="7" rx="1" /></symbol>
+        <symbol id="i-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="2" x2="12" y2="22" /><line x1="3.3" y1="7" x2="20.7" y2="17" /><line x1="3.3" y1="17" x2="20.7" y2="7" /><polyline points="9,4 12,6 15,4" /><polyline points="9,20 12,18 15,20" /></symbol>
+        <symbol id="i-thermo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.76V4.5a2.5 2.5 0 0 0-5 0v10.26a4.5 4.5 0 1 0 5 0z" /><line x1="11.5" y1="9" x2="11.5" y2="16" /></symbol>
+        <symbol id="i-grid"viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></symbol>
       </defs>
     </svg>
   );
