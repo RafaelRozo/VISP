@@ -183,6 +183,7 @@
     "structural": "Structurel",
     "subtitle": "Catégories et tâches que les clients peuvent demander et pour lesquelles les prestataires peuvent être qualifiés.",
     "taskDescription": "Description",
+    "requiredFieldsMissing": "Le nom, le slug et la description sont obligatoires.",
     "taskName": "Nom du service",
     "taskSlug": "Slug",
     "tasksInCategory": "service",

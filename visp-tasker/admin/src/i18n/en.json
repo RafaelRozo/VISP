@@ -183,6 +183,7 @@
     "structural": "Structural",
     "subtitle": "Categories and tasks customers can request and providers can be qualified for.",
     "taskDescription": "Description",
+    "requiredFieldsMissing": "Name, slug and description are required.",
     "taskName": "Service name",
     "taskSlug": "Slug",
     "tasksInCategory": "service",

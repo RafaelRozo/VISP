@@ -488,7 +488,8 @@ class ProviderTaskOut(BaseModel):
     id: uuid.UUID
     slug: str
     name: str
-    description: str
+    # service_tasks.description is nullable; the admin can save a service without one.
+    description: Optional[str] = None
     level: str
     category_id: uuid.UUID = Field(alias="categoryId")
     regulated: bool

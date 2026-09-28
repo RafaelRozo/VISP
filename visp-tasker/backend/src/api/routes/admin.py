@@ -2097,6 +2097,7 @@ async def admin_create_category(
         help_message_en=body.help_message_en,
         help_message_fr=body.help_message_fr,
     )
+    _assert_required_text(cat, "category")
     db.add(cat)
     try:
         await db.commit()
@@ -2125,6 +2126,7 @@ async def admin_update_category(
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(cat, field, value)
+    _assert_required_text(cat, "category")
 
     try:
         await db.commit()
@@ -2402,6 +2404,29 @@ async def _replace_task_questions(
     for qid, q in actuales.items():
         if qid not in vistos and q.is_active:
             q.is_active = False
+
+
+def _assert_required_text(entity: Any, kind: str) -> None:
+    """Candado: nombre, slug y descripción no pueden quedar vacíos.
+
+    La BD permite `description` NULL, y el 2026-09-28 un servicio creado sin ella
+    tumbó `/taxonomy` para todos los proveedores. Se evalúa sobre el estado
+    RESULTANTE (sirve igual para crear y para editar) y recorta espacios, porque
+    "   " pasa `min_length=1` y es igual de vacío.
+    """
+    missing = []
+    for field in ("name", "slug", "description"):
+        value = getattr(entity, field, None)
+        if isinstance(value, str):
+            value = value.strip()
+            setattr(entity, field, value)
+        if not value:
+            missing.append(field)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A {kind} cannot be saved with empty fields: {', '.join(missing)}.",
+        )
 
 
 def _assert_details_prompt(task: ServiceTask) -> None:
@@ -2750,6 +2775,7 @@ async def admin_create_task(
     )
     # Guardarraíl: L2/L3 sin requisitos = servicio que nadie puede tomar nunca.
     await _assert_credential_gate(db, task, body.credential_requirements)
+    _assert_required_text(task, "service")
     _assert_details_prompt(task)
     _assert_materials(task)
     _assert_price_range(task)
@@ -2818,6 +2844,7 @@ async def admin_update_task(
     # El guardarraíl se evalúa sobre el nivel RESULTANTE: subir un servicio a
     # L2/L3 sin requisitos lo dejaría inalcanzable para todo proveedor.
     await _assert_credential_gate(db, task, body.credential_requirements)
+    _assert_required_text(task, "service")
     _assert_details_prompt(task)
     _assert_materials(task)
     _assert_price_range(task)

@@ -651,6 +651,12 @@ function SearchIcon() {
   );
 }
 
+// Espeja el 400 de la API (_assert_required_text): nombre, slug y descripción no
+// pueden quedar vacíos. `required` en el input no basta: "   " lo pasa y el
+// submit lo recorta a vacío. Un servicio sin descripción tumbó /taxonomy el 28-09.
+const requiredTextMissing = (s: { name: string; slug: string; description: string }) =>
+  s.name.trim() === '' || s.slug.trim() === '' || s.description.trim() === '';
+
 /* =================== Category modal =================== */
 function CategoryModal({
   form,
@@ -665,9 +671,11 @@ function CategoryModal({
 }) {
   const { t } = useTranslation();
   const [state, setState] = useState<CategoryFormState>(form);
+  const requiredMissing = requiredTextMissing(state);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (requiredMissing) return;
     onSubmit({
       slug: state.slug.trim(),
       name: state.name.trim(),
@@ -702,7 +710,7 @@ function CategoryModal({
           </div>
           <div>
             <label className="t-label">{t('services.categoryDescription')}</label>
-            <textarea className="t-textarea" value={state.description} onChange={(e) => setState({ ...state, description: e.target.value })} />
+            <textarea className="t-textarea" required value={state.description} onChange={(e) => setState({ ...state, description: e.target.value })} />
           </div>
           <div style={{ display: 'flex', gap: 14 }}>
             <div style={{ flex: 1 }}>
@@ -752,8 +760,13 @@ function CategoryModal({
           </div>
         </div>
         <div className="t-modal-foot">
+          {requiredMissing && (
+            <div style={{ fontSize: 12, color: 'var(--t-danger)', marginRight: 'auto', alignSelf: 'center' }}>
+              {t('services.requiredFieldsMissing')}
+            </div>
+          )}
           <button type="button" className="t-btn t-btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-          <button type="submit" className="t-btn t-btn-primary" disabled={submitting}>
+          <button type="submit" className="t-btn t-btn-primary" disabled={submitting || requiredMissing}>
             {submitting && <span className="t-spinner" />}
             {form.id ? t('common.save') : t('common.create')}
           </button>
@@ -797,6 +810,7 @@ function TaskModal({
   // trabajo extra. Mejor bloquearlo aquí que dejar que el guardado falle.
   const detailsPromptMissing =
     state.requiresDetails && state.detailsPromptEn.trim() === '';
+  const requiredMissing = requiredTextMissing(state);
 
   // Espeja el 400 de la API: una pregunta cerrada necesita al menos DOS opciones
   // distintas. Con menos, el cliente no puede contestarla y la reserva queda
@@ -834,7 +848,7 @@ function TaskModal({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (credGateFails || detailsPromptMissing || questionOptionsInvalid) return;
+    if (credGateFails || detailsPromptMissing || questionOptionsInvalid || requiredMissing) return;
     onSubmit({
       categoryId: state.categoryId,
       slug: state.slug.trim(),
@@ -943,7 +957,7 @@ function TaskModal({
 
           <div>
             <label className="t-label">{t('services.taskDescription')}</label>
-            <textarea className="t-textarea" value={state.description} onChange={(e) => setState({ ...state, description: e.target.value })} />
+            <textarea className="t-textarea" required value={state.description} onChange={(e) => setState({ ...state, description: e.target.value })} />
           </div>
 
           {/* Precios en DÓLARES. La API los guarda en centavos; la conversión
@@ -1575,6 +1589,11 @@ function TaskModal({
         </div>
 
         <div className="t-modal-foot" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+          {requiredMissing && (
+            <div style={{ fontSize: 12, color: 'var(--t-danger)', textAlign: 'right' }}>
+              {t('services.requiredFieldsMissing')}
+            </div>
+          )}
           {errorMessage && (
             <div style={{ fontSize: 12, color: 'var(--t-danger)', textAlign: 'right' }}>{errorMessage}</div>
           )}
@@ -1584,7 +1603,8 @@ function TaskModal({
               type="submit"
               className="t-btn t-btn-primary"
               disabled={
-                submitting || credGateFails || detailsPromptMissing || questionOptionsInvalid
+                submitting || credGateFails || detailsPromptMissing || questionOptionsInvalid ||
+                requiredMissing
               }
             >
               {submitting && <span className="t-spinner" />}
