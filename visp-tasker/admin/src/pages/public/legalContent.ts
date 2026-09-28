@@ -34,7 +34,7 @@ export const TERMS: LegalDoc = {
     { heading: '11. Intellectual Property', body: 'All Platform content, including logos, designs, software, and trademarks, is owned by VISP or its licensors. You receive a limited, non-exclusive, non-transferable license to use the Platform solely as intended. You retain ownership of content you submit (such as photos and reviews) but grant VISP a worldwide, royalty-free license to use, host, display, and distribute that content in connection with operating the Platform.' },
     { heading: '12. Governing Law and Jurisdiction', body: 'These Terms are governed by the laws of the Province of Ontario and the federal laws of Canada applicable therein, without regard to conflict-of-laws principles. The parties submit to the exclusive jurisdiction of the courts located in Ontario for any dispute that cannot be resolved through VISP\'s internal dispute resolution process, subject to any non-waivable consumer-protection rights you may have in your home province.' },
     { heading: '13. Changes to These Terms', body: 'We may update these Terms from time to time. Material changes will be communicated through the Platform or by email at least 14 days before they take effect, where reasonably practicable. Continued use of the Platform after the effective date constitutes acceptance of the updated Terms.' },
-    { heading: '14. Contact Us', body: 'Questions about these Terms can be sent to support@vispapp.com (or such other address as VISP may publish on the Platform).' },
+    { heading: '14. Contact Us', body: 'Questions about these Terms can be sent to support@droztechnologies.com (or such other address as VISP may publish on the Platform).' },
   ],
 };
 
@@ -55,6 +55,6 @@ export const PRIVACY: LegalDoc = {
     { heading: "10. Children's Privacy", body: 'The Platform is not intended for individuals under the age of 18. We do not knowingly collect personal information from minors. If we become aware that we have collected personal information from a person under 18, we will delete it promptly.' },
     { heading: '11. Cookies and Similar Technologies', body: 'VISP and our analytics partners use cookies, mobile SDKs, and similar technologies to operate the Platform, remember your preferences, measure performance, and detect fraud. You can control certain technologies through your device or browser settings, although some Platform features may not function correctly if disabled.' },
     { heading: '12. Changes to This Policy', body: 'We may update this Privacy Policy from time to time. Material changes will be communicated through the Platform or by email before they take effect. The "Effective Date" at the top of this Policy indicates when it was last revised.' },
-    { heading: '13. Contact Our Privacy Office', body: 'If you have questions, concerns, or requests regarding this Privacy Policy, please contact our Privacy Officer at privacy@vispapp.com. You also have the right to contact the Office of the Privacy Commissioner of Canada at www.priv.gc.ca.' },
+    { heading: '13. Contact Our Privacy Office', body: 'If you have questions, concerns, or requests regarding this Privacy Policy, please contact our Privacy Officer at support@droztechnologies.com. You also have the right to contact the Office of the Privacy Commissioner of Canada at www.priv.gc.ca.' },
   ],
 };

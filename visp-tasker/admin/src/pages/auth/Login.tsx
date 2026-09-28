@@ -163,7 +163,7 @@ export default function Login() {
             className="t-mono"
             style={{ marginTop: 24, textAlign: 'center', fontSize: 10.5, color: 'var(--t-text-4)', letterSpacing: '0.14em', textTransform: 'uppercase' }}
           >
-            VISP TECHNOLOGIES · Verified Local Services
+            DROZ TECHNOLOGIES · VISP
           </p>
         </div>
       </div>

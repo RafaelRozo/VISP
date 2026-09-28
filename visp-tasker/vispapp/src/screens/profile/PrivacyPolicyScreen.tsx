@@ -26,7 +26,7 @@ const content = {
       { heading: '10. Children\'s Privacy', body: 'The Platform is not intended for individuals under the age of 18. We do not knowingly collect personal information from minors. If we become aware that we have collected personal information from a person under 18, we will delete it promptly.' },
       { heading: '11. Cookies and Similar Technologies', body: 'VISP and our analytics partners use cookies, mobile SDKs, and similar technologies to operate the Platform, remember your preferences, measure performance, and detect fraud. You can control certain technologies through your device or browser settings, although some Platform features may not function correctly if disabled.' },
       { heading: '12. Changes to This Policy', body: 'We may update this Privacy Policy from time to time. Material changes will be communicated through the Platform or by email before they take effect. The "Effective Date" at the top of this Policy indicates when it was last revised.' },
-      { heading: '13. Contact Our Privacy Office', body: 'If you have questions, concerns, or requests regarding this Privacy Policy, please contact our Privacy Officer at privacy@vispapp.com. You also have the right to contact the Office of the Privacy Commissioner of Canada at www.priv.gc.ca.' },
+      { heading: '13. Contact Our Privacy Office', body: 'If you have questions, concerns, or requests regarding this Privacy Policy, please contact our Privacy Officer at support@droztechnologies.com. You also have the right to contact the Office of the Privacy Commissioner of Canada at www.priv.gc.ca.' },
     ],
   },
   fr: {
@@ -45,7 +45,7 @@ const content = {
       { heading: '10. Vie privée des enfants', body: 'La Plateforme n\'est pas destinée aux personnes de moins de 18 ans. Nous ne recueillons pas sciemment de renseignements personnels de mineurs.' },
       { heading: '11. Témoins et technologies similaires', body: 'VISP et nos partenaires d\'analyse utilisent des témoins (cookies), des SDK mobiles et des technologies similaires pour opérer la Plateforme, mémoriser vos préférences et détecter la fraude.' },
       { heading: '12. Modifications de cette politique', body: 'Nous pouvons mettre à jour cette politique de temps à autre. Les modifications importantes seront communiquées via la Plateforme ou par courriel avant leur entrée en vigueur.' },
-      { heading: '13. Contacter notre bureau de la vie privée', body: 'Pour toute question ou demande concernant cette politique, contactez notre responsable de la vie privée à privacy@vispapp.com. Vous pouvez également contacter le Commissariat à la protection de la vie privée du Canada à www.priv.gc.ca.' },
+      { heading: '13. Contacter notre bureau de la vie privée', body: 'Pour toute question ou demande concernant cette politique, contactez notre responsable de la vie privée à support@droztechnologies.com. Vous pouvez également contacter le Commissariat à la protection de la vie privée du Canada à www.priv.gc.ca.' },
     ],
   },
 };

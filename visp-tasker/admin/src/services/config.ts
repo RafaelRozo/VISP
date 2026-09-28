@@ -33,5 +33,5 @@ function deriveMediaOrigin(): string {
 export const Config = {
   apiBaseUrl,
   mediaOrigin: deriveMediaOrigin(),
-  appStoreUrl: 'https://apps.apple.com/app/tasker/id000000000',
+  appStoreUrl: 'https://apps.apple.com/app/id6762825673',
 };

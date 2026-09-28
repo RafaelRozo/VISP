@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "VISP needs your location to find nearby service providers.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "VISP uses your location to track provider arrival and dispatch emergency services.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "VISP uses your location to find nearby service providers and to share arrival updates during an active job.",
         "NSCameraUsageDescription": "VISP needs camera access so you can take photos of the job, your documents and your profile picture right when you need them.",
         "NSPhotoLibraryUsageDescription": "VISP needs photo library access so you can attach photos to a booking and upload your documents."
       },

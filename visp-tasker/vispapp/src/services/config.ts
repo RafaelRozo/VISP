@@ -24,7 +24,7 @@ const DEV_CONFIG: AppConfig = {
   stripePublishableKey: 'pk_live_51TMUEhIM8PF7U4XyPREAAWXywiaSmYYgchikQlNGoKAuwhUk43jyqHJwonOUODO42z3lT6QtGavR06EYuavdfkYA008EQSnGz0',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
-  appStoreUrl: 'https://apps.apple.com/app/tasker/id000000000',
+  appStoreUrl: 'https://apps.apple.com/app/id6762825673',
   supportEmail: 'support@taskerapp.com',
   minPasswordLength: 8,
   tokenRefreshThresholdMs: 5 * 60 * 1000, // 5 minutes before expiry

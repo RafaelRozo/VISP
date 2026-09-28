@@ -707,14 +707,14 @@ export default function Landing() {
               <h5>Company</h5>
               <ul>
                 <li><a href="#faq">FAQ</a></li>
-                <li><a href="mailto:hello@vispapp.com">Contact</a></li>
+                <li><a href="mailto:support@droztechnologies.com">Contact</a></li>
                 <li><a href="/legal/privacy">Privacy</a></li>
                 <li><a href="/legal/terms">Terms</a></li>
               </ul>
             </div>
           </div>
           <div className="footer-bottom">
-            <div>© 2026 VISP TECHNOLOGIES, INC.</div>
+            <div>© 2026 DROZ TECHNOLOGIES, INC.</div>
             <div>EXPERIENCED LOCAL HELP FOR EVERYDAY JOBS</div>
           </div>
         </div>

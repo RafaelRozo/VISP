@@ -50,7 +50,7 @@ export default function LegalPage({ doc }: { doc: LegalDoc }) {
       <footer className="footer">
         <div className="wrap">
           <div className="footer-bottom">
-            <div>© 2026 VISP TECHNOLOGIES, INC.</div>
+            <div>© 2026 DROZ TECHNOLOGIES, INC.</div>
             <div className="legal-footer-links">
               <a href="/legal/terms">Terms</a>
               <a href="/legal/privacy">Privacy</a>

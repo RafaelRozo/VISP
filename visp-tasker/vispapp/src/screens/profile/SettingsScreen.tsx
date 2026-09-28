@@ -560,7 +560,7 @@ export default function SettingsScreen(): React.JSX.Element {
           <SettingsLink
             label={t('settings.contactSupport')}
             onPress={() => {
-              Linking.openURL('mailto:support@vispapp.com');
+              Linking.openURL('mailto:support@droztechnologies.com');
             }}
           />
         </GlassCard>
