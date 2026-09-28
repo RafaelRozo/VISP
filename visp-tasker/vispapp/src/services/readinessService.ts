@@ -65,9 +65,26 @@ export interface Readiness {
   blockingCount: number;
 }
 
+/**
+ * Aviso de «algo del alta cambió». El checklist recarga al volver a su pantalla,
+ * pero hay pasos que se completan SIN salir de ella —la bio se guarda en un
+ * modal encima del propio Perfil— y ahí el foco no cambia: el paso seguía sin ✓
+ * hasta refrescar a mano. Quien guarda un paso llama a `invalidate()`.
+ */
+const oyentes = new Set<() => void>();
+
 export const readinessService = {
   get(role: 'provider' | 'customer'): Promise<Readiness> {
     return get<Readiness>('/users/me/readiness', { role });
+  },
+  invalidate(): void {
+    oyentes.forEach((fn) => fn());
+  },
+  subscribe(fn: () => void): () => void {
+    oyentes.add(fn);
+    return () => {
+      oyentes.delete(fn);
+    };
   },
 };
 

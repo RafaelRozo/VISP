@@ -19,7 +19,7 @@
  * volvería a subir el documento que ya subió y nos inundaría el admin.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   LayoutAnimation,
   Platform,
@@ -29,7 +29,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation } from '../../i18n';
@@ -89,59 +89,78 @@ export function SetupChecklist({
   const navigation = useNavigation<any>();
   const [datos, setDatos] = useState<Readiness | null>(null);
   const [abierto, setAbierto] = useState(false);
-  const [tocado, setTocado] = useState(false);
+  // Ref y no estado: ahora recarga a menudo, y el valor capturado por el
+  // callback quedaba viejo — reabría o plegaba la tarjeta que el usuario movió.
+  const tocado = useRef(false);
+  const cargado = useRef(false);
+  // Sube con cada `readinessService.invalidate()` (p. ej. al guardar la bio).
+  const [aviso, setAviso] = useState(0);
 
-  useEffect(() => {
-    let vivo = true;
-    readinessService
-      .get(role)
-      .then((r) => {
-        if (!vivo) return;
-        setDatos(r);
-        onLoaded?.(r);
-        // Quien no ha empezado ve la lista ABIERTA: es su primer minuto en la
-        // app y plegarla le esconde justo lo que tiene que hacer.
-        //
-        // «No ha empezado» NO es `doneCount === 0`. Se probó en el dispositivo
-        // con un alta nueva y salía plegada: el contrato se firma en el REGISTRO
-        // —la puerta lo obliga antes de que vea el Home— así que un proveedor
-        // recién llegado siempre llega con 1 de 6. El contrato no es algo que
-        // haga desde aquí, así que no cuenta como haber arrancado.
-        const arrancado = r.steps.some(
-          (p) => p.key !== 'contract' && p.status === 'done',
-        );
-        if (!tocado) setAbierto(!arrancado && !r.allDone);
-      })
-      .catch(() => {
-        // El checklist NUNCA rompe el Home. Sin respuesta, no se pinta: es una
-        // ayuda, no una puerta — la puerta de verdad está en el servidor.
-        if (vivo) {
-          setDatos(null);
-          onLoaded?.(null);
-        }
-      });
-    return () => {
-      vivo = false;
-    };
-    // `tocado` a propósito fuera: no queremos recargar por abrir la tarjeta.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, reloadKey]);
+  useEffect(() => readinessService.subscribe(() => setAviso((n) => n + 1)), []);
+
+  // Recarga al volver a la pantalla: los pasos se completan en OTRAS pantallas
+  // (servicios, precios, dirección, cobros) y al regresar el ✓ tiene que estar
+  // ya, sin tirar para refrescar. Con el foco también cubre el montaje.
+  useFocusEffect(
+    useCallback(() => {
+      let vivo = true;
+      readinessService
+        .get(role)
+        .then((r) => {
+          if (!vivo) return;
+          cargado.current = true;
+          setDatos(r);
+          onLoaded?.(r);
+          // Quien no ha empezado ve la lista ABIERTA: es su primer minuto en la
+          // app y plegarla le esconde justo lo que tiene que hacer.
+          //
+          // «No ha empezado» NO es `doneCount === 0`. Se probó en el dispositivo
+          // con un alta nueva y salía plegada: el contrato se firma en el REGISTRO
+          // —la puerta lo obliga antes de que vea el Home— así que un proveedor
+          // recién llegado siempre llega con 1 de 6. El contrato no es algo que
+          // haga desde aquí, así que no cuenta como haber arrancado.
+          const arrancado = r.steps.some(
+            (p) => p.key !== 'contract' && p.status === 'done',
+          );
+          if (!tocado.current) setAbierto(!arrancado && !r.allDone);
+        })
+        .catch(() => {
+          // El checklist NUNCA rompe el Home. Sin respuesta, no se pinta: es una
+          // ayuda, no una puerta — la puerta de verdad está en el servidor.
+          // Si ya había datos se conservan: ahora recarga en cada foco, y un
+          // fallo de red momentáneo no debe hacer desaparecer la tarjeta.
+          if (vivo && !cargado.current) {
+            setDatos(null);
+            onLoaded?.(null);
+          }
+        });
+      return () => {
+        vivo = false;
+      };
+      // `onLoaded` fuera: el padre lo pasa inline y recargaría en cada render.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [role, reloadKey, aviso]),
+  );
 
   const irA = useCallback(
     (clave: ReadinessStepKey) => {
       // El stack de perfil se monta con un nombre distinto por rol, pero las
       // pantallas de dentro son las mismas.
       const perfil = role === 'provider' ? 'ProviderProfile' : 'CustomerProfile';
+      // `initial: false`: sin él, si el stack de Perfil aún no estaba montado, la
+      // pantalla destino pasaba a ser su RAÍZ — sin botón Back, y la pestaña
+      // Perfil se quedaba para siempre en «My Services». Con él, ProfileMain queda
+      // debajo y el Back (y el goBack del Save) vuelve a la cuenta.
       switch (clave) {
         case 'address':
         case 'customer_address':
-          navigation.navigate(perfil, { screen: 'AddressEdit' });
+          navigation.navigate(perfil, { screen: 'AddressEdit', initial: false });
           break;
         case 'services':
-          navigation.navigate(perfil, { screen: 'ProviderOnboarding' });
+          navigation.navigate(perfil, { screen: 'ProviderOnboarding', initial: false });
           break;
         case 'rates':
-          navigation.navigate(perfil, { screen: 'MyPrices' });
+          navigation.navigate(perfil, { screen: 'MyPrices', initial: false });
           break;
         case 'payouts':
           // Vive en el stack raíz, no en el de perfil.
@@ -154,7 +173,7 @@ export function SetupChecklist({
           navigation.navigate(perfil, { screen: 'ProfileMain', params: { openBio: true } });
           break;
         case 'payment_method':
-          navigation.navigate(perfil, { screen: 'PaymentMethods' });
+          navigation.navigate(perfil, { screen: 'PaymentMethods', initial: false });
           break;
         case 'phone':
           navigation.navigate(perfil, { screen: 'ProfileMain' });
@@ -171,7 +190,7 @@ export function SetupChecklist({
 
   const alternar = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setTocado(true);
+    tocado.current = true;
     setAbierto((v) => !v);
   };
 

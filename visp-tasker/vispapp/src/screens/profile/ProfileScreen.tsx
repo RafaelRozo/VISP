@@ -67,6 +67,7 @@ import {
 import { get, post } from '../../services/apiClient';
 import { userService, resolveAvatarUrl } from '../../services/userService';
 import { providerService } from '../../services/providerService';
+import { readinessService } from '../../services/readinessService';
 import { useAuthStore } from '../../stores/authStore';
 import { useProviderStore } from '../../stores/providerStore';
 
@@ -217,6 +218,9 @@ export default function ProfileScreen(): React.JSX.Element {
       await providerService.updateProfileSummary({ bio: bioText.trim() });
       setProviderBio(bioText.trim());
       setBioOpen(false);
+      // El checklist está en esta misma pantalla: sin esto el paso de la bio
+      // seguía sin ✓ hasta refrescar, porque guardar no cambia el foco.
+      readinessService.invalidate();
     } catch {
       Alert.alert(
         tr('common.error') || 'Error',

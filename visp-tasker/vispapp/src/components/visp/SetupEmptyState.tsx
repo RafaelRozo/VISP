@@ -94,13 +94,13 @@ export function SetupEmptyState({
   const ir = () => {
     switch (culpable) {
       case 'address':
-        navigation.navigate('ProviderProfile', { screen: 'AddressEdit' });
+        navigation.navigate('ProviderProfile', { screen: 'AddressEdit', initial: false });
         break;
       case 'services':
-        navigation.navigate('ProviderProfile', { screen: 'ProviderOnboarding' });
+        navigation.navigate('ProviderProfile', { screen: 'ProviderOnboarding', initial: false });
         break;
       case 'rates':
-        navigation.navigate('ProviderProfile', { screen: 'MyPrices' });
+        navigation.navigate('ProviderProfile', { screen: 'MyPrices', initial: false });
         break;
       case 'payouts':
         navigation.navigate('PayoutsOnboarding');
