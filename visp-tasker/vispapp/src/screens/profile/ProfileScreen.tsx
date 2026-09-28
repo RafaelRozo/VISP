@@ -68,6 +68,7 @@ import { get, post } from '../../services/apiClient';
 import { userService, resolveAvatarUrl } from '../../services/userService';
 import { providerService } from '../../services/providerService';
 import { readinessService } from '../../services/readinessService';
+import { APP_VERSION, BUILD_NUMBER } from '../../config/appVersion';
 import { useAuthStore } from '../../stores/authStore';
 import { useProviderStore } from '../../stores/providerStore';
 
@@ -690,7 +691,7 @@ export default function ProfileScreen(): React.JSX.Element {
         </View>
 
         <Text style={[styles.versionText, { color: t.text4 }]}>
-          {tr('profileScreen.appVersion', { version: '1.0.0', build: '10' })}
+          {tr('profileScreen.appVersion', { version: APP_VERSION, build: BUILD_NUMBER })}
         </Text>
       </ScrollView>
 

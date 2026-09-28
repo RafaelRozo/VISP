@@ -37,13 +37,12 @@ import { useAppStore } from '../../stores/appStore';
 import { useTranslation } from '../../i18n';
 import { userService } from '../../services/userService';
 import { Modal, TextInput } from 'react-native';
+import { APP_VERSION, BUILD_NUMBER } from '../../config/appVersion';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const APP_VERSION = '1.0.0';
-const BUILD_NUMBER = '1';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
