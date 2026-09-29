@@ -772,7 +772,9 @@ export default function ActiveJobScreen(): React.JSX.Element {
   const tabs: TabPillsProps['tabs'] = [
     { key: 'today', label: tr('schedule.today') || 'Today', count: today.length + (liveTodayJob ? 1 : 0) },
     { key: 'week', label: tr('schedule.thisWeek') || 'This Week', count: week.length },
-    { key: 'calendar', label: tr('nav.schedule') || 'Calendar' },
+    // La pestaña 'calendar' está oculta hasta que exista la vista: solo decía
+    // "coming soon" y Apple rechaza funciones de relleno (guía 2.1). El bloque
+    // que la pinta sigue abajo; reactivarla es devolver esta línea.
   ];
 
   return (

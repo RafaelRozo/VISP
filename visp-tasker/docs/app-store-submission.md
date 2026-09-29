@@ -90,9 +90,9 @@ Todos los datos de abajo: **vinculados al usuario** (Linked to the user),
 **Sin analítica ni informes de fallos:** la app no lleva SDKs de analítica ni
 de crash (`firebase.ts` existe pero no se importa en ningún sitio).
 
-**Revisar antes de enviar:** el SDK de **Mapbox** envía telemetría anónima de
-uso y ubicación por defecto. O se desactiva en la app, o se declara además
-"Precise Location → Analytics, not linked to the user".
+**Mapbox:** su telemetría anónima está **apagada** desde el build 34
+(`MapboxGL.setTelemetryEnabled(false)` en `App.tsx`), así que no hay que
+declarar "Location → Analytics".
 
 ---
 
@@ -100,7 +100,17 @@ uso y ubicación por defecto. O se desactiva en la app, o se declara además
 
 1. ~~**Borrar cuenta desde la app** (guía 5.1.1(v))~~ — HECHO el 2026-09-29
    (Ajustes → Delete account). Falta: desplegar backend + build nuevo.
-2. **Cuentas de demo** para el revisor (arriba).
+2. **Cuentas de demo** para el revisor (arriba). También hacen falta para las
+   capturas: con cuentas vacías las capturas no enseñan nada.
+4. ~~Funciones de relleno~~ (guía 2.1) — quitadas en el build 34: "Rate the
+   App" y "Privacy Settings" en Ajustes, y la pestaña "Calendar (coming soon)"
+   de la agenda del proveedor.
+5. **Solo iPhone** en la 1.0 (decisión de Ricardo, 2026-09-29):
+   `supportsTablet: false` y `TARGETED_DEVICE_FAMILY = 1`. No hacen falta
+   capturas de iPad.
+6. **Capturas**: 6,9" = **1320×2868** (simulador iPhone 16 Pro Max). Entre 3 y
+   10 por idioma; se piden en inglés y, si la ficha va en francés, también en
+   francés.
 3. **Términos v2.1** con el abogado: `platform_tos_v2.0.md` cita
    `support@vispapp.com` / `privacy@vispapp.com` y habla de background checks
    que no existen. No se edita la v2.0 porque ya hay firmas contra su hash.

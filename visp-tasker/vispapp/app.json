@@ -14,7 +14,7 @@
       "backgroundColor": "#000000"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "VISP needs your location to find nearby service providers.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "VISP uses your location to find nearby service providers and to share arrival updates during an active job.",
@@ -22,7 +22,7 @@
         "NSPhotoLibraryUsageDescription": "VISP needs photo library access so you can attach photos to a booking and upload your documents."
       },
       "bundleIdentifier": "com.droz.vispapp",
-      "buildNumber": "32"
+      "buildNumber": "34"
     },
     "android": {
       "package": "com.visp.tasker",

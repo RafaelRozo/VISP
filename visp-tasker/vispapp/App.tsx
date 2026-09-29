@@ -15,6 +15,7 @@ import {useFonts as useManrope, Manrope_500Medium, Manrope_600SemiBold, Manrope_
 import {JetBrainsMono_500Medium} from '@expo-google-fonts/jetbrains-mono';
 import AppNavigator from './src/navigation/AppNavigator';
 import {Colors} from './src/theme/colors';
+import MapboxGL from '@rnmapbox/maps';
 import {Config} from './src/services/config';
 import {useAuthStore} from './src/stores/authStore';
 import {useAppStore} from './src/stores/appStore';
@@ -26,6 +27,12 @@ LogBox.ignoreLogs([
   '@firebase/auth:', // Ignore React Native AsyncStorage warning for Firebase
   'Setting a timer', // Ignored long timer warning standard in RN Firebase apps
 ]);
+
+// Mapbox manda telemetría anónima de uso y ubicación por defecto. Se apaga una
+// vez aquí, antes de pintar ningún mapa: así la etiqueta de privacidad de la App
+// Store no tiene que declarar "Location → Analytics" (ver
+// docs/app-store-submission.md §3).
+MapboxGL.setTelemetryEnabled(false);
 
 export default function App(): React.JSX.Element {
   const loadStoredAuth = useAuthStore(state => state.loadStoredAuth);

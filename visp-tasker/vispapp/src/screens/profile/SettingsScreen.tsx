@@ -504,18 +504,11 @@ export default function SettingsScreen(): React.JSX.Element {
 
         {/* Privacy & Legal Section */}
         <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{t('settings.privacyLegal')}</Text>
+        {/* "Privacy Settings" y "Rate the App" se quitaron para la revisión de
+            Apple (guía 2.1): solo sacaban un mensaje, sin función detrás. Se
+            vuelven a poner cuando exista la pantalla de privacidad y la ficha
+            de la tienda (para enlazar la valoración). */}
         <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
-          <SettingsLink
-            label={t('settings.privacySettings')}
-            onPress={() => {
-              Alert.alert(
-                t('settings.privacySettings'),
-                t('settings.managePrivacy'),
-                [{ text: t('common.ok') }],
-              );
-            }}
-          />
-          <View style={styles.glassDivider} />
           <SettingsLink
             label={t('settings.termsOfService')}
             onPress={() => navigation.navigate('TermsOfService')}
@@ -546,16 +539,6 @@ export default function SettingsScreen(): React.JSX.Element {
               {APP_VERSION} ({BUILD_NUMBER})
             </Text>
           </TouchableOpacity>
-          <View style={styles.glassDivider} />
-          <SettingsLink
-            label={t('settings.rateApp')}
-            onPress={() => {
-              Alert.alert(
-                t('settings.thankYou'),
-                t('settings.appreciateFeedback'),
-              );
-            }}
-          />
           <View style={styles.glassDivider} />
           <SettingsLink
             label={t('settings.contactSupport')}
