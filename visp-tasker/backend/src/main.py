@@ -51,8 +51,17 @@ async def lifespan(app: FastAPI):
 
     await start_job_lifecycle_worker()
 
+    # Anonimiza las cuentas borradas que cumplieron los 30 días.
+    from src.jobs.accountPurge import (
+        start_account_purge_worker,
+        stop_account_purge_worker,
+    )
+
+    await start_account_purge_worker()
+
     yield
 
+    await stop_account_purge_worker()
     await stop_job_lifecycle_worker()
 
     # Graceful shutdown: close Redis connections

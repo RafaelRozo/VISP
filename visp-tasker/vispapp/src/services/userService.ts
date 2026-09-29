@@ -1,4 +1,4 @@
-import { del, patch, post, upload } from './apiClient';
+import { del, get, patch, post, upload } from './apiClient';
 import { Config } from './config';
 import type { User } from '../types';
 
@@ -34,6 +34,53 @@ export interface UpdateProfileBody {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Borrado de cuenta (backend: services/account_deletion_service.py)
+// ---------------------------------------------------------------------------
+
+export type DeletionBlockerCode =
+  | 'JOB_UNDERWAY'
+  | 'JOB_STARTS_SOON'
+  | 'JOB_DISPUTED'
+  | 'PAYMENT_PENDING'
+  | 'PAYOUT_PENDING'
+  | 'PAYOUT_CHECK_FAILED'
+  | 'COMPANY_OWNER'
+  | 'COMPANY_JOB_ASSIGNED';
+
+export interface DeletionBlocker {
+  code: DeletionBlockerCode;
+  role?: 'customer' | 'provider';
+  jobId?: string;
+  reference?: string;
+  scheduledAt?: string | null;
+  amountCents?: number;
+  expectedPayoutDate?: string | null;
+}
+
+export interface DeletionChange {
+  action: 'cancel' | 'reopen' | 'withdraw_offers';
+  role: 'customer' | 'provider';
+  jobId?: string;
+  reference?: string;
+  scheduledAt?: string | null;
+  count?: number;
+}
+
+export interface DeletionCheck {
+  canDelete: boolean;
+  blockers: DeletionBlocker[];
+  willChange: DeletionChange[];
+  pendingBalanceCents: number;
+  expectedPayoutDate: string | null;
+  retentionDays: number;
+}
+
+export interface DeletionResult {
+  deletedAt: string;
+  purgeAfter: string;
+}
+
 export const userService = {
   updateProfile: async (body: UpdateProfileBody): Promise<User> => {
     return patch<User>('/users/me', body);
@@ -58,6 +105,15 @@ export const userService = {
     const res = await post<{ recoveryCode: string }>('/users/me/recovery-code', { password });
     return res.recoveryCode;
   },
+
+  /** Qué impide borrar la cuenta y qué cambiará solo. Ver DeleteAccountScreen. */
+  getDeletionCheck: (): Promise<DeletionCheck> =>
+    get<DeletionCheck>('/users/me/deletion-check'),
+
+  /** Borra la cuenta. 403 `wrong_password`; 409 `deletion_blocked` con el plan nuevo
+   *  en `error.body` si algo cambió desde la comprobación. */
+  deleteAccount: (password: string): Promise<DeletionResult> =>
+    post<DeletionResult>('/users/me/deletion', { password }),
 
   rotateRecoveryCode: async (password: string): Promise<string> => {
     const res = await post<{ recoveryCode: string }>('/users/me/recovery-code/rotate', { password });

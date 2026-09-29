@@ -54,6 +54,7 @@ from src.services.matchingEngine import (
     BID_OUT_OF_RANGE,
     BID_OWN_JOB,
     BID_SCHEDULE_CONFLICT,
+    provider_account_active,
     provider_busy_windows,
     provider_can_bid,
 )
@@ -330,6 +331,8 @@ async def list_open_jobs(
     contract_signed = await has_valid_signature(
         db, provider.user_id, ConsentType.PROVIDER_IC_AGREEMENT
     )
+    # Igual con la cuenta activa: una consulta para toda la bolsa.
+    account_active = await provider_account_active(db, provider)
     rows: list[Job] = []
     # El choque de agenda NO saca el trabajo de la bolsa: sale marcado y con su
     # motivo. Es el único bloqueo temporal —mañana ese hueco está libre— y
@@ -344,6 +347,7 @@ async def list_open_jobs(
         blocked = await provider_can_bid(
             db, job, provider, task=task, level_cache=level_cache,
             busy_windows=busy_windows, contract_signed=contract_signed,
+            account_active=account_active,
         )
         if blocked is None:
             rows.append(job)

@@ -525,7 +525,49 @@
     "recoveryCodeWarning": "Appui long pour copier. Toute personne ayant ce code peut réinitialiser votre mot de passe.",
     "recoveryCodeRotate": "Générer un nouveau code",
     "recoveryCodeReveal": "Afficher le code",
-    "recoveryCodePasswordPlaceholder": "Votre mot de passe actuel"
+    "recoveryCodePasswordPlaceholder": "Votre mot de passe actuel",
+    "deleteAccount": "Supprimer le compte"
+  },
+  "deleteAccount": {
+    "title": "Supprimer le compte",
+    "intro": "Votre compte est fermé immédiatement et vous êtes déconnecté sur tous vos appareils.",
+    "whatDeleted": "Ce qui est supprimé",
+    "deletedItems": "Votre profil, vos coordonnées, vos adresses, vos photos et vos cartes enregistrées. Si vous êtes prestataire, aussi vos documents de vérification et votre compte de versements. Après %{days} jours, c'est définitif.",
+    "whatKept": "Ce que nous conservons",
+    "keptItems": "Ce que la loi nous oblige à conserver : factures, paiements, contrats signés et consentements. Les travaux passés, les avis et les messages restent dans l'historique de l'autre personne, affichés comme « Utilisateur supprimé ».",
+    "restore": "Vous changez d'avis ? Écrivez à support@droztechnologies.com dans les %{days} jours et nous pourrons restaurer votre compte.",
+    "checking": "Vérification de votre compte…",
+    "loadError": "Impossible de vérifier votre compte pour le moment.",
+    "retry": "Réessayer",
+    "blockedTitle": "Avant de pouvoir supprimer votre compte",
+    "willChangeTitle": "Ceci se fera automatiquement",
+    "blocker": {
+      "JOB_UNDERWAY": "Le travail n° %{ref} est en cours. Terminez-le d'abord.",
+      "JOB_STARTS_SOON": "Le travail n° %{ref} commence dans 15 minutes ou moins. Attendez qu'il soit terminé ou annulez-le.",
+      "JOB_DISPUTED": "Le travail n° %{ref} fait l'objet d'un litige. Le support vous contactera pour le régler.",
+      "PAYMENT_PENDING": "Le paiement du travail n° %{ref} n'est pas encore finalisé.",
+      "PAYOUT_PENDING": "Vous avez %{amount} de revenus en route vers votre banque. Vous pourrez supprimer votre compte une fois le versement reçu.",
+      "PAYOUT_PENDING_DATE": "Vous avez %{amount} de revenus en route vers votre banque (prévu le %{date}). Vous pourrez supprimer votre compte une fois le versement reçu.",
+      "PAYOUT_CHECK_FAILED": "Impossible de vérifier vos revenus en attente. Réessayez dans quelques minutes.",
+      "COMPANY_OWNER": "Vous êtes administrateur d'une entreprise sur VISP. Contactez le support pour la transférer ou la fermer.",
+      "COMPANY_JOB_ASSIGNED": "Un travail d'entreprise vous est assigné. Demandez à votre superviseur de le réassigner."
+    },
+    "change": {
+      "cancel": "Le travail n° %{ref} sera annulé sans frais, et toute retenue sur votre carte sera libérée.",
+      "reopen": "Le travail n° %{ref} retourne au client pour qu'un autre prestataire le prenne.",
+      "withdraw_offers": "Vos offres en attente (%{count}) seront retirées."
+    },
+    "passwordLabel": "Entrez votre mot de passe pour confirmer",
+    "passwordPlaceholder": "Votre mot de passe",
+    "confirmButton": "Supprimer mon compte",
+    "confirmTitle": "Supprimer votre compte ?",
+    "confirmBody": "Vous serez déconnecté et ne pourrez plus vous reconnecter.",
+    "wrongPassword": "Le mot de passe est incorrect.",
+    "changed": "Quelque chose a changé depuis l'ouverture de cet écran. Vérifiez à nouveau la liste.",
+    "genericError": "Impossible de supprimer votre compte. Réessayez ou contactez le support.",
+    "doneTitle": "Votre compte a été supprimé",
+    "doneBody": "Nous sommes désolés de vous voir partir. Vos données seront définitivement supprimées le %{date}. D'ici là, vous pouvez restaurer votre compte en écrivant à support@droztechnologies.com.",
+    "doneButton": "Fermer"
   },
   "homeScreen": {
     "subtitleProvider": "Mode prestataire",

@@ -28,6 +28,14 @@ RECOVERY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0,O,1,I,L
 RECOVERY_CODE_LEN = 12
 
 
+# Lo que ve quien intenta entrar o registrarse con una cuenta borrada que aún
+# está dentro del plazo de recuperación (ver `account_deletion_service`).
+DELETED_ACCOUNT_MESSAGE = (
+    "This account was deleted. Contact support@droztechnologies.com within 30 "
+    "days of the deletion to restore it."
+)
+
+
 def generate_recovery_code() -> str:
     return "".join(secrets.choice(RECOVERY_CODE_ALPHABET) for _ in range(RECOVERY_CODE_LEN))
 
@@ -240,6 +248,10 @@ async def register(
     # Check for existing email
     existing = await get_user_by_email(db, email)
     if existing is not None:
+        # Cuenta borrada dentro de los 30 días: el email sigue ocupado hasta la
+        # purga (que lo libera). Decirlo evita un "ya existe" que no se entiende.
+        if existing.deleted_at is not None:
+            raise ValueError(DELETED_ACCOUNT_MESSAGE)
         raise ValueError("A user with this email address already exists.")
 
     # Check for existing phone (column has UNIQUE constraint)
@@ -338,6 +350,8 @@ async def login(
     if user.status == UserStatus.SUSPENDED:
         raise ValueError("This account is currently suspended.")
     if user.status == UserStatus.DEACTIVATED:
+        if user.deleted_at is not None:
+            raise ValueError(DELETED_ACCOUNT_MESSAGE)
         raise ValueError("This account has been deactivated.")
 
     # Update last login timestamp

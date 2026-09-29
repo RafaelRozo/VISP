@@ -89,6 +89,9 @@ _NOT_INVITED_MESSAGES = {
     matchingEngine.BID_SCHEDULE_CONFLICT: (
         "You already have another job booked at this time."
     ),
+    matchingEngine.BID_ACCOUNT_INACTIVE: (
+        "Your provider account is not active. Contact support."
+    ),
 }
 
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
 from src.api.deps import CurrentUser, DBSession
@@ -695,3 +695,92 @@ async def get_my_readiness(
         raise HTTPException(status_code=403, detail="Not a customer account")
 
     return {"data": await readiness_service.get_readiness(db, user, role=role)}
+
+
+# ---------------------------------------------------------------------------
+# Borrar cuenta (Apple 5.1.1(v)) — ver `services/account_deletion_service.py`
+# ---------------------------------------------------------------------------
+
+class AccountDeletionRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+@router.get(
+    "/me/deletion-check",
+    summary="What would happen if the authenticated user deleted their account",
+    description=(
+        "Pre-check shown before the delete-account confirmation. Lists what "
+        "blocks the deletion (and how to resolve it) and what will change "
+        "automatically: jobs that get cancelled or reopened for new offers."
+    ),
+)
+async def get_deletion_check(db: DBSession, user: CurrentUser) -> dict[str, Any]:
+    from src.services import account_deletion_service as svc
+
+    plan = await svc.build_plan(db, user)
+    return {"data": plan.to_dict()}
+
+
+@router.post(
+    "/me/deletion",
+    summary="Delete the authenticated user's account",
+    description=(
+        "Confirms with the password. Deactivates the account at once (every "
+        "session dies on its next request) and anonymises it after 30 days. "
+        "Returns 409 with the current blockers if something changed since the "
+        "pre-check."
+    ),
+)
+async def delete_my_account(
+    request: Request,
+    db: DBSession,
+    user: CurrentUser,
+    body: AccountDeletionRequest,
+) -> dict[str, Any]:
+    from src.services import account_deletion_service as svc
+
+    fwd = request.headers.get("x-forwarded-for") or ""
+    ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else None)
+
+    try:
+        result = await svc.delete_account(
+            db,
+            user,
+            password=body.password,
+            ip_address=ip,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except svc.WrongPasswordError:
+        # 403 y no 401: el token es válido; lo que falla es la confirmación. Un 401
+        # haría que la app cerrase la sesión por un simple error de tecleo.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "wrong_password", "message": "The password is incorrect."},
+        )
+    except svc.AlreadyDeletedError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "already_deleted", "message": "This account was already deleted."},
+        )
+    except svc.DeletionBlockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "deletion_blocked",
+                "message": "Something changed and the account can't be deleted yet.",
+                **exc.plan.to_dict(),
+            },
+        )
+
+    record = result.record
+    # Los push, DESPUÉS de que el borrado quede firme.
+    await db.commit()
+    await svc.send_notices(db, result.notices)
+
+    return {
+        "data": {
+            "deletedAt": record.requested_at.isoformat(),
+            "purgeAfter": record.purge_after.isoformat(),
+            "jobActions": record.job_actions,
+        }
+    }

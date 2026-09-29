@@ -565,6 +565,22 @@ export default function SettingsScreen(): React.JSX.Element {
           />
         </GlassCard>
 
+        {/* Borrar cuenta (Apple 5.1.1(v)). Aparte y al final, en rojo: es
+            irreversible pasados 30 días y no debe estar junto a nada que se
+            toque por costumbre. Vale para los dos papeles. */}
+        <GlassCard variant="dark" padding={0} style={styles.glassCardMargin}>
+          <TouchableOpacity
+            style={styles.aboutRow}
+            onPress={() => navigation.navigate('DeleteAccount')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.aboutLabel, styles.deleteLabel]}>
+              {t('settings.deleteAccount')}
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
+
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
@@ -763,6 +779,10 @@ const styles = StyleSheet.create({
   aboutValue: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.5)',
+  },
+  deleteLabel: {
+    color: Colors.emergencyRed,
+    fontWeight: '600',
   },
   bottomSpacer: {
     height: 32,

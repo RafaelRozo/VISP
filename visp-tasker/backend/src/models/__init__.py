@@ -13,6 +13,9 @@ Usage::
 # -- Base & Mixins --
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
+# -- 054: Borrado de cuenta --
+from .account_deletion import AccountDeletion
+
 # -- 001: Users --
 from .user import AuthProvider, User, UserStatus
 
@@ -246,4 +249,6 @@ __all__ = [
     "CompanyJobAssignment",
     "CompanyJobStatus",
     "CompanyPayoutTarget",
+    # Borrado de cuenta (054)
+    "AccountDeletion",
 ]

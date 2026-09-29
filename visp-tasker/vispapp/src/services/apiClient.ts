@@ -150,14 +150,25 @@ apiClient.interceptors.response.use(
 
     // Normalise the error shape — always include statusCode and message
     const responseData = error.response?.data as Record<string, unknown> | undefined;
+    // FastAPI manda los errores con código como `{"detail": {"code", "message", …}}`.
+    // Antes ese objeto acababa ENTERO en `message` y `code` se quedaba en
+    // NETWORK_ERROR, así que ninguna pantalla podía reconocer el código (p. ej.
+    // `payment_method_required` en BookingScreen).
+    const rawDetail = responseData?.detail;
+    const detailObj =
+      rawDetail && typeof rawDetail === 'object' && !Array.isArray(rawDetail)
+        ? (rawDetail as Record<string, unknown>)
+        : undefined;
     const apiError: ApiError = {
       message:
-        responseData?.message as string ??
-        responseData?.detail as string ??
+        (responseData?.message as string) ??
+        (detailObj?.message as string) ??
+        (rawDetail as string) ??
         error.message ??
         'An unexpected error occurred',
-      code: (responseData?.code as string) ?? 'NETWORK_ERROR',
+      code: (responseData?.code as string) ?? (detailObj?.code as string) ?? 'NETWORK_ERROR',
       statusCode: error.response?.status ?? 0,
+      body: detailObj,
     };
 
     return Promise.reject(apiError);

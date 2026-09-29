@@ -58,7 +58,7 @@ from src.models.provider import (
 )
 from src.models.sla import OnCallShift, OnCallStatus
 from src.models.taxonomy import ProviderTaskQualification, ServiceTask
-from src.models.user import User
+from src.models.user import User, UserStatus
 from src.models.verification import (
     ConsentType,
     CredentialStatus,
@@ -358,6 +358,32 @@ BID_SCHEDULE_CONFLICT = "schedule_conflict"
 # fuera de su propia app por un fallo de red, así que el candado tiene que
 # estar aquí.
 BID_NO_CONTRACT = "no_contract"
+# La cuenta no está activa: borrada (DEACTIVATED), suspendida o baneada, o el
+# perfil de proveedor está SUSPENDED/INACTIVE. Va antes que todo lo demás: una
+# cuenta borrada no puede recibir trabajos por muy cerca y cualificada que esté.
+BID_ACCOUNT_INACTIVE = "account_inactive"
+
+# Estados de usuario con los que no se oferta. PENDING_VERIFICATION sí entra:
+# la verificación de email no se exige hoy para trabajar.
+_BLOCKED_USER_STATUSES = (
+    UserStatus.SUSPENDED,
+    UserStatus.DEACTIVATED,
+    UserStatus.BANNED,
+)
+_BLOCKED_PROFILE_STATUSES = (
+    ProviderProfileStatus.SUSPENDED,
+    ProviderProfileStatus.INACTIVE,
+)
+
+
+async def provider_account_active(db: AsyncSession, provider: ProviderProfile) -> bool:
+    """¿La cuenta de este proveedor puede trabajar? Perfil y usuario, los dos."""
+    if provider.status in _BLOCKED_PROFILE_STATUSES:
+        return False
+    user_status = (
+        await db.execute(select(User.status).where(User.id == provider.user_id))
+    ).scalar_one_or_none()
+    return user_status is not None and user_status not in _BLOCKED_USER_STATUSES
 
 
 # Un trabajo ocupa la agenda de su proveedor desde que lo acepta hasta que lo
@@ -416,6 +442,7 @@ async def provider_can_bid(
     level_cache: dict[ProviderLevel, bool] | None = None,
     busy_windows: list[tuple[datetime, datetime]] | None = None,
     contract_signed: bool | None = None,
+    account_active: bool | None = None,
 ) -> Optional[str]:
     """¿Puede ESTE proveedor ofertar en ESTE trabajo?
 
@@ -449,6 +476,14 @@ async def provider_can_bid(
     # decirlo: el trabajo desaparecía de la bolsa sin explicación.
     if provider.user_id == job.customer_id:
         return BID_OWN_JOB
+
+    # Cuenta borrada, suspendida o baneada. Antes no se miraba: un proveedor
+    # suspendido seguía recibiendo y ofertando trabajos. `account_active` llega
+    # precalculado desde la bolsa (es el mismo valor para todos los trabajos).
+    if account_active is None:
+        account_active = await provider_account_active(db, provider)
+    if not account_active:
+        return BID_ACCOUNT_INACTIVE
 
     # El contrato firmado. Va aquí arriba y no al final porque no depende del
     # trabajo: si falta, ningún otro filtro importa.
@@ -608,7 +643,12 @@ async def find_matching_providers(
         )
     )
     provider_result = await db.execute(provider_stmt)
-    all_providers = provider_result.scalars().all()
+    # La cuenta del USUARIO también cuenta: un perfil ONBOARDING de una cuenta
+    # borrada, suspendida o baneada no debe recibir el broadcast.
+    all_providers = [
+        p for p in provider_result.scalars().all()
+        if p.user is not None and p.user.status not in _BLOCKED_USER_STATUSES
+    ]
 
     logger.info(
         "Matching for job %s (task %s): found %d qualified provider IDs, "

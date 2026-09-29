@@ -102,12 +102,16 @@ VALID_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     },
     JobStatus.SCHEDULED: {
         JobStatus.PROVIDER_EN_ROUTE,   # provider starts navigating on job day
+        # El proveedor asignado borró su cuenta antes de la cita: el trabajo vuelve
+        # a recibir ofertas en vez de cancelarse. Solo el sistema (ver guard).
+        JobStatus.PENDING_MATCH,
         JobStatus.CANCELLED_BY_CUSTOMER,
         JobStatus.CANCELLED_BY_PROVIDER,
         JobStatus.CANCELLED_BY_SYSTEM,
     },
     JobStatus.PROVIDER_ACCEPTED: {
         JobStatus.PROVIDER_EN_ROUTE,
+        JobStatus.PENDING_MATCH,       # proveedor borró su cuenta (solo sistema)
         JobStatus.CANCELLED_BY_PROVIDER,
         JobStatus.CANCELLED_BY_SYSTEM,
     },
@@ -210,6 +214,18 @@ def _guard_provider_accept(
     return TransitionResult(allowed=True)
 
 
+def _guard_return_to_matching(actor_type: ActorType) -> TransitionResult:
+    """Devolver un trabajo agendado al matching lo decide el sistema, nunca una
+    persona: el único camino hoy es el borrado de cuenta del proveedor
+    (`account_deletion_service`), que además suelta la retención y la oferta."""
+    if actor_type not in (ActorType.SYSTEM, ActorType.ADMIN):
+        return TransitionResult(
+            allowed=False,
+            reason="Only the system can reopen a scheduled job for offers.",
+        )
+    return TransitionResult(allowed=True)
+
+
 def _guard_provider_en_route(
     current: JobStatus,
     actor_type: ActorType,
@@ -280,6 +296,12 @@ def validate_transition(
         )
 
     # 2. Guard checks for specific transitions
+    if new_status == JobStatus.PENDING_MATCH and current_status in (
+        JobStatus.SCHEDULED,
+        JobStatus.PROVIDER_ACCEPTED,
+    ):
+        return _guard_return_to_matching(actor_type)
+
     if new_status == JobStatus.CANCELLED_BY_CUSTOMER:
         return _guard_customer_cancel(current_status)
 

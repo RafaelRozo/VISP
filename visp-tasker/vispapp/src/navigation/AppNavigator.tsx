@@ -74,6 +74,7 @@ import SettingsScreen from '../screens/profile/SettingsScreen';
 import PaymentMethodsScreen from '../screens/profile/PaymentMethodsScreen';
 import AddressEditScreen from '../screens/profile/AddressEditScreen';
 import PrivacyPolicyScreen from '../screens/profile/PrivacyPolicyScreen';
+import DeleteAccountScreen from '../screens/profile/DeleteAccountScreen';
 import TermsScreen from '../screens/profile/TermsScreen';
 
 // Screens - Company (VISP for Business, SP4 Stage 2)
@@ -394,6 +395,11 @@ function ProfileStackNavigator(): React.JSX.Element {
         name="TermsOfService"
         component={TermsScreen}
         options={{ title: 'Terms & Conditions' }}
+      />
+      <ProfileStack.Screen
+        name="DeleteAccount"
+        component={DeleteAccountScreen}
+        options={{ title: 'Delete account', headerBackTitle: 'Back' }}
       />
     </ProfileStack.Navigator>
   );

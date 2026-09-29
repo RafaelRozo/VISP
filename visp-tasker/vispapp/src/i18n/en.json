@@ -525,7 +525,49 @@
     "recoveryCodeWarning": "Long-press to copy. Anyone with this code can reset your password.",
     "recoveryCodeRotate": "Generate new code",
     "recoveryCodeReveal": "Reveal code",
-    "recoveryCodePasswordPlaceholder": "Your current password"
+    "recoveryCodePasswordPlaceholder": "Your current password",
+    "deleteAccount": "Delete account"
+  },
+  "deleteAccount": {
+    "title": "Delete account",
+    "intro": "Your account is closed right away and you are signed out on every device.",
+    "whatDeleted": "What gets deleted",
+    "deletedItems": "Your profile, contact details, addresses, photos and saved cards. If you are a provider, also your verification documents and your payout account. After %{days} days this is permanent.",
+    "whatKept": "What we keep",
+    "keptItems": "What the law requires us to keep: invoices, payments, signed agreements and consents. Past jobs, reviews and messages stay in the other person's history, shown as “Deleted user”.",
+    "restore": "Changed your mind? Write to support@droztechnologies.com within %{days} days and we can restore your account.",
+    "checking": "Checking your account…",
+    "loadError": "We couldn't check your account right now.",
+    "retry": "Try again",
+    "blockedTitle": "Before you can delete your account",
+    "willChangeTitle": "This will happen automatically",
+    "blocker": {
+      "JOB_UNDERWAY": "Job #%{ref} is under way. Finish it first.",
+      "JOB_STARTS_SOON": "Job #%{ref} starts in 15 minutes or less. Wait until it's done, or cancel it.",
+      "JOB_DISPUTED": "Job #%{ref} has an open dispute. Support will contact you to resolve it.",
+      "PAYMENT_PENDING": "The payment for job #%{ref} hasn't been completed yet.",
+      "PAYOUT_PENDING": "You have %{amount} in earnings on the way to your bank. You can delete your account once it arrives.",
+      "PAYOUT_PENDING_DATE": "You have %{amount} in earnings on the way to your bank (expected %{date}). You can delete your account once it arrives.",
+      "PAYOUT_CHECK_FAILED": "We couldn't check your pending earnings. Try again in a few minutes.",
+      "COMPANY_OWNER": "You are the admin of a company on VISP. Contact support to transfer or close it.",
+      "COMPANY_JOB_ASSIGNED": "You have a company job assigned. Ask your supervisor to reassign it."
+    },
+    "change": {
+      "cancel": "Job #%{ref} will be cancelled at no charge, and any hold on your card is released.",
+      "reopen": "Job #%{ref} goes back to the customer so another provider can take it.",
+      "withdraw_offers": "Your pending offers (%{count}) will be withdrawn."
+    },
+    "passwordLabel": "Enter your password to confirm",
+    "passwordPlaceholder": "Your password",
+    "confirmButton": "Delete my account",
+    "confirmTitle": "Delete your account?",
+    "confirmBody": "You will be signed out and won't be able to sign in again.",
+    "wrongPassword": "The password is incorrect.",
+    "changed": "Something changed since you opened this screen. Please review the list again.",
+    "genericError": "We couldn't delete your account. Try again or contact support.",
+    "doneTitle": "Your account was deleted",
+    "doneBody": "Sorry to see you go. Your data will be permanently deleted on %{date}. Until then you can restore your account by writing to support@droztechnologies.com.",
+    "doneButton": "Close"
   },
   "homeScreen": {
     "subtitleProvider": "Provider mode",

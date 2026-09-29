@@ -255,6 +255,9 @@ export interface ApiError {
   code: string;
   statusCode: number;
   details?: Record<string, string[]>;
+  /** El `detail` del backend cuando es un objeto: trae datos además del código
+   *  (p. ej. los bloqueos de `POST /users/me/deletion` en un 409). */
+  body?: Record<string, unknown>;
 }
 
 export interface PaginatedResponse<T> {
@@ -555,6 +558,7 @@ export type ProfileStackParamList = {
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
   AddressEdit: undefined;
+  DeleteAccount: undefined;
 };
 
 export type AuthStackParamList = {

@@ -799,6 +799,73 @@ async def notify_job_cancelled(
     )
 
 
+async def notify_job_cancelled_account_deleted(
+    job_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Al proveedor: el cliente borró su cuenta y su trabajo se canceló.
+
+    Distinto de `notify_job_cancelled` porque el motivo importa: sin él, el
+    proveedor ve "cancelado por el cliente" y lo toma como algo contra él.
+    """
+    job = await db.get(Job, job_id)
+    if not job:
+        logger.error("notify_job_cancelled_account_deleted: Job %s not found", job_id)
+        return False
+
+    return await _send_to_user(
+        user_id=user_id,
+        title="Job Cancelled",
+        body=(
+            f"The customer closed their VISP account, so job #{job.reference_number} "
+            f"was cancelled. No charge applies to anyone."
+        ),
+        notification_type=NotificationType.JOB_CANCELLED,
+        data={
+            "type": NotificationType.JOB_CANCELLED.value,
+            "job_id": str(job_id),
+            "reference_number": job.reference_number,
+            "screen": "job-detail",
+            "cancelled_by": "customer",
+            "reason": "account_deleted",
+        },
+        db=db,
+    )
+
+
+async def notify_provider_left(
+    job_id: uuid.UUID,
+    customer_user_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Al cliente: su proveedor borró la cuenta y el trabajo vuelve a recibir
+    ofertas. No se cancela: el cliente sigue queriendo el servicio."""
+    job = await db.get(Job, job_id)
+    if not job:
+        logger.error("notify_provider_left: Job %s not found", job_id)
+        return False
+
+    return await _send_to_user(
+        user_id=customer_user_id,
+        title="Your provider is no longer available",
+        body=(
+            f"The provider for job #{job.reference_number} closed their account. "
+            f"The hold on your card was released and your job is open for new "
+            f"offers again."
+        ),
+        notification_type=NotificationType.SYSTEM,
+        data={
+            "type": NotificationType.SYSTEM.value,
+            "job_id": str(job_id),
+            "reference_number": job.reference_number,
+            "screen": "job-detail",
+            "reason": "provider_account_deleted",
+        },
+        db=db,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API -- SLA & compliance notifications
 # ---------------------------------------------------------------------------
