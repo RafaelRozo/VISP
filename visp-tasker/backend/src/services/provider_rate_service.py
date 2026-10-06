@@ -26,11 +26,14 @@ from src.models.taxonomy import (
 )
 from src.services import fee_service, tax_service
 
-# VISP commission by provider level in the provider-set-pricing model — midpoints
-# of the CLAUDE.md ranges (L1 15-20, L2 12-18, L3 8-12, L4 15-25). Applied to the
-# subtotal when the job has no commission_rate set at booking (create_job leaves
-# it unset because no provider is assigned yet).
+# VISP commission by provider level — EXACTLY the table in the provider contract
+# (provider_ic_agreement_v1.3 §9): L0 17.5 %, L1 17.5 %, L2 15 %, L3 10 %.
+# `commission_schedules` (migración 056) holds the same values for pricingEngine;
+# if the contract changes, change BOTH or the provider is charged something
+# they didn't sign. Applied to the subtotal at offer acceptance (create_job
+# leaves it unset because no provider is assigned yet).
 _LEVEL_COMMISSION: dict[str, Decimal] = {
+    "0": Decimal("0.175"),
     "1": Decimal("0.175"),
     "2": Decimal("0.15"),
     "3": Decimal("0.10"),
