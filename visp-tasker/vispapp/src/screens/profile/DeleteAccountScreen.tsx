@@ -15,10 +15,11 @@
  * cancelar el trabajo que bloquea y volver.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   ScrollView,
   StyleSheet,
   Text,
@@ -57,6 +58,17 @@ export default function DeleteAccountScreen(): React.JSX.Element {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const passwordFocused = useRef(false);
+
+  // El campo y el botón están al final: cuando sube el teclado se baja hasta ahí
+  // para que se vea lo que se escribe (el inset lo pone automaticallyAdjustKeyboardInsets).
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      if (passwordFocused.current) scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,7 +163,9 @@ export default function DeleteAccountScreen(): React.JSX.Element {
   return (
     <Screen>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -244,6 +258,13 @@ export default function DeleteAccountScreen(): React.JSX.Element {
               textContentType="password"
               value={password}
               onChangeText={setPassword}
+              onFocus={() => {
+                passwordFocused.current = true;
+              }}
+              onBlur={() => {
+                passwordFocused.current = false;
+              }}
+              returnKeyType="done"
               editable={!submitting}
             />
           </>

@@ -55,7 +55,8 @@
     "users": "Users",
     "admins": "Admins",
     "logout": "Log out",
-    "jobs": "Jobs & offers"
+    "jobs": "Jobs & offers",
+    "moderation": "Moderation"
   },
   "users": {
     "title": "User management",
@@ -306,7 +307,12 @@
     "chartRevenue": "Revenue",
     "period7d": "7d",
     "period30d": "30d",
-    "period90d": "90d"
+    "period90d": "90d",
+    "modTitle": "Moderation",
+    "modOpen": "Open reports",
+    "modOverdue": "Over 24 h",
+    "modPanic": "Panic cancellations to review",
+    "modGo": "Open the queue →"
   },
   "documents": {
     "title": "Documents to review",
@@ -411,5 +417,64 @@
     "commission": "Commission",
     "payout": "Provider payout",
     "customerBudget": "customer budgeted"
+  },
+  "moderation": {
+    "title": "Moderation",
+    "subtitle": "Reports and blocks between users. Apple requires every report to be reviewed within 24 hours.",
+    "tabReports": "Reports",
+    "tabBlocks": "Blocks",
+    "statusOpen": "Open",
+    "statusActioned": "Actioned",
+    "statusDismissed": "Dismissed",
+    "statusAll": "All",
+    "none": "Nothing to review.",
+    "overdue": "Over 24 h",
+    "auto": "Auto-filter",
+    "reportedBy": "Reported by",
+    "reported": "Reported",
+    "job": "Job",
+    "types": {
+      "USER": "User",
+      "CHAT_MESSAGE": "Chat message",
+      "JOB_DETAILS": "Job description",
+      "JOB_EVIDENCE": "Job photos",
+      "PROFILE": "Provider profile"
+    },
+    "reasons": {
+      "HARASSMENT": "Harassment or threats",
+      "OFFENSIVE": "Offensive content",
+      "INAPPROPRIATE_PHOTO": "Inappropriate photos",
+      "SCAM": "Scam or spam",
+      "SAFETY": "Feels unsafe",
+      "OTHER": "Other"
+    },
+    "snapshotMessage": "Message",
+    "snapshotDetails": "Description",
+    "snapshotExtraNote": "Extra note",
+    "snapshotBio": "Bio",
+    "snapshotPhotos": "Photos",
+    "actDismiss": "Dismiss",
+    "actRemove": "Remove content",
+    "actSuspend": "Suspend user",
+    "actBan": "Ban user",
+    "notePrompt": "Note for the record (optional):",
+    "confirmBan": "Ban {{name}}? They will not be able to sign in again.",
+    "confirmSuspend": "Suspend {{name}}? They will be signed out until reactivated in Users.",
+    "superOnly": "Only a super admin can suspend or ban.",
+    "resolution": "Resolution",
+    "searchPlaceholder": "Search by name or email (either side)",
+    "blocker": "Blocked by",
+    "blockedUser": "Blocked user",
+    "source": "Source",
+    "date": "Date",
+    "sources": {
+      "PANIC": "Panic button",
+      "MENU": "Menu",
+      "REPORT": "With a report"
+    },
+    "unblock": "Unblock",
+    "unblockPrompt": "Why is this block being lifted? (required, e.g. \"Requested by the user via support\")",
+    "noBlocks": "No blocks match.",
+    "panicBlocked": "+ blocked"
   }
 }

@@ -55,7 +55,8 @@
     "users": "Utilisateurs",
     "admins": "Administrateurs",
     "logout": "Déconnexion",
-    "jobs": "Travaux et offres"
+    "jobs": "Travaux et offres",
+    "moderation": "Modération"
   },
   "users": {
     "title": "Gestion des utilisateurs",
@@ -306,7 +307,12 @@
     "chartRevenue": "Revenu",
     "period7d": "7j",
     "period30d": "30j",
-    "period90d": "90j"
+    "period90d": "90j",
+    "modTitle": "Modération",
+    "modOpen": "Signalements ouverts",
+    "modOverdue": "Plus de 24 h",
+    "modPanic": "Annulations « panique » à examiner",
+    "modGo": "Ouvrir la file →"
   },
   "documents": {
     "title": "Documents à réviser",
@@ -411,5 +417,64 @@
     "commission": "Commission",
     "payout": "Versement au prestataire",
     "customerBudget": "budget du client"
+  },
+  "moderation": {
+    "title": "Modération",
+    "subtitle": "Signalements et blocages entre utilisateurs. Apple exige que chaque signalement soit examiné en moins de 24 heures.",
+    "tabReports": "Signalements",
+    "tabBlocks": "Blocages",
+    "statusOpen": "Ouverts",
+    "statusActioned": "Traités",
+    "statusDismissed": "Rejetés",
+    "statusAll": "Tous",
+    "none": "Rien à examiner.",
+    "overdue": "Plus de 24 h",
+    "auto": "Filtre auto",
+    "reportedBy": "Signalé par",
+    "reported": "Signalé",
+    "job": "Travail",
+    "types": {
+      "USER": "Utilisateur",
+      "CHAT_MESSAGE": "Message",
+      "JOB_DETAILS": "Description du travail",
+      "JOB_EVIDENCE": "Photos du travail",
+      "PROFILE": "Profil du fournisseur"
+    },
+    "reasons": {
+      "HARASSMENT": "Harcèlement ou menaces",
+      "OFFENSIVE": "Contenu offensant",
+      "INAPPROPRIATE_PHOTO": "Photos inappropriées",
+      "SCAM": "Arnaque ou pourriel",
+      "SAFETY": "Se sent en danger",
+      "OTHER": "Autre"
+    },
+    "snapshotMessage": "Message",
+    "snapshotDetails": "Description",
+    "snapshotExtraNote": "Note",
+    "snapshotBio": "Bio",
+    "snapshotPhotos": "Photos",
+    "actDismiss": "Rejeter",
+    "actRemove": "Retirer le contenu",
+    "actSuspend": "Suspendre",
+    "actBan": "Bannir",
+    "notePrompt": "Note pour le dossier (facultatif) :",
+    "confirmBan": "Bannir {{name}} ? Cette personne ne pourra plus se connecter.",
+    "confirmSuspend": "Suspendre {{name}} ? Cette personne sera déconnectée jusqu'à sa réactivation dans Utilisateurs.",
+    "superOnly": "Seul un super admin peut suspendre ou bannir.",
+    "resolution": "Décision",
+    "searchPlaceholder": "Rechercher par nom ou courriel (des deux côtés)",
+    "blocker": "Bloqué par",
+    "blockedUser": "Utilisateur bloqué",
+    "source": "Origine",
+    "date": "Date",
+    "sources": {
+      "PANIC": "Bouton panique",
+      "MENU": "Menu",
+      "REPORT": "Avec un signalement"
+    },
+    "unblock": "Débloquer",
+    "unblockPrompt": "Pourquoi lever ce blocage ? (obligatoire, ex. « Demandé par l'utilisateur au soutien »)",
+    "noBlocks": "Aucun blocage trouvé.",
+    "panicBlocked": "+ bloqué"
   }
 }

@@ -1,6 +1,8 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
+import { adminService, type ReportsSummary } from '@/services/adminService';
 import LangSwitcher from './LangSwitcher';
 
 const navItemStyle: React.CSSProperties = {
@@ -20,6 +22,14 @@ export default function AdminLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  // Contador de Moderación. Se refresca solo: el compromiso es revisar cada
+  // denuncia en menos de 24 h, y nadie abre la página si no ve que hay algo.
+  const modQ = useQuery<ReportsSummary>({
+    queryKey: ['reports-summary'],
+    queryFn: () => adminService.reportsSummary(),
+    refetchInterval: 60_000,
+  });
+  const modCount = (modQ.data?.open ?? 0) + (modQ.data?.panicPending ?? 0);
 
   const handleLogout = () => {
     logout();
@@ -102,6 +112,34 @@ export default function AdminLayout() {
           >
             <NavIcon name="documents" />
             <span>{t('nav.documents')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/moderation"
+            style={({ isActive }) => ({
+              ...navItemStyle,
+              color: isActive ? 'var(--t-text)' : 'var(--t-text-2)',
+              background: isActive ? 'var(--t-card)' : 'transparent',
+              borderLeft: isActive ? '2px solid var(--t-violet)' : '2px solid transparent',
+              paddingLeft: 10,
+            })}
+          >
+            <NavIcon name="moderation" />
+            <span style={{ flex: 1 }}>{t('nav.moderation')}</span>
+            {modCount > 0 ? (
+              <span
+                className="t-mono"
+                style={{
+                  fontSize: 10,
+                  padding: '1px 6px',
+                  borderRadius: 999,
+                  color: '#fff',
+                  background: (modQ.data?.overdue ?? 0) > 0 ? 'var(--t-danger)' : 'var(--t-violet)',
+                }}
+              >
+                {modCount}
+              </span>
+            ) : null}
           </NavLink>
 
           <NavLink
@@ -215,7 +253,7 @@ export default function AdminLayout() {
   );
 }
 
-function NavIcon({ name }: { name: 'dashboard' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'users' | 'jobs' }) {
+function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'users' | 'jobs' }) {
   const props = {
     width: 14,
     height: 14,
@@ -227,6 +265,13 @@ function NavIcon({ name }: { name: 'dashboard' | 'documents' | 'businesses' | 'p
     strokeLinejoin: 'round' as const,
   };
   switch (name) {
+    case 'moderation':
+      return (
+        <svg {...props}>
+          <path d="M4 22V4" />
+          <path d="M4 4h12l-2 4 2 4H4" />
+        </svg>
+      );
     case 'dashboard':
       return (
         <svg {...props}>

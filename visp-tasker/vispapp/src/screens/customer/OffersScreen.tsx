@@ -19,9 +19,11 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -32,7 +34,9 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { Screen, ScreenTitle, Eyebrow } from '../../components/visp';
+import { Screen, ScreenTitle, Eyebrow, Icon } from '../../components/visp';
+import ReportSheet from '../../components/ReportSheet';
+import { blockUser, type ReportTarget } from '../../services/moderationService';
 import { useVispTheme, VispText, VispRadius } from '../../theme/visp';
 import { useTranslation } from '../../i18n';
 import { offerService, magnitudeLabel, type JobOffer, type JobOffersResult } from '../../services/offerService';
@@ -67,6 +71,8 @@ export default function OffersScreen(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Denunciar la tarjeta (bio/avatar) de un proveedor que ofertó (Apple 1.2).
+  const [report, setReport] = useState<{ target: ReportTarget; name: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -178,6 +184,57 @@ export default function OffersScreen(): React.JSX.Element {
 
   const offers = data?.offers ?? [];
 
+  // ---- Denunciar / bloquear al proveedor de una oferta (Apple 1.2) ----
+  // Aquí aún no hay trabajo asignado, así que se puede bloquear directamente.
+  const confirmBlock = (o: JobOffer) => {
+    Alert.alert(
+      tr('moderation.blockConfirmTitle', { name: o.displayName }),
+      tr('moderation.blockConfirmBody'),
+      [
+        { text: tr('moderation.cancel'), style: 'cancel' },
+        {
+          text: tr('moderation.blockConfirm'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(jobId, o.offerId);
+              Alert.alert(tr('moderation.blockedTitle'), tr('moderation.blockedBody', { name: o.displayName }));
+              load();
+            } catch {
+              Alert.alert(tr('moderation.blockFailed'));
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const openModerationMenu = (o: JobOffer) => {
+    const options = [
+      tr('moderation.cancel'),
+      tr('moderation.reportProfile'),
+      tr('moderation.blockUser', { name: o.displayName }),
+    ];
+    const onPick = (i: number) => {
+      if (i === 1) {
+        setReport({ target: { jobId, contentType: 'PROFILE', offerId: o.offerId }, name: o.displayName });
+      }
+      if (i === 2) confirmBlock(o);
+    };
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: 0, destructiveButtonIndex: 2 },
+        onPick,
+      );
+    } else {
+      Alert.alert(tr('moderation.options'), undefined, [
+        { text: options[0], style: 'cancel' },
+        { text: options[1], onPress: () => onPick(1) },
+        { text: options[2], style: 'destructive', onPress: () => onPick(2) },
+      ]);
+    }
+  };
+
   return (
     <Screen>
       <ScreenTitle
@@ -254,7 +311,17 @@ export default function OffersScreen(): React.JSX.Element {
                     </View>
                   )}
                   <View style={styles.headText}>
-                    <Text style={[VispText.bodyStrong, { color: t.text }]}>{o.displayName}</Text>
+                    <View style={styles.nameRow}>
+                      <Text style={[VispText.bodyStrong, { color: t.text, flex: 1 }]}>{o.displayName}</Text>
+                      <Pressable
+                        onPress={() => openModerationMenu(o)}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel={tr('moderation.options')}
+                      >
+                        <Icon name="dots" size={20} color={t.text3} />
+                      </Pressable>
+                    </View>
                     <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 2 }]}>
                       {o.reviewCount > 0 && o.rating != null
                         ? `★ ${o.rating.toFixed(1)} · ${o.reviewCount} ${
@@ -422,6 +489,18 @@ export default function OffersScreen(): React.JSX.Element {
           </Text>
         ) : null}
       </ScrollView>
+
+      <ReportSheet
+        visible={!!report}
+        target={report?.target ?? null}
+        otherName={report?.name}
+        allowBlock
+        onClose={() => setReport(null)}
+        onDone={(blocked) => {
+          // Bloquear retira su oferta en el servidor: se recarga la lista.
+          if (blocked) load();
+        }}
+      />
     </Screen>
   );
 }
@@ -431,6 +510,7 @@ const styles = StyleSheet.create({
   empty: { paddingTop: 60, paddingHorizontal: 20 },
   card: { borderWidth: 1, borderRadius: VispRadius.card, padding: 16 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   headText: { flex: 1 },
   breakdown: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, gap: 8 },

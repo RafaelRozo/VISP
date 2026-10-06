@@ -1443,11 +1443,25 @@ async def list_cancellation_reports(
         stmt = stmt.where(JobCancellationReport.status == status_filter.upper())
 
     rows = (await db.execute(stmt)).all()
+    # Qué cancelaciones llevaron "bloquear también" (055): el admin lo ve en la cola.
+    from src.models.moderation import UserBlock
+
+    report_ids = [r.id for r, *_ in rows]
+    con_bloqueo = set(
+        (
+            await db.execute(
+                select(UserBlock.cancellation_report_id).where(
+                    UserBlock.cancellation_report_id.in_(report_ids)
+                )
+            )
+        ).scalars().all()
+    ) if report_ids else set()
     return {
         "data": [
             {
                 "id": str(r.id),
                 "jobId": str(r.job_id),
+                "blocked": r.id in con_bloqueo,
                 "referenceNumber": j.reference_number,
                 "taskName": t.name,
                 "reporterRole": r.reporter_role,

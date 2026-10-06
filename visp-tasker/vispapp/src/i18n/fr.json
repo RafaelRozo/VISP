@@ -915,7 +915,9 @@
     "confirm": "Annuler le travail",
     "failed": "Annulation impossible. Réessayez.",
     "openCustomer": "Il y a un problème — annuler ce travail",
-    "openProvider": "Je ne peux pas faire ce travail — annuler"
+    "openProvider": "Je ne peux pas faire ce travail — annuler",
+    "block": "Bloquer aussi cette personne",
+    "blockHint": "Vous ne pourrez plus vous écrire ni être jumelés à nouveau. Seul le soutien VISP peut l'annuler."
   },
   "offers": {
     "serviceSingular": "service",
@@ -1015,5 +1017,47 @@
     "receiptPendingTitle": "Reçu pas encore prêt",
     "receiptPendingBody": "Votre reçu est émis une fois le paiement finalisé. Réessayez dans un instant.",
     "receiptFailed": "Impossible d'ouvrir le reçu."
+  },
+  "moderation": {
+    "options": "Options",
+    "cancel": "Annuler",
+    "reportUser": "Signaler %{name}",
+    "blockUser": "Bloquer %{name}",
+    "reportMessage": "Signaler le message",
+    "reportDetails": "Signaler la description",
+    "reportPhotos": "Signaler les photos",
+    "reportProfile": "Signaler le profil",
+    "sheetTitle": "Signaler",
+    "reasonQuestion": "Pourquoi signalez-vous ceci ?",
+    "reasons": {
+      "HARASSMENT": "Harcèlement ou menaces",
+      "OFFENSIVE": "Contenu offensant",
+      "INAPPROPRIATE_PHOTO": "Photos inappropriées",
+      "SCAM": "Arnaque ou pourriel",
+      "SAFETY": "Je ne me sens pas en sécurité",
+      "OTHER": "Autre chose"
+    },
+    "details": "Détails",
+    "notePlaceholder": "Dites-nous en plus (facultatif)",
+    "noteRequired": "Dites-nous ce qui s'est passé",
+    "alsoBlock": "Bloquer aussi cette personne",
+    "alsoBlockHint": "Vous ne pourrez plus vous écrire ni être jumelés à nouveau.",
+    "send": "Envoyer le signalement",
+    "sentTitle": "Merci de nous l'avoir signalé",
+    "sentBody": "Notre équipe examine chaque signalement dans les 24 heures.",
+    "sentBlocked": "%{name} est aussi bloqué(e).",
+    "failed": "Impossible d'envoyer le signalement. Réessayez.",
+    "blockConfirmTitle": "Bloquer %{name} ?",
+    "blockConfirmBody": "Vous ne pourrez plus vous écrire et vous ne serez plus jumelés sur de nouveaux travaux. Pour l'annuler, contactez le soutien VISP.",
+    "blockConfirm": "Bloquer",
+    "blockedTitle": "Bloqué",
+    "blockedBody": "%{name} est bloqué(e).",
+    "blockFailed": "Blocage impossible. Réessayez.",
+    "activeJobTitle": "Vous avez un travail en cours ensemble",
+    "activeJobBody": "Pour bloquer cette personne, annulez le travail avec un motif. C'est gratuit, et VISP examine ce qui s'est passé.",
+    "activeJobAction": "Annuler le travail",
+    "chatBlocked": "Vous ne pouvez pas envoyer de messages dans cette conversation.",
+    "sendFailed": "Message non envoyé. Réessayez.",
+    "thisPerson": "cette personne"
   }
 }

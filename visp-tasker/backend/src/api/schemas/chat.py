@@ -85,6 +85,12 @@ class ChatHistoryData(CamelModel):
 
     items: list[ChatMessageOut]
     meta: PaginationMeta
+    # Hay un bloqueo entre los dos (055): la app cambia el campo de escribir por un aviso.
+    blocked: bool = False
+    # El trabajo está asignado: "Bloquear" tiene que pasar por el botón de pánico.
+    assigned: bool = False
+    # 'customer' | 'provider': el rol de quien abre el chat en ESTE trabajo.
+    role: str = "customer"
 
 
 # Fix forward reference

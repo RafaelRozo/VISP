@@ -116,6 +116,9 @@ async def get_messages(
                 total_items=result.total_items,
                 total_pages=result.total_pages,
             ),
+            blocked=result.blocked,
+            assigned=result.assigned,
+            role=result.role,
         ),
     )
 
@@ -158,6 +161,11 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
+        )
+    except chatService.BlockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "user_blocked", "message": str(exc)},
         )
     except chatService.NotParticipantError as exc:
         raise HTTPException(

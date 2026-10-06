@@ -19,8 +19,10 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActionSheetIOS,
   Alert,
   FlatList,
+  Platform,
   Modal,
   Pressable,
   StyleSheet,
@@ -58,6 +60,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { Image, ScrollView } from 'react-native';
 import { magnitudeLabel, type OpenJob, type SubmitOfferInput } from '../../services/offerService';
 import { resolveUploadUrl } from '../../services/userService';
+import ReportSheet from '../../components/ReportSheet';
+import { blockUser, type ReportTarget } from '../../services/moderationService';
 
 // ──────────────────────────────────────────────
 // MotionPressable
@@ -175,10 +179,12 @@ interface OpenJobCardProps {
   job: OpenJob;
   onSubmit: (jobId: string, input: SubmitOfferInput) => Promise<void>;
   onDecline: (jobId: string) => void;
+  /** "⋯": denunciar lo que escribió o fotografió el cliente, o bloquearlo (Apple 1.2). */
+  onModerate: (job: OpenJob) => void;
   isProcessing: boolean;
 }
 
-function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProps): React.JSX.Element {
+function OpenJobCard({ job, onSubmit, onDecline, onModerate, isProcessing }: OpenJobCardProps): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
 
@@ -229,7 +235,17 @@ function OpenJobCard({ job, onSubmit, onDecline, isProcessing }: OpenJobCardProp
   return (
     <View style={[cardStyles.card, { backgroundColor: t.card, borderColor: t.border }]}>
       {/* ── Qué es y dónde ─────────────────────────────── */}
-      <Text style={[VispText.bodyStrong, { color: t.text }]}>{job.serviceName}</Text>
+      <View style={cardStyles.titleRow}>
+        <Text style={[VispText.bodyStrong, { color: t.text, flex: 1 }]}>{job.serviceName}</Text>
+        <Pressable
+          onPress={() => onModerate(job)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={tr('moderation.options')}
+        >
+          <Icon name="dots" size={20} color={t.text3} />
+        </Pressable>
+      </View>
       <Text style={[VispText.eyebrow, { color: t.text3, marginTop: 3 }]}>
         {[job.city, job.requestedDate, job.requestedTimeStart?.slice(0, 5)]
           .filter(Boolean)
@@ -498,6 +514,7 @@ const cardStyles = StyleSheet.create({
   // ── Tarjeta de trabajo abierto (ofertas v2) ──
   // flexGrow:0 obligatorio: un ScrollView horizontal sin él se expande y se come
   // el espacio vertical de la tarjeta. Lo detecta scripts/audit_layout.py.
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   thumbs: { marginTop: 10, flexGrow: 0 },
   thumb: { width: 64, height: 64, borderRadius: 8, marginRight: 8 },
   materials: {
@@ -639,16 +656,93 @@ export default function JobOffersScreen(): React.JSX.Element {
   const [d, c] = fixed.split('.');
   const dollars = Number(d).toLocaleString();
 
+  // ---- Denunciar / bloquear al cliente de un trabajo de la bolsa (Apple 1.2) ----
+  // En la bolsa aún no hay trabajo asignado: se puede bloquear directamente.
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+
+  const confirmBlock = useCallback(
+    (job: OpenJob) => {
+      const name = tr('moderation.thisPerson');
+      Alert.alert(tr('moderation.blockConfirmTitle', { name }), tr('moderation.blockConfirmBody'), [
+        { text: tr('moderation.cancel'), style: 'cancel' },
+        {
+          text: tr('moderation.blockConfirm'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(job.jobId);
+              Alert.alert(tr('moderation.blockedTitle'), tr('moderation.blockedBody', { name }));
+              fetchOffers();
+            } catch {
+              Alert.alert(tr('moderation.blockFailed'));
+            }
+          },
+        },
+      ]);
+    },
+    [fetchOffers, tr],
+  );
+
+  const openModerationMenu = useCallback(
+    (job: OpenJob) => {
+      const items: { label: string; run: () => void; destructive?: boolean }[] = [];
+      if (job.details) {
+        items.push({
+          label: tr('moderation.reportDetails'),
+          run: () => setReportTarget({ jobId: job.jobId, contentType: 'JOB_DETAILS' }),
+        });
+      }
+      if ((job.evidence ?? []).length > 0) {
+        items.push({
+          label: tr('moderation.reportPhotos'),
+          run: () => setReportTarget({ jobId: job.jobId, contentType: 'JOB_EVIDENCE' }),
+        });
+      }
+      items.push({
+        label: tr('moderation.reportUser', { name: tr('moderation.thisPerson') }),
+        run: () => setReportTarget({ jobId: job.jobId, contentType: 'USER' }),
+      });
+      items.push({
+        label: tr('moderation.blockUser', { name: tr('moderation.thisPerson') }),
+        run: () => confirmBlock(job),
+        destructive: true,
+      });
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: [tr('moderation.cancel'), ...items.map((i) => i.label)],
+            cancelButtonIndex: 0,
+            destructiveButtonIndex: items.length,
+          },
+          (idx) => {
+            if (idx > 0) items[idx - 1].run();
+          },
+        );
+      } else {
+        Alert.alert(tr('moderation.options'), undefined, [
+          { text: tr('moderation.cancel'), style: 'cancel' },
+          ...items.map((i) => ({
+            text: i.label,
+            style: i.destructive ? ('destructive' as const) : ('default' as const),
+            onPress: i.run,
+          })),
+        ]);
+      }
+    },
+    [confirmBlock, tr],
+  );
+
   const renderOffer = useCallback(
     ({ item }: { item: OpenJob }) => (
       <OpenJobCard
         job={item}
         onSubmit={handleSubmitOffer}
         onDecline={handleDecline}
+        onModerate={openModerationMenu}
         isProcessing={processingId === item.jobId}
       />
     ),
-    [handleSubmitOffer, handleDecline, processingId],
+    [handleSubmitOffer, handleDecline, openModerationMenu, processingId],
   );
 
   // La bolsa no tiene assignmentId: la clave es el trabajo.
@@ -791,6 +885,16 @@ export default function JobOffersScreen(): React.JSX.Element {
         }
       />
 
+      <ReportSheet
+        visible={!!reportTarget}
+        target={reportTarget}
+        allowBlock
+        onClose={() => setReportTarget(null)}
+        onDone={(blocked) => {
+          // Con el bloqueo, el trabajo desaparece de la bolsa en el servidor.
+          if (blocked) fetchOffers();
+        }}
+      />
     </Screen>
   );
 }

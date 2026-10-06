@@ -92,6 +92,9 @@ _NOT_INVITED_MESSAGES = {
     matchingEngine.BID_ACCOUNT_INACTIVE: (
         "Your provider account is not active. Contact support."
     ),
+    # Mismo texto que un trabajo que ya no está: no se le dice al bloqueado que
+    # lo bloquearon.
+    matchingEngine.BID_BLOCKED: "This job is no longer available.",
 }
 
 

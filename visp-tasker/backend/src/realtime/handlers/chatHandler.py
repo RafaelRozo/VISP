@@ -252,36 +252,42 @@ async def handle_send_message(sid: str, data: dict[str, Any]) -> dict[str, Any]:
             "error": f"Invalid message_type. Must be one of: {', '.join(t.value for t in MessageType)}",
         }
 
-    # Verify participant and job status
-    allowed, error, job = await _verify_chat_participant(job_id, sender_id)
-    if not allowed:
-        return {"ok": False, "error": error}
+    # Se guarda por `chatService.send_message`, la MISMA puerta que el REST: ahí
+    # viven la comprobación de participante y estado, el bloqueo entre los dos
+    # (migración 055) y el filtro automático. Antes este handler escribía el
+    # ChatMessage por su cuenta, y un bloqueo puesto solo en el REST tenía un
+    # agujero por aquí.
+    from src.services import chatService
 
-    # Safety check (non-blocking, log only)
-    _check_safety(message_text, job_id, sender_id)
-
-    # Persist message
-    now = datetime.now(timezone.utc)
-    message_id = uuid.uuid4()
+    try:
+        job_uuid = uuid.UUID(job_id)
+        sender_uuid = uuid.UUID(sender_id)
+    except ValueError:
+        return {"ok": False, "error": "Invalid job_id"}
 
     try:
         async with async_session_factory() as db:
-            chat_msg = ChatMessage(
-                id=message_id,
-                job_id=uuid.UUID(job_id),
-                sender_id=uuid.UUID(sender_id),
+            dto = await chatService.send_message(
+                db,
+                job_id=job_uuid,
+                sender_id=sender_uuid,
                 message_text=message_text,
-                message_type=message_type,
-                read_by_recipient=False,
+                message_type_str=message_type.value,
             )
-            db.add(chat_msg)
             await db.commit()
+            # El aviso push de abajo necesita el trabajo para saber a quién avisar.
+            job = await db.get(Job, job_uuid)
+    except chatService.BlockedError:
+        return {"ok": False, "error": "user_blocked"}
+    except (chatService.ChatError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
     except Exception:
         logger.exception("Failed to persist chat message for job=%s", job_id)
         return {"ok": False, "error": "Failed to save message"}
 
-    # Fetch sender display name
-    sender_name = await _get_sender_display_name(sender_id)
+    message_id = dto.id
+    sender_name = dto.sender_name or "Unknown"
+    now = dto.created_at or datetime.now(timezone.utc)
 
     # Broadcast to job room
     sent_at = now.isoformat()

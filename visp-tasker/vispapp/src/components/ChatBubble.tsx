@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
 import type { ChatMessage } from '../types';
 
@@ -17,6 +17,8 @@ import type { ChatMessage } from '../types';
 
 interface ChatBubbleProps {
   message: ChatMessage;
+  /** Mantener pulsado un mensaje AJENO abre "Denunciar mensaje" (Apple 1.2). */
+  onLongPress?: (message: ChatMessage) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,11 +36,14 @@ function formatTimestamp(dateString: string): string {
 
 export default function ChatBubble({
   message,
+  onLongPress,
 }: ChatBubbleProps): React.JSX.Element {
   const isOwn = message.isOwnMessage;
 
   return (
-    <View
+    <Pressable
+      onLongPress={!isOwn && onLongPress ? () => onLongPress(message) : undefined}
+      delayLongPress={350}
       style={[
         styles.container,
         isOwn ? styles.containerOwn : styles.containerOther,
@@ -67,7 +72,7 @@ export default function ChatBubble({
       >
         {formatTimestamp(message.createdAt)}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 

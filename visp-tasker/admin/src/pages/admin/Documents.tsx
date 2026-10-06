@@ -562,6 +562,13 @@ export default function Documents() {
                     <div style={{ fontSize: 12, color: 'var(--t-text-3)', marginTop: 4 }}>
                       {t('documents.reportedBy')} {r.reporterName} ({r.reporterRole}) ·{' '}
                       <span className="t-chip t-chip-mono">{r.reasonCode}</span>
+                      {/* "Bloquear también" desde el botón de pánico (055). Se
+                          deshace en Moderación → Bloqueos. */}
+                      {r.blocked ? (
+                        <span className="t-chip t-chip-mono" style={{ marginLeft: 6, color: 'var(--t-danger)' }}>
+                          {t('moderation.panicBlocked')}
+                        </span>
+                      ) : null}
                     </div>
                     {r.note && (
                       <div style={{ fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>

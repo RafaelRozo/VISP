@@ -14,7 +14,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { adminService, DashboardCharts, DashboardStats } from '@/services/adminService';
+import { Link } from 'react-router-dom';
+import { adminService, DashboardCharts, DashboardStats, type ReportsSummary } from '@/services/adminService';
 
 type Period = '7d' | '30d' | '90d';
 
@@ -35,10 +36,18 @@ function StatCard({
   num: string;
   label: string;
   value: string | number;
-  accent?: 'violet' | 'ok' | 'warn';
+  accent?: 'violet' | 'ok' | 'warn' | 'danger';
 }) {
   const valueColor =
-    accent === 'violet' ? ACCENT : accent === 'ok' ? OK : accent === 'warn' ? WARN : 'var(--t-text)';
+    accent === 'violet'
+      ? ACCENT
+      : accent === 'ok'
+        ? OK
+        : accent === 'warn'
+          ? WARN
+          : accent === 'danger'
+            ? 'var(--t-danger)'
+            : 'var(--t-text)';
   return (
     <div className="t-card-base" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div className="flex items-center justify-between">
@@ -50,6 +59,32 @@ function StatCard({
       <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.025em', color: valueColor, lineHeight: 1 }}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function ModerationStrip() {
+  const { t } = useTranslation();
+  const q = useQuery<ReportsSummary>({
+    queryKey: ['reports-summary'],
+    queryFn: () => adminService.reportsSummary(),
+    refetchInterval: 60_000,
+  });
+  const d = q.data;
+  if (!d) return null;
+  return (
+    <div className="t-card-base" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="flex items-center justify-between">
+        <span className="t-eyebrow">{t('dashboard.modTitle')}</span>
+        <Link to="/admin/moderation" style={{ fontSize: 12, color: 'var(--t-violet)' }}>
+          {t('dashboard.modGo')}
+        </Link>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+        <StatCard num="M1" label={t('dashboard.modOpen')} value={d.open} accent={d.open > 0 ? 'warn' : 'ok'} />
+        <StatCard num="M2" label={t('dashboard.modOverdue')} value={d.overdue} accent={d.overdue > 0 ? 'danger' : 'ok'} />
+        <StatCard num="M3" label={t('dashboard.modPanic')} value={d.panicPending} accent={d.panicPending > 0 ? 'warn' : 'ok'} />
+      </div>
     </div>
   );
 }
@@ -122,6 +157,10 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      {/* Moderación (Apple 1.2): lo primero que se ve si hay denuncias esperando.
+          Las vencidas (> 24 h) en rojo: es el plazo que prometemos. */}
+      <ModerationStrip />
 
       {/* KPI grid */}
       <div

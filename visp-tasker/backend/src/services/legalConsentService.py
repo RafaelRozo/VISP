@@ -61,7 +61,12 @@ CONSENT_VERSIONS: dict[ConsentType, str] = {
     # —los niveles son L0-L3 desde el 04-08— así que era texto legal que
     # contradecía a la propia app. El .txt de la v1.0 se queda en disco: quien lo
     # aceptó aceptó ESE, y `load_consent_text` lo sigue encontrando por versión.
-    ConsentType.PLATFORM_TOS: "2.0",
+    # v2.1 (2026-10-06): añade en §22 la cláusula de cero tolerancia con
+    # denunciar y bloquear (Apple, guía 1.2) y corrige los correos @vispapp.com
+    # por support@droztechnologies.com. La v2.0 sigue en disco: quien la aceptó
+    # aceptó ESA. Los Términos no están en la puerta legal de /consents/pending,
+    # así que nadie tiene que volver a aceptarlos.
+    ConsentType.PLATFORM_TOS: "2.1",
     ConsentType.PROVIDER_IC_AGREEMENT: "1.3",
     ConsentType.LEVEL_1_TERMS: "1.0",
     ConsentType.LEVEL_2_TERMS: "1.0",

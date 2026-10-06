@@ -16,6 +16,9 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 # -- 054: Borrado de cuenta --
 from .account_deletion import AccountDeletion
 
+# -- 055: Denunciar y bloquear --
+from .moderation import ContentReport, ModerationAction, UserBlock
+
 # -- 001: Users --
 from .user import AuthProvider, User, UserStatus
 
@@ -251,4 +254,8 @@ __all__ = [
     "CompanyPayoutTarget",
     # Borrado de cuenta (054)
     "AccountDeletion",
+    # Denunciar y bloquear (055)
+    "ContentReport",
+    "ModerationAction",
+    "UserBlock",
 ]

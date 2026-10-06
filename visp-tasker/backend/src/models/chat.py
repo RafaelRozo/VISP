@@ -54,10 +54,19 @@ class ChatMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
 
+    # El tipo de Postgres tiene las etiquetas en MINÚSCULA ('text', 'image',
+    # 'system'). Sin `values_callable`, SQLAlchemy manda el NOMBRE del miembro
+    # ('TEXT') y Postgres lo rechaza: el chat no llegó a guardar un solo mensaje
+    # hasta el 2026-10-06 (0 filas en visp_prod).
     message_type: Mapped[MessageType] = mapped_column(
-        Enum(MessageType, name="message_type", create_type=False),
+        Enum(
+            MessageType,
+            name="message_type",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
-        server_default="TEXT",
+        server_default="text",
     )
 
     read_by_recipient: Mapped[bool] = mapped_column(
@@ -68,6 +77,12 @@ class ChatMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     read_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # Lo pone el admin al resolver una denuncia (migración 055). El mensaje no se
+    # borra: el historial es prueba en disputas.
+    removed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

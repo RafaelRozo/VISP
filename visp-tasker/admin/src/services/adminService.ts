@@ -393,7 +393,54 @@ export interface CancellationReport {
   ratingImpact: boolean;
   adminNote: string | null;
   createdAt: string | null;
+  /** Se pidió "bloquear también" desde el botón de pánico (055). */
+  blocked?: boolean;
 }
+
+// ── Moderación (Apple 1.2, migración 055) ──
+export interface ModerationUserCard {
+  id: string;
+  name: string | null;
+  email: string;
+  status: string;
+}
+
+export interface ContentReport {
+  id: string;
+  source: 'USER' | 'AUTO_FILTER';
+  contentType: 'USER' | 'CHAT_MESSAGE' | 'JOB_DETAILS' | 'JOB_EVIDENCE' | 'PROFILE';
+  contentId: string | null;
+  reason: string;
+  note: string | null;
+  /** Copia del contenido al denunciar: message | details/extraNote/evidence | bio/avatarUrl. */
+  snapshot: Record<string, unknown>;
+  status: 'OPEN' | 'ACTIONED' | 'DISMISSED';
+  jobId: string | null;
+  reporter: ModerationUserCard | null;
+  reported: ModerationUserCard | null;
+  createdAt: string;
+  overdue: boolean;
+  adminAction: string | null;
+  adminNote: string | null;
+  reviewedAt: string | null;
+}
+
+export interface ReportsSummary {
+  open: number;
+  overdue: number;
+  panicPending: number;
+}
+
+export interface UserBlockRow {
+  id: string;
+  blocker: ModerationUserCard | null;
+  blocked: ModerationUserCard | null;
+  source: 'PANIC' | 'MENU' | 'REPORT';
+  jobId: string | null;
+  createdAt: string;
+}
+
+export type ReportAction = 'dismiss' | 'remove_content' | 'suspend' | 'ban';
 
 /** Ontario driver's licence classes. Only G2 and G are used in practice. */
 export const LICENSE_CLASSES = ['G1', 'G2', 'G', 'A', 'AR', 'D', 'B', 'C', 'E', 'F'] as const;
@@ -653,6 +700,24 @@ export const adminService = {
       `/admin/cancellation-reports/${id}/review`,
       body,
     ),
+
+  // ── Moderación: denuncias y bloqueos (Apple 1.2) ──
+  reportsSummary: () => apiGet<ReportsSummary>('/admin/reports/summary'),
+
+  contentReports: (status: string) =>
+    apiGet<ContentReport[]>('/admin/reports', { status_filter: status }),
+
+  resolveReport: (id: string, action: ReportAction, note?: string) =>
+    apiPost<{ id: string; status: string; adminAction: string }>(
+      `/admin/reports/${id}/resolve`,
+      { action, note },
+    ),
+
+  userBlocks: (q?: string) => apiGet<UserBlockRow[]>('/admin/blocks', q ? { q } : undefined),
+
+  // Desbloquear solo lo hace soporte, con nota (decisión de Ricardo, 2026-10-06).
+  unblock: (id: string, note: string) =>
+    apiPost<{ removed: boolean }>(`/admin/blocks/${id}/unblock`, { note }),
 
   // ── Expediente de experiencia (L1) ──
   // La validación es DOCUMENTAL, no de competencia: se confirma que la evidencia

@@ -915,7 +915,9 @@
     "confirm": "Cancel job",
     "failed": "Could not cancel. Try again.",
     "openCustomer": "Something is wrong — cancel this job",
-    "openProvider": "Can't do this job — cancel"
+    "openProvider": "Can't do this job — cancel",
+    "block": "Also block this person",
+    "blockHint": "You won't be able to message each other or be matched again. Only VISP support can undo it."
   },
   "offers": {
     "serviceSingular": "service",
@@ -1015,5 +1017,47 @@
     "receiptPendingTitle": "Receipt not ready",
     "receiptPendingBody": "Your receipt is issued once the payment is finalised. Try again in a moment.",
     "receiptFailed": "Could not open the receipt."
+  },
+  "moderation": {
+    "options": "Options",
+    "cancel": "Cancel",
+    "reportUser": "Report %{name}",
+    "blockUser": "Block %{name}",
+    "reportMessage": "Report message",
+    "reportDetails": "Report description",
+    "reportPhotos": "Report photos",
+    "reportProfile": "Report profile",
+    "sheetTitle": "Report",
+    "reasonQuestion": "Why are you reporting this?",
+    "reasons": {
+      "HARASSMENT": "Harassment or threats",
+      "OFFENSIVE": "Offensive content",
+      "INAPPROPRIATE_PHOTO": "Inappropriate photos",
+      "SCAM": "Scam or spam",
+      "SAFETY": "I feel unsafe",
+      "OTHER": "Something else"
+    },
+    "details": "Details",
+    "notePlaceholder": "Tell us more (optional)",
+    "noteRequired": "Tell us what happened",
+    "alsoBlock": "Also block this person",
+    "alsoBlockHint": "You won't be able to message each other or be matched again.",
+    "send": "Send report",
+    "sentTitle": "Thanks for letting us know",
+    "sentBody": "Our team reviews every report within 24 hours.",
+    "sentBlocked": "%{name} is also blocked.",
+    "failed": "Could not send the report. Try again.",
+    "blockConfirmTitle": "Block %{name}?",
+    "blockConfirmBody": "You won't be able to message each other and you won't be matched on new jobs. To undo it, contact VISP support.",
+    "blockConfirm": "Block",
+    "blockedTitle": "Blocked",
+    "blockedBody": "%{name} is blocked.",
+    "blockFailed": "Could not block. Try again.",
+    "activeJobTitle": "You have an active job together",
+    "activeJobBody": "To block this person, cancel the job with a reason. It's free, and VISP reviews what happened.",
+    "activeJobAction": "Cancel the job",
+    "chatBlocked": "You can't send messages in this chat.",
+    "sendFailed": "Message not sent. Try again.",
+    "thisPerson": "this person"
   }
 }

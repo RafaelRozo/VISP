@@ -60,6 +60,11 @@ class NotParticipantError(ChatError):
     pass
 
 
+class BlockedError(ChatError):
+    """Hay un bloqueo entre los dos participantes (migración 055): no se escribe."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -113,6 +118,12 @@ class PaginatedMessages:
     page_size: int
     total_items: int
     total_pages: int
+    # Para la app: con `blocked` cambia el campo de escribir por un aviso, y con
+    # `assigned` sabe que "Bloquear" tiene que ir al botón de pánico.
+    blocked: bool = False
+    assigned: bool = False
+    # 'customer' | 'provider': qué lista de motivos pide el botón de pánico.
+    role: str = "customer"
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +218,28 @@ async def _verify_participant(
     raise NotParticipantError("You are not a participant in this job")
 
 
+async def _other_participant(
+    db: AsyncSession, job: Job, user_id: uuid.UUID
+) -> Optional[uuid.UUID]:
+    """La otra persona del chat: el proveedor asignado si escribe el cliente, y al revés."""
+    if job.customer_id != user_id:
+        return job.customer_id
+    return (
+        await db.execute(
+            select(ProviderProfile.user_id)
+            .join(JobAssignment, JobAssignment.provider_id == ProviderProfile.id)
+            .where(
+                JobAssignment.job_id == job.id,
+                JobAssignment.status.in_([
+                    AssignmentStatus.ACCEPTED,
+                    AssignmentStatus.COMPLETED,
+                ]),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 # ---------------------------------------------------------------------------
 # Public service functions
 # ---------------------------------------------------------------------------
@@ -237,10 +270,16 @@ async def get_messages(
         PaginatedMessages with items and pagination metadata.
     """
     # Verify participant (allow viewing history even after completion)
-    await _verify_participant(db, job_id, user_id, require_active_chat=False)
+    job = await _verify_participant(db, job_id, user_id, require_active_chat=False)
 
-    # Base filter
-    conditions = [ChatMessage.job_id == job_id]
+    from src.services import moderation_service
+
+    # Base filter. Fuera los mensajes que quitó el admin y los que este mismo
+    # usuario denunció (se le ocultan al momento, migración 055).
+    conditions = [ChatMessage.job_id == job_id, ChatMessage.removed_at.is_(None)]
+    ocultos = await moderation_service.hidden_message_ids(db, user_id=user_id, job_id=job_id)
+    if ocultos:
+        conditions.append(ChatMessage.id.notin_(ocultos))
 
     if before is not None:
         conditions.append(ChatMessage.created_at < before)
@@ -293,12 +332,18 @@ async def get_messages(
         for msg in messages
     ]
 
+    other = await _other_participant(db, job, user_id)
+    blocked = other is not None and await moderation_service.is_blocked(db, user_id, other)
+
     return PaginatedMessages(
         items=items,
         page=page,
         page_size=page_size,
         total_items=total_items,
         total_pages=total_pages,
+        blocked=blocked,
+        assigned=job.status in moderation_service.ASSIGNED_STATUSES,
+        role="customer" if job.customer_id == user_id else "provider",
     )
 
 
@@ -342,7 +387,14 @@ async def send_message(
         raise ValueError(f"Invalid message_type. Must be one of: {valid}")
 
     # Verify participant and job status
-    await _verify_participant(db, job_id, sender_id, require_active_chat=True)
+    job = await _verify_participant(db, job_id, sender_id, require_active_chat=True)
+
+    from src.services import moderation_service
+
+    # El bloqueo va en las dos direcciones: ni quien bloqueó ni el bloqueado escriben.
+    other = await _other_participant(db, job, sender_id)
+    if other is not None and await moderation_service.is_blocked(db, sender_id, other):
+        raise BlockedError("You can't send messages in this chat.")
 
     # Safety check (non-blocking, log only)
     _check_safety(message_text, job_id, sender_id)
@@ -357,6 +409,14 @@ async def send_message(
     )
     db.add(msg)
     await db.flush()
+
+    # Filtro automático (guía 1.2): un insulto o amenaza abre una denuncia para
+    # el admin. El mensaje se entrega igual, y un fallo aquí no lo tumba.
+    try:
+        async with db.begin_nested():
+            await moderation_service.auto_flag_chat_message(db, msg)
+    except Exception:
+        logger.exception("Auto-filter failed for message %s", msg.id)
 
     # Resolve sender name
     sender_name = await _get_sender_display_name(db, sender_id)

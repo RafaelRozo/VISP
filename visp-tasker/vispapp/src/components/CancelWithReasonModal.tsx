@@ -18,7 +18,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,6 +32,7 @@ import {
 import { useVispTheme, VispText, VispSpace, VispRadius } from '../theme/visp';
 import { useTranslation } from '../i18n';
 import { get, post } from '../services/apiClient';
+import { Icon } from './visp';
 
 interface CancelReason {
   code: string;
@@ -41,14 +44,22 @@ interface Props {
   jobId: string;
   /** Determina qué lista de motivos pide al backend. */
   role: 'customer' | 'provider';
+  /**
+   * "Bloquear también a esta persona" marcado de entrada. Lo pasa el chat
+   * cuando el usuario eligió "Bloquear" con un trabajo asignado: con un
+   * trabajo en curso, el bloqueo SOLO se hace desde aquí (Apple 1.2).
+   */
+  defaultBlock?: boolean;
   onClose: () => void;
-  onCancelled: () => void;
+  /** `blocked` = además de cancelar, quedó bloqueada la otra persona. */
+  onCancelled: (blocked?: boolean) => void;
 }
 
 export default function CancelWithReasonModal({
   visible,
   jobId,
   role,
+  defaultBlock = false,
   onClose,
   onCancelled,
 }: Props): React.JSX.Element {
@@ -60,12 +71,14 @@ export default function CancelWithReasonModal({
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [block, setBlock] = useState(defaultBlock);
 
   useEffect(() => {
     if (!visible) return;
     setCode(null);
     setNote('');
     setError(null);
+    setBlock(defaultBlock);
     (async () => {
       try {
         const data = await get<CancelReason[]>('/jobs/cancel-reasons', { role });
@@ -74,7 +87,7 @@ export default function CancelWithReasonModal({
         setReasons([]);
       }
     })();
-  }, [visible, role]);
+  }, [visible, role, defaultBlock]);
 
   // Con "otro motivo" el texto es lo único que explica qué pasó: sin él, el
   // reporte llega a la cola sin nada que revisar. El backend también lo exige.
@@ -86,11 +99,12 @@ export default function CancelWithReasonModal({
     setSending(true);
     setError(null);
     try {
-      await post(`/jobs/${jobId}/cancel-with-reason`, {
+      const res = await post<{ blocked?: boolean }>(`/jobs/${jobId}/cancel-with-reason`, {
         reasonCode: code,
         note: note.trim() || undefined,
+        block,
       });
-      onCancelled();
+      onCancelled(!!res?.blocked);
       onClose();
     } catch (e: unknown) {
       const msg =
@@ -101,10 +115,12 @@ export default function CancelWithReasonModal({
     } finally {
       setSending(false);
     }
-  }, [canSend, code, jobId, note, onCancelled, onClose, tr]);
+  }, [block, canSend, code, jobId, note, onCancelled, onClose, tr]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* La nota está al final de la hoja: sin esto el teclado la tapa. */}
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={styles.backdrop} onPress={() => !sending && onClose()}>
         <Pressable
           style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.border }]}
@@ -173,6 +189,34 @@ export default function CancelWithReasonModal({
               editable={!sending}
             />
 
+            {/* Bloquear va aquí y no en un menú aparte: con un trabajo asignado,
+                bloquear sin cancelar dejaría el trabajo a medias. */}
+            <Pressable
+              style={styles.blockRow}
+              onPress={() => setBlock((b) => !b)}
+              disabled={sending}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: block }}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    borderColor: block ? t.danger : t.border,
+                    backgroundColor: block ? t.danger : 'transparent',
+                  },
+                ]}
+              >
+                {block ? <Icon name="check" size={14} color="#FFFFFF" /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[VispText.body, { color: t.text }]}>{tr('cancelReason.block')}</Text>
+                <Text style={[VispText.body, { color: t.text3, fontSize: 13 }]}>
+                  {tr('cancelReason.blockHint')}
+                </Text>
+              </View>
+            </Pressable>
+
             {error ? (
               <Text style={[VispText.body, { color: t.danger, marginTop: 10 }]}>{error}</Text>
             ) : null}
@@ -211,11 +255,13 @@ export default function CancelWithReasonModal({
           </View>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -250,6 +296,21 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     minHeight: 90,
     fontSize: 15,
+  },
+  blockRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 16,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
   },
   actions: { flexDirection: 'row', gap: 10 },
   btn: {

@@ -115,6 +115,9 @@ class CancelWithReasonRequest(BaseModel):
 
     reasonCode: str
     note: Optional[str] = Field(default=None, max_length=2000)
+    # "Bloquear también a esta persona" (055). Con un trabajo asignado, este es
+    # el ÚNICO sitio desde el que se bloquea: así nunca queda un trabajo a medias.
+    block: bool = False
 
 
 @router.get(
@@ -201,6 +204,20 @@ async def cancel_with_reason(
             )
         role = "provider"
 
+    # A quién se bloquea se resuelve ANTES de cancelar: la cancelación toca
+    # Stripe y eso no lo deshace un rollback.
+    block_target = None
+    if body.block:
+        from src.services import moderation_service
+
+        try:
+            block_target = await moderation_service.panic_counterpart(db, job=job, user_id=user.id)
+        except moderation_service.ModerationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": exc.code, "message": str(exc)},
+            )
+
     try:
         report = await cancel_svc.cancel_with_report(
             db,
@@ -214,12 +231,22 @@ async def cancel_with_reason(
         # 400 y no 5xx: Cloudflare envuelve los 5xx y el usuario no vería el motivo.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
+    # El bloqueo va en la MISMA transacción que la cancelación: o pasan las dos
+    # cosas o ninguna.
+    blocked = False
+    if block_target is not None:
+        await moderation_service.block_from_panic(
+            db, job=job, user_id=user.id, other_id=block_target, cancellation_report=report
+        )
+        blocked = True
+
     await db.commit()
     return {
         "data": {
             "jobId": str(job.id),
             "status": job.status.value,
             "reportId": str(report.id),
+            "blocked": blocked,
             # Se dice explícitamente que no hay cargo: es la duda inmediata de
             # quien acaba de cancelar.
             "charged": False,

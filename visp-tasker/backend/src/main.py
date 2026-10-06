@@ -150,6 +150,7 @@ from src.api.routes import (  # noqa: E402
     geolocation,
     jobs,
     matching,
+    moderation,
     notifications,
     offers,
     payments,
@@ -194,6 +195,8 @@ app.include_router(notifications.router, prefix=_prefix)
 app.include_router(geolocation.router, prefix=_prefix)
 app.include_router(users.router, prefix=_prefix)
 app.include_router(admin.router, prefix=_prefix)
+app.include_router(moderation.router, prefix=_prefix)
+app.include_router(moderation.admin_router, prefix=_prefix)
 
 # Public HTML redirect pages (no /api/v1 prefix — Stripe redirects users here)
 app.include_router(stripe_redirect.router)

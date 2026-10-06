@@ -362,6 +362,10 @@ BID_NO_CONTRACT = "no_contract"
 # perfil de proveedor está SUSPENDED/INACTIVE. Va antes que todo lo demás: una
 # cuenta borrada no puede recibir trabajos por muy cerca y cualificada que esté.
 BID_ACCOUNT_INACTIVE = "account_inactive"
+# Hay un bloqueo entre el proveedor y el cliente, pedido por cualquiera de los
+# dos (migración 055). El trabajo desaparece de la bolsa sin más explicación: al
+# bloqueado no se le dice quién lo bloqueó.
+BID_BLOCKED = "blocked"
 
 # Estados de usuario con los que no se oferta. PENDING_VERIFICATION sí entra:
 # la verificación de email no se exige hoy para trabajar.
@@ -443,6 +447,7 @@ async def provider_can_bid(
     busy_windows: list[tuple[datetime, datetime]] | None = None,
     contract_signed: bool | None = None,
     account_active: bool | None = None,
+    blocked_users: set[uuid.UUID] | None = None,
 ) -> Optional[str]:
     """¿Puede ESTE proveedor ofertar en ESTE trabajo?
 
@@ -476,6 +481,15 @@ async def provider_can_bid(
     # decirlo: el trabajo desaparecía de la bolsa sin explicación.
     if provider.user_id == job.customer_id:
         return BID_OWN_JOB
+
+    # Bloqueo entre los dos (055). `blocked_users` llega precalculado desde la
+    # bolsa —son las mismas personas para todos los trabajos—.
+    if blocked_users is None:
+        from src.services import moderation_service
+
+        blocked_users = await moderation_service.blocked_user_ids(db, provider.user_id)
+    if job.customer_id in blocked_users:
+        return BID_BLOCKED
 
     # Cuenta borrada, suspendida o baneada. Antes no se miraba: un proveedor
     # suspendido seguía recibiendo y ofertando trabajos. `account_active` llega
@@ -645,9 +659,17 @@ async def find_matching_providers(
     provider_result = await db.execute(provider_stmt)
     # La cuenta del USUARIO también cuenta: un perfil ONBOARDING de una cuenta
     # borrada, suspendida o baneada no debe recibir el broadcast.
+    # Fuera también quien tenga un bloqueo con el cliente (055). Este camino NO
+    # pasa por `provider_can_bid`: sin esto, al bloqueado le seguiría llegando el
+    # aviso push de cada trabajo nuevo de ese cliente.
+    from src.services import moderation_service
+
+    bloqueados = await moderation_service.blocked_user_ids(db, job.customer_id)
     all_providers = [
         p for p in provider_result.scalars().all()
-        if p.user is not None and p.user.status not in _BLOCKED_USER_STATUSES
+        if p.user is not None
+        and p.user.status not in _BLOCKED_USER_STATUSES
+        and p.user_id not in bloqueados
     ]
 
     logger.info(

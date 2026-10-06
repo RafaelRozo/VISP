@@ -333,6 +333,10 @@ async def list_open_jobs(
     )
     # Igual con la cuenta activa: una consulta para toda la bolsa.
     account_active = await provider_account_active(db, provider)
+    # Y con los bloqueos (055): una consulta para toda la bolsa.
+    from src.services import moderation_service
+
+    blocked_users = await moderation_service.blocked_user_ids(db, provider.user_id)
     rows: list[Job] = []
     # El choque de agenda NO saca el trabajo de la bolsa: sale marcado y con su
     # motivo. Es el único bloqueo temporal —mañana ese hueco está libre— y
@@ -347,7 +351,7 @@ async def list_open_jobs(
         blocked = await provider_can_bid(
             db, job, provider, task=task, level_cache=level_cache,
             busy_windows=busy_windows, contract_signed=contract_signed,
-            account_active=account_active,
+            account_active=account_active, blocked_users=blocked_users,
         )
         if blocked is None:
             rows.append(job)
