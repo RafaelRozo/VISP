@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     firebase_service_account_path: str = ""
     firebase_credentials_json: str = ""
 
+    # -- Apple Push Notification service (iPhone, directo, sin Expo) --
+    # La clave .p8 de developer.apple.com → Keys. Se puede dar el CONTENIDO
+    # (apns_key_p8, con los saltos de línea como \n) o la RUTA del archivo.
+    apns_key_p8: str = ""
+    apns_key_path: str = ""
+    apns_key_id: str = ""
+    apns_team_id: str = "X3332DJG89"
+    apns_bundle_id: str = "com.droz.vispapp"
+
     # -- JWT / Auth --
     jwt_secret: str = "visp-dev-secret-change-me"
     jwt_algorithm: str = "HS256"

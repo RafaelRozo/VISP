@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.integrations.fcm import pushService
 from src.models.job import Job
 from src.models.notification import (
+    DevicePlatform,
     DeviceToken,
     Notification,
     NotificationPreference,
@@ -264,24 +265,35 @@ async def _send_to_user(
         )
         return True  # Not a failure -- user just has no devices
 
-    # Send push. La app registra tokens de EXPO (`ExponentPushToken[…]`) y esos
-    # solo los entrega Expo: por FCM no llegaban (device_tokens vacía hasta el
-    # 2026-10-09). Los tokens nativos de FCM, si algún día se registran, siguen
-    # por Firebase.
-    from src.integrations.expo import pushService as expoPush
+    # Send push. Cada plataforma por su vía nativa, sin intermediarios:
+    #   - iPhone: el token de APNs, directo a Apple (integrations/apns).
+    #   - Android: el token de FCM, por Firebase Admin (integrations/fcm).
+    # Hasta el 2026-10-09 todo iba por FCM y la app mandaba un token de Expo
+    # que nadie sabía entregar: device_tokens estaba vacía y no llegaba nada.
+    from src.integrations.apns import pushService as apnsPush
 
     payload = {k: str(v) for k, v in data.items()} if data else None
-    expo_tokens = [t for t in tokens if expoPush.is_expo_token(t)]
-    fcm_tokens = [t for t in tokens if not expoPush.is_expo_token(t)]
+    plataformas = dict(
+        (
+            await db.execute(
+                select(DeviceToken.device_token, DeviceToken.platform).where(
+                    DeviceToken.user_id == user_id,
+                    DeviceToken.is_active.is_(True),
+                )
+            )
+        ).all()
+    )
+    ios_tokens = [t for t in tokens if plataformas.get(t) == DevicePlatform.IOS]
+    fcm_tokens = [t for t in tokens if plataformas.get(t) != DevicePlatform.IOS]
     enviados = 0
 
-    if expo_tokens:
-        expo_result = await expoPush.send_to_tokens(
-            expo_tokens, title, body, data=payload, badge=badge, sound=sound, priority=priority,
+    if ios_tokens:
+        apns_result = await apnsPush.send_to_tokens(
+            ios_tokens, title, body, data=payload, badge=badge, sound=sound, priority=priority,
         )
-        if expo_result.invalid_tokens:
-            await _deactivate_invalid_tokens(expo_result.invalid_tokens, db)
-        enviados += expo_result.success_count
+        if apns_result.invalid_tokens:
+            await _deactivate_invalid_tokens(apns_result.invalid_tokens, db)
+        enviados += apns_result.success_count
 
     if len(fcm_tokens) == 1:
         result = await pushService.send_notification(

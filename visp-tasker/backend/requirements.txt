@@ -30,6 +30,8 @@ python-socketio>=5.10.0
 
 # -- HTTP Client --
 httpx>=0.26.0
+# APNs exige HTTP/2 (integrations/apns).
+h2>=4.1.0
 
 # -- Payments --
 # Accounts v2 API surface (stripe.v2.core.accounts) requires SDK >=9.0;

@@ -84,17 +84,15 @@ nativa, en la configuración y en Google Play.
   token de Expo (`ExponentPushToken[…]`), el backend envía con Firebase Admin
   (FCM), que no sabe entregar tokens de Expo.
 
-**Decisión D3:**
-- (a) *(recomendada)* **Expo Push Service.** El backend hace un POST a
-  `exp.host` con los tokens de Expo. Hace falta crear un proyecto EAS gratuito
-  para el `projectId`, subir a Expo la clave APNs (iOS) y la cuenta de servicio
-  de FCM (Android). Un solo camino para las dos plataformas.
-- (b) Tokens nativos (`getDevicePushTokenAsync`) y que el backend envíe a FCM
-  para Android y a APNs para iOS. Exige la clave APNs en Firebase y es más
-  trabajo en el backend.
-
-Es un arreglo que **también necesita iOS**. Conviene hacerlo antes que Android
-y sacarlo en un build 36 de iOS.
+**Decisión D3 (Ricardo, 2026-10-09): push NATIVAS, sin Expo.** Hecho:
+- La app registra el token nativo con `getDevicePushTokenAsync`: APNs en
+  iPhone y FCM en Android.
+- El backend envía a iPhone directo a Apple (`integrations/apns`, clave `.p8`,
+  primero producción y luego sandbox) y a Android por Firebase Admin.
+- Las rutas de `/notifications` ahora piden sesión.
+- `smoke_push.py` 19/19.
+- Falta: la clave APNs `.p8` en el `.env` del servidor (`APNS_KEY_P8` o
+  `APNS_KEY_PATH` y `APNS_KEY_ID`) y, para Android, `google-services.json`.
 
 ## 5. Google Play: lo que no es código
 
@@ -126,7 +124,7 @@ y sacarlo en un build 36 de iOS.
 - **D2 — Cuenta de Play Console:** de organización (recomendada: sin la regla
   de 12 testers y 14 días, aparece "DROZ TECHNOLOGIES, INC." como
   desarrollador y hace falta el D-U-N-S) o personal.
-- **D3 — Push:** Expo Push Service (recomendado) o FCM/APNs directo (§4).
+- **D3 — Push:** nativas, APNs + FCM (decidido, §4).
 - **D4 — Guardar `ios/` y `android/` en git.** Hoy no lo están, y todo lo que
   la memoria lista como "customizaciones que borra prebuild" vive solo en este
   Mac. Recomiendo que entren en git (sin secretos), o mover esas

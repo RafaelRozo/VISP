@@ -4,26 +4,23 @@
  * Uses expo-notifications + expo-device for push notifications.
  * Physical device required for push tokens; gracefully degrades on simulator.
  *
- * El token es de EXPO (`ExponentPushToken[…]`) y el backend lo entrega por
- * Expo Push Service (`integrations/expo`). Hasta el 2026-10-09 no llegaba
- * ninguna push: `getExpoPushTokenAsync()` sin `projectId` falla en una app
- * instalada (fuera de Expo Go), el error se quedaba en un `console.warn` y el
- * teléfono nunca se registraba. Además el registro mandaba `platform: 'ios'`
- * sin sesión válida para el backend. El `projectId` sale de `app.json`
- * (`extra.eas.projectId`), que EXConstants incrusta en el binario al compilar.
+ * Token NATIVO, sin Expo de por medio: en iPhone el de APNs y en Android el
+ * de FCM (`getDevicePushTokenAsync`). El backend envía a Apple directo con la
+ * clave .p8 (`integrations/apns`) y a Android por Firebase.
+ *
+ * Hasta el 2026-10-09 no llegaba ninguna push: se pedía un token de Expo
+ * (`getExpoPushTokenAsync()`, que además falla sin `projectId` fuera de Expo
+ * Go), el error se quedaba en un `console.warn` y el teléfono nunca se
+ * registraba. `device_tokens` estaba vacía en producción.
  */
 
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { post } from './apiClient';
 import { APP_VERSION, BUILD_NUMBER } from '../config/appVersion';
 
-function expoProjectId(): string | undefined {
-  const extra = Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined;
-  return extra?.eas?.projectId ?? Constants.easConfig?.projectId ?? undefined;
-}
+
 
 // ──────────────────────────────────────────────
 // Configure notification behavior
@@ -95,13 +92,6 @@ async function registerDevice(): Promise<void> {
     return;
   }
 
-  const projectId = expoProjectId();
-  if (!projectId) {
-    // Sin esto no hay token: mejor un error visible en el log que el silencio.
-    console.error('[Notifications] Missing extra.eas.projectId in app.json — push disabled');
-    return;
-  }
-
   // Android exige un canal antes de mostrar nada. El backend manda
   // `channelId: 'default'`.
   if (Platform.OS === 'android') {
@@ -113,10 +103,11 @@ async function registerDevice(): Promise<void> {
   }
 
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    const token = tokenData.data;
+    // iOS: token de APNs (hex). Android: token de FCM.
+    const tokenData = await Notifications.getDevicePushTokenAsync();
+    const token = String(tokenData.data);
     _currentToken = token;
-    console.log('[Notifications] Expo push token:', token.substring(0, 30) + '...');
+    console.log('[Notifications] Device push token:', token.substring(0, 12) + '...');
 
     try {
       await post('/notifications/register-device', {
