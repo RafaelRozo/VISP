@@ -1,14 +1,29 @@
 /**
- * VISP - Push Notification Service (Expo Go)
+ * VISP - Push Notification Service
  *
  * Uses expo-notifications + expo-device for push notifications.
  * Physical device required for push tokens; gracefully degrades on simulator.
+ *
+ * El token es de EXPO (`ExponentPushToken[…]`) y el backend lo entrega por
+ * Expo Push Service (`integrations/expo`). Hasta el 2026-10-09 no llegaba
+ * ninguna push: `getExpoPushTokenAsync()` sin `projectId` falla en una app
+ * instalada (fuera de Expo Go), el error se quedaba en un `console.warn` y el
+ * teléfono nunca se registraba. Además el registro mandaba `platform: 'ios'`
+ * sin sesión válida para el backend. El `projectId` sale de `app.json`
+ * (`extra.eas.projectId`), que EXConstants incrusta en el binario al compilar.
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { post } from './apiClient';
+import { APP_VERSION, BUILD_NUMBER } from '../config/appVersion';
+
+function expoProjectId(): string | undefined {
+  const extra = Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined;
+  return extra?.eas?.projectId ?? Constants.easConfig?.projectId ?? undefined;
+}
 
 // ──────────────────────────────────────────────
 // Configure notification behavior
@@ -80,8 +95,25 @@ async function registerDevice(): Promise<void> {
     return;
   }
 
+  const projectId = expoProjectId();
+  if (!projectId) {
+    // Sin esto no hay token: mejor un error visible en el log que el silencio.
+    console.error('[Notifications] Missing extra.eas.projectId in app.json — push disabled');
+    return;
+  }
+
+  // Android exige un canal antes de mostrar nada. El backend manda
+  // `channelId: 'default'`.
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'VISP',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+    });
+  }
+
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     const token = tokenData.data;
     _currentToken = token;
     console.log('[Notifications] Expo push token:', token.substring(0, 30) + '...');
@@ -90,8 +122,7 @@ async function registerDevice(): Promise<void> {
       await post('/notifications/register-device', {
         device_token: token,
         platform: Platform.OS,
-        token_type: 'expo',
-        app_version: '1.0.0',
+        app_version: `${APP_VERSION} (${BUILD_NUMBER})`,
       });
       console.log('[Notifications] Device registered with backend');
     } catch (error) {

@@ -264,33 +264,53 @@ async def _send_to_user(
         )
         return True  # Not a failure -- user just has no devices
 
-    # Send push
-    if len(tokens) == 1:
+    # Send push. La app registra tokens de EXPO (`ExponentPushToken[…]`) y esos
+    # solo los entrega Expo: por FCM no llegaban (device_tokens vacía hasta el
+    # 2026-10-09). Los tokens nativos de FCM, si algún día se registran, siguen
+    # por Firebase.
+    from src.integrations.expo import pushService as expoPush
+
+    payload = {k: str(v) for k, v in data.items()} if data else None
+    expo_tokens = [t for t in tokens if expoPush.is_expo_token(t)]
+    fcm_tokens = [t for t in tokens if not expoPush.is_expo_token(t)]
+    enviados = 0
+
+    if expo_tokens:
+        expo_result = await expoPush.send_to_tokens(
+            expo_tokens, title, body, data=payload, badge=badge, sound=sound, priority=priority,
+        )
+        if expo_result.invalid_tokens:
+            await _deactivate_invalid_tokens(expo_result.invalid_tokens, db)
+        enviados += expo_result.success_count
+
+    if len(fcm_tokens) == 1:
         result = await pushService.send_notification(
-            device_token=tokens[0],
+            device_token=fcm_tokens[0],
             title=title,
             body=body,
-            data={k: str(v) for k, v in data.items()} if data else None,
+            data=payload,
             badge=badge,
             sound=sound,
             priority=priority,
         )
         if result.invalid_token:
-            await _deactivate_invalid_tokens([tokens[0]], db)
-        return result.success
-    else:
+            await _deactivate_invalid_tokens([fcm_tokens[0]], db)
+        enviados += int(result.success)
+    elif fcm_tokens:
         batch_result = await pushService.send_to_multiple(
-            device_tokens=tokens,
+            device_tokens=fcm_tokens,
             title=title,
             body=body,
-            data={k: str(v) for k, v in data.items()} if data else None,
+            data=payload,
             badge=badge,
             sound=sound,
             priority=priority,
         )
         if batch_result.invalid_tokens:
             await _deactivate_invalid_tokens(batch_result.invalid_tokens, db)
-        return batch_result.success_count > 0
+        enviados += batch_result.success_count
+
+    return enviados > 0
 
 
 def _format_price(amount_cents: int) -> str:

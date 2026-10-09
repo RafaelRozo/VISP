@@ -25,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from src.api.deps import DBSession
+from src.api.deps import CurrentUser, DBSession
 from src.api.schemas.notification import (
     DeviceRegisterRequest,
     DeviceRegisterResponse,
@@ -40,12 +40,24 @@ from src.api.schemas.notification import (
 )
 from src.core.config import settings
 from src.models.notification import (
+    DevicePlatform,
     DeviceToken,
     Notification,
     NotificationPreference,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _own(current_user, user_id: uuid.UUID) -> None:
+    """Las rutas con `{user_id}` solo sirven para el propio usuario.
+
+    Hasta el 2026-10-09 ninguna ruta de este módulo pedía sesión: cualquiera con
+    un user_id podía leer el historial de otro, cambiar sus preferencias o
+    registrar su teléfono para recibir SUS notificaciones.
+    """
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your notifications.")
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -67,22 +79,33 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 )
 async def register_device(
     db: DBSession,
+    current_user: CurrentUser,
     body: DeviceRegisterRequest,
 ) -> DeviceRegisterResponse:
+    # El dueño del token es SIEMPRE quien tiene la sesión; el `user_id` del
+    # cuerpo se ignora. Y la plataforma va al enum por NOMBRE ('IOS'), que es lo
+    # que guarda Postgres: la app manda 'ios'.
+    try:
+        platform = DevicePlatform(body.platform.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="platform must be 'ios' or 'android'.",
+        )
     # Upsert: insert or update on conflict (user_id, device_token)
     stmt = (
         pg_insert(DeviceToken)
         .values(
-            user_id=body.user_id,
+            user_id=current_user.id,
             device_token=body.device_token,
-            platform=body.platform,
+            platform=platform,
             app_version=body.app_version,
             is_active=True,
         )
         .on_conflict_do_update(
             index_elements=["user_id", "device_token"],
             set_={
-                "platform": body.platform,
+                "platform": platform,
                 "app_version": body.app_version,
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc),
@@ -97,8 +120,8 @@ async def register_device(
 
     logger.info(
         "Device token registered: user=%s, platform=%s",
-        body.user_id,
-        body.platform,
+        current_user.id,
+        platform.value,
     )
 
     return DeviceRegisterResponse(
@@ -127,12 +150,13 @@ async def register_device(
 )
 async def unregister_device(
     db: DBSession,
+    current_user: CurrentUser,
     body: DeviceUnregisterRequest,
 ) -> None:
     result = await db.execute(
         update(DeviceToken)
         .where(
-            DeviceToken.user_id == body.user_id,
+            DeviceToken.user_id == current_user.id,
             DeviceToken.device_token == body.device_token,
         )
         .values(is_active=False, updated_at=datetime.now(timezone.utc))
@@ -166,6 +190,7 @@ async def unregister_device(
 )
 async def get_notification_history(
     db: DBSession,
+    current_user: CurrentUser,
     user_id: uuid.UUID,
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
@@ -184,6 +209,7 @@ async def get_notification_history(
         description="Only return unread notifications",
     ),
 ) -> NotificationHistoryResponse:
+    _own(current_user, user_id)
     # Build base query
     base_filter = [Notification.user_id == user_id]
 
@@ -233,6 +259,7 @@ async def get_notification_history(
 )
 async def mark_notification_read(
     db: DBSession,
+    current_user: CurrentUser,
     notification_id: uuid.UUID,
 ) -> NotificationReadResponse:
     now = datetime.now(timezone.utc)
@@ -241,6 +268,7 @@ async def mark_notification_read(
         update(Notification)
         .where(
             Notification.id == notification_id,
+            Notification.user_id == current_user.id,
             Notification.read.is_(False),
         )
         .values(read=True, read_at=now, updated_at=now)
@@ -250,7 +278,9 @@ async def mark_notification_read(
     if result.rowcount == 0:
         # Check if it exists at all
         exists_result = await db.execute(
-            select(Notification.id).where(Notification.id == notification_id)
+            select(Notification.id).where(
+                Notification.id == notification_id, Notification.user_id == current_user.id
+            )
         )
         if exists_result.scalar_one_or_none() is None:
             raise HTTPException(
@@ -275,8 +305,10 @@ async def mark_notification_read(
 )
 async def mark_all_notifications_read(
     db: DBSession,
+    current_user: CurrentUser,
     user_id: uuid.UUID,
 ) -> NotificationReadResponse:
+    _own(current_user, user_id)
     now = datetime.now(timezone.utc)
 
     result = await db.execute(
@@ -310,8 +342,10 @@ async def mark_all_notifications_read(
 )
 async def get_unread_count(
     db: DBSession,
+    current_user: CurrentUser,
     user_id: uuid.UUID,
 ) -> UnreadCountResponse:
+    _own(current_user, user_id)
     result = await db.execute(
         select(func.count())
         .select_from(Notification)
@@ -341,9 +375,11 @@ async def get_unread_count(
 )
 async def update_notification_preferences(
     db: DBSession,
+    current_user: CurrentUser,
     user_id: uuid.UUID,
     body: NotificationPreferencesRequest,
 ) -> NotificationPreferencesOut:
+    _own(current_user, user_id)
     # Check if preferences exist
     result = await db.execute(
         select(NotificationPreference).where(
@@ -410,8 +446,10 @@ async def update_notification_preferences(
 )
 async def get_notification_preferences(
     db: DBSession,
+    current_user: CurrentUser,
     user_id: uuid.UUID,
 ) -> NotificationPreferencesOut:
+    _own(current_user, user_id)
     result = await db.execute(
         select(NotificationPreference).where(
             NotificationPreference.user_id == user_id

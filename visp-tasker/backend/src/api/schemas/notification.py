@@ -22,7 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class DeviceRegisterRequest(BaseModel):
     """Request body for registering a device token for push notifications."""
 
-    user_id: uuid.UUID = Field(description="UUID of the user registering the device")
+    # Ignorado: el dueño es el usuario de la sesión. Se acepta para no romper
+    # clientes viejos que lo mandaban.
+    user_id: Optional[uuid.UUID] = Field(default=None, description="Ignored; taken from the session")
     device_token: str = Field(
         min_length=1,
         max_length=512,
@@ -63,7 +65,8 @@ class DeviceRegisterResponse(BaseModel):
 class DeviceUnregisterRequest(BaseModel):
     """Request body for unregistering a device token."""
 
-    user_id: uuid.UUID = Field(description="UUID of the user")
+    # Ignorado: el dueño es el usuario de la sesión.
+    user_id: Optional[uuid.UUID] = Field(default=None, description="Ignored; taken from the session")
     device_token: str = Field(
         min_length=1,
         max_length=512,
