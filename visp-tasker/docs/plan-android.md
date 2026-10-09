@@ -31,6 +31,15 @@ nativa, en la configuración y en Google Play.
   firma, `ITSAppUsesNonExemptEncryption`, los iconos y el sandboxing solo viven
   en este Mac. Ver la decisión D4.
 
+### Estado del entorno (2026-10-09, dejado listo)
+
+- ✅ `cmdline-tools` (sdkmanager 16111833) instalado en `~/Library/Android/sdk/cmdline-tools/latest`.
+- ✅ CMake 3.22.1 instalado y licencias aceptadas.
+- ✅ `~/.zshrc`: `JAVA_HOME` (JDK 17 de Homebrew), `ANDROID_HOME`, `ANDROID_SDK_ROOT` y el PATH con `adb`, `emulator` y `sdkmanager`.
+- ✅ Emulador `Pixel_9` probado sin ventana: Android 16, x86_64, aceleración HVF, arranca en unos 35 s.
+- ❌ `~/.gradle/gradle.properties` con `MAPBOX_DOWNLOADS_TOKEN`: hace falta el token secreto de Mapbox.
+- ❌ Firebase: el `FIREBASE_CREDENTIALS_JSON` del backend local no se puede leer (no da `project_id`), así que **FCM tampoco está configurado de verdad**. Hacen falta un proyecto de Firebase, su cuenta de servicio para el backend y el `google-services.json` de la app Android.
+
 ## 2. Componentes nativos y qué pide cada uno en Android
 
 | Librería | Uso en VISP | Qué hace falta en Android |
