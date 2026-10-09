@@ -24,8 +24,6 @@ import {ThemeProvider} from './src/theme/ThemeContext';
 // Suppress non-critical serialization warnings in development
 LogBox.ignoreLogs([
   'Non-serializable values were found in the navigation state',
-  '@firebase/auth:', // Ignore React Native AsyncStorage warning for Firebase
-  'Setting a timer', // Ignored long timer warning standard in RN Firebase apps
 ]);
 
 // Mapbox manda telemetría anónima de uso y ubicación por defecto. Se apaga una

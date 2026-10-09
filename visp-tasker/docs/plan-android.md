@@ -37,7 +37,7 @@ nativa, en la configuración y en Google Play.
 - ✅ CMake 3.22.1 instalado y licencias aceptadas.
 - ✅ `~/.zshrc`: `JAVA_HOME` (JDK 17 de Homebrew), `ANDROID_HOME`, `ANDROID_SDK_ROOT` y el PATH con `adb`, `emulator` y `sdkmanager`.
 - ✅ Emulador `Pixel_9` probado sin ventana: Android 16, x86_64, aceleración HVF, arranca en unos 35 s.
-- ❌ `~/.gradle/gradle.properties` con `MAPBOX_DOWNLOADS_TOKEN`: hace falta el token secreto de Mapbox.
+- ✅ Mapbox: **no hace falta token secreto**. `@rnmapbox` 10.2 deja la autenticación de Maven como opcional, porque Mapbox quitó el requisito. El token público `pk.…` de iOS sirve también en Android.
 - ❌ Firebase: el `FIREBASE_CREDENTIALS_JSON` del backend local no se puede leer (no da `project_id`), así que **FCM tampoco está configurado de verdad**. Hacen falta un proyecto de Firebase, su cuenta de servicio para el backend y el `google-services.json` de la app Android.
 
 ## 2. Componentes nativos y qué pide cada uno en Android
@@ -56,7 +56,7 @@ nativa, en la configuración y en Google Play.
 | `expo-web-browser` | Stripe Connect y documentos | Usa Custom Tabs de Chrome. Comprobar que la vuelta a la app funciona. |
 | `reanimated` 4, `gesture-handler`, `screens` | Animaciones y navegación | Necesitan CMake. Nada más. |
 | `socket.io-client`, `axios`, `zustand`, `i18n-js` | JS puro | Nada. |
-| `firebase` (JS) | Ninguno (no se importa) | Se puede quitar. |
+| `firebase` (JS) | — | **Quitado el 2026-10-09**: era de un proyecto viejo (`task-app-58916`) y no se importaba. |
 
 ## 3. Código que hay que revisar para Android
 
