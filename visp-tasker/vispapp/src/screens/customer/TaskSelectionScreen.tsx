@@ -28,6 +28,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -377,7 +378,7 @@ function TaskSelectionScreen(): React.JSX.Element {
   return (
     <Screen>
       <View style={styles.container}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -725,7 +726,7 @@ function TaskSelectionScreen(): React.JSX.Element {
 
           {/* Bottom padding for CTA */}
           <View style={styles.bottomPadding} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Confirm booking CTA */}
         <View

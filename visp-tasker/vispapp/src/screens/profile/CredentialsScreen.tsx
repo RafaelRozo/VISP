@@ -13,16 +13,15 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   FlatList,
-  Platform,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { showActionSheet } from '../../components/ActionSheet';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { useTranslation, t } from '../../i18n';
@@ -271,32 +270,21 @@ export default function CredentialsScreen(): React.JSX.Element {
         return;
       }
 
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: ['Cancel', ...CREDENTIAL_TYPES.map((t) => t.label)],
-            cancelButtonIndex: 0,
-          },
-          (buttonIndex) => {
-            if (buttonIndex > 0) {
-              const selectedType = CREDENTIAL_TYPES[buttonIndex - 1];
-              performUpload(selectedType.value);
-            }
-          },
-        );
-      } else {
-        Alert.alert(
-          'Select Document Type',
-          'Choose the type of credential to upload.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            ...CREDENTIAL_TYPES.map((t) => ({
-              text: t.label,
-              onPress: () => performUpload(t.value),
-            })),
-          ],
-        );
-      }
+      // La lista de tipos tiene más de 3: el Alert de Android cortaba el resto.
+      showActionSheet(
+        {
+          title: 'Select Document Type',
+          message: 'Choose the type of credential to upload.',
+          options: ['Cancel', ...CREDENTIAL_TYPES.map((t) => t.label)],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex > 0) {
+            const selectedType = CREDENTIAL_TYPES[buttonIndex - 1];
+            performUpload(selectedType.value);
+          }
+        },
+      );
     },
     [fetchAll],
   );

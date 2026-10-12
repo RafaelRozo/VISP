@@ -19,11 +19,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -31,6 +29,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { showActionSheet } from '../../components/ActionSheet';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -221,18 +220,7 @@ export default function OffersScreen(): React.JSX.Element {
       }
       if (i === 2) confirmBlock(o);
     };
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 0, destructiveButtonIndex: 2 },
-        onPick,
-      );
-    } else {
-      Alert.alert(tr('moderation.options'), undefined, [
-        { text: options[0], style: 'cancel' },
-        { text: options[1], onPress: () => onPick(1) },
-        { text: options[2], style: 'destructive', onPress: () => onPick(2) },
-      ]);
-    }
+    showActionSheet({ options, cancelButtonIndex: 0, destructiveButtonIndex: 2 }, onPick);
   };
 
   return (

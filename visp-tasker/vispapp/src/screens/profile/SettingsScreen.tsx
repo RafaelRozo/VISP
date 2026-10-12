@@ -10,7 +10,6 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   Linking,
   Platform,
@@ -21,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { showActionSheet } from '../../components/ActionSheet';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { GlassStyles } from '../../theme/glass';
@@ -37,6 +37,7 @@ import { useAppStore } from '../../stores/appStore';
 import { useTranslation } from '../../i18n';
 import { userService } from '../../services/userService';
 import { Modal, TextInput } from 'react-native';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import { APP_VERSION, BUILD_NUMBER } from '../../config/appVersion';
 
 // ---------------------------------------------------------------------------
@@ -359,31 +360,17 @@ export default function SettingsScreen(): React.JSX.Element {
 
   // Language picker
   const handleLanguagePicker = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', ...LANGUAGES.map((l) => l.label)],
-          cancelButtonIndex: 0,
-        },
-        (buttonIndex) => {
-          if (buttonIndex > 0) {
-            setLanguage(LANGUAGES[buttonIndex - 1].code as 'en' | 'fr');
-          }
-        },
-      );
-    } else {
-      Alert.alert(
-        'Select Language',
-        undefined,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          ...LANGUAGES.map((lang) => ({
-            text: lang.label,
-            onPress: () => setLanguage(lang.code as 'en' | 'fr'),
-          })),
-        ],
-      );
-    }
+    showActionSheet(
+      {
+        options: ['Cancel', ...LANGUAGES.map((l) => l.label)],
+        cancelButtonIndex: 0,
+      },
+      (buttonIndex) => {
+        if (buttonIndex > 0) {
+          setLanguage(LANGUAGES[buttonIndex - 1].code as 'en' | 'fr');
+        }
+      },
+    );
   }, [setLanguage]);
 
   // Theme toggle
@@ -573,6 +560,8 @@ export default function SettingsScreen(): React.JSX.Element {
         animationType="fade"
         onRequestClose={closeRecoveryModal}
       >
+        {/* Solo actúa en Android (iOS sin behavior, como antes). */}
+        <KeyboardAvoidingView style={{ flex: 1 }}>
         <View style={recoveryStyles.backdrop}>
           <GlassCard variant="dark" padding={24} style={recoveryStyles.card}>
             <Text style={[recoveryStyles.title, { color: theme.textPrimary }]}>
@@ -645,6 +634,7 @@ export default function SettingsScreen(): React.JSX.Element {
             )}
           </GlassCard>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

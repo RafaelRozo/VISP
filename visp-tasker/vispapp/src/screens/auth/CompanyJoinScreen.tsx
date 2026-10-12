@@ -28,7 +28,6 @@ import {
   Animated,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -39,6 +38,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Spacing, Typography } from '../../theme';

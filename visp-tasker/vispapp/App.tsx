@@ -7,8 +7,9 @@
  */
 
 import React, {useEffect} from 'react';
-import {StatusBar, LogBox, StyleSheet, View} from 'react-native';
+import {StatusBar, LogBox, Platform, StyleSheet, View} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
+import {KeyboardProvider} from 'react-native-keyboard-controller';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {StripeProvider} from '@stripe/stripe-react-native';
 import {useFonts as useManrope, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold} from '@expo-google-fonts/manrope';
@@ -20,6 +21,7 @@ import {Config} from './src/services/config';
 import {useAuthStore} from './src/stores/authStore';
 import {useAppStore} from './src/stores/appStore';
 import {ThemeProvider} from './src/theme/ThemeContext';
+import {ActionSheetHost} from './src/components/ActionSheet';
 
 // Suppress non-critical serialization warnings in development
 LogBox.ignoreLogs([
@@ -31,6 +33,20 @@ LogBox.ignoreLogs([
 // Store no tiene que declarar "Location → Analytics" (ver
 // docs/app-store-submission.md §3).
 MapboxGL.setTelemetryEnabled(false);
+
+// Teclado en Android con edge-to-edge: ver src/components/KeyboardAvoidingView.
+// En iOS no se monta, así que su comportamiento no cambia. La app ya dibuja
+// bajo las barras del sistema (edgeToEdgeEnabled), de ahí las tres props.
+function KeyboardRoot({children}: {children: React.ReactNode}): React.JSX.Element {
+  if (Platform.OS !== 'android') {
+    return <>{children}</>;
+  }
+  return (
+    <KeyboardProvider statusBarTranslucent navigationBarTranslucent preserveEdgeToEdge>
+      {children}
+    </KeyboardProvider>
+  );
+}
 
 export default function App(): React.JSX.Element {
   const loadStoredAuth = useAuthStore(state => state.loadStoredAuth);
@@ -56,6 +72,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <GestureHandlerRootView style={[styles.root, { backgroundColor: darkMode ? Colors.background : '#F2F4F8' }]}>
+      <KeyboardRoot>
       <ThemeProvider>
         <StripeProvider
           publishableKey={Config.stripePublishableKey}
@@ -68,9 +85,11 @@ export default function App(): React.JSX.Element {
               translucent={false}
             />
             <AppNavigator />
+            <ActionSheetHost />
           </SafeAreaProvider>
         </StripeProvider>
       </ThemeProvider>
+      </KeyboardRoot>
     </GestureHandlerRootView>
   );
 }

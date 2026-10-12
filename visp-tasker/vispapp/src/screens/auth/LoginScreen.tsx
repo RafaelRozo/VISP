@@ -10,7 +10,6 @@ import {
   Animated,
   ImageBackground,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -21,6 +20,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Colors, Spacing, Typography } from '../../theme';

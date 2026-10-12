@@ -11,12 +11,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
@@ -154,7 +154,7 @@ function TipScreen(): React.JSX.Element {
   return (
     <Screen>
       <View style={styles.container}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -258,7 +258,7 @@ function TipScreen(): React.JSX.Element {
           )}
 
           <View style={styles.bottomPadding} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* CTA */}
         <View style={styles.ctaContainer}>

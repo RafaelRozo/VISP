@@ -14,7 +14,8 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import KeyboardAvoidingView from '../../../components/KeyboardAvoidingView';
 import { useNavigation } from '@react-navigation/native';
 
 import { Screen } from '../../../components/visp';

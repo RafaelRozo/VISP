@@ -23,6 +23,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { CardForm, useConfirmSetupIntent } from '@stripe/stripe-react-native';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
@@ -352,7 +353,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
 
   return (
     <Screen>
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -458,7 +459,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
         )}
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

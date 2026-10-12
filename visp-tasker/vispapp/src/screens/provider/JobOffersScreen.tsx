@@ -19,7 +19,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   FlatList,
   Platform,
@@ -30,6 +29,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { showActionSheet } from '../../components/ActionSheet';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -58,6 +58,14 @@ import { GlassInput, GlassButton } from '../../components/glass';
 import { useProviderStore } from '../../stores/providerStore';
 import { useAuthStore } from '../../stores/authStore';
 import { Image, ScrollView } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
+
+// Android: el formulario de oferta va dentro de la tarjeta y el teclado lo
+// tapaba (edge-to-edge). En iOS la lista sigue con su scroll de siempre.
+const renderOffersScroll =
+  Platform.OS === 'android'
+    ? (props: React.ComponentProps<typeof ScrollView>) => <KeyboardAwareScrollView {...props} />
+    : undefined;
 import { magnitudeLabel, type OpenJob, type SubmitOfferInput } from '../../services/offerService';
 import { resolveUploadUrl } from '../../services/userService';
 import ReportSheet from '../../components/ReportSheet';
@@ -707,27 +715,17 @@ export default function JobOffersScreen(): React.JSX.Element {
         run: () => confirmBlock(job),
         destructive: true,
       });
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: [tr('moderation.cancel'), ...items.map((i) => i.label)],
-            cancelButtonIndex: 0,
-            destructiveButtonIndex: items.length,
-          },
-          (idx) => {
-            if (idx > 0) items[idx - 1].run();
-          },
-        );
-      } else {
-        Alert.alert(tr('moderation.options'), undefined, [
-          { text: tr('moderation.cancel'), style: 'cancel' },
-          ...items.map((i) => ({
-            text: i.label,
-            style: i.destructive ? ('destructive' as const) : ('default' as const),
-            onPress: i.run,
-          })),
-        ]);
-      }
+      // En Android el Alert de reserva solo mostraba 3 de estas hasta 4 opciones.
+      showActionSheet(
+        {
+          options: [tr('moderation.cancel'), ...items.map((i) => i.label)],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: items.length,
+        },
+        (idx) => {
+          if (idx > 0) items[idx - 1].run();
+        },
+      );
     },
     [confirmBlock, tr],
   );
@@ -776,6 +774,7 @@ export default function JobOffersScreen(): React.JSX.Element {
         data={filteredOffers}
         renderItem={renderOffer}
         keyExtractor={keyExtractor}
+        renderScrollComponent={renderOffersScroll}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshing={isLoadingOffers}

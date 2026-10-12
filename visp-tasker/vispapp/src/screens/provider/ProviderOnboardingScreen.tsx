@@ -13,7 +13,6 @@ import {
     ActivityIndicator,
     Alert,
     FlatList,
-    KeyboardAvoidingView,
     Modal,
     Platform,
     Pressable,
@@ -24,6 +23,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';

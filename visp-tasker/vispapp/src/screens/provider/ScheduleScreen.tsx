@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { useNavigation } from '@react-navigation/native';
 import { Colors, getLevelColor, getStatusColor } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
@@ -879,7 +880,7 @@ export default function ScheduleScreen(): React.JSX.Element {
   return (
     <Screen>
       <ScreenTitle title={t('nav.schedule')} sub="§ Provider" />
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         refreshControl={
@@ -928,7 +929,7 @@ export default function ScheduleScreen(): React.JSX.Element {
         {activeTab === 'timeoff' && renderTimeOffTab()}
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

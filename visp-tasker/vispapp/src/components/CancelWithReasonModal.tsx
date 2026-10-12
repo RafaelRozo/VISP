@@ -18,7 +18,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -28,6 +27,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import KeyboardAvoidingView from './KeyboardAvoidingView';
 
 import { useVispTheme, VispText, VispSpace, VispRadius } from '../theme/visp';
 import { useTranslation } from '../i18n';

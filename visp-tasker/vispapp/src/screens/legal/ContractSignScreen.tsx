@@ -31,7 +31,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -42,6 +41,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import * as Device from 'expo-device';
 import { Screen, LegalMarkdown, SignaturePad } from '../../components/visp';
 import type { SignatureValue } from '../../components/visp/SignaturePad';

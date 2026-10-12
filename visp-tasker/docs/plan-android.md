@@ -44,12 +44,12 @@ nativa, en la configuración y en Google Play.
 
 | Librería | Uso en VISP | Qué hace falta en Android |
 |---|---|---|
-| `@rnmapbox/maps` 10.2 | Mapa del trabajo activo y de emergencias | **Token secreto de descargas de Mapbox** (`sk.…` con el scope `DOWNLOADS:READ`) en `~/.gradle/gradle.properties` como `MAPBOX_DOWNLOADS_TOKEN`. El repositorio Maven de Mapbox lo exige en Android. En iOS no hacía falta. |
+| `@rnmapbox/maps` 10.2 | Mapa del trabajo activo y de emergencias | **No hace falta token secreto** (ver §1): rnmapbox 10.2 deja opcional la autenticación de Maven. El `pk.…` de iOS sirve. |
 | `expo-location` | Centrar el mapa y la llegada del proveedor | Permisos de ubicación *fine* y *coarse*. **Quitar `ACCESS_BACKGROUND_LOCATION`**: la app no la usa, y Google exige un formulario y un vídeo para justificarla, que se suelen rechazar. |
 | `expo-image-picker` | Fotos de evidencia, avatar y documentos | Cámara y `READ_MEDIA_IMAGES`. **Quitar `RECORD_AUDIO`** porque no se graba vídeo, y `READ_EXTERNAL_STORAGE`, que está obsoleto en Android 13+. |
 | `expo-notifications` | Notificaciones push | `google-services.json` (proyecto de Firebase con la app Android) y canal de notificación. Ver §4: **hoy las push no funcionan en ninguna plataforma**. |
 | `@stripe/stripe-react-native` 0.65 | Guardar tarjeta (`CardForm` + `confirmSetupIntent`) | Funciona en Android. Hay que dejar `enableGooglePay: false` (ya está así) y probar el `CardForm` con el teclado. |
-| `@stripe/stripe-identity-react-native` 0.8 | **Ninguno**: está instalado pero no se importa en ningún sitio. La verificación va por navegador (`IdentityDocStep`). | **Desinstalarlo.** En Android exige un tema `MaterialComponents` y añade peso, y es un fallo de compilación esperando a pasar. |
+| `@stripe/stripe-identity-react-native` 0.8 | **Ninguno**: está instalado pero no se importa en ningún sitio. La verificación va por navegador (`IdentityDocStep`). | **Desinstalado el 2026-10-12.** |
 | `expo-secure-store` | Sesión (tokens) | Usa Android Keystore. Nada que hacer. |
 | `react-native-svg` | Iconos y la **firma dibujada** del contrato | Funciona. Probar que el trazo de `SignaturePad` responde bien al dedo en Android. |
 | `react-native-webview` | Contenido web | Nada especial. |
@@ -182,3 +182,43 @@ de iOS y un despliegue del backend.
 
 **Total de trabajo técnico: 5 a 7 días.** Lo que más alarga el calendario es
 Google: el alta de la cuenta y, si es personal, los 14 días de prueba cerrada.
+
+## 8. Qué se hizo (2026-10-12)
+
+Decisiones de Ricardo: **D1 = `com.droz.vispapp`**, **D4 = ios/ y android/ en git**
+(sin secretos; Pods, build, archivos y keystores fuera), **D5 = sí hay teléfono
+Android**, Firebase/FCM **después** (Fase 4). D2 (cuenta Play) sigue abierta.
+
+- `ios/` versionado (commit 2e5b27d) antes de tocar nada.
+- `android/` regenerado con `expo prebuild --platform android --clean`; ios/ intacto.
+- `app.json` (Android): paquete, `versionCode 1`, `softwareKeyboardLayoutMode
+  resize`, permisos mínimos + `blockedPermissions` (BACKGROUND_LOCATION,
+  RECORD_AUDIO, READ/WRITE_EXTERNAL_STORAGE, SYSTEM_ALERT_WINDOW).
+- **Iconos:** `icon.png` y los adaptativos eran los de la plantilla de Expo. Ahora
+  salen del logo real de iOS: `assets/brand/app-icon.png`,
+  `assets/brand/android/{adaptive-foreground,adaptive-monochrome,notification-icon}.png`.
+- Dependencias: fuera `stripe-identity-react-native`; dentro `expo-system-ui`,
+  `react-native-keyboard-controller` 1.20.7 y `react-native-worklets` fijado a
+  0.7.4 (sin fijarlo npm sube a 0.13, que pide RN 0.86 → ERESOLVE).
+- **Teclado:** `components/KeyboardAvoidingView` y `components/KeyboardAwareScrollView`.
+  En iOS son los de React Native sin cambios; en Android, keyboard-controller
+  (`KeyboardProvider` en App.tsx, solo Android). Aplicado a 14 KAV existentes,
+  8 ScrollView con campos, el FlatList de ofertas (`renderScrollComponent`), el
+  modal del código de recuperación y el panel de dirección de emergencia.
+- **Hoja de opciones:** `components/ActionSheet` (`showActionSheet` + `<ActionSheetHost />`).
+  iOS = ActionSheetIOS; Android = hoja propia. Sustituye las 8 llamadas;
+  avatar, bolsa de trabajos y credenciales tenían más de 3 opciones y en
+  Android se perdían. Única diferencia visible en iOS: la hoja de tipo de
+  credencial ahora lleva título y mensaje.
+- **Edge-to-edge:** `Screen` añade el borde superior en Android. Las pantallas
+  sin TopBar (registro, etc.) metían la cabecera bajo la hora.
+- Compilación release en el emulador Pixel 9 (Android 16): arranca, login y
+  registro con teclado correctos. La primera compilación tarda ~37 min; las
+  incrementales ~4.
+- Script: `./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a`
+  (release lleva el JS dentro, sin Metro).
+
+**Falta:** probar en el teléfono con sesión (la app apunta a producción),
+keystore de subida + `signingConfig`, Firebase (Fase 4), D2 y fichas de Play.
+**El próximo build de iOS necesita `pod install`** (3 módulos nativos nuevos).
+

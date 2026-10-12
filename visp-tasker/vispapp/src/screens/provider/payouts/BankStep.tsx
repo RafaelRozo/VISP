@@ -7,7 +7,8 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import KeyboardAvoidingView from '../../../components/KeyboardAvoidingView';
 import { useNavigation } from '@react-navigation/native';
 
 import { Screen } from '../../../components/visp';

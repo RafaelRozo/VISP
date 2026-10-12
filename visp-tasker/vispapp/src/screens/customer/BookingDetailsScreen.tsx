@@ -31,12 +31,12 @@ import {
   Image,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { pickImage, pickImages } from '../../services/imagePickerService';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -246,7 +246,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
         onBack={navigation.canGoBack() ? () => navigation.goBack() : undefined}
       />
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -595,7 +595,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
           maxLength={2000}
           textAlignVertical="top"
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Barra de acción fija */}
       <View style={[styles.footer, { borderTopColor: t.border, backgroundColor: t.bg }]}>

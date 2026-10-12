@@ -19,11 +19,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -34,6 +32,8 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { showActionSheet } from '../../components/ActionSheet';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -327,45 +327,30 @@ export default function ProfileScreen(): React.JSX.Element {
     if (!user) return;
     const hasAvatar = !!user.avatarUrl;
 
-    if (Platform.OS === 'ios') {
-      const options = [
-        tr('profileScreen.takePhoto'),
-        tr('profileScreen.chooseFromLibrary'),
-        ...(hasAvatar ? [tr('profileScreen.removePhoto')] : []),
-        tr('common.cancel'),
-      ];
-      const cancelIndex = options.length - 1;
-      const destructiveIndex = hasAvatar ? options.length - 2 : -1;
+    const options = [
+      tr('profileScreen.takePhoto'),
+      tr('profileScreen.chooseFromLibrary'),
+      ...(hasAvatar ? [tr('profileScreen.removePhoto')] : []),
+      tr('common.cancel'),
+    ];
+    const cancelIndex = options.length - 1;
+    const destructiveIndex = hasAvatar ? options.length - 2 : -1;
 
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: tr('profileScreen.changePhotoTitle'),
-          options,
-          cancelButtonIndex: cancelIndex,
-          destructiveButtonIndex: destructiveIndex >= 0 ? destructiveIndex : undefined,
-          userInterfaceStyle: t.isDark ? 'dark' : 'light',
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 0) pickFromCamera();
-          else if (buttonIndex === 1) pickFromLibrary();
-          else if (hasAvatar && buttonIndex === 2) performAvatarRemove();
-        },
-      );
-    } else {
-      const buttons: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [
-        { text: tr('profileScreen.takePhoto'), onPress: pickFromCamera },
-        { text: tr('profileScreen.chooseFromLibrary'), onPress: pickFromLibrary },
-      ];
-      if (hasAvatar) {
-        buttons.push({
-          text: tr('profileScreen.removePhoto'),
-          style: 'destructive',
-          onPress: performAvatarRemove,
-        });
-      }
-      buttons.push({ text: tr('common.cancel'), style: 'cancel' });
-      Alert.alert(tr('profileScreen.changePhotoTitle'), '', buttons);
-    }
+    // Con foto son 4 botones: el Alert de Android solo enseñaba 3.
+    showActionSheet(
+      {
+        title: tr('profileScreen.changePhotoTitle'),
+        options,
+        cancelButtonIndex: cancelIndex,
+        destructiveButtonIndex: destructiveIndex >= 0 ? destructiveIndex : undefined,
+        userInterfaceStyle: t.isDark ? 'dark' : 'light',
+      },
+      (buttonIndex) => {
+        if (buttonIndex === 0) pickFromCamera();
+        else if (buttonIndex === 1) pickFromLibrary();
+        else if (hasAvatar && buttonIndex === 2) performAvatarRemove();
+      },
+    );
   }, [user, tr, pickFromCamera, pickFromLibrary, performAvatarRemove, t.isDark]);
 
   // ── Payment fetch (preserved as side-effect parity) ──

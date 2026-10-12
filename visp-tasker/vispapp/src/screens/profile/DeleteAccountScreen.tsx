@@ -27,6 +27,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
@@ -162,7 +163,7 @@ export default function DeleteAccountScreen(): React.JSX.Element {
 
   return (
     <Screen>
-      <ScrollView
+      <KeyboardAwareScrollView
         ref={scrollRef}
         style={styles.scroll}
         automaticallyAdjustKeyboardInsets
@@ -287,7 +288,7 @@ export default function DeleteAccountScreen(): React.JSX.Element {
             )}
           </TouchableOpacity>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </Screen>
   );
 }

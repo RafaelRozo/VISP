@@ -21,16 +21,16 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { showActionSheet } from '../../components/ActionSheet';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAuthStore } from '../../stores/authStore';
@@ -211,34 +211,20 @@ export default function ChatScreen(): React.JSX.Element {
       if (i === 1) setReportTarget({ jobId, contentType: 'USER' });
       if (i === 2) confirmBlock();
     };
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 0, destructiveButtonIndex: blocked ? undefined : 2 },
-        onPick,
-      );
-    } else {
-      Alert.alert(t('moderation.options'), undefined, [
-        { text: options[0], style: 'cancel' },
-        ...options.slice(1).map((label, k) => ({ text: label, onPress: () => onPick(k + 1) })),
-      ]);
-    }
+    showActionSheet(
+      { options, cancelButtonIndex: 0, destructiveButtonIndex: blocked ? undefined : 2 },
+      onPick,
+    );
   }, [blocked, confirmBlock, jobId, otherUserName, t]);
 
   const onMessageLongPress = useCallback(
     (msg: ChatMessage) => {
       if (msg.id.startsWith('msg-local-')) return;
       const report = () => setReportTarget({ jobId, contentType: 'CHAT_MESSAGE', contentId: msg.id });
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          { options: [t('moderation.cancel'), t('moderation.reportMessage')], cancelButtonIndex: 0 },
-          (i) => i === 1 && report(),
-        );
-      } else {
-        Alert.alert(t('moderation.options'), undefined, [
-          { text: t('moderation.cancel'), style: 'cancel' },
-          { text: t('moderation.reportMessage'), onPress: report },
-        ]);
-      }
+      showActionSheet(
+        { options: [t('moderation.cancel'), t('moderation.reportMessage')], cancelButtonIndex: 0 },
+        (i) => i === 1 && report(),
+      );
     },
     [jobId, t],
   );

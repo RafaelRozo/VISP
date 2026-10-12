@@ -13,12 +13,12 @@ import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { useTranslation } from '../../i18n';
@@ -170,7 +170,7 @@ export default function MyPricesScreen(): React.JSX.Element {
           <ActivityIndicator color={t.violet} />
         </View>
       ) : (
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
@@ -292,7 +292,7 @@ export default function MyPricesScreen(): React.JSX.Element {
               ))}
             </View>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
     </Screen>
   );

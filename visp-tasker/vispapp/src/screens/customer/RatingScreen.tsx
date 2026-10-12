@@ -13,12 +13,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../components/KeyboardAwareScrollView';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GlassCard, GlassButton, GlassInput } from '../../components/glass';
@@ -178,7 +178,7 @@ function RatingScreen(): React.JSX.Element {
   return (
     <Screen>
       <View style={styles.container}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -346,7 +346,7 @@ function RatingScreen(): React.JSX.Element {
 
           {/* Bottom padding for CTA */}
           <View style={styles.bottomPadding} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Submit CTA */}
         <View style={styles.ctaContainer}>

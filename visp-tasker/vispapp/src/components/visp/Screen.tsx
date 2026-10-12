@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { StyleSheet, View, StatusBar } from 'react-native';
+import { Platform, StyleSheet, View, StatusBar } from 'react-native';
 import { SafeAreaView, Edge } from 'react-native-safe-area-context';
 import { useVispTheme } from '../../theme/visp';
 
@@ -28,6 +28,13 @@ export function Screen({
   paddingTop,
 }: ScreenProps): React.JSX.Element {
   const t = useVispTheme();
+  // Android (targetSdk 36) dibuja siempre de borde a borde: sin el inset de
+  // arriba, las pantallas sin TopBar metían su cabecera bajo la hora. Es seguro
+  // añadirlo siempre: el SafeAreaView nativo mide contra su posición real, así
+  // que un TopBar dentro o una cabecera nativa encima reciben 0 y no se duplica.
+  if (Platform.OS === 'android' && !edges.includes('top')) {
+    edges = ['top', ...edges];
+  }
   return (
     <>
       <StatusBar barStyle={t.isDark ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />

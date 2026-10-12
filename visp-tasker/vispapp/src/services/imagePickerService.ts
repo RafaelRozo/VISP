@@ -18,7 +18,8 @@
  * el proyecto nativo hay que comprobar que sobrevivieron.
  */
 
-import { ActionSheetIOS, Alert, Linking, Platform } from 'react-native';
+import { Alert, Linking,} from 'react-native';
+import { showActionSheet } from '../components/ActionSheet';
 import * as ImagePicker from 'expo-image-picker';
 import { t } from '../i18n';
 
@@ -47,8 +48,8 @@ export interface PickImageOptions {
 /**
  * Pregunta qué fuente quiere el usuario.
  *
- * Resuelve a `null` si cancela. iOS usa el ActionSheet nativo; Android, un
- * Alert de tres botones, que es lo que ya hacía `VerificationScreen`.
+ * Resuelve a `null` si cancela. iOS usa el ActionSheet nativo; Android, la
+ * hoja propia de `components/ActionSheet`.
  */
 export function askImageSource(
   title?: string,
@@ -60,33 +61,19 @@ export function askImageSource(
   const cancel = t('common.cancel');
 
   return new Promise((resolve) => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: heading,
-          options: [camera, library, cancel],
-          cancelButtonIndex: 2,
-          ...(isDark === undefined
-            ? {}
-            : { userInterfaceStyle: isDark ? ('dark' as const) : ('light' as const) }),
-        },
-        (index) => resolve(index === 0 ? 'camera' : index === 1 ? 'library' : null),
-      );
-      return;
-    }
-    // `onDismiss` es obligatorio, no cortesía: en Android el Alert se cierra
-    // tocando fuera sin disparar ningún botón, y sin esto la promesa se queda
-    // colgada para siempre — el botón de añadir foto dejaría de responder sin
-    // ningún error.
-    Alert.alert(
-      heading,
-      undefined,
-      [
-        { text: camera, onPress: () => resolve('camera') },
-        { text: library, onPress: () => resolve('library') },
-        { text: cancel, style: 'cancel', onPress: () => resolve(null) },
-      ],
-      { cancelable: true, onDismiss: () => resolve(null) },
+    // En Android la hoja propia también llama al callback al tocar fuera o
+    // pulsar atrás (con el índice de cancelar), así que la promesa nunca se
+    // queda colgada.
+    showActionSheet(
+      {
+        title: heading,
+        options: [camera, library, cancel],
+        cancelButtonIndex: 2,
+        ...(isDark === undefined
+          ? {}
+          : { userInterfaceStyle: isDark ? ('dark' as const) : ('light' as const) }),
+      },
+      (index) => resolve(index === 0 ? 'camera' : index === 1 ? 'library' : null),
     );
   });
 }

@@ -21,6 +21,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import KeyboardAvoidingView from '../../components/KeyboardAvoidingView';
 import { AnimatedSpinner } from '../../components/animations';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -227,6 +228,8 @@ function EmergencyLocationScreen(): React.JSX.Element {
 
   return (
     <GlassBackground>
+      {/* Android: sube el panel de dirección sobre el teclado (en iOS no actúa). */}
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       {/* Map */}
       <View style={styles.mapContainer}>
         {isLoadingLocation ? (
@@ -347,6 +350,7 @@ function EmergencyLocationScreen(): React.JSX.Element {
           style={styles.confirmButton}
         />
       </View>
+      </KeyboardAvoidingView>
     </GlassBackground>
   );
 }
