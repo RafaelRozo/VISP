@@ -1,0 +1,14 @@
+# Generated / heavy — regenerable with `pod install` and xcodebuild
+Pods/
+build/
+*.xcarchive
+export-*/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Local only
+.xcode.env.local
+*.log
+*.pid
+Podfile.lock.backup
