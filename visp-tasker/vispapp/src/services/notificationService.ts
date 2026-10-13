@@ -61,8 +61,29 @@ let _responseSubscription: Notifications.EventSubscription | null = null;
 // Permission
 // ──────────────────────────────────────────────
 
+/**
+ * Canal único de Android. El backend manda `channelId: 'default'`.
+ *
+ * Tiene que existir ANTES de pedir el permiso: en Android 13+ el diálogo de
+ * notificaciones no sale si la app aún no tiene ningún canal, y
+ * `requestPermissionsAsync` devuelve "denied" sin preguntar. Además Android no
+ * deja cambiar la importancia de un canal ya creado, así que se crea en un
+ * solo sitio y con una sola configuración (antes había dos distintas).
+ */
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('default', {
+    name: 'VISP',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: 'default',
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#4A90E2',
+  });
+}
+
 async function requestPermission(): Promise<boolean> {
   try {
+    await ensureAndroidChannel();
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -92,15 +113,7 @@ async function registerDevice(): Promise<void> {
     return;
   }
 
-  // Android exige un canal antes de mostrar nada. El backend manda
-  // `channelId: 'default'`.
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'VISP',
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
-    });
-  }
+  await ensureAndroidChannel();
 
   try {
     // iOS: token de APNs (hex). Android: token de FCM.
@@ -215,16 +228,6 @@ async function initialize(): Promise<void> {
   if (!hasPermission) {
     console.warn('[Notifications] No permission, skipping initialization');
     return;
-  }
-
-  // Configure Android channel
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#4A90E2',
-    });
   }
 
   await registerDevice();

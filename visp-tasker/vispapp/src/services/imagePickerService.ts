@@ -81,6 +81,13 @@ export function askImageSource(
 /**
  * Pide el permiso de la fuente elegida.
  *
+ * Galería en Android, por versión:
+ * - 13+ (API 33): selector de fotos del sistema, sin permiso. La petición
+ *   devuelve "granted" sin diálogo. NO declarar READ_MEDIA_IMAGES: Google Play
+ *   lo rechaza en apps que solo suben fotos sueltas (está en blockedPermissions).
+ * - 11–12: pide READ_EXTERNAL_STORAGE, que expo-image-picker declara con
+ *   maxSdkVersion 32. No bloquearlo: sin él Android deniega sin diálogo.
+ *
  * Cuando iOS ya no puede volver a preguntar (`canAskAgain === false`) el botón
  * se quedaría muerto para siempre sin explicación, así que ahí —y solo ahí— se
  * ofrece abrir los Ajustes: es el único sitio donde el usuario puede
