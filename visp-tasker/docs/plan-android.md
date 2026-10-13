@@ -193,7 +193,11 @@ Android**, Firebase/FCM **después** (Fase 4). D2 (cuenta Play) sigue abierta.
 - `android/` regenerado con `expo prebuild --platform android --clean`; ios/ intacto.
 - `app.json` (Android): paquete, `versionCode 1`, `softwareKeyboardLayoutMode
   resize`, permisos mínimos + `blockedPermissions` (BACKGROUND_LOCATION,
-  RECORD_AUDIO, READ/WRITE_EXTERNAL_STORAGE, SYSTEM_ALERT_WINDOW).
+  RECORD_AUDIO, SYSTEM_ALERT_WINDOW).
+  **OJO:** READ/WRITE_EXTERNAL_STORAGE NO se bloquean: expo-image-picker los
+  declara con `maxSdkVersion 32` y en Android ≤12 la galería los necesita. Al
+  bloquearlos, Android denegaba sin diálogo y "Open settings" llevaba a un
+  permiso que no existía (visto en la tablet CHUWI, Android 11, 2026-10-13).
 - **Iconos:** `icon.png` y los adaptativos eran los de la plantilla de Expo. Ahora
   salen del logo real de iOS: `assets/brand/app-icon.png`,
   `assets/brand/android/{adaptive-foreground,adaptive-monochrome,notification-icon}.png`.
@@ -218,7 +222,11 @@ Android**, Firebase/FCM **después** (Fase 4). D2 (cuenta Play) sigue abierta.
 - Script: `./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a`
   (release lleva el JS dentro, sin Metro).
 
-**Falta:** probar en el teléfono con sesión (la app apunta a producción),
+- **2026-10-13 — prueba en físico (tablet CHUWI HiPad Air, Android 11):** login,
+  permisos de ubicación, cámara y galería con su diálogo, publicar un trabajo.
+  Sin errores en logcat.
+
+**Falta:** probar en un teléfono Android 13+ con sesión (la app apunta a producción),
 keystore de subida + `signingConfig`, Firebase (Fase 4), D2 y fichas de Play.
 **El próximo build de iOS necesita `pod install`** (3 módulos nativos nuevos).
 
