@@ -230,3 +230,29 @@ Android**, Firebase/FCM **después** (Fase 4). D2 (cuenta Play) sigue abierta.
 keystore de subida + `signingConfig`, Firebase (Fase 4), D2 y fichas de Play.
 **El próximo build de iOS necesita `pod install`** (3 módulos nativos nuevos).
 
+
+## 9. Firma y subida a Google Play (2026-10-14)
+
+**Upload key** (Play App Signing activado: Google guarda la clave de la app,
+nosotros solo firmamos la subida):
+
+| Qué | Dónde |
+|---|---|
+| Keystore | `~/.android-keys/visp-upload.jks` (PKCS12, RSA 2048, 10 000 días) |
+| Alias | `visp-upload` |
+| Contraseñas | `~/.gradle/gradle.properties` → `VISP_UPLOAD_*` (store y key iguales) |
+| SHA-256 | `49:1B:84:52:A5:96:06:42:89:B7:13:B6:09:4A:B4:1B:E4:08:A9:CC:72:F1:47:45:C1:D4:65:8D:C7:F7:84:95` |
+
+Nada de esto está en git. **Copia de seguridad** del `.jks` + la contraseña en
+el gestor de contraseñas de Ricardo. Si se pierde: Play Console → App integrity
+→ *Request upload key reset* (tarda días).
+
+`android/app/build.gradle` firma el release con esa clave si existen las
+propiedades `VISP_UPLOAD_*`; si no, con la de debug (vale para probar, Play la
+rechaza). **Ojo:** `expo prebuild --clean` regenera build.gradle y borra ese
+bloque; android/ está en git, así que se recupera con `git diff`.
+
+**AAB:** `cd android && ./gradlew bundleRelease` (todas las ABI) →
+`app/build/outputs/bundle/release/app-release.aab`. Cada subida necesita un
+`versionCode` mayor (app.json `android.versionCode` y `android/app/build.gradle`).
+Primera subida: versionCode 1, 1.0.0, prueba interna.

@@ -112,15 +112,24 @@ packagingOptions {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // Upload key de Google Play. La clave y sus contraseñas viven FUERA del
+        // repo, en ~/.gradle/gradle.properties (VISP_UPLOAD_*). Sin ellas el
+        // release sale firmado con la de debug: sirve para probar, no para Play.
+        if (project.hasProperty('VISP_UPLOAD_STORE_FILE')) {
+            release {
+                storeFile file(VISP_UPLOAD_STORE_FILE)
+                storePassword VISP_UPLOAD_STORE_PASSWORD
+                keyAlias VISP_UPLOAD_KEY_ALIAS
+                keyPassword VISP_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig project.hasProperty('VISP_UPLOAD_STORE_FILE') ? signingConfigs.release : signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
