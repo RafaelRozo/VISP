@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Config } from '@/services/config';
 import LangSwitcher from '@/components/LangSwitcher';
 import './Landing.css';
+import { APP_STORE_QR_PATH, APP_STORE_QR_SIZE } from './appStoreQr';
 
 const REQUEST_URL = Config.appStoreUrl;
 const PROVIDER_URL = Config.appStoreUrl;
@@ -141,18 +142,21 @@ export default function Landing() {
 
             {/* Desde el ordenador no hay forma de instalar la app: el QR lleva
                 al móvil directo a la App Store. En el móvil se oculta (CSS),
-                porque los botones ya abren la tienda. Si cambia el enlace,
-                regenerar public/qr/app-store.svg. */}
+                porque los botones ya abren la tienda. El QR va incrustado
+                (appStoreQr.ts), sin archivo de imagen. */}
             <a className="download-card" href={REQUEST_URL} target="_blank" rel="noreferrer">
+              <span className="download-eyebrow">Get the app</span>
               <span className="download-qr">
-                <img src="/qr/app-store.svg" alt="QR code to download VISP on the App Store" width={104} height={104} />
+                <svg
+                  viewBox={`0 0 ${APP_STORE_QR_SIZE} ${APP_STORE_QR_SIZE}`}
+                  shapeRendering="crispEdges"
+                  role="img"
+                  aria-label="QR code to download VISP on the App Store"
+                >
+                  <path d={APP_STORE_QR_PATH} fill="#000" />
+                </svg>
               </span>
-              <span className="download-text">
-                <span className="download-eyebrow">Get the app</span>
-                <b>Scan to download VISP</b>
-                <span className="download-sub">Point your phone camera at the code. Available on the App Store in Canada.</span>
-                <span className="download-link">Open in the App Store <svg width="12" height="12"><use href="#i-arrow" /></svg></span>
-              </span>
+              <span className="download-link">Open in the App Store <svg width="12" height="12"><use href="#i-arrow" /></svg></span>
             </a>
           </div>
         </div>
