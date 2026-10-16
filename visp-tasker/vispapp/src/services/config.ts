@@ -24,7 +24,9 @@ const DEV_CONFIG: AppConfig = {
   stripePublishableKey: 'pk_live_51TMUEhIM8PF7U4XyPREAAWXywiaSmYYgchikQlNGoKAuwhUk43jyqHJwonOUODO42z3lT6QtGavR06EYuavdfkYA008EQSnGz0',
   termsVersion: '2026-01-01',
   privacyVersion: '2026-01-01',
-  appStoreUrl: 'https://apps.apple.com/app/id6762825673',
+  // Con /ca/: la app solo está en la tienda de Canadá; sin país, Apple manda
+  // a la tienda del visitante y allí no existe.
+  appStoreUrl: 'https://apps.apple.com/ca/app/visp/id6762825673',
   supportEmail: 'support@taskerapp.com',
   minPasswordLength: 8,
   tokenRefreshThresholdMs: 5 * 60 * 1000, // 5 minutes before expiry

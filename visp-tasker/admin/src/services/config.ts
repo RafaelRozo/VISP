@@ -33,5 +33,7 @@ function deriveMediaOrigin(): string {
 export const Config = {
   apiBaseUrl,
   mediaOrigin: deriveMediaOrigin(),
-  appStoreUrl: 'https://apps.apple.com/app/id6762825673',
+  // Con /ca/: la app solo está en la tienda de Canadá; sin país, Apple manda
+  // a la tienda del visitante y allí no existe.
+  appStoreUrl: 'https://apps.apple.com/ca/app/visp/id6762825673',
 };
