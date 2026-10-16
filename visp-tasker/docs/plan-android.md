@@ -256,3 +256,35 @@ bloque; android/ está en git, así que se recupera con `git diff`.
 `app/build/outputs/bundle/release/app-release.aab`. Cada subida necesita un
 `versionCode` mayor (app.json `android.versionCode` y `android/app/build.gradle`).
 Primera subida: versionCode 1, 1.0.0, prueba interna.
+
+## 10. Enviar a revisión en Google Play (estado 2026-10-16)
+
+**Hecho:** cuenta de organización DROZ TECHNOLOGIES (sin la regla de 12 testers
+y 14 días), app creada (`com.droz.vispapp`, idioma en-US), Play App Signing con
+clave de Google, **prueba interna activa** con el AAB 1.0.0 (versionCode 1) y
+la lista "Visp Tester". El enlace web de la ficha da 404 hasta producción: los
+testers abren el opt-in desde el Android con la cuenta de la lista.
+
+**Página de borrar cuenta:** `https://visp.richieyanez.com/delete-account`
+(commit 6560531). **Desplegar el admin antes de rellenar Data safety.**
+
+**Panel → Configura tu app:**
+
+| Sección | Respuesta |
+|---|---|
+| Política de privacidad | `https://visp.richieyanez.com/legal/privacy` |
+| Acceso a la app | Restringida → cuentas demo cliente y proveedor (las de Apple) |
+| Anuncios | No |
+| Clasificación de contenido | Categoría "Otros"; sí a interacción entre usuarios y contenido de usuarios |
+| Público objetivo | Solo 18+ |
+| Noticias / Gobierno / Salud | No |
+| Funciones financieras | Ninguna (Stripe cobra servicios, no es un servicio financiero) |
+| ID de publicidad | No se usa |
+| Seguridad de los datos | Desde `app-store-submission.md` §3; URL de borrado arriba |
+| Categoría y contacto | Estilo de vida · support@droztechnologies.com · visp.richieyanez.com |
+| Ficha | Descripción corta (80), completa, icono 512×512, gráfico 1024×500, 2–8 capturas |
+| Producción → países | Solo Canadá |
+
+**Pendiente:** textos de la ficha EN/FR, gráficos, capturas, respuestas de Data
+safety pregunta a pregunta; después Producción → revisión. Aparte: API de Play
+(cuenta de servicio) para subir builds desde terminal, Firebase/FCM.
