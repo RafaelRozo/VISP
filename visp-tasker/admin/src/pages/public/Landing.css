@@ -246,31 +246,37 @@
   color: var(--text-3); letter-spacing: 0.12em;
 }
 
-/* QR de descarga bajo la tarjeta: vertical y centrado. Fondo blanco solo
-   detrás del código (un QR claro sobre oscuro falla en algunas cámaras). */
+/* QR de descarga bajo la tarjeta: sin caja, integrado en la página. Texto a
+   la izquierda, QR a la derecha. El recuadro blanco del QR se queda: un QR
+   claro sobre fondo oscuro falla en muchas cámaras. */
 .visp-landing .download-card {
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
-  margin-top: 14px; padding: 22px 18px 20px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  color: inherit; text-decoration: none; text-align: center;
-  transition: border-color .15s ease, background .15s ease;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  margin-top: 28px; padding: 0 4px;
+  color: inherit; text-decoration: none;
 }
-.visp-landing .download-card:hover { border-color: var(--violet-line); background: var(--card-hover); }
+.visp-landing .download-text { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .visp-landing .download-eyebrow {
   font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
   color: var(--violet); letter-spacing: 0.16em; text-transform: uppercase;
 }
-.visp-landing .download-qr {
-  display: block; padding: 10px; line-height: 0;
-  background: #FFFFFF; border-radius: 10px;
+.visp-landing .download-title {
+  font-size: 26px; font-weight: 600; line-height: 1.15;
+  letter-spacing: -0.025em; color: var(--text); max-width: 300px;
+  text-wrap: balance;
 }
-.visp-landing .download-qr svg { display: block; width: 132px; height: 132px; }
 .visp-landing .download-link {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 500; color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+  font-size: 12px; font-weight: 500; color: var(--text-2);
   transition: color .15s ease;
 }
 .visp-landing .download-card:hover .download-link { color: var(--text); }
+.visp-landing .download-qr {
+  flex: none; display: block; padding: 10px; line-height: 0;
+  background: #FFFFFF; border-radius: 12px;
+  transition: transform .2s ease;
+}
+.visp-landing .download-card:hover .download-qr { transform: translateY(-2px); }
+.visp-landing .download-qr svg { display: block; width: 156px; height: 156px; }
 /* En el móvil el QR no sirve (ya estás en el teléfono): los botones abren la tienda. */
 @media (max-width: 720px) { .visp-landing .download-card { display: none; } }
 

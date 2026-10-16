@@ -145,7 +145,11 @@ export default function Landing() {
                 porque los botones ya abren la tienda. El QR va incrustado
                 (appStoreQr.ts), sin archivo de imagen. */}
             <a className="download-card" href={REQUEST_URL} target="_blank" rel="noreferrer">
-              <span className="download-eyebrow">Get the app</span>
+              <span className="download-text">
+                <span className="download-eyebrow">Get the app</span>
+                <span className="download-title">VISP — home services you can trust.</span>
+                <span className="download-link">Open in the App Store <svg width="11" height="11"><use href="#i-arrow" /></svg></span>
+              </span>
               <span className="download-qr">
                 <svg
                   viewBox={`0 0 ${APP_STORE_QR_SIZE} ${APP_STORE_QR_SIZE}`}
@@ -156,7 +160,6 @@ export default function Landing() {
                   <path d={APP_STORE_QR_PATH} fill="#000" />
                 </svg>
               </span>
-              <span className="download-link">Open in the App Store <svg width="12" height="12"><use href="#i-arrow" /></svg></span>
             </a>
           </div>
         </div>
