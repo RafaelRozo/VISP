@@ -134,36 +134,26 @@ export default function Landing() {
                 </div>
               </div>
 
-              <div className="mock-card" style={{ padding: '6px 18px' }}>
-                {[
-                  { initials: 'MR', name: 'Marcus R.', rating: '4.9', jobs: 312, distance: '1.2 km', price: '$58', eta: '~45 min' },
-                  { initials: 'SK', name: 'Sarah K.', rating: '4.96', jobs: 487, distance: '0.8 km', price: '$62', eta: '~40 min' },
-                  { initials: 'JT', name: 'James T.', rating: '4.8', jobs: 156, distance: '2.1 km', price: '$55', eta: '~50 min' },
-                ].map((p) => (
-                  <div className="provider-row" key={p.initials}>
-                    <div className="av">{p.initials}</div>
-                    <div className="provider-info">
-                      <div className="provider-name">
-                        <b>{p.name}</b>
-                        <span className="vbadge"><svg><use href="#i-check" /></svg> ID verified</span>
-                      </div>
-                      <div className="provider-meta-line"><b>★ {p.rating}</b> · {p.jobs} jobs · {p.distance}</div>
-                    </div>
-                    <div className="provider-price"><b>{p.price}</b><small>{p.eta}</small></div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mock-card secure-row">
-                <div className="left">
-                  <svg><use href="#i-lock" /></svg>
-                  <span className="label-txt">Secure payment ready</span>
-                </div>
-                {/* No es escrow: el cobro se autoriza en la tarjeta al reservar
-                    y se captura al completar el trabajo. */}
-                <span className="escrow-tag">CARD · AUTHORIZED</span>
-              </div>
+              {/* La lista de proveedores y la barra de pago se quitaron
+                  (2026-10-16): la tarjeta sola ya explica la app y el bloque
+                  quedaba más alto que el titular. Su sitio lo ocupa el QR. */}
             </div>
+
+            {/* Desde el ordenador no hay forma de instalar la app: el QR lleva
+                al móvil directo a la App Store. En el móvil se oculta (CSS),
+                porque los botones ya abren la tienda. Si cambia el enlace,
+                regenerar public/qr/app-store.svg. */}
+            <a className="download-card" href={REQUEST_URL} target="_blank" rel="noreferrer">
+              <span className="download-qr">
+                <img src="/qr/app-store.svg" alt="QR code to download VISP on the App Store" width={104} height={104} />
+              </span>
+              <span className="download-text">
+                <span className="download-eyebrow">Get the app</span>
+                <b>Scan to download VISP</b>
+                <span className="download-sub">Point your phone camera at the code. Available on the App Store in Canada.</span>
+                <span className="download-link">Open in the App Store <svg width="12" height="12"><use href="#i-arrow" /></svg></span>
+              </span>
+            </a>
           </div>
         </div>
       </section>
