@@ -58,3 +58,23 @@ export const PRIVACY: LegalDoc = {
     { heading: '13. Contact Our Privacy Office', body: 'If you have questions, concerns, or requests regarding this Privacy Policy, please contact our Privacy Officer at support@droztechnologies.com. You also have the right to contact the Office of the Privacy Commissioner of Canada at www.priv.gc.ca.' },
   ],
 };
+
+/**
+ * Página pública para pedir el borrado de cuenta sin tener la app instalada.
+ * Google Play la exige (Data safety → "Delete account URL"). Las reglas son
+ * las de account_deletion_service (docs/plan-borrar-cuenta.md) y el plazo de
+ * 30 días el de la sección 7 de la Privacy Policy: si cambia uno, cambiar los tres.
+ */
+export const DELETE_ACCOUNT: LegalDoc = {
+  title: 'Delete your VISP account',
+  subtitle: 'VISP by DROZ TECHNOLOGIES, INC. | How to request deletion of your account and data',
+  sections: [
+    { heading: '1. Delete it from the app (fastest)', body: '1. Open the VISP app and sign in.\n2. Go to Profile → Settings → Delete account.\n3. Confirm with your password.\n\nYour account is deactivated immediately and you are signed out on all devices.' },
+    { heading: "2. Request it without the app", body: "If you no longer have the app installed, email support@droztechnologies.com from the email address registered in your VISP account, with the subject \"Delete my VISP account\". We verify that the request comes from the account owner and confirm by email once the deletion is processed, normally within 7 days." },
+    { heading: '3. Before you delete', body: "• A job that is under way (provider on the way, in progress or in dispute), or that starts in 15 minutes or less, must be finished first.\n• Scheduled jobs further ahead do not block deletion: if you are the customer they are cancelled at no cost; if you are the Service Provider they go back to matching so the customer can find someone else.\n• Service Providers with a pending balance must receive their payout first.\n• Business account owners: contact support@droztechnologies.com." },
+    { heading: '4. What is deleted', body: '• Your profile: name, email, phone number, photo and saved addresses.\n• Your location, notifications and device registrations.\n• Saved payment cards (your customer record is deleted from our payment processor, Stripe).\n• Uploaded photos, and identity and credential documents.' },
+    { heading: '5. What is kept, and for how long', body: '• Everything is kept for 30 days after deletion so the account can be recovered and open disputes or fraud checks can be completed. After 30 days your personal information is deleted or de-identified.\n• Payment and tax records are kept as long as Canadian law requires.\n• Jobs, reviews, chat messages and receipts stay as part of the other person\'s history, shown as "Deleted user" without your name or contact details.' },
+    { heading: '6. Changed your mind?', body: 'Within the 30 days, email support@droztechnologies.com from your account email and we will restore your account.' },
+    { heading: '7. Contact', body: 'Privacy questions: support@droztechnologies.com. Full details in our Privacy Policy at visp.richieyanez.com/legal/privacy.' },
+  ],
+};

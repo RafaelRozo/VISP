@@ -9,7 +9,7 @@ import BusinessDashboard from '@/pages/business/BusinessDashboard';
 import StripeReturn from '@/pages/public/StripeReturn';
 import StripeRefresh from '@/pages/public/StripeRefresh';
 import LegalPage from '@/pages/public/LegalPage';
-import { TERMS, PRIVACY } from '@/pages/public/legalContent';
+import { TERMS, PRIVACY, DELETE_ACCOUNT } from '@/pages/public/legalContent';
 import Login from '@/pages/auth/Login';
 import RedeemInvite from '@/pages/auth/RedeemInvite';
 import RedeemReset from '@/pages/auth/RedeemReset';
@@ -59,6 +59,8 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/legal/terms" element={<LegalPage doc={TERMS} />} />
       <Route path="/legal/privacy" element={<LegalPage doc={PRIVACY} />} />
+      {/* Exigida por Google Play: borrar la cuenta sin tener la app instalada. */}
+      <Route path="/delete-account" element={<LegalPage doc={DELETE_ACCOUNT} />} />
       <Route path="/stripe/return" element={<StripeReturn />} />
       <Route path="/stripe/refresh" element={<StripeRefresh />} />
 
