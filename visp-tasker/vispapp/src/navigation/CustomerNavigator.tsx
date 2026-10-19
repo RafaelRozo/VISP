@@ -32,6 +32,7 @@ import RatingScreen from '../screens/customer/RatingScreen';
 import TipScreen from '../screens/customer/TipScreen';
 import PriceProposalScreen from '../screens/customer/PriceProposalScreen';
 import ChatScreen from '../screens/shared/ChatScreen';
+import { androidHeaderOptions } from './androidHeader';
 
 const Stack = createNativeStackNavigator<CustomerFlowParamList>();
 
@@ -49,6 +50,7 @@ const defaultScreenOptions = {
   contentStyle: {
     backgroundColor: Colors.background,
   },
+  ...androidHeaderOptions,
 };
 
 interface CustomerNavigatorProps {

@@ -92,6 +92,7 @@ import { VispTabBar } from '../components/visp';
 import type { VispIconName } from '../components/visp';
 import ContractSignScreen from '../screens/legal/ContractSignScreen';
 import * as legalService from '../services/legalService';
+import { androidHeaderOptions } from './androidHeader';
 
 const CUSTOMER_TAB_ICONS: Record<string, VispIconName> = {
   Home: 'home',
@@ -176,6 +177,8 @@ function useThemedScreenOptions() {
     contentStyle: {
       backgroundColor: theme.background,
     },
+    // Los stacks con `header` propio (Perfil, Trabajos) lo sobrescriben después.
+    ...androidHeaderOptions,
   };
 }
 

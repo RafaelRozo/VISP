@@ -24,6 +24,7 @@ import EmergencyTrackingScreen from '../screens/emergency/EmergencyTrackingScree
 import EmergencyInProgressScreen from '../screens/emergency/EmergencyInProgressScreen';
 import EmergencyCompletionScreen from '../screens/emergency/EmergencyCompletionScreen';
 import EmergencyCancelScreen from '../screens/emergency/EmergencyCancelScreen';
+import { androidHeaderOptions } from './androidHeader';
 
 const Stack = createNativeStackNavigator<EmergencyFlowParamList>();
 
@@ -41,6 +42,7 @@ const defaultScreenOptions = {
   contentStyle: {
     backgroundColor: Colors.background,
   },
+  ...androidHeaderOptions,
 };
 
 function EmergencyNavigator(): React.JSX.Element {
