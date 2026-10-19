@@ -56,7 +56,25 @@
     "admins": "Admins",
     "logout": "Log out",
     "jobs": "Jobs & offers",
-    "moderation": "Moderation"
+    "moderation": "Moderation",
+    "topJobs": "Top Jobs"
+  },
+  "topJobs": {
+    "title": "Top Jobs",
+    "subtitle": "Services highlighted at the top of My Services in the provider app, so new providers find the most requested jobs first. They still appear in their own category.",
+    "current": "Current list ({{count}})",
+    "currentHint": "Shown in the app in this order. Newly checked services go to the end.",
+    "empty": "No Top Jobs selected. The section is hidden in the app.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "discard": "Discard changes",
+    "unsaved": "Unsaved changes",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "loadError": "Could not load services.",
+    "saveError": "Could not save. Try again."
   },
   "users": {
     "title": "User management",

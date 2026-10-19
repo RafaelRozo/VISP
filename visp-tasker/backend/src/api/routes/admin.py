@@ -1826,6 +1826,109 @@ async def delete_promotion(
 
 
 # ---------------------------------------------------------------------------
+# Top Jobs — servicios destacados arriba de "My Services" (migración 057)
+# ---------------------------------------------------------------------------
+
+
+class TopJobsUpdate(_CamelModel):
+    # La lista COMPLETA, en el orden en que debe salir en la app. Lo que no
+    # venga aquí deja de ser Top Job.
+    task_ids: list[uuid.UUID]
+
+
+async def _top_jobs_payload(db: AsyncSession) -> dict[str, Any]:
+    cats = (
+        await db.execute(
+            select(ServiceCategory)
+            .where(ServiceCategory.is_active.is_(True))
+            .options(selectinload(ServiceCategory.tasks))
+            .order_by(ServiceCategory.display_order, ServiceCategory.name)
+        )
+    ).scalars().all()
+
+    categories: list[dict[str, Any]] = []
+    selected: list[ServiceTask] = []
+    for c in cats:
+        tasks = sorted(
+            (t for t in c.tasks if t.is_active),
+            key=lambda t: (_level_value(t.level), t.name),
+        )
+        if not tasks:
+            continue
+        selected.extend(t for t in tasks if t.is_top_job)
+        categories.append(
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "tasks": [
+                    {
+                        "id": str(t.id),
+                        "name": t.name,
+                        "level": _level_value(t.level),
+                        "isTopJob": t.is_top_job,
+                    }
+                    for t in tasks
+                ],
+            }
+        )
+
+    selected.sort(key=lambda t: (t.top_job_order is None, t.top_job_order or 0, t.name))
+    return {
+        "data": {
+            "selected": [{"id": str(t.id), "name": t.name} for t in selected],
+            "categories": categories,
+        }
+    }
+
+
+@router.get("/top-jobs", summary="Servicios destacados como Top Jobs")
+async def get_top_jobs(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
+    return await _top_jobs_payload(db)
+
+
+@router.put("/top-jobs", summary="Reemplazar la lista de Top Jobs")
+async def put_top_jobs(
+    db: DBSession, _: CurrentAdmin, body: TopJobsUpdate
+) -> dict[str, Any]:
+    ids = list(dict.fromkeys(body.task_ids))  # sin duplicados, conserva el orden
+    if ids:
+        found = set(
+            (
+                await db.execute(
+                    select(ServiceTask.id).where(
+                        ServiceTask.id.in_(ids), ServiceTask.is_active.is_(True)
+                    )
+                )
+            ).scalars().all()
+        )
+        missing = [str(i) for i in ids if i not in found]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown or inactive services: {', '.join(missing)}",
+            )
+
+    current = (
+        await db.execute(select(ServiceTask).where(ServiceTask.is_top_job.is_(True)))
+    ).scalars().all()
+    for t in current:
+        if t.id not in ids:
+            t.is_top_job = False
+            t.top_job_order = None
+
+    if ids:
+        order = {task_id: n for n, task_id in enumerate(ids, start=1)}
+        for t in (
+            await db.execute(select(ServiceTask).where(ServiceTask.id.in_(ids)))
+        ).scalars().all():
+            t.is_top_job = True
+            t.top_job_order = order[t.id]
+
+    await db.commit()
+    return await _top_jobs_payload(db)
+
+
+# ---------------------------------------------------------------------------
 # Taxonomy admin (Service categories + Service tasks)
 # ---------------------------------------------------------------------------
 

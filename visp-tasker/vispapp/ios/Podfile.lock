@@ -80,6 +80,8 @@ PODS:
     - ExpoModulesCore
   - ExpoSecureStore (55.0.8):
     - ExpoModulesCore
+  - ExpoSystemUI (55.0.22):
+    - ExpoModulesCore
   - ExpoWebBrowser (55.0.16):
     - ExpoModulesCore
   - FBLazyVector (0.83.2)
@@ -1487,6 +1489,51 @@ PODS:
     - React-RCTFBReactNativeSpec
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
+  - react-native-keyboard-controller (1.20.7):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - react-native-keyboard-controller/common (= 1.20.7)
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-keyboard-controller/common (1.20.7):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-safe-area-context (5.6.2):
     - hermes-engine
     - RCTRequired
@@ -2277,9 +2324,6 @@ PODS:
     - StripePayments (= 25.12.0)
     - StripePaymentsUI (= 25.12.0)
     - StripeUICore (= 25.12.0)
-  - stripe-identity-react-native (0.8.0):
-    - React-Core
-    - StripeIdentity (~> 25.12.0)
   - stripe-react-native (0.65.1):
     - hermes-engine
     - RCTRequired
@@ -2356,14 +2400,8 @@ PODS:
     - Yoga
   - StripeApplePay (25.12.0):
     - StripeCore (= 25.12.0)
-  - StripeCameraCore (25.12.0):
-    - StripeCore (= 25.12.0)
   - StripeCore (25.12.0)
   - StripeFinancialConnections (25.12.0):
-    - StripeCore (= 25.12.0)
-    - StripeUICore (= 25.12.0)
-  - StripeIdentity (25.12.0):
-    - StripeCameraCore (= 25.12.0)
     - StripeCore (= 25.12.0)
     - StripeUICore (= 25.12.0)
   - StripeIssuing (25.12.0):
@@ -2406,6 +2444,7 @@ DEPENDENCIES:
   - ExpoModulesJSI (from `../node_modules/expo-modules-core`)
   - ExpoNotifications (from `../node_modules/expo-notifications/ios`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSystemUI (from `../node_modules/expo-system-ui/ios`)
   - ExpoWebBrowser (from `../node_modules/expo-web-browser/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
@@ -2446,6 +2485,7 @@ DEPENDENCIES:
   - React-logger (from `../node_modules/react-native/ReactCommon/logger`)
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
+  - react-native-keyboard-controller (from `../node_modules/react-native-keyboard-controller`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - react-native-webview (from `../node_modules/react-native-webview`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
@@ -2489,7 +2529,6 @@ DEPENDENCIES:
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
-  - "stripe-identity-react-native (from `../node_modules/@stripe/stripe-identity-react-native`)"
   - "stripe-react-native (from `../node_modules/@stripe/stripe-react-native`)"
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -2500,10 +2539,8 @@ SPEC REPOS:
     - MapboxMaps
     - Stripe
     - StripeApplePay
-    - StripeCameraCore
     - StripeCore
     - StripeFinancialConnections
-    - StripeIdentity
     - StripeIssuing
     - StripePayments
     - StripePaymentSheet
@@ -2544,6 +2581,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-notifications/ios"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
+  ExpoSystemUI:
+    :path: "../node_modules/expo-system-ui/ios"
   ExpoWebBrowser:
     :path: "../node_modules/expo-web-browser/ios"
   FBLazyVector:
@@ -2623,6 +2662,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   React-microtasksnativemodule:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
+  react-native-keyboard-controller:
+    :path: "../node_modules/react-native-keyboard-controller"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-webview:
@@ -2709,8 +2750,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-svg"
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
-  stripe-identity-react-native:
-    :path: "../node_modules/@stripe/stripe-identity-react-native"
   stripe-react-native:
     :path: "../node_modules/@stripe/stripe-react-native"
   Yoga:
@@ -2733,6 +2772,7 @@ SPEC CHECKSUMS:
   ExpoModulesJSI: 59a126dc51164e603242ee9a38c19339c5c79da0
   ExpoNotifications: fa5cf77a46c8ea6bfc93bdbad9805c4f8d8a81fb
   ExpoSecureStore: ebb13e5e590b1e62ec530bd0cfe1a3e7f1867e26
+  ExpoSystemUI: a468e48b21465d415983b01858af097090ec95f7
   ExpoWebBrowser: 5847267c496125abe38afccae97d34cb6ecc5340
   FBLazyVector: 32e9ed0301d0fcbc1b2b341dd7fcbf291f51eb83
   hermes-engine: d914133ab94a54a34f20f963fd55d1ac1886ab3c
@@ -2775,6 +2815,7 @@ SPEC CHECKSUMS:
   React-logger: 69811317123fe08dc34ed5837dc1d269c468cc8d
   React-Mapbuffer: 8f8cbeb5bedb521cce0897a71274e3a72b5236a1
   React-microtasksnativemodule: bef4a47c7efd42421de52201e6d76a73cf6c816e
+  react-native-keyboard-controller: c872321fc580f8d815e9e2ad5558b24c26c18b4f
   react-native-safe-area-context: 37e680fc4cace3c0030ee46e8987d24f5d3bdab2
   react-native-webview: 0ed52ddb2eafc64a502871218440b8b4d37961c3
   React-NativeModulesApple: f9fa097fc24cec967b77bfc05f72d2ea7db05b87
@@ -2819,13 +2860,10 @@ SPEC CHECKSUMS:
   RNSVG: 0bd149b873018bc6e0e3321e2f6435bdba294460
   RNWorklets: 5eddf924d11308d62920405addeddc3dfe1daaaa
   Stripe: 0befd1ef4c49e9e1b5a781f1e61805c856bb9c1c
-  stripe-identity-react-native: d35c63054ec570fa4db9db51b78cf12aaba09628
   stripe-react-native: f9042b6cb476551fb2783d11cdb4ddfe611407d6
   StripeApplePay: a58f76d25970050c4b3447cf6d34ce098cd0b517
-  StripeCameraCore: 8b5ff52f138220cfb96713c1736f36b764e3cdc0
   StripeCore: c10a35ed2d1f2165ccb8db8077e10c6fa488c6b8
   StripeFinancialConnections: 6abb9257f511f8ba1fd17df07d48058f48eb7b22
-  StripeIdentity: b9a2bb898d6da31b527768c9532585bf49ba0891
   StripeIssuing: c92d94e7f1e068d728715aa382f8b7907499b83f
   StripePayments: fb4105c822f9f07ca2092c86b68ab366b5d4a144
   StripePaymentSheet: 7285761bacc685b160fc31871632554577beec35

@@ -216,6 +216,8 @@
     }
   },
   "providerOnboarding": {
+    "topJobs": "Top Jobs",
+    "topJobsHint": "The most requested jobs. Add them to get offers sooner.",
     "loadingService": "Loading service…",
     "yourPrice": "Your price",
     "priceHint": "Set it now to start receiving offers right away.",

@@ -186,6 +186,13 @@ class ServiceTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # Top Jobs (migración 057): marca de presentación que pone el admin para
+    # destacar el servicio arriba de "My Services". No cambia nivel ni precio.
+    is_top_job: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    top_job_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Relationships
     category: Mapped["ServiceCategory"] = relationship(
         "ServiceCategory", back_populates="tasks"

@@ -1722,6 +1722,8 @@ async def get_provider_taxonomy(db: DBSession) -> Any:
                     "hazardous": t.hazardous,
                     "structural": t.structural,
                     "is_active": t.is_active,
+                    "is_top_job": t.is_top_job,
+                    "top_job_order": t.top_job_order,
                 })
 
             cat_dict = {

@@ -112,6 +112,11 @@ export async function apiPatch<T>(url: string, body?: any): Promise<T> {
   return unwrap<T>(r);
 }
 
+export async function apiPut<T>(url: string, body?: any): Promise<T> {
+  const r = await apiClient.put(url, body ?? {});
+  return unwrap<T>(r);
+}
+
 export async function apiDelete<T>(url: string): Promise<T> {
   const r = await apiClient.delete(url);
   return unwrap<T>(r);

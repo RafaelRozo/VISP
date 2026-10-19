@@ -101,6 +101,20 @@ export default function AdminLayout() {
           </NavLink>
 
           <NavLink
+            to="/admin/top-jobs"
+            style={({ isActive }) => ({
+              ...navItemStyle,
+              color: isActive ? 'var(--t-text)' : 'var(--t-text-2)',
+              background: isActive ? 'var(--t-card)' : 'transparent',
+              borderLeft: isActive ? '2px solid var(--t-violet)' : '2px solid transparent',
+              paddingLeft: 10,
+            })}
+          >
+            <NavIcon name="topJobs" />
+            <span>{t('nav.topJobs', 'Top Jobs')}</span>
+          </NavLink>
+
+          <NavLink
             to="/admin/documents"
             style={({ isActive }) => ({
               ...navItemStyle,
@@ -253,7 +267,7 @@ export default function AdminLayout() {
   );
 }
 
-function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'users' | 'jobs' }) {
+function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'topJobs' | 'users' | 'jobs' }) {
   const props = {
     width: 14,
     height: 14,
@@ -285,6 +299,12 @@ function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'b
       return (
         <svg {...props}>
           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+        </svg>
+      );
+    case 'topJobs':
+      return (
+        <svg {...props}>
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
         </svg>
       );
     case 'documents':

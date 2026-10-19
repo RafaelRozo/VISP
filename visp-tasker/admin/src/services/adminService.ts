@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './apiClient';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from './apiClient';
 
 export interface AdminUser {
   id: string;
@@ -513,6 +513,16 @@ export interface CompanyDetail {
   documents: CompanyDocument[];
 }
 
+export interface TopJobsData {
+  /** Current Top Jobs, in the order the app shows them. */
+  selected: { id: string; name: string }[];
+  categories: {
+    id: string;
+    name: string;
+    tasks: { id: string; name: string; level: string; isTopJob: boolean }[];
+  }[];
+}
+
 export interface Promotion {
   id: string;
   code: string;
@@ -777,6 +787,11 @@ export const adminService = {
       `/admin/companies/${id}/reject`,
       { reason },
     ),
+
+  getTopJobs: () => apiGet<TopJobsData>('/admin/top-jobs'),
+
+  /** Replaces the whole list; anything not in `taskIds` stops being a Top Job. */
+  saveTopJobs: (taskIds: string[]) => apiPut<TopJobsData>('/admin/top-jobs', { taskIds }),
 
   listPromotions: () => apiGet<Promotion[]>('/admin/promotions'),
 

@@ -498,6 +498,9 @@ class ProviderTaskOut(BaseModel):
     hazardous: bool
     structural: bool
     is_active: bool = Field(alias="isActive")
+    # Top Jobs (migración 057). Campos nuevos con default: la app 1.0.0 los ignora.
+    is_top_job: bool = Field(default=False, alias="isTopJob")
+    top_job_order: Optional[int] = Field(default=None, alias="topJobOrder")
 
 
 class ProviderCategoryOut(BaseModel):

@@ -56,7 +56,25 @@
     "admins": "Administrateurs",
     "logout": "Déconnexion",
     "jobs": "Travaux et offres",
-    "moderation": "Modération"
+    "moderation": "Modération",
+    "topJobs": "Top Jobs"
+  },
+  "topJobs": {
+    "title": "Top Jobs",
+    "subtitle": "Services mis en avant en haut de Mes services dans l'app fournisseur, pour que les nouveaux fournisseurs trouvent d'abord les travaux les plus demandés. Ils restent aussi dans leur catégorie.",
+    "current": "Liste actuelle ({{count}})",
+    "currentHint": "Affichés dans l'app dans cet ordre. Les services nouvellement cochés vont à la fin.",
+    "empty": "Aucun Top Job sélectionné. La section est masquée dans l'app.",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré",
+    "discard": "Annuler les modifications",
+    "unsaved": "Modifications non enregistrées",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "remove": "Retirer",
+    "loadError": "Impossible de charger les services.",
+    "saveError": "Impossible d'enregistrer. Réessayez."
   },
   "users": {
     "title": "Gestion des utilisateurs",

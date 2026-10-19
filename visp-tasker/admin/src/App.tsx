@@ -20,6 +20,7 @@ import Moderation from '@/pages/admin/Moderation';
 import Jobs from '@/pages/admin/Jobs';
 import Businesses from '@/pages/admin/Businesses';
 import Services from '@/pages/admin/Services';
+import TopJobs from '@/pages/admin/TopJobs';
 import Users from '@/pages/admin/Users';
 import Promotions from '@/pages/admin/Promotions';
 import Admins from '@/pages/admin/Admins';
@@ -85,6 +86,7 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="services" element={<Services />} />
+        <Route path="top-jobs" element={<TopJobs />} />
         <Route path="documents" element={<Documents />} />
         <Route path="moderation" element={<Moderation />} />
         <Route path="jobs" element={<Jobs />} />

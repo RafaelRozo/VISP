@@ -13,6 +13,9 @@ export interface ProviderTask {
     hazardous: boolean;
     structural: boolean;
     isActive: boolean;
+    /** Highlighted by the admin in the Top Jobs section of My Services. */
+    isTopJob?: boolean;
+    topJobOrder?: number | null;
 }
 
 export interface ProviderCategory {

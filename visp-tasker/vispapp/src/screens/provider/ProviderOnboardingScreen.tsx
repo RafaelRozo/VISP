@@ -8,7 +8,7 @@
  * Dark glassmorphism styling with GlassBackground, GlassCard, GlassButton.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -41,6 +41,9 @@ import { useProviderStore } from '../../stores/providerStore';
 
 type RowPrice = { cents: number; unit: string };
 
+// Accent for the Top Jobs card: stands apart from the violet used for selection.
+const TOP_JOBS_GOLD = '#F5B700';
+
 export default function ProviderOnboardingScreen() {
     const theme = useTheme();
     const navigation = useNavigation<any>();
@@ -52,6 +55,7 @@ export default function ProviderOnboardingScreen() {
     const [categories, setCategories] = useState<ProviderCategory[]>([]);
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+    const [topJobsExpanded, setTopJobsExpanded] = useState(true);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -350,6 +354,17 @@ export default function ProviderOnboardingScreen() {
         }
     };
 
+    // Top Jobs: the same catalog rows, picked by the admin. Selecting one here
+    // selects it in its category too, since it is the same task id.
+    const topJobs = useMemo(
+        () =>
+            categories
+                .flatMap(c => c.tasks)
+                .filter(t => t.isTopJob)
+                .sort((a, b) => (a.topJobOrder ?? 9999) - (b.topJobOrder ?? 9999)),
+        [categories],
+    );
+
     // ── Progress indicator ──────────────────────────────────────────────
     const totalTasks = categories.reduce((sum, c) => sum + c.tasks.length, 0);
     const progressPercent = totalTasks > 0
@@ -375,6 +390,117 @@ export default function ProviderOnboardingScreen() {
     const modalLevel = modalTask ? (modalTask.level || '').replace('LEVEL_', '') : '';
     const modalDescription =
         modalDetail?.fullDescription || modalTask?.description || '';
+
+    const renderTaskRow = (task: ProviderTask) => {
+        const isSelected = selectedTaskIds.has(task.id);
+        const needsLicense = task.licenseRequired;
+        const needsCertification = task.certificationRequired;
+        const isRegulated = task.regulated && !needsLicense && !needsCertification;
+        const rowPrice = priceMap[task.id];
+
+        return (
+            <TouchableOpacity
+                key={task.id}
+                style={[
+                    styles.taskItem,
+                    isSelected && styles.taskItemSelected,
+                ]}
+                onPress={() => openModal(task)}
+                activeOpacity={0.7}
+            >
+                <View style={[
+                    styles.checkbox,
+                    isSelected && styles.checkboxSelected,
+                ]}>
+                    {isSelected && (
+                        <Text style={styles.checkmarkText}>
+                            {'✓'}
+                        </Text>
+                    )}
+                </View>
+                <View style={styles.taskInfo}>
+                    <Text style={[
+                        styles.taskName,
+                        { color: theme.textPrimary },
+                        isSelected && styles.taskNameSelected,
+                        isSelected && { color: theme.textPrimary },
+                    ]}>
+                        {task.name}
+                    </Text>
+                    {rowPrice && (
+                        <Text style={styles.taskPrice}>
+                            {`$${(rowPrice.cents / 100).toFixed(0)}`}
+                            {rowPrice.unit ? `/${unitLabel(rowPrice.unit)}` : ''}
+                        </Text>
+                    )}
+                    {needsLicense && (
+                        <View style={styles.restrictedBadge}>
+                            <Text style={styles.restrictedIcon}>S</Text>
+                            <Text style={styles.restrictedTextWarn}>
+                                Requires License
+                            </Text>
+                        </View>
+                    )}
+                    {needsCertification && (
+                        <View style={styles.restrictedBadge}>
+                            <Text style={styles.restrictedIcon}>D</Text>
+                            <Text style={styles.restrictedTextCert}>
+                                Requires Certificate
+                            </Text>
+                        </View>
+                    )}
+                    {isRegulated && (
+                        <View style={styles.restrictedBadge}>
+                            <Text style={styles.restrictedIcon}>!</Text>
+                            <Text style={styles.restrictedTextWarn}>
+                                Regulated
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
+    const topJobsSelectedCount = topJobs.filter(t => selectedTaskIds.has(t.id)).length;
+    const topJobsHeader = topJobs.length > 0 ? (
+        <GlassCard variant="dark" padding={0} style={{ ...styles.categoryCard, ...styles.topJobsCard }}>
+            <TouchableOpacity
+                style={styles.categoryHeader}
+                onPress={() => setTopJobsExpanded(v => !v)}
+                activeOpacity={0.7}
+            >
+                <View style={styles.topJobsTitleBlock}>
+                    <View style={styles.categoryInfo}>
+                        <Text style={styles.topJobsStar}>{'★'}</Text>
+                        <Text style={[styles.categoryName, styles.topJobsName]}>
+                            {tr('providerOnboarding.topJobs') || 'Top Jobs'}
+                        </Text>
+                        {topJobsSelectedCount > 0 && (
+                            <View style={styles.topJobsBadge}>
+                                <Text style={styles.topJobsBadgeText}>
+                                    {topJobsSelectedCount} selected
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                    <Text style={[styles.topJobsHint, { color: theme.textSecondary }]}>
+                        {tr('providerOnboarding.topJobsHint') ||
+                            'The most requested jobs. Add them to get offers sooner.'}
+                    </Text>
+                </View>
+                <Text style={[styles.chevron, { color: TOP_JOBS_GOLD }]}>
+                    {topJobsExpanded ? '▲' : '▼'}
+                </Text>
+            </TouchableOpacity>
+
+            {topJobsExpanded && (
+                <View style={[styles.tasksList, styles.topJobsList]}>
+                    {topJobs.map(renderTaskRow)}
+                </View>
+            )}
+        </GlassCard>
+    ) : null;
 
     return (
         <Screen>
@@ -407,6 +533,7 @@ export default function ProviderOnboardingScreen() {
                     keyExtractor={(item) => item.id}
                     contentContainerStyle={styles.listContent}
                     showsVerticalScrollIndicator={false}
+                    ListHeaderComponent={topJobsHeader}
                     renderItem={({ item: category }) => {
                         const isExpanded = expandedCategories.has(category.id);
                         const selectedCount = category.tasks.filter(t => selectedTaskIds.has(t.id)).length;
@@ -435,76 +562,7 @@ export default function ProviderOnboardingScreen() {
 
                                 {isExpanded && (
                                     <View style={styles.tasksList}>
-                                        {category.tasks.map((task) => {
-                                            const isSelected = selectedTaskIds.has(task.id);
-                                            const needsLicense = task.licenseRequired;
-                                            const needsCertification = task.certificationRequired;
-                                            const isRegulated = task.regulated && !needsLicense && !needsCertification;
-                                            const rowPrice = priceMap[task.id];
-
-                                            return (
-                                                <TouchableOpacity
-                                                    key={task.id}
-                                                    style={[
-                                                        styles.taskItem,
-                                                        isSelected && styles.taskItemSelected,
-                                                    ]}
-                                                    onPress={() => openModal(task)}
-                                                    activeOpacity={0.7}
-                                                >
-                                                    <View style={[
-                                                        styles.checkbox,
-                                                        isSelected && styles.checkboxSelected,
-                                                    ]}>
-                                                        {isSelected && (
-                                                            <Text style={styles.checkmarkText}>
-                                                                {'\u2713'}
-                                                            </Text>
-                                                        )}
-                                                    </View>
-                                                    <View style={styles.taskInfo}>
-                                                        <Text style={[
-                                                            styles.taskName,
-                                                            { color: theme.textPrimary },
-                                                            isSelected && styles.taskNameSelected,
-                                                            isSelected && { color: theme.textPrimary },
-                                                        ]}>
-                                                            {task.name}
-                                                        </Text>
-                                                        {rowPrice && (
-                                                            <Text style={styles.taskPrice}>
-                                                                {`$${(rowPrice.cents / 100).toFixed(0)}`}
-                                                                {rowPrice.unit ? `/${unitLabel(rowPrice.unit)}` : ''}
-                                                            </Text>
-                                                        )}
-                                                        {needsLicense && (
-                                                            <View style={styles.restrictedBadge}>
-                                                                <Text style={styles.restrictedIcon}>S</Text>
-                                                                <Text style={styles.restrictedTextWarn}>
-                                                                    Requires License
-                                                                </Text>
-                                                            </View>
-                                                        )}
-                                                        {needsCertification && (
-                                                            <View style={styles.restrictedBadge}>
-                                                                <Text style={styles.restrictedIcon}>D</Text>
-                                                                <Text style={styles.restrictedTextCert}>
-                                                                    Requires Certificate
-                                                                </Text>
-                                                            </View>
-                                                        )}
-                                                        {isRegulated && (
-                                                            <View style={styles.restrictedBadge}>
-                                                                <Text style={styles.restrictedIcon}>!</Text>
-                                                                <Text style={styles.restrictedTextWarn}>
-                                                                    Regulated
-                                                                </Text>
-                                                            </View>
-                                                        )}
-                                                    </View>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
+                                        {category.tasks.map(renderTaskRow)}
                                     </View>
                                 )}
                             </GlassCard>
@@ -773,6 +831,45 @@ const styles = StyleSheet.create({
     chevron: {
         fontSize: 14,
         color: 'rgba(255, 255, 255, 0.45)',
+    },
+
+    // ── Top Jobs card ─────────────────────────────────────────
+    topJobsCard: {
+        borderWidth: 1.5,
+        borderColor: 'rgba(245, 183, 0, 0.65)',
+        backgroundColor: 'rgba(245, 183, 0, 0.08)',
+    },
+    topJobsTitleBlock: {
+        flex: 1,
+    },
+    topJobsStar: {
+        fontSize: 16,
+        color: TOP_JOBS_GOLD,
+        marginRight: 6,
+    },
+    topJobsName: {
+        color: TOP_JOBS_GOLD,
+        fontWeight: '700',
+    },
+    topJobsHint: {
+        fontSize: 12,
+        marginTop: 4,
+    },
+    topJobsBadge: {
+        backgroundColor: 'rgba(245, 183, 0, 0.18)',
+        borderWidth: 1,
+        borderColor: 'rgba(245, 183, 0, 0.45)',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    topJobsBadgeText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: TOP_JOBS_GOLD,
+    },
+    topJobsList: {
+        borderTopColor: 'rgba(245, 183, 0, 0.30)',
     },
 
     // ── Task list ─────────────────────────────────────────────

@@ -216,6 +216,8 @@
     }
   },
   "providerOnboarding": {
+    "topJobs": "Top Jobs",
+    "topJobsHint": "Les travaux les plus demandés. Ajoutez-les pour recevoir des offres plus vite.",
     "loadingService": "Chargement du service…",
     "yourPrice": "Votre tarif",
     "priceHint": "Définissez-le maintenant pour recevoir des offres immédiatement.",
