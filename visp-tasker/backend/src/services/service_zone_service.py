@@ -93,15 +93,22 @@ async def get_active_zones(db: AsyncSession) -> Sequence[ServiceZone]:
 
 
 async def locate_point(
-    db: AsyncSession, latitude: float, longitude: float
+    db: AsyncSession,
+    latitude: float,
+    longitude: float,
+    zones: Optional[Sequence[ServiceZone]] = None,
 ) -> ZoneMatch:
     """Evalúa un punto contra las zonas activas.
 
     Devuelve la zona que lo CONTIENE si hay alguna; si no, la más cercana con su
     distancia, para poder decirle al usuario cuánto le falta en vez de un "no"
     sin contexto.
+
+    `zones` permite pasar las zonas ya cargadas cuando se evalúan muchos puntos
+    seguidos (la página Coverage del admin); si no llega, se consultan.
     """
-    zones = await get_active_zones(db)
+    if zones is None:
+        zones = await get_active_zones(db)
     if not zones:
         # Fail-open deliberado: sin zonas configuradas no se bloquea nada.
         return ZoneMatch(zone=None, distance_km=0.0, inside=True)

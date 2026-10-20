@@ -523,6 +523,35 @@ export interface TopJobsData {
   }[];
 }
 
+export interface CoverageProvider {
+  id: string;
+  name: string;
+  email: string;
+  city: string | null;
+  province: string | null;
+  online: boolean;
+  /** null when the provider has no base address yet. */
+  inZone: boolean | null;
+  zoneName: string | null;
+  kmOutsideZone: number | null;
+  servicesSelected: number;
+  servicesPriced: number;
+}
+
+export interface CoverageData {
+  providers: CoverageProvider[];
+  services: {
+    id: string;
+    name: string;
+    category: string;
+    level: string;
+    isTopJob: boolean;
+    /** Providers that selected the service; rateCents null = no price yet. */
+    providers: { providerId: string; rateCents: number | null; unit: string | null }[];
+  }[];
+  zones: { code: string; name: string; radiusKm: number }[];
+}
+
 export interface Promotion {
   id: string;
   code: string;
@@ -789,6 +818,8 @@ export const adminService = {
     ),
 
   getTopJobs: () => apiGet<TopJobsData>('/admin/top-jobs'),
+
+  getCoverage: () => apiGet<CoverageData>('/admin/coverage'),
 
   /** Replaces the whole list; anything not in `taskIds` stops being a Top Job. */
   saveTopJobs: (taskIds: string[]) => apiPut<TopJobsData>('/admin/top-jobs', { taskIds }),

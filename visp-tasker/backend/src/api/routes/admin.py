@@ -1928,6 +1928,13 @@ async def put_top_jobs(
     return await _top_jobs_payload(db)
 
 
+@router.get("/coverage", summary="Servicios con sus proveedores y dónde están")
+async def get_coverage(db: DBSession, _: CurrentAdmin) -> dict[str, Any]:
+    from src.services import coverage_service
+
+    return {"data": await coverage_service.get_coverage(db)}
+
+
 # ---------------------------------------------------------------------------
 # Taxonomy admin (Service categories + Service tasks)
 # ---------------------------------------------------------------------------

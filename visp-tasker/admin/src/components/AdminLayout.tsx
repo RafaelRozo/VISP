@@ -115,6 +115,20 @@ export default function AdminLayout() {
           </NavLink>
 
           <NavLink
+            to="/admin/coverage"
+            style={({ isActive }) => ({
+              ...navItemStyle,
+              color: isActive ? 'var(--t-text)' : 'var(--t-text-2)',
+              background: isActive ? 'var(--t-card)' : 'transparent',
+              borderLeft: isActive ? '2px solid var(--t-violet)' : '2px solid transparent',
+              paddingLeft: 10,
+            })}
+          >
+            <NavIcon name="coverage" />
+            <span>{t('nav.coverage', 'Coverage')}</span>
+          </NavLink>
+
+          <NavLink
             to="/admin/documents"
             style={({ isActive }) => ({
               ...navItemStyle,
@@ -267,7 +281,7 @@ export default function AdminLayout() {
   );
 }
 
-function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'topJobs' | 'users' | 'jobs' }) {
+function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'businesses' | 'promotions' | 'admins' | 'services' | 'topJobs' | 'coverage' | 'users' | 'jobs' }) {
   const props = {
     width: 14,
     height: 14,
@@ -305,6 +319,13 @@ function NavIcon({ name }: { name: 'dashboard' | 'moderation' | 'documents' | 'b
       return (
         <svg {...props}>
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      );
+    case 'coverage':
+      return (
+        <svg {...props}>
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+          <circle cx="12" cy="10" r="3" />
         </svg>
       );
     case 'documents':

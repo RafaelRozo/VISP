@@ -21,6 +21,7 @@ import Jobs from '@/pages/admin/Jobs';
 import Businesses from '@/pages/admin/Businesses';
 import Services from '@/pages/admin/Services';
 import TopJobs from '@/pages/admin/TopJobs';
+import Coverage from '@/pages/admin/Coverage';
 import Users from '@/pages/admin/Users';
 import Promotions from '@/pages/admin/Promotions';
 import Admins from '@/pages/admin/Admins';
@@ -87,6 +88,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="services" element={<Services />} />
         <Route path="top-jobs" element={<TopJobs />} />
+        <Route path="coverage" element={<Coverage />} />
         <Route path="documents" element={<Documents />} />
         <Route path="moderation" element={<Moderation />} />
         <Route path="jobs" element={<Jobs />} />
