@@ -50,6 +50,23 @@ logger = logging.getLogger(__name__)
 SERVICE_TIMEZONE_NAME = "America/Toronto"
 SERVICE_TIMEZONE = ZoneInfo(SERVICE_TIMEZONE_NAME)
 
+# Hasta cuántos días por delante se puede reservar (hoy + 6). Lo fija el cobro, no
+# la agenda: la retención de la tarjeta se crea al aceptar la oferta y Stripe la
+# suelta sola a los 7 días. Con el calendario a 14 días, un trabajo a 10 días se
+# quedaba sin retención el día que se hacía y el proveedor no cobraba (revisión
+# del 2026-10-22; no había pasado: el más lejano reservado era a 2 días).
+# La app enseña el mismo número de días (TaskSelectionScreen).
+MAX_BOOKING_DAYS_AHEAD = 6
+
+
+def local_today() -> _date:
+    """Hoy en el área de servicio (no en UTC, no en el reloj del servidor)."""
+    return datetime.now(SERVICE_TIMEZONE).date()
+
+
+def too_far_ahead(day: _date) -> bool:
+    return day > local_today() + timedelta(days=MAX_BOOKING_DAYS_AHEAD)
+
 # Un trabajo sin duración conocida en ninguna de sus fuentes. Preferible a
 # tratarlo como instantáneo: con duración cero un trabajo nace ya vencido y la
 # agenda no bloquearía nada.

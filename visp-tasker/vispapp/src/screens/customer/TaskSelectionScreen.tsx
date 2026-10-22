@@ -64,7 +64,7 @@ type TaskSelectionRouteProp = RouteProp<CustomerFlowParamList, 'TaskSelection'>;
 type TaskSelectionNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'TaskSelection'>;
 
 // ──────────────────────────────────────────────
-// Helper: Generate calendar dates (next 14 days)
+// Helper: Generate calendar dates (today + the next `count - 1` days)
 // ──────────────────────────────────────────────
 
 interface CalendarDate {
@@ -87,8 +87,11 @@ function generateCalendarDates(count: number): CalendarDate[] {
   for (let i = 0; i < count; i++) {
     const date = new Date(now);
     date.setDate(date.getDate() + i);
+    // Fecha LOCAL. `toISOString()` es UTC: desde las 20:00 de Toronto (18:00 en
+    // México) "Today" mandaba la fecha de mañana.
+    const pad = (n: number) => String(n).padStart(2, '0');
     dates.push({
-      dateString: date.toISOString().split('T')[0],
+      dateString: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
       dayOfWeek: dayNames[date.getDay()],
       dayOfMonth: date.getDate(),
       month: monthNames[date.getMonth()],
@@ -140,7 +143,9 @@ function TaskSelectionScreen(): React.JSX.Element {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const calendarDates = useMemo(() => generateCalendarDates(14), []);
+  // Hoy + 6 días: la retención de la tarjeta caduca a los 7 días y un trabajo más
+  // lejano se quedaba sin cobrar (backend: jobSchedule.MAX_BOOKING_DAYS_AHEAD).
+  const calendarDates = useMemo(() => generateCalendarDates(7), []);
 
   // Load task detail on mount
   useEffect(() => {

@@ -462,6 +462,21 @@ async def book_job(
                 "requested_time_end": None,
                 "flexible_schedule": False,
             }
+            # La retención de la tarjeta caduca a los 7 días (ver
+            # jobSchedule.MAX_BOOKING_DAYS_AHEAD). 400 y no 5xx: Cloudflare
+            # envuelve los 5xx y el cliente no vería el mensaje.
+            if jobSchedule.too_far_ahead(cuando.date()):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": "booking_too_far_ahead",
+                        "message": (
+                            "Bookings can be made up to "
+                            f"{jobSchedule.MAX_BOOKING_DAYS_AHEAD} days ahead. "
+                            "Please pick an earlier date."
+                        ),
+                    },
+                )
 
         try:
             job = await jobService.create_job(
