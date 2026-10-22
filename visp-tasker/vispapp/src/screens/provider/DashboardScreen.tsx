@@ -37,6 +37,7 @@ import { Readiness } from '../../services/readinessService';
 import { FontMono } from '../../theme/visp';
 import { AnimatedSpinner, MorphingBlob } from '../../components/animations';
 import { useProviderStore } from '../../stores/providerStore';
+import { useFocusRefresh } from '../../hooks/useFocusRefresh';
 import { useAuthStore } from '../../stores/authStore';
 import { useCompanyStore } from '../../stores/companyStore';
 import JobCard from '../../components/JobCard';
@@ -98,16 +99,24 @@ export default function DashboardScreen(): React.JSX.Element {
   // devolvía los mismos trabajos con otra forma de campos y pisaba los buenos,
   // lo que tumbaba la pantalla de Jobs. Son dos llamadas en vez de una, y es el
   // precio de que este resumen y la bolsa enseñen exactamente lo mismo.
-  useEffect(() => {
+  //
+  // Al volver a la pestaña y cada 30 s: que el cliente acepte su oferta pasa
+  // fuera de su pantalla, y sin esto el trabajo no aparecía en el panel hasta
+  // reabrir la app (2026-10-22, TSK-MBKWWY).
+  const refreshPanel = useCallback(() => {
     fetchDashboard();
     fetchOffers();
   }, [fetchDashboard, fetchOffers]);
+  useFocusRefresh(refreshPanel, 30_000);
 
-  // Pull-to-refresh
-  const onRefresh = useCallback(() => {
-    fetchDashboard();
-    fetchOffers();
+  // Pull-to-refresh. El spinner solo para el gesto: atado a `isLoadingDashboard`
+  // aparecía solo con cada recarga automática.
+  const [pulling, setPulling] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setPulling(true);
     setSetupTick((n) => n + 1);
+    await Promise.all([fetchDashboard(), fetchOffers()]);
+    setPulling(false);
   }, [fetchDashboard, fetchOffers]);
 
   // User initials fallback for avatar
@@ -559,7 +568,7 @@ export default function DashboardScreen(): React.JSX.Element {
         contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl
-            refreshing={isLoadingDashboard}
+            refreshing={pulling}
             onRefresh={onRefresh}
             tintColor={Colors.primary}
             colors={[Colors.primary]}

@@ -13,7 +13,7 @@
  * Business logic (fetch, navigation, approval handlers) is preserved.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -49,6 +49,7 @@ import {
 } from '../../components/visp';
 import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
 import taskService from '../../services/taskService';
+import { useFocusRefresh } from '../../hooks/useFocusRefresh';
 import { offerService } from '../../services/offerService';
 import { paymentService } from '../../services/paymentService';
 import { useAuthStore } from '../../stores/authStore';
@@ -311,9 +312,15 @@ function MyJobsScreen(): React.JSX.Element {
     }
   }, []);
 
-  useEffect(() => {
-    fetchJobs();
+  // Al volver a la pestaña y cada 30 s: aceptar una oferta (que se hace en otra
+  // pantalla) tiene que mover el trabajo de "Offered" a "Booked" sin tirar de
+  // la lista. La primera carga enseña el spinner; las siguientes, en silencio.
+  const loadedOnce = useRef(false);
+  const refreshJobs = useCallback(() => {
+    fetchJobs(loadedOnce.current);
+    loadedOnce.current = true;
   }, [fetchJobs]);
+  useFocusRefresh(refreshJobs, 30_000);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);

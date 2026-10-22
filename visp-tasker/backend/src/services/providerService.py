@@ -40,6 +40,7 @@ from src.models.verification import (
     ProviderCredential,
     ProviderInsurancePolicy,
 )
+from src.services import jobSchedule
 from src.services.geoService import haversine_distance
 
 logger = logging.getLogger(__name__)
@@ -664,6 +665,14 @@ async def get_schedule(
             "requested_time_end": j.requested_time_end,
             "task_name": j.task.name if j.task else None,
             "is_emergency": j.is_emergency,
+            # Instante UTC de la cita. `requested_*` son la hora de Toronto sin
+            # zona y el móvil las leía con la zona del teléfono (2 h tarde en un
+            # teléfono en México): con esto ya no tiene que interpretarlas.
+            "scheduled_start_at": (
+                jobSchedule.scheduled_start(j).isoformat()
+                if j.requested_date is not None
+                else None
+            ),
         }
         for j in upcoming_jobs
     ]

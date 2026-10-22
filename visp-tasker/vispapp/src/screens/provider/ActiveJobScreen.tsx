@@ -61,6 +61,7 @@ import { Job, JobStatus, ProviderTabParamList, ScheduledJob } from '../../types'
 import { pickImage, pickImages } from '../../services/imagePickerService';
 import { offerService, type MaterialReceipt } from '../../services/offerService';
 import { taskService } from '../../services/taskService';
+import { minutesUntilCanStart } from '../../services/jobTiming';
 
 // Idempotent — JobTrackingScreen may also call this; Mapbox swallows duplicates.
 MapboxGL.setAccessToken(Config.mapboxAccessToken);
@@ -647,6 +648,16 @@ export default function ActiveJobScreen(): React.JSX.Element {
     if (!activeJob) return;
     const action = NEXT_STATUS_ACTIONS[activeJob.status];
     if (!action) return;
+
+    // La misma ventana que Schedule (services/jobTiming): desde el panel se
+    // llegaba aquí y se podía arrancar la ruta a cualquier hora.
+    if (action.next === 'en_route') {
+      const mins = minutesUntilCanStart(activeJob.scheduledStartAt);
+      if (mins > 0) {
+        Alert.alert(tr('scheduleScreen.tooEarly'), tr('scheduleScreen.canStartIn', { mins }));
+        return;
+      }
+    }
 
     if (action.next === 'in_progress' && !legalAcknowledged) {
       Alert.alert(

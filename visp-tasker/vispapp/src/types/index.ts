@@ -164,6 +164,12 @@ export interface Job {
   status: JobStatus;
   level: ServiceLevel;
   scheduledAt: string | null;
+  /**
+   * La cita como INSTANTE (ISO con zona, UTC). `scheduledAt` es la hora local de
+   * Toronto sin zona —sirve para PINTARLA— y leída con `new Date()` toma la zona
+   * del teléfono. Para calcular cuánto falta, usar esto.
+   */
+  scheduledStartAt?: string | null;
   startedAt: string | null;
   completedAt: string | null;
   /**
@@ -437,7 +443,10 @@ export interface ScheduledJob {
   id: string;
   taskName: string;
   customerArea: string;
+  /** Hora local de Toronto sin zona: solo para pintarla. */
   scheduledAt: string;
+  /** Instante de la cita (ISO UTC). Para calcular cuánto falta. */
+  startsAt: string | null;
   estimatedDurationMinutes: number;
   status: JobStatus;
   level: ServiceLevel;

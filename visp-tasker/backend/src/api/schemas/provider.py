@@ -271,6 +271,9 @@ class UpcomingJobOut(BaseModel):
     requested_time_end: Optional[time] = Field(default=None, alias="requestedTimeEnd")
     task_name: Optional[str] = Field(default=None, alias="taskName")
     is_emergency: bool = Field(alias="isEmergency")
+    # Instante UTC de la cita (ver providerService.get_schedule). Sin declararlo
+    # aquí, Pydantic lo descarta en silencio aunque el servicio lo mande.
+    scheduled_start_at: Optional[datetime] = Field(default=None, alias="scheduledStartAt")
 
 
 class OnCallShiftOut(BaseModel):

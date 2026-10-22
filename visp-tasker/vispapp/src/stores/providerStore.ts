@@ -310,6 +310,7 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
           requestedTimeEnd: string | null;
           taskName: string | null;
           isEmergency: boolean;
+          scheduledStartAt?: string | null;
         }>;
         shifts: OnCallShift[];
       }>('/provider/schedule');
@@ -335,6 +336,10 @@ export const useProviderStore = create<ProviderState>((set, getState) => ({
           customerArea: j.serviceCity || j.serviceAddress || '',
           status: j.status as any,
           scheduledAt,
+          // `scheduledAt` es la hora de Toronto sin zona; `new Date()` la lee con
+          // la del teléfono (2 h tarde en México). Para saber cuánto falta, el
+          // instante que manda el servidor.
+          startsAt: j.scheduledStartAt ?? null,
           estimatedDurationMinutes: 60,
           level: 1 as any,
         };

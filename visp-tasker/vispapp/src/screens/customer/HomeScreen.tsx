@@ -70,6 +70,7 @@ import RoleSwitcher from '../../components/RoleSwitcher';
 import { useCompanyStore } from '../../stores/companyStore';
 import { get } from '../../services/apiClient';
 import taskService from '../../services/taskService';
+import { useFocusRefresh } from '../../hooks/useFocusRefresh';
 import type {
   Job,
   JobStatus,
@@ -364,8 +365,10 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   }, []);
 
   const fetchActiveJobs = useCallback(async () => {
+    // Sin volver a poner `isLoadingJobs`: arranca en true y solo se apaga. Esta
+    // carga se repite al enfocar y cada 30 s, y encenderlo cada vez hacía
+    // parpadear la lista entera.
     try {
-      setIsLoadingJobs(true);
       const jobs = await taskService.getActiveJobs();
       setActiveJobs(jobs);
     } catch {
@@ -390,8 +393,14 @@ function HomeScreen({ navigation }: Props): React.JSX.Element {
   }, [fetchCategories, fetchActiveJobs, fetchRecentProviders]);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    fetchCategories();
+    fetchRecentProviders();
+  }, [fetchCategories, fetchRecentProviders]);
+
+  // Los trabajos activos cambian sin que el cliente haga nada (le aceptan la
+  // oferta, el proveedor sale hacia él, se cancela): se recargan al volver a la
+  // pestaña y cada 30 s mientras está a la vista. Ver useFocusRefresh.
+  useFocusRefresh(fetchActiveJobs, 30_000);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -887,7 +896,7 @@ function ActiveJobRow({ job, onPress }: { job: Job; onPress: () => void }): Reac
                 <Text style={[VispText.bodyStrong, { color: t.text, fontSize: 13 }]} numberOfLines={1}>
                   {provider.firstName} {provider.lastName?.[0] ?? ''}.
                 </Text>
-                {typeof provider.rating === 'number' && (
+                {typeof provider.rating === 'number' && provider.rating > 0 && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 1 }}>
                     <Icon name="star" size={10} color={t.text3} />
                     <Text style={[VispText.eyebrowTight, { color: t.text3, marginLeft: 3 }]}>

@@ -32,9 +32,12 @@ import { Screen, ScreenTitle } from '../../components/visp';
 import { useProviderStore } from '../../stores/providerStore';
 import { OnCallShift, ScheduledJob, TimeOffRequest } from '../../types';
 import { post } from '../../services/apiClient';
+import { useFocusRefresh } from '../../hooks/useFocusRefresh';
+import { minutesUntilCanStart } from '../../services/jobTiming';
 
-// How many minutes before the job start time the provider can begin navigation
-const EARLY_START_MINUTES = 10;
+// La ventana para salir hacia el cliente vive en services/jobTiming, compartida
+// con la pantalla del trabajo.
+const minutesToWait = (job: ScheduledJob) => minutesUntilCanStart(job.startsAt, job.scheduledAt);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -268,10 +271,7 @@ function ScheduledJobItem({ job, onPress }: ScheduledJobItemProps): React.JSX.El
   const statusColor = getStatusColor(job.status);
 
   // Check if we're within the start window
-  const jobStart = new Date(job.scheduledAt);
-  const now = new Date();
-  const minutesUntilStart = (jobStart.getTime() - now.getTime()) / 60000;
-  const canStart = minutesUntilStart <= EARLY_START_MINUTES;
+  const canStart = minutesToWait(job) === 0;
 
   return (
     <TouchableOpacity
@@ -512,7 +512,6 @@ export default function ScheduleScreen(): React.JSX.Element {
     scheduledJobs,
     onCallShifts,
     providerProfile,
-    isLoadingSchedule,
     fetchSchedule,
   } = useProviderStore();
 
@@ -531,9 +530,9 @@ export default function ScheduleScreen(): React.JSX.Element {
 
   const isLevel4 = providerProfile?.level === 4;
 
-  useEffect(() => {
-    fetchSchedule();
-  }, [fetchSchedule]);
+  // Al volver a la pestaña y cada minuto: el trabajo que le acaban de aceptar
+  // tiene que aparecer sin tirar de la lista, y "cuánto falta" se recalcula.
+  useFocusRefresh(fetchSchedule, 60_000);
 
   // Set of dates that have jobs (for calendar dots)
   const jobDates = useMemo(() => {
@@ -553,8 +552,13 @@ export default function ScheduleScreen(): React.JSX.Element {
     });
   }, [scheduledJobs, selectedDate]);
 
-  const onRefresh = useCallback(() => {
-    fetchSchedule();
+  // El spinner de arriba solo para el gesto del usuario: con la recarga de cada
+  // minuto, atarlo a `isLoadingSchedule` lo hacía aparecer solo.
+  const [pulling, setPulling] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setPulling(true);
+    await fetchSchedule();
+    setPulling(false);
   }, [fetchSchedule]);
 
   const handleRequestTimeOff = useCallback(() => {
@@ -614,12 +618,9 @@ export default function ScheduleScreen(): React.JSX.Element {
   const navigation = useNavigation<any>();
 
   const handleJobPress = useCallback((job: ScheduledJob) => {
-    const jobStart = new Date(job.scheduledAt);
-    const now = new Date();
-    const minutesUntilStart = (jobStart.getTime() - now.getTime()) / 60000;
+    const mins = minutesToWait(job);
 
-    if (minutesUntilStart > EARLY_START_MINUTES) {
-      const mins = Math.ceil(minutesUntilStart - EARLY_START_MINUTES);
+    if (mins > 0) {
       Alert.alert(
         t('scheduleScreen.tooEarly'),
         t('scheduleScreen.canStartIn', { mins }),
@@ -885,7 +886,7 @@ export default function ScheduleScreen(): React.JSX.Element {
         contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl
-            refreshing={isLoadingSchedule}
+            refreshing={pulling}
             onRefresh={onRefresh}
             tintColor={Colors.primary}
             colors={[Colors.primary]}

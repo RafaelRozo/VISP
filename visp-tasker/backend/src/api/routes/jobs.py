@@ -757,9 +757,46 @@ async def get_active_jobs(
             ).all()
         }
 
+    # El proveedor ASIGNADO de cada trabajo. No vive en `jobs` sino en la
+    # assignment ACCEPTED, y esta lista no lo mandaba: el Home del cliente decía
+    # "Finding provider…" en un trabajo ya aceptado (TSK-MBKWWY, 2026-10-22).
+    from src.models.job import AssignmentStatus
+    from src.models.provider import ProviderProfile
+    from src.models.user import User
+    from src.services import jobSchedule
+
+    asignado: dict[Any, Any] = {}
+    for j in jobs:
+        for a in j.assignments:
+            if a.status in (AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED):
+                asignado[j.id] = a.provider_id
+    proveedores: dict[Any, dict[str, Any]] = {}
+    if asignado:
+        for p, u in (
+            await db.execute(
+                select(ProviderProfile, User)
+                .join(User, User.id == ProviderProfile.user_id)
+                .where(ProviderProfile.id.in_(set(asignado.values())))
+            )
+        ).all():
+            proveedores[p.id] = {
+                "id": str(p.id),
+                "firstName": u.first_name,
+                "lastName": u.last_name,
+                "avatarUrl": u.avatar_url,
+                "rating": None,
+                "completedJobs": None,
+            }
+
     items = []
     for j in jobs:
         item = MobileJobOut.model_validate(j).model_dump(by_alias=True)
+        item["provider"] = proveedores.get(asignado.get(j.id))
+        # La cita como INSTANTE (UTC, con zona). `scheduledAt` es la hora local de
+        # Toronto sin zona y el móvil la leía con la zona del teléfono: en un
+        # teléfono en México las 11:00 se volvían las 13:00 de Toronto.
+        inicio = jobSchedule.scheduled_start(j)
+        item["scheduledStartAt"] = inicio.isoformat() if inicio else None
         # Convert backend enum (UPPERCASE) to mobile-friendly lowercase
         item["status"] = _mobile_status(j.status.value)
         task_info = task_map.get(j.task_id, {})

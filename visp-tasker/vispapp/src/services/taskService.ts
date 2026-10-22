@@ -474,11 +474,23 @@ async function getActiveJobs(): Promise<Job[]> {
     status: ((j.status ?? 'pending') as string).toLowerCase() as JobStatus,
     level: 1 as ServiceLevel,
     scheduledAt: j.scheduledAt ?? null,
+    scheduledStartAt: j.scheduledStartAt ?? null,
     startedAt: j.startedAt ?? null,
     completedAt: j.completedAt ?? null,
     estimatedPrice: (j.quotedPriceCents ?? 0) / 100,
     finalPrice: j.finalPriceCents ? j.finalPriceCents / 100 : null,
-    provider: null,
+    // El proveedor asignado. Antes iba `null` fijo y el Home decía "Finding
+    // provider…" en trabajos ya aceptados (2026-10-22).
+    provider: j.provider
+      ? {
+          id: j.provider.id,
+          firstName: j.provider.firstName ?? '',
+          lastName: j.provider.lastName ?? '',
+          avatarUrl: j.provider.avatarUrl ?? null,
+          rating: j.provider.rating ?? 0,
+          completedJobs: j.provider.completedJobs ?? 0,
+        }
+      : null,
     address: {
       street: j.serviceAddress ?? '',
       city: j.serviceCity ?? '',

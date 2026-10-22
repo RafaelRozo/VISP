@@ -62,6 +62,7 @@ from src.api.schemas.provider import (
     ProviderCategoryOut,
 )
 from src.services import (
+    jobSchedule,
     jobService,
     notificationService,
     providerService,
@@ -283,62 +284,75 @@ async def get_dashboard(
 
     # 3. Active job — find the most recent accepted/en_route/in_progress assignment
 
-    active_assignment_stmt = (
-        sa_select(JobAssignment)
-        .where(
-            JobAssignment.provider_id == profile.id,
-            JobAssignment.status.in_([
-                AssignmentStatus.ACCEPTED,
-            ]),
-        )
-        .order_by(JobAssignment.responded_at.desc())
-        .limit(1)
+    # El filtro por estado del TRABAJO va en la consulta, no después. Antes se
+    # tomaba la última assignment ACCEPTED y luego se descartaba si su trabajo
+    # ya no estaba vivo: como la assignment se queda ACCEPTED aunque el trabajo
+    # se cancele, un cancelado reciente tapaba otro trabajo vigente y el panel
+    # salía vacío. Lo que está en marcha va primero; si no hay, el más próximo.
+    _live_statuses = (
+        JobStatus.PENDING_APPROVAL,
+        JobStatus.SCHEDULED,
+        JobStatus.PROVIDER_ACCEPTED,
+        JobStatus.PROVIDER_EN_ROUTE,
+        JobStatus.IN_PROGRESS,
     )
-    active_assignment = (await db.execute(active_assignment_stmt)).scalar_one_or_none()
+    _running = (JobStatus.PROVIDER_EN_ROUTE, JobStatus.IN_PROGRESS)
+    live_jobs = (
+        await db.execute(
+            sa_select(Job)
+            .join(JobAssignment, JobAssignment.job_id == Job.id)
+            .where(
+                JobAssignment.provider_id == profile.id,
+                JobAssignment.status == AssignmentStatus.ACCEPTED,
+                Job.status.in_(_live_statuses),
+            )
+        )
+    ).scalars().all()
+
+    def _orden(j: Any) -> tuple:
+        inicio = jobSchedule.scheduled_start(j)
+        return (j.status not in _running, inicio is None, inicio or j.created_at)
+
+    active_job = min(live_jobs, key=_orden) if live_jobs else None
 
     active_job_out = None
-    if active_assignment:
-        job_stmt = sa_select(Job).where(Job.id == active_assignment.job_id)
-        active_job = (await db.execute(job_stmt)).scalar_one_or_none()
-        if active_job and active_job.status in (
-            JobStatus.PENDING_APPROVAL,
-            JobStatus.SCHEDULED,
-            JobStatus.PROVIDER_ACCEPTED,
-            JobStatus.PROVIDER_EN_ROUTE,
-            JobStatus.IN_PROGRESS,
-        ):
-            from src.models.taxonomy import ServiceTask
-            from sqlalchemy.orm import selectinload
-            task_stmt = sa_select(ServiceTask).options(selectinload(ServiceTask.category)).where(ServiceTask.id == active_job.task_id)
-            task = (await db.execute(task_stmt)).scalar_one_or_none()
+    if active_job is not None:
+        from src.models.taxonomy import ServiceTask
+        from sqlalchemy.orm import selectinload
+        task_stmt = sa_select(ServiceTask).options(selectinload(ServiceTask.category)).where(ServiceTask.id == active_job.task_id)
+        task = (await db.execute(task_stmt)).scalar_one_or_none()
+        _inicio = jobSchedule.scheduled_start(active_job)
 
-            active_job_out = {
-                "id": str(active_job.id),
-                "referenceNumber": active_job.reference_number,
-                "status": _mobile_status(active_job.status.value),
-                "taskName": task.name if task else "Service",
-                "categoryName": task.category.name if task and hasattr(task, 'category') and task.category else None,
-                "serviceAddress": active_job.service_address,
-                "serviceCity": active_job.service_city,
-                "address": {
-                    "street": active_job.service_address or "",
-                    "city": active_job.service_city or "",
-                    "latitude": float(active_job.service_latitude) if active_job.service_latitude else 0,
-                    "longitude": float(active_job.service_longitude) if active_job.service_longitude else 0,
-                },
-                "isEmergency": active_job.is_emergency,
-                "quotedPriceCents": active_job.quoted_price_cents,
-                "estimatedPrice": (active_job.quoted_price_cents / 100) if active_job.quoted_price_cents else 0.0,
-                "level": 1, # default level fallback
-                "startedAt": active_job.started_at.isoformat() if active_job.started_at else None,
-                "completedAt": active_job.completed_at.isoformat() if active_job.completed_at else None,
-                # Cuándo debería acabar y si ya se pasó. Lo calcula el servidor a
-                # propósito: la duración sale de la unidad de precio (horas
-                # contratadas, o la estimación del catálogo) y duplicar esa regla
-                # en la app es justo cómo las dos versiones acaban discrepando.
-                "scheduledEndAt": _fin_iso(active_job, task),
-                "isOverdue": _esta_vencido(active_job, task),
-            }
+        active_job_out = {
+            "id": str(active_job.id),
+            "referenceNumber": active_job.reference_number,
+            "status": _mobile_status(active_job.status.value),
+            "taskName": task.name if task else "Service",
+            "categoryName": task.category.name if task and hasattr(task, 'category') and task.category else None,
+            "serviceAddress": active_job.service_address,
+            "serviceCity": active_job.service_city,
+            "address": {
+                "street": active_job.service_address or "",
+                "city": active_job.service_city or "",
+                "latitude": float(active_job.service_latitude) if active_job.service_latitude else 0,
+                "longitude": float(active_job.service_longitude) if active_job.service_longitude else 0,
+            },
+            "isEmergency": active_job.is_emergency,
+            "quotedPriceCents": active_job.quoted_price_cents,
+            "estimatedPrice": (active_job.quoted_price_cents / 100) if active_job.quoted_price_cents else 0.0,
+            "level": 1, # default level fallback
+            "startedAt": active_job.started_at.isoformat() if active_job.started_at else None,
+            "completedAt": active_job.completed_at.isoformat() if active_job.completed_at else None,
+            # Cuándo debería acabar y si ya se pasó. Lo calcula el servidor a
+            # propósito: la duración sale de la unidad de precio (horas
+            # contratadas, o la estimación del catálogo) y duplicar esa regla
+            # en la app es justo cómo las dos versiones acaban discrepando.
+            "scheduledEndAt": _fin_iso(active_job, task),
+            "isOverdue": _esta_vencido(active_job, task),
+            # La cita como instante UTC: la app calcula con esto cuánto falta
+            # y si ya puede salir hacia el cliente.
+            "scheduledStartAt": _inicio.isoformat() if _inicio else None,
+        }
 
     # 4. Pending offers — reuse the offers logic
     try:
@@ -559,6 +573,9 @@ async def get_job_detail(
         # distintas es exactamente lo que tumbó la pantalla de Jobs el 26-ago.
         "scheduledEndAt": _fin_iso(job, task),
         "isOverdue": _esta_vencido(job, task),
+        "scheduledStartAt": (
+            _inicio.isoformat() if (_inicio := jobSchedule.scheduled_start(job)) else None
+        ),
         # Materiales (migración 043/045). El proveedor los necesita AQUÍ, en el
         # trabajo en curso: es donde tiene que acordarse de subir la factura antes
         # de cerrar, y sin factura no hay reembolso.
