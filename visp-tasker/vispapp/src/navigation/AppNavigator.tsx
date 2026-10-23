@@ -47,6 +47,8 @@ import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 // Screens - Customer
 import CustomerHomeScreen from '../screens/customer/HomeScreen';
 import JobTrackingScreen from '../screens/customer/JobTrackingScreen';
+import RatingScreen from '../screens/customer/RatingScreen';
+import TipScreen from '../screens/customer/TipScreen';
 import OffersScreen from '../screens/customer/OffersScreen';
 import MyJobsScreen from '../screens/customer/MyJobsScreen';
 
@@ -764,6 +766,33 @@ export default function AppNavigator(): React.JSX.Element {
                 ...opts,
                 title: 'Job Status',
                 headerBackTitle: 'Back',
+              }}
+            />
+            {/* Valorar y propina, alcanzables desde Job Status. Solo estaban en
+                el stack de categorías: desde Home o My Jobs, Job Status vive AQUÍ
+                y `navigate('Rating')` no encontraba la ruta —el botón no hacía
+                nada y solo funcionaba volver— (Katia, 2026-10-23). Mismo fallo
+                silencioso que tuvo 'Offers' (ver arriba). */}
+            <RootStack.Screen
+              name="Rating"
+              component={RatingScreen}
+              options={{
+                headerShown: true,
+                ...opts,
+                title: 'Rate provider',
+                headerBackVisible: false,
+                gestureEnabled: false,
+              }}
+            />
+            <RootStack.Screen
+              name="Tip"
+              component={TipScreen}
+              options={{
+                headerShown: true,
+                ...opts,
+                title: 'Add a Tip',
+                headerBackVisible: false,
+                gestureEnabled: false,
               }}
             />
             {/* VISP for Business — reachable from the dashboard "Company" card */}

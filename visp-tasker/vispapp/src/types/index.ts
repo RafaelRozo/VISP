@@ -241,6 +241,8 @@ export type RootStackParamList = {
   /** Ofertas recibidas. Alcanzable desde My Jobs y desde el flujo de reserva. */
   Offers: { jobId: string; taskName?: string };
   JobTracking: { jobId: string };
+  Rating: { jobId: string; taskName: string; finalPrice: number };
+  Tip: { jobId: string; taskName: string; finalPrice: number; providerName?: string };
   EmergencyFlow: undefined;
   Chat: { jobId: string; otherUserName: string };
   PayoutsOnboarding: undefined;

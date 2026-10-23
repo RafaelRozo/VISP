@@ -57,6 +57,10 @@ import type { CustomerFlowParamList, UserDefaultAddress } from '../../types';
 type BookingRouteProp = RouteProp<CustomerFlowParamList, 'Booking'>;
 type BookingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'Booking'>;
 
+// Colchón de la retención sobre el total de la oferta. Es AUTHORIZATION_BUFFER
+// (1.30) del backend, en job_payment_service.
+const HOLD_BUFFER_PCT = 30;
+
 const LEVEL_LABELS: Record<number, string> = {
   1: 'General Help',
   2: 'Experienced',
@@ -723,11 +727,17 @@ function BookingScreen(): React.JSX.Element {
               >
                 {consentPricing && <Text style={[styles.checkmark, { color: theme.textPrimary }]}>✓</Text>}
               </View>
+              {/* Explica la retención (2026-10-23): el cliente veía un cargo
+                  mayor en el banco al aceptar y no sabía por qué. El 30 % es
+                  AUTHORIZATION_BUFFER del backend (job_payment_service); si
+                  cambia allí, cambia aquí. "Hold", no "deposit": no se cobra
+                  nada al retener. */}
               <Text style={[styles.checkboxLabel, { color: theme.textSecondary }]}>
-                I accept the estimated pricing of ${task.priceRangeMin} - $
-                {task.priceRangeMax}. Final price may vary based on actual scope
-                of work. I will be notified of any changes before they are
-                applied.
+                {`I accept the estimated price of $${task.priceRangeMin} – $${task.priceRangeMax}${unitSuffix(pricingUnit)}. A temporary hold of the offer total + ${HOLD_BUFFER_PCT}% is placed on my card when I accept an offer; I'm only charged for ${
+                  (pricingUnit ?? '').toUpperCase() === 'HOURLY' || (pricingUnit ?? '').toUpperCase() === 'PER_CONTRACT'
+                    ? 'the hours worked'
+                    : 'the agreed price'
+                }, and the rest is released automatically.`}
               </Text>
             </TouchableOpacity>
 

@@ -123,7 +123,7 @@ function CustomerNavigator({ initialCategoryId, initialCategoryName }: CustomerN
         name="Rating"
         component={RatingScreen}
         options={{
-          title: 'Rate & Pay',
+          title: 'Rate provider',
           headerBackVisible: false,
           gestureEnabled: false,
         }}

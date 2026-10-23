@@ -91,7 +91,8 @@ function RatingScreen(): React.JSX.Element {
 
   // Set header title
   useEffect(() => {
-    navigation.setOptions({ title: 'Rate & Pay' });
+    // El cobro ya se hizo al terminar el trabajo: aquí solo se valora.
+    navigation.setOptions({ title: 'Rate provider' });
   }, [navigation]);
 
   // Cost breakdown
