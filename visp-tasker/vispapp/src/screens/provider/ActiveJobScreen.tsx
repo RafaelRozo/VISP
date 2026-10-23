@@ -865,6 +865,32 @@ export default function ActiveJobScreen(): React.JSX.Element {
                   isLoading={isUpdating}
                   isNext
                 />
+                {/* Chat con el cliente. La pantalla existía en este stack, pero
+                    ningún botón la abría: el cliente escribía y el proveedor no
+                    tenía forma de leer ni contestar (TSK-BVLTPB, 2026-10-23). */}
+                <MotionPressable
+                  onPress={() =>
+                    navigation.navigate('Chat', {
+                      jobId: liveTodayJob.id,
+                      otherUserName: tr('activeJob.customer') || 'Customer',
+                    })
+                  }
+                  style={{ marginTop: 12 }}
+                >
+                  <View
+                    style={{
+                      paddingVertical: 14,
+                      borderRadius: VispRadius.card,
+                      borderWidth: 1,
+                      borderColor: t.borderStrong,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={[VispText.bodyStrong, { color: t.text }]}>
+                      {tr('activeJob.messageCustomer') || 'Message customer'}
+                    </Text>
+                  </View>
+                </MotionPressable>
                 {/* ── Material (migraciones 043/045) ─────────────────
                     El proveedor adelanta el dinero de su bolsillo, así que esto
                     va EN el trabajo en curso y no escondido en un menú: la

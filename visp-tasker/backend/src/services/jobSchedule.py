@@ -67,6 +67,35 @@ def local_today() -> _date:
 def too_far_ahead(day: _date) -> bool:
     return day > local_today() + timedelta(days=MAX_BOOKING_DAYS_AHEAD)
 
+
+def billable_hours(
+    started_at: datetime, ended_at: datetime, contracted: Optional[Decimal]
+) -> tuple[int, int]:
+    """Minutos trabajados y horas a cobrar en un trabajo por horas.
+
+    EL REDONDEO: horas completas EMPEZADAS (decisión de Ricardo, 2026-08-21, y
+    confirmada el 2026-10-23 para el cierre normal). 12 min = 1 h; 4 h 10 min =
+    5 h. Mínimo 1 h —protege al proveedor que llega y lo cancelan a los diez
+    minutos— y NUNCA más de las horas contratadas: si el reloj se pasó, el trato
+    era ese (pasarse se aprueba aparte, ver job_payment_service).
+
+    Una sola regla para la cancelación a mitad y para el cierre: antes solo la
+    aplicaba la cancelación y al terminar se cobraban las horas de la oferta
+    enteras (TSK-BVLTPB: 12 min cobrados como 2 h).
+    """
+    from math import ceil
+
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    if ended_at.tzinfo is None:
+        ended_at = ended_at.replace(tzinfo=timezone.utc)
+    minutos = max(0, int((ended_at - started_at).total_seconds() // 60))
+    horas = max(1, ceil(minutos / 60))
+    tope = int(contracted) if contracted else 0
+    if tope > 0:
+        horas = min(horas, tope)
+    return minutos, horas
+
 # Un trabajo sin duración conocida en ninguna de sus fuentes. Preferible a
 # tratarlo como instantáneo: con duración cero un trabajo nace ya vencido y la
 # agenda no bloquearía nada.

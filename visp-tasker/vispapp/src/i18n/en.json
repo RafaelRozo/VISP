@@ -607,6 +607,8 @@
     "payment": "Payment"
   },
   "myJobs": {
+    "cancelledTitle": "Job cancelled",
+    "cancelledBody": "This job was cancelled. Any card hold was released.",
     "tabPosted": "Posted",
     "tabOffered": "Offered",
     "tabBooked": "Booked",
@@ -955,6 +957,8 @@
     "holdFailedBody": "The job is scheduled. We will try again before the work starts."
   },
   "activeJob": {
+    "customer": "Customer",
+    "messageCustomer": "Message customer",
     "materials": "Materials",
     "materialsSpent": "Spent",
     "materialsOver": "Above what you quoted — the customer has to approve the difference.",
@@ -1016,6 +1020,7 @@
   },
   "jobTracking": {
     "viewReceipt": "View receipt",
+    "rateProvider": "Rate provider",
     "receiptPendingTitle": "Receipt not ready",
     "receiptPendingBody": "Your receipt is issued once the payment is finalised. Try again in a moment.",
     "receiptFailed": "Could not open the receipt."

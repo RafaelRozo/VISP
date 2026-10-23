@@ -607,6 +607,8 @@
     "payment": "Paiement"
   },
   "myJobs": {
+    "cancelledTitle": "Travail annulé",
+    "cancelledBody": "Ce travail a été annulé. Toute retenue sur la carte a été libérée.",
     "tabPosted": "Publiés",
     "tabOffered": "Offres",
     "tabBooked": "Réservés",
@@ -955,6 +957,8 @@
     "holdFailedBody": "Le travail est planifié. Nous réessaierons avant le début du travail."
   },
   "activeJob": {
+    "customer": "Client",
+    "messageCustomer": "Écrire au client",
     "materials": "Matériaux",
     "materialsSpent": "Dépensé",
     "materialsOver": "Au-dessus de votre devis — le client doit approuver la différence.",
@@ -1016,6 +1020,7 @@
   },
   "jobTracking": {
     "viewReceipt": "Voir le reçu",
+    "rateProvider": "Évaluer le fournisseur",
     "receiptPendingTitle": "Reçu pas encore prêt",
     "receiptPendingBody": "Votre reçu est émis une fois le paiement finalisé. Réessayez dans un instant.",
     "receiptFailed": "Impossible d'ouvrir le reçu."

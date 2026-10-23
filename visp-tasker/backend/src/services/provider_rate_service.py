@@ -395,8 +395,62 @@ async def reprice_job_to_provider_rate(
     return await _seal_quote_on_job(db, job, provider_id, quote)
 
 
+async def reseal_for_hours(
+    db: AsyncSession, job: Any, provider_id: uuid.UUID, hours: int
+) -> Optional[dict[str, Any]]:
+    """Vuelve a sellar un trabajo por horas con las horas REALMENTE cobrables.
+
+    Usa la tarifa PACTADA que quedó en el job —`hourly_rate_cents` (HOURLY) o
+    `customer_rate_cents` (PER_CONTRACT)—, no la del perfil: si el proveedor cambió
+    su precio entre aceptar y terminar, el trato era el de la oferta. Respeta el
+    cargo mínimo de su tarifa, igual que al aceptar.
+
+    Devuelve None si el trabajo no es por horas o no tiene tarifa pactada; entonces
+    se cobra lo acordado, como siempre.
+    """
+    task = await db.get(ServiceTask, job.task_id)
+    if task is None:
+        return None
+    if task.pricing_unit == PricingUnit.PER_CONTRACT:
+        rate_cents = getattr(job, "customer_rate_cents", None)
+    elif task.pricing_unit == PricingUnit.HOURLY:
+        rate_cents = getattr(job, "hourly_rate_cents", None)
+    else:
+        return None
+    if not rate_cents or rate_cents <= 0:
+        return None
+
+    subtotal = int(rate_cents) * int(hours)
+    if task.pricing_unit == PricingUnit.HOURLY:
+        rate_row = (
+            await db.execute(
+                select(ProviderServiceRate).where(
+                    ProviderServiceRate.provider_id == provider_id,
+                    ProviderServiceRate.task_id == job.task_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if rate_row is not None and rate_row.min_charge_cents:
+            subtotal = max(subtotal, rate_row.min_charge_cents)
+
+    job.quantity = Decimal(hours)
+    quote = {
+        "rate_cents": int(rate_cents),
+        "unit": task.pricing_unit.value,
+        "quantity": float(hours),
+        "subtotal_cents": subtotal,
+    }
+    return await _seal_quote_on_job(
+        db, job, provider_id, quote, calculated_by="hours_worked"
+    )
+
+
 async def _seal_quote_on_job(
-    db: AsyncSession, job: Any, provider_id: uuid.UUID, quote: dict[str, Any]
+    db: AsyncSession,
+    job: Any,
+    provider_id: uuid.UUID,
+    quote: dict[str, Any],
+    calculated_by: str = "provider_accept_reprice",
 ) -> dict[str, Any]:
     """Sella una cotización sobre el job: subtotal, comisión, impuesto, fee, total y
     evento de auditoría.
@@ -476,7 +530,7 @@ async def _seal_quote_on_job(
             commission_cents=job.commission_amount_cents,
             provider_payout_cents=job.provider_payout_cents,
             currency=job.currency or "CAD",
-            calculated_by="provider_accept_reprice",
+            calculated_by=calculated_by,
         )
     )
     await db.flush()

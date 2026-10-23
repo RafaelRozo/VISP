@@ -405,6 +405,15 @@ function MyJobsScreen(): React.JSX.Element {
         Alert.alert(tr('homeScreen.waitingForProvider'), tr('homeScreen.waitingMessage'));
         return;
       }
+      // Los cancelados salen ahora en "Completed". Job Status no conoce esos
+      // estados y los pintaba como "Finding provider…": se avisa en su lugar.
+      if (isCompletedStatus(job.status) && job.status !== 'completed') {
+        Alert.alert(
+          tr('myJobs.cancelledTitle') || 'Job cancelled',
+          tr('myJobs.cancelledBody') || 'This job was cancelled. Any card hold was released.',
+        );
+        return;
+      }
       navigation.navigate('JobTracking', { jobId: job.id });
     },
     [navigation, tr],

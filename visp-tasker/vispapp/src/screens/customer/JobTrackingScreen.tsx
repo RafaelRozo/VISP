@@ -289,24 +289,53 @@ function JobTrackingScreen(): React.JSX.Element {
   }, [currentStatus, searchTimedOut]);
 
   // ── In-progress timer ────────────────────
+  //
+  // Se calcula desde `startedAt` (la hora real de inicio que guarda el servidor),
+  // no sumando segundos desde que se abrió la pantalla: así contaba antes y
+  // volvía a 00:00 cada vez que el cliente salía y entraba (video 2026-10-23,
+  // TSK-BVLTPB). El cobro va por ese mismo tiempo.
+  const startedAtMs = job?.startedAt ? new Date(job.startedAt).getTime() : null;
   useEffect(() => {
-    if (currentStatus === 'in_progress') {
-      timerRef.current = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
+    if (currentStatus !== 'in_progress') {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      return;
     }
-
+    const tick = () => {
+      if (startedAtMs != null && !Number.isNaN(startedAtMs)) {
+        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)));
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
-  }, [currentStatus]);
+  }, [currentStatus, startedAtMs]);
+
+  // El detalle se carga una vez al abrir. Si la pantalla se abrió antes de
+  // empezar, no tiene `startedAt`; y al terminar le falta el precio final (se
+  // fija al cobrar). Se recarga en esos dos cambios de estado.
+  useEffect(() => {
+    const needsStart = currentStatus === 'in_progress' && !job?.startedAt;
+    const needsFinal = currentStatus === 'completed' && job?.finalPrice == null;
+    if (!needsStart && !needsFinal) return;
+    let cancelled = false;
+    taskService
+      .getJobDetail(jobId)
+      .then((fresh) => {
+        if (!cancelled) setJob(fresh);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStatus, job?.startedAt, job?.finalPrice, jobId]);
 
   // ── Derived values ───────────────────────
   const currentStepIndex = useMemo(() => {
@@ -342,15 +371,23 @@ function JobTrackingScreen(): React.JSX.Element {
   }, [jobId, t]);
 
   const formattedTimer = useMemo(() => {
-    const mins = Math.floor(elapsedSeconds / 60);
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const mins = Math.floor((elapsedSeconds % 3600) / 60);
     const secs = elapsedSeconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const mmss = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return hours > 0 ? `${hours}:${mmss}` : mmss;
   }, [elapsedSeconds]);
 
+  // Lo que se cobraría si terminara ahora, con la misma regla del servidor
+  // (jobSchedule.billable_hours): horas EMPEZADAS, mínimo 1, tope en lo pactado.
+  // Sin tarifa por hora (precio fijo), el pactado.
   const runningCost = useMemo(() => {
-    const price = job?.finalPrice ?? job?.estimatedPrice ?? 0;
-    return price.toFixed(2);
-  }, [job?.finalPrice, job?.estimatedPrice]);
+    const agreed = job?.finalPrice ?? job?.estimatedPrice ?? 0;
+    const rate = job?.hourlyRateCents;
+    if (!rate || job?.finalPrice != null) return agreed.toFixed(2);
+    const hours = Math.max(1, Math.ceil(elapsedSeconds / 3600));
+    return Math.min(agreed, (rate * hours) / 100).toFixed(2);
+  }, [job?.finalPrice, job?.estimatedPrice, job?.hourlyRateCents, elapsedSeconds]);
 
   const finalPrice = useMemo(() => {
     return job?.finalPrice ?? job?.estimatedPrice ?? 0;
@@ -788,19 +825,23 @@ function JobTrackingScreen(): React.JSX.Element {
                   <Text style={[styles.completedSubtext, { color: theme.textSecondary }]}>
                     Thank you for using VISP. Please rate your experience.
                   </Text>
+                  {/* El comprobante, como botón y primero: era un enlace pequeño
+                      bajo "Rate & Pay" y el cliente no lo encontraba (2026-10-23).
+                      Se emite al CAPTURAR el cobro; si aún no está, el botón
+                      avisa en vez de fallar en silencio. */}
                   <GlassButton
-                    title="Rate & Pay"
+                    title={t('jobTracking.viewReceipt') || 'View receipt'}
                     variant="glow"
-                    onPress={handleRateProvider}
+                    onPress={handleOpenReceipt}
                   />
-                  {/* El comprobante se emite al CAPTURAR el cobro, así que un
-                      trabajo recién terminado puede no tenerlo todavía. Por eso
-                      el botón avisa en vez de fallar en silencio. */}
-                  <TouchableOpacity onPress={handleOpenReceipt} style={{ marginTop: 12 }}>
-                    <Text style={[styles.completedSubtext, { color: Colors.primary }]}>
-                      {t('jobTracking.viewReceipt')}
-                    </Text>
-                  </TouchableOpacity>
+                  {/* "Rate & Pay" decía que faltaba pagar, pero el cobro ya se
+                      hizo al terminar el trabajo: solo queda valorar. */}
+                  <GlassButton
+                    title={t('jobTracking.rateProvider') || 'Rate provider'}
+                    variant="outline"
+                    onPress={handleRateProvider}
+                    style={{ marginTop: 12 }}
+                  />
                 </View>
               </GlassCard>
             </View>

@@ -181,8 +181,6 @@ async def _bill_contract_time(db: AsyncSession, job: Job) -> Optional[dict]:
     quién fuera la decisión, y meter aquí un castigo convertiría el motivo de la
     cancelación en una negociación de dinero.
     """
-    from math import ceil
-
     from src.models.taxonomy import PricingUnit, ServiceTask
     from src.services import job_payment_service, provider_rate_service
 
@@ -193,15 +191,13 @@ async def _bill_contract_time(db: AsyncSession, job: Job) -> Optional[dict]:
         # Aún no había empezado: no hay tiempo que pagar, cancelar es gratis.
         return None
 
-    ahora = datetime.now(timezone.utc)
-    inicio = job.started_at
-    if inicio.tzinfo is None:
-        inicio = inicio.replace(tzinfo=timezone.utc)
+    # La regla de redondeo vive en jobSchedule.billable_hours: la misma para la
+    # cancelación a mitad y para el cierre normal.
+    from src.services import jobSchedule
 
-    minutos = max(0, int((ahora - inicio).total_seconds() // 60))
-    horas = max(1, ceil(minutos / 60))
-    contratadas = int(job.quantity or horas)
-    horas = min(horas, contratadas) if contratadas > 0 else horas
+    minutos, horas = jobSchedule.billable_hours(
+        job.started_at, datetime.now(timezone.utc), job.quantity
+    )
 
     tarifa = job.customer_rate_cents or 0
     if tarifa <= 0:

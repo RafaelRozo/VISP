@@ -669,8 +669,8 @@ async def book_job(
     "/active",
     summary="Get customer's active jobs",
     description=(
-        "Returns active jobs for the authenticated customer. Active means "
-        "any status except completed, cancelled, disputed, and refunded."
+        "Returns the customer's open jobs plus those closed in the last 90 days "
+        "(completed, cancelled, disputed, refunded) for the Completed tab."
     ),
 )
 async def get_active_jobs(
@@ -717,12 +717,26 @@ async def get_active_jobs(
         JobStatus.REFUNDED,
     }
 
+    # Los cerrados de los últimos 90 días también van: alimentan la pestaña
+    # "Completed" de My Jobs, que hasta ahora salía SIEMPRE vacía porque esta
+    # lista los excluía (2026-10-23). El Home no los pinta: filtra por estado
+    # activo en la app (HOME_ACTIVE_STATUSES).
+    from datetime import timedelta as _td
+    from sqlalchemy import and_, or_
+
+    cerrados_desde = datetime.now(timezone.utc) - _td(days=90)
     stmt = (
         select(Job)
         .options(selectinload(Job.assignments))
         .where(
             Job.customer_id == user.id,
-            Job.status.not_in(terminal_statuses),
+            or_(
+                Job.status.not_in(terminal_statuses),
+                and_(
+                    Job.status.in_(terminal_statuses),
+                    Job.updated_at >= cerrados_desde,
+                ),
+            ),
         )
         .order_by(Job.created_at.desc())
     )

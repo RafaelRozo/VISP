@@ -42,7 +42,7 @@ from src.events.jobEvents import (
     emit_job_status_changed,
     emit_sla_snapshot_captured,
 )
-from src.models.job import Job, JobPriority, JobStatus
+from src.models.job import AssignmentStatus, Job, JobAssignment, JobPriority, JobStatus
 from src.models.provider import ProviderLevel
 from src.models.sla import SLAProfile
 from src.models.taxonomy import ServiceTask
@@ -779,6 +779,35 @@ async def update_job_status(
         if job.pricing_model == "TIME_BASED" and not job.total_charged_cents:
             await finalize_time_based_price(db, job.id)
 
+        # Trabajo por horas con precio pactado: se cobran las horas REALMENTE
+        # trabajadas (horas empezadas, mínimo 1, tope en las contratadas) y no las
+        # de la oferta enteras. TSK-BVLTPB duró 12 min y se cobraron 2 h. Se
+        # vuelve a sellar con la tarifa pactada, así comisión, impuesto y tarifa
+        # de servicio salen de la misma función que al aceptar.
+        assignment = (
+            await db.execute(
+                select(JobAssignment).where(
+                    JobAssignment.job_id == job.id,
+                    JobAssignment.status == AssignmentStatus.ACCEPTED,
+                ).limit(1)
+            )
+        ).scalars().first()
+        if job.started_at is not None:
+            from src.services import jobSchedule, provider_rate_service
+
+            minutos, horas = jobSchedule.billable_hours(job.started_at, now, job.quantity)
+            job.actual_duration_minutes = minutos
+            contratadas = int(job.quantity) if job.quantity else 0
+            if (
+                assignment is not None
+                and job.total_charged_cents
+                and contratadas > 0
+                and horas < contratadas
+            ):
+                await provider_rate_service.reseal_for_hours(
+                    db, job, assignment.provider_id, horas
+                )
+
         # PP4b — auto-capture the held authorization (only jobs that went through
         # the destination-charge hold). An overage above the ceiling is surfaced
         # for customer approval rather than failing completion; Stripe errors are
@@ -796,6 +825,14 @@ async def update_job_status(
                 )
             except Exception:  # noqa: BLE001 — never block completion on capture
                 logger.exception("Auto-capture failed for job %s at completion", job.id)
+
+        # La asignación se cierra DESPUÉS del cobro: el comprobante se emite dentro
+        # de la captura y busca al proveedor por su asignación. Hasta ahora solo el
+        # handler de sockets la pasaba a COMPLETED; por REST se quedaba ACCEPTED
+        # para siempre y el panel del proveedor contaba 0 trabajos hechos.
+        if assignment is not None:
+            assignment.status = AssignmentStatus.COMPLETED
+            assignment.completed_at = now
 
     await db.flush()
 

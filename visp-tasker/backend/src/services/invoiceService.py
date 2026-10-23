@@ -391,10 +391,15 @@ async def _reunir_datos(db: AsyncSession, job: Any, numero: str) -> DatosComprob
     tarea = await db.get(ServiceTask, job.task_id)
     cliente = await db.get(User, job.customer_id)
 
+    # ACCEPTED o COMPLETED: al cerrar el trabajo la asignación pasa a COMPLETED,
+    # y un comprobante que se rehace después tiene que seguir encontrando al
+    # proveedor.
     asignacion = (await db.execute(
         select(JobAssignment).where(
             JobAssignment.job_id == job.id,
-            JobAssignment.status == AssignmentStatus.ACCEPTED,
+            JobAssignment.status.in_(
+                [AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED]
+            ),
         ).limit(1)
     )).scalars().first()
     perfil = await db.get(ProviderProfile, asignacion.provider_id) if asignacion else None
