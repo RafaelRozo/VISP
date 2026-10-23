@@ -288,3 +288,18 @@ testers abren el opt-in desde el Android con la cuenta de la lista.
 **Pendiente:** textos de la ficha EN/FR, gráficos, capturas, respuestas de Data
 safety pregunta a pregunta; después Producción → revisión. Aparte: API de Play
 (cuenta de servicio) para subir builds desde terminal, Firebase/FCM.
+
+## 11. Pendiente obligatorio para la 1.0.4 de Android (avisos de Play, 2026-10-23)
+
+La 1.0.1 se aprobó y la 1.0.3 (versionCode 4) está en revisión. Play marca tres
+avisos sobre la 1.0.1 con plazo **febrero de 2027**. No bloquean, pero la próxima
+versión de Android tiene que llevarlos resueltos:
+
+| # | Aviso de Play | Qué hacer | Riesgo |
+|---|---|---|---|
+| 1 | Optimización DEX: **ofuscación 2 %** (umbral 25 %) | Activar R8 en release (`minifyEnabled true`, `shrinkResources true`) con reglas `keep` para Stripe, Mapbox, Expo y React Native | Alto: lo que rompe R8 falla en ejecución. Probar en release todo el flujo de cobro (retención, captura, comprobante), mapa y alta de cobros |
+| 2 | **APIs obsoletas de borde a borde** (Android 15) | Quitar `backgroundColor`/`translucent` del `StatusBar` en Android (`App.tsx`, `components/visp/Screen.tsx`) y revisar qué librerías llaman a `setStatusBarColor`/`setNavigationBarColor` | Medio: re-probar cabeceras (`navigation/androidHeader.tsx`) y teclado |
+| 3 | **Restricción de orientación** en pantallas grandes | Android 16 ignora el bloqueo vertical en tablets y plegables. Probar cada pantalla en un emulador de tablet en horizontal y arreglar los layouts | Medio: es trabajo de diseño, no de configuración |
+
+Probar en el emulador de teléfono (`VISP_Shots`, 1080×1920) y en uno de tablet
+antes de subir. Versión: 1.0.4, versionCode 5.
