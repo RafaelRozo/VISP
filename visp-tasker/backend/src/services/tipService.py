@@ -5,7 +5,11 @@ Tip Service -- VISP-BE-PRICING-006
 Handles tip creation and confirmation for completed jobs.
 
 Tips are added by customers after a job is marked COMPLETED.
-After a Stripe payment succeeds, confirm_tip marks the tip as paid.
+
+Hasta el 2026-10-23 la propina solo se APUNTABA (status 'pending', sin cobro en
+Stripe): el cliente creía que la había dado y el proveedor nunca la recibía.
+Ahora `add_tip` la cobra en el acto a la tarjeta guardada del cliente, entera al
+proveedor, y solo la registra como pagada si Stripe la confirma.
 """
 
 from __future__ import annotations
@@ -28,18 +32,27 @@ from src.models import (
 
 logger = logging.getLogger(__name__)
 
+# Mínimo de propina. Stripe no cobra menos de $0.50 CAD, y una propina de céntimos
+# le cuesta a VISP más en comisión de Stripe de lo que vale.
+MIN_TIP_CENTS = 100
+
 
 async def add_tip(
     db: AsyncSession,
     job_id: uuid.UUID,
     customer_id: uuid.UUID,
     amount_cents: int,
+    *,
+    customer_stripe_id: Optional[str] = None,
+    payment_method: Optional[str] = None,
 ) -> Tip:
-    """Add a tip for a completed job.
+    """Add a tip for a completed job and charge it.
 
     Verifies that the job exists, is COMPLETED, and belongs to the requesting
-    customer. Creates a Tip record with status='pending' and logs a TIP_ADDED
-    PricingEvent. Updates job.tip_cents.
+    customer; charges the tip to the customer's saved card (all of it to the
+    provider); and only then records it as 'paid', updates job.tip_cents /
+    tip_paid_at and logs a TIP_ADDED PricingEvent. Any failure raises before
+    anything is committed.
 
     Args:
         db: Async database session.
@@ -65,6 +78,10 @@ async def add_tip(
         )
     if job.customer_id != customer_id:
         raise ValueError("You are not the customer for this job")
+    if amount_cents < MIN_TIP_CENTS:
+        raise ValueError(f"The minimum tip is ${MIN_TIP_CENTS / 100:.2f}.")
+    if not customer_stripe_id or not payment_method:
+        raise ValueError("Add a payment card in your profile to leave a tip.")
 
     # Resolve provider_id from the accepted assignment
     from src.models import JobAssignment, AssignmentStatus
@@ -83,18 +100,60 @@ async def add_tip(
             f"No completed assignment found for job {job_id}; cannot add tip"
         )
 
-    tip = Tip(
-        job_id=job_id,
-        customer_id=customer_id,
-        provider_id=assignment.provider_id,
-        amount_cents=amount_cents,
-        status="pending",
-    )
-    db.add(tip)
+    from src.integrations.stripe import PaymentError, charge_tip
+    from src.services import job_payment_service
+
+    destination = await job_payment_service._resolve_destination_account(db, job)
+    if not destination:
+        raise ValueError("This provider can't receive tips yet.")
+
+    # Una propina por trabajo (idx_tips_job_unique). Si ya hay una COBRADA, no se
+    # repite. Si hay una 'pending' es de antes del 2026-10-23, cuando solo se
+    # apuntaban y nunca se cobraban: se reutiliza esa fila y ahora sí se cobra.
+    tip = (
+        await db.execute(select(Tip).where(Tip.job_id == job_id))
+    ).scalar_one_or_none()
+    if tip is not None and tip.status == "paid":
+        raise ValueError("You already left a tip for this job.")
+    if tip is None:
+        tip = Tip(
+            job_id=job_id,
+            customer_id=customer_id,
+            provider_id=assignment.provider_id,
+            amount_cents=amount_cents,
+            status="pending",
+        )
+        db.add(tip)
+    else:
+        tip.amount_cents = amount_cents
+        tip.provider_id = assignment.provider_id
     await db.flush()
 
-    # Update the job's tip aggregate
-    job.tip_cents = (job.tip_cents or 0) + amount_cents
+    # El cobro va ANTES de dar la propina por buena. Si Stripe la rechaza se
+    # lanza el error y la transacción de la petición se deshace: no queda una
+    # propina "pendiente" que el proveedor vería y nunca cobraría.
+    try:
+        intent_id = await charge_tip(
+            tip.id,
+            job_id,
+            amount_cents,
+            destination,
+            customer_stripe_id=customer_stripe_id,
+            payment_method=payment_method,
+            currency=(job.currency or "cad"),
+        )
+    except PaymentError as exc:
+        raise ValueError(f"Your tip couldn't be charged: {exc.message}") from exc
+
+    now = datetime.now(timezone.utc)
+    tip.status = "paid"
+    tip.paid_at = now
+    tip.stripe_payment_intent_id = intent_id
+
+    # Una propina por trabajo: el total es ESTA, no se suma a la 'pending' vieja
+    # (que nunca se cobró).
+    job.tip_cents = amount_cents
+    job.tip_paid_at = now
     await db.flush()
 
     # Log pricing event

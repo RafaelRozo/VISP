@@ -116,16 +116,21 @@ async def _resolve_destination_account(
     except Exception:  # noqa: BLE001 — never let the B2B branch break the B2C path
         pass
 
+    # COMPLETED también: al cerrar el trabajo la asignación pasa a COMPLETED, y lo
+    # que se cobra DESPUÉS del cierre (la propina, un sobrecoste aprobado tarde)
+    # se quedaba sin cuenta de destino.
     assignment = (
         await db.execute(
             select(JobAssignment)
             .where(
                 JobAssignment.job_id == job.id,
-                JobAssignment.status == AssignmentStatus.ACCEPTED,
+                JobAssignment.status.in_(
+                    [AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED]
+                ),
             )
             .limit(1)
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     if assignment is None:
         return None
     provider = await db.get(ProviderProfile, assignment.provider_id)

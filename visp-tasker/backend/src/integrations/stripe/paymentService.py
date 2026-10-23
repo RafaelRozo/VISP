@@ -324,6 +324,73 @@ async def create_job_authorization(
     )
 
 
+async def charge_tip(
+    tip_id: uuid.UUID,
+    job_id: uuid.UUID,
+    amount_cents: int,
+    destination_account: str,
+    *,
+    customer_stripe_id: str,
+    payment_method: str,
+    currency: str = "cad",
+) -> str:
+    """Cobra una propina al momento, como destination charge al proveedor.
+
+    Va ENTERA al proveedor: sin `application_fee_amount`, así que VISP no se queda
+    nada (y absorbe la tarifa de Stripe, que en un destination charge paga la
+    plataforma). Se captura en el acto, no se retiene.
+
+    El metadata lleva `kind=tip` y NO `job_id`, a propósito: el webhook de
+    `payment_intent.succeeded` reescribe `final_price_cents` y
+    `stripe_payment_intent_id` del trabajo con cualquier cobro que traiga
+    `job_id`, y una propina no puede pisar el precio del trabajo.
+
+    Returns:
+        El id del PaymentIntent cobrado.
+
+    Raises:
+        PaymentError: si Stripe rechaza el cobro o no queda `succeeded`.
+    """
+    if amount_cents <= 0:
+        raise ValueError(f"Tip amount must be positive, got {amount_cents}")
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency=currency.lower(),
+            customer=customer_stripe_id,
+            payment_method=payment_method,
+            confirm=True,
+            automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
+            on_behalf_of=destination_account,
+            transfer_data={"destination": destination_account},
+            description="VISP tip",
+            metadata={
+                "kind": "tip",
+                "tip_id": str(tip_id),
+                "tip_job_id": str(job_id),
+                "platform": "visp_tasker",
+                "destination_charge": "1",
+            },
+            # Un doble toque en "Send tip" no puede cobrar dos veces.
+            idempotency_key=f"visp-tip-{tip_id}",
+        )
+    except stripe.StripeError as exc:
+        raise _handle_stripe_error(exc) from exc
+
+    if intent.status != "succeeded":
+        raise PaymentError(
+            f"Tip payment not completed (status {intent.status}).",
+            stripe_error_code="tip_not_completed",
+        )
+
+    logger.info(
+        "Tip charged: intent=%s, tip=%s, job=%s, amount=%d %s, dest=%s",
+        intent.id, tip_id, job_id, amount_cents, currency, destination_account,
+    )
+    return intent.id
+
+
 async def capture_job_payment(
     payment_intent_id: str,
     amount_to_capture_cents: int | None = None,

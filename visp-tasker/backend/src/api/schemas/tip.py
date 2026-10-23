@@ -27,6 +27,12 @@ class CreateTipRequest(BaseModel):
         gt=0,
         description="Tip amount in cents (must be positive)",
     )
+    # La tarjeta guardada con la que se cobra la propina, igual que la retención
+    # del trabajo (authorize-payment). Sin ella no se puede cobrar.
+    payment_method: Optional[str] = Field(
+        default=None,
+        description="Saved Stripe PaymentMethod id to charge the tip to",
+    )
 
 
 # ---------------------------------------------------------------------------

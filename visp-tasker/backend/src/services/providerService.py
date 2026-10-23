@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional, Sequence
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -581,7 +581,11 @@ async def get_earnings(
         func.coalesce(func.sum(Job.commission_amount_cents), 0).label("commission"),
         func.coalesce(func.sum(Job.provider_payout_cents), 0).label("net"),
         func.coalesce(func.sum(Job.quoted_price_cents), 0).label("labor"),
-        func.coalesce(func.sum(Job.tip_cents), 0).label("tips"),
+        # Solo propinas COBRADAS: hasta el 2026-10-23 se apuntaban sin cobrarse y
+        # el panel le enseñaba al proveedor dinero que nunca le llegó.
+        func.coalesce(
+            func.sum(case((Job.tip_paid_at.is_not(None), Job.tip_cents), else_=0)), 0
+        ).label("tips"),
         func.coalesce(func.sum(Job.service_tax_cents), 0).label("tax"),
         func.coalesce(func.sum(Job.materials_spent_cents), 0).label("materials"),
         func.count(Job.id).label("count"),
@@ -627,7 +631,7 @@ async def get_earnings(
                 "received_cents": _received(
                     j.quoted_price_cents or 0,
                     j.commission_amount_cents or 0,
-                    j.tip_cents or 0,
+                    (j.tip_cents or 0) if j.tip_paid_at else 0,
                     j.service_tax_cents or 0,
                     j.materials_spent_cents or 0,
                 ),

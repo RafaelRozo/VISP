@@ -233,7 +233,7 @@
     "earnedAllTime": "Earned all time",
     "jobDone": "job completed",
     "jobsDone": "jobs completed",
-    "paidAutomatically": "Paid automatically to your bank account by Stripe.",
+    "paidAutomatically": "Stripe sends it to your bank automatically. New accounts: about 7 days after each job.",
     "breakdown": "Breakdown",
     "yourWork": "Your work",
     "vispFee": "VISP fee",

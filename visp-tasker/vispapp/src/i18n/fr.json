@@ -233,7 +233,7 @@
     "earnedAllTime": "Gagné au total",
     "jobDone": "travail terminé",
     "jobsDone": "travaux terminés",
-    "paidAutomatically": "Versé automatiquement sur votre compte bancaire par Stripe.",
+    "paidAutomatically": "Stripe le verse automatiquement sur votre compte bancaire. Nouveaux comptes : environ 7 jours après chaque travail.",
     "breakdown": "Détail",
     "yourWork": "Votre travail",
     "vispFee": "Frais VISP",

@@ -103,6 +103,13 @@ async def _handle_payment_intent_succeeded(
     3. Send confirmation notifications to customer and provider
     """
     payment_intent = event.data.object
+
+    # Las propinas son un cobro aparte que ya va al proveedor por transfer_data y
+    # que tipService marca como pagado. No pueden tocar el trabajo: lo de abajo
+    # le pondría el PaymentIntent y el importe de la propina como precio final.
+    if payment_intent.metadata.get("kind") == "tip":
+        return f"Tip payment {payment_intent.id} succeeded — handled by tipService."
+
     job_id_str = payment_intent.metadata.get("job_id", "")
     amount = payment_intent.amount
     currency = payment_intent.currency

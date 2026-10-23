@@ -51,13 +51,16 @@ async def add_tip(
             job_id=body.job_id,
             customer_id=current_user.id,
             amount_cents=body.amount_cents,
+            customer_stripe_id=current_user.stripe_customer_id,
+            payment_method=body.payment_method,
         )
     except ValueError as exc:
         message = str(exc)
         if "not found" in message.lower():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
+        # 400 y no 5xx: Cloudflare envuelve los 5xx y el cliente no vería el motivo.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message
+            status_code=status.HTTP_400_BAD_REQUEST, detail=message
         )
     return TipResponse.model_validate(tip)
 

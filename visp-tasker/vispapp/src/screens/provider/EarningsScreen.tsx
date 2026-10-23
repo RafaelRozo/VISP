@@ -220,7 +220,8 @@ export default function EarningsScreen(): React.JSX.Element {
               : `${jobCount} ${jobCount === 1 ? tr('earningsScreen.jobDone') || 'job completed' : tr('earningsScreen.jobsDone') || 'jobs completed'}`}
           </Text>
           <Text style={[VispText.body, { color: t.text3, marginTop: 2, fontSize: 12 }]}>
-            {tr('earningsScreen.paidAutomatically') || 'Paid automatically to your bank account by Stripe.'}
+            {tr('earningsScreen.paidAutomatically') ||
+              'Stripe sends it to your bank automatically. New accounts: about 7 days after each job.'}
           </Text>
         </Card>
 

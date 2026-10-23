@@ -27,7 +27,13 @@ import { useTheme } from '../../theme/ThemeContext';
 import { Spacing } from '../../theme/spacing';
 import { Typography, FontWeight, FontSize } from '../../theme/typography';
 import { post } from '../../services/apiClient';
-import type { CustomerFlowParamList } from '../../types';
+import { paymentService } from '../../services/paymentService';
+import { useAuthStore } from '../../stores/authStore';
+
+// Igual que tipService.MIN_TIP_CENTS en el backend: Stripe no cobra menos de
+// $0.50 y una propina de céntimos cuesta más de lo que vale.
+const MIN_TIP_CENTS = 100;
+import type { ApiError, CustomerFlowParamList } from '../../types';
 
 // ──────────────────────────────────────────────
 // Types
@@ -60,6 +66,7 @@ function TipScreen(): React.JSX.Element {
   const [customAmount, setCustomAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tipSent, setTipSent] = useState(false);
+  const stripeCustomerId = useAuthStore((s) => s.user?.stripeCustomerId);
 
   useEffect(() => {
     navigation.setOptions({ title: 'Add a Tip' });
@@ -93,25 +100,37 @@ function TipScreen(): React.JSX.Element {
   }, []);
 
   // Submit tip
+  //
+  // La propina se COBRA aquí a la tarjeta guardada (antes solo se apuntaba y el
+  // proveedor nunca la recibía). Se manda la misma tarjeta que la retención del
+  // trabajo (OffersScreen). Si Stripe la rechaza, se enseña el motivo real.
   const handleSendTip = useCallback(async () => {
-    if (tipAmountCents <= 0) {
-      Alert.alert('Invalid Amount', 'Please select or enter a tip amount.');
+    if (tipAmountCents < MIN_TIP_CENTS) {
+      Alert.alert('Invalid Amount', `The minimum tip is $${(MIN_TIP_CENTS / 100).toFixed(2)}.`);
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const { methods } = stripeCustomerId
+        ? await paymentService.listPaymentMethods(stripeCustomerId)
+        : { methods: [] };
+      if (methods.length === 0) {
+        Alert.alert('Add a payment card', 'Add a card in your profile to leave a tip.');
+        return;
+      }
       await post('/tips', {
         job_id: jobId,
         amount_cents: tipAmountCents,
+        payment_method: methods[0].id,
       });
       setTipSent(true);
-    } catch {
-      Alert.alert('Tip Failed', 'Unable to send your tip. Please try again.');
+    } catch (err) {
+      Alert.alert('Tip Failed', (err as ApiError)?.message || 'Unable to send your tip. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
-  }, [jobId, tipAmountCents]);
+  }, [jobId, tipAmountCents, stripeCustomerId]);
 
   // Skip tip
   const handleSkip = useCallback(() => {
@@ -252,6 +271,11 @@ function TipScreen(): React.JSX.Element {
                 <View style={styles.previewContent}>
                   <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>Tip Amount</Text>
                   <Text style={styles.previewValue}>${tipAmountDisplay}</Text>
+                  {tipAmountCents < MIN_TIP_CENTS ? (
+                    <Text style={[styles.previewLabel, { color: theme.textSecondary, marginTop: 6 }]}>
+                      {`Minimum tip is $${(MIN_TIP_CENTS / 100).toFixed(2)}`}
+                    </Text>
+                  ) : null}
                 </View>
               </GlassCard>
             </View>
@@ -272,7 +296,7 @@ function TipScreen(): React.JSX.Element {
             title={`Send $${tipAmountDisplay} Tip`}
             variant="glow"
             onPress={handleSendTip}
-            disabled={tipAmountCents <= 0 || isSubmitting}
+            disabled={tipAmountCents < MIN_TIP_CENTS || isSubmitting}
             loading={isSubmitting}
             style={styles.sendButtonStyle}
           />
