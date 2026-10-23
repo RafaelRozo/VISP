@@ -73,6 +73,10 @@ MAX_MESSAGE_LENGTH: int = 1000
 
 _CHAT_ALLOWED_STATUSES: frozenset = frozenset({
     JobStatus.MATCHED,
+    # Aceptar una oferta deja el trabajo en SCHEDULED hasta que el proveedor sale
+    # hacia el cliente, y es justo cuando hay que coordinar la llegada. Sin esto
+    # el chat rechazaba los mensajes de los dos en ese tramo (2026-10-23).
+    JobStatus.SCHEDULED,
     JobStatus.PROVIDER_ACCEPTED,
     JobStatus.PROVIDER_EN_ROUTE,
     JobStatus.IN_PROGRESS,
