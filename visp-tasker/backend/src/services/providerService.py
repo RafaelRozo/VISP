@@ -570,10 +570,20 @@ async def get_earnings(
         filters.append(Job.completed_at >= period_start)
 
     # Aggregate
+    #
+    # Desglose para la pantalla Earnings (2026-10-23). "Recibido" es lo que de
+    # verdad le llega por Stripe: el cargo es destination charge y VISP solo se
+    # queda comisión + tarifa de servicio, así que al proveedor le llega su
+    # trabajo − comisión + propina + impuesto cobrado + material reembolsado.
+    # `provider_payout_cents` es solo trabajo − comisión y se quedaba corto.
     agg_stmt = select(
         func.coalesce(func.sum(Job.final_price_cents), 0).label("total"),
         func.coalesce(func.sum(Job.commission_amount_cents), 0).label("commission"),
         func.coalesce(func.sum(Job.provider_payout_cents), 0).label("net"),
+        func.coalesce(func.sum(Job.quoted_price_cents), 0).label("labor"),
+        func.coalesce(func.sum(Job.tip_cents), 0).label("tips"),
+        func.coalesce(func.sum(Job.service_tax_cents), 0).label("tax"),
+        func.coalesce(func.sum(Job.materials_spent_cents), 0).label("materials"),
         func.count(Job.id).label("count"),
     ).where(*filters)
     agg = (await db.execute(agg_stmt)).one()
@@ -581,11 +591,15 @@ async def get_earnings(
     # Detailed jobs
     jobs_stmt = (
         select(Job)
+        .options(selectinload(Job.task))
         .where(*filters)
         .order_by(Job.completed_at.desc())
         .limit(50)
     )
     jobs = (await db.execute(jobs_stmt)).scalars().all()
+
+    def _received(labor: int, commission: int, tips: int, tax: int, materials: int) -> int:
+        return labor - commission + tips + tax + materials
 
     return {
         "period": period,
@@ -593,15 +607,30 @@ async def get_earnings(
         "commission_cents": int(agg.commission),
         "net_cents": int(agg.net),
         "job_count": int(agg.count),
+        "labor_cents": int(agg.labor),
+        "tips_cents": int(agg.tips),
+        "tax_cents": int(agg.tax),
+        "materials_cents": int(agg.materials),
+        "received_cents": _received(
+            int(agg.labor), int(agg.commission), int(agg.tips), int(agg.tax), int(agg.materials)
+        ),
         "currency": "CAD",
         "jobs": [
             {
                 "job_id": j.id,
                 "reference_number": j.reference_number,
+                "task_name": j.task.name if j.task else None,
                 "service_city": j.service_city,
                 "final_price_cents": j.final_price_cents,
                 "commission_cents": j.commission_amount_cents,
                 "payout_cents": j.provider_payout_cents,
+                "received_cents": _received(
+                    j.quoted_price_cents or 0,
+                    j.commission_amount_cents or 0,
+                    j.tip_cents or 0,
+                    j.service_tax_cents or 0,
+                    j.materials_spent_cents or 0,
+                ),
                 "completed_at": j.completed_at,
             }
             for j in jobs
@@ -815,21 +844,13 @@ async def get_job_tracking(
             AssignmentStatus.COMPLETED,
         ]),
     )
-    assignment = (await db.execute(assignment_stmt)).scalar_one_or_none()
+    assignment = (await db.execute(assignment_stmt)).scalars().first()
 
-    # Fallback: if no ACCEPTED/COMPLETED, try OFFERED (provider not yet accepted
-    # but was offered the job)
-    if assignment is None:
-        offered_stmt = (
-            select(JobAssignment)
-            .where(
-                JobAssignment.job_id == job_id,
-                JobAssignment.status == AssignmentStatus.OFFERED,
-            )
-            .order_by(JobAssignment.match_score.desc().nullslast())
-            .limit(1)
-        )
-        assignment = (await db.execute(offered_stmt)).scalar_one_or_none()
+    # Sin proveedor ACEPTADO no hay a quién seguir. Antes se caía a la mejor
+    # invitación OFFERED, pero desde ofertas v2 una invitación solo significa
+    # "se le avisó": el cliente veía el nombre, la ETA y el TELÉFONO de un
+    # proveedor que nunca aceptó, incluso en un trabajo ya cancelado
+    # (TSK-EJQQ30, 2026-10-23).
 
     provider_lat = None
     provider_lng = None

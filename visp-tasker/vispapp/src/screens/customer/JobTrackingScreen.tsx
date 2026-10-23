@@ -57,7 +57,7 @@ MapboxGL.setAccessToken(Config.mapboxAccessToken);
 type JobTrackingRouteProp = RouteProp<CustomerFlowParamList, 'JobTracking'>;
 type JobTrackingNavProp = NativeStackNavigationProp<CustomerFlowParamList, 'JobTracking'>;
 
-type TrackingStatus = 'pending' | 'pending_match' | 'matched' | 'en_route' | 'arrived' | 'in_progress' | 'completed';
+type TrackingStatus = 'pending' | 'pending_match' | 'matched' | 'en_route' | 'arrived' | 'in_progress' | 'completed' | 'cancelled';
 
 interface StatusStep {
   status: TrackingStatus;
@@ -96,6 +96,13 @@ function mapBackendStatus(backendStatus: string): TrackingStatus {
     provider_en_route: 'en_route',
     in_progress: 'in_progress',
     completed: 'completed',
+    // Sin esto caían en 'pending' y un trabajo cancelado salía como "Searching
+    // for providers…" (TSK-EJQQ30, 2026-10-23).
+    cancelled_by_customer: 'cancelled',
+    cancelled_by_provider: 'cancelled',
+    cancelled_by_system: 'cancelled',
+    refunded: 'cancelled',
+    expired: 'cancelled',
   };
   return map[normalized] ?? 'pending';
 }
@@ -239,7 +246,7 @@ function JobTrackingScreen(): React.JSX.Element {
 
   // ── Polling for tracking data ────────────
   useEffect(() => {
-    if (currentStatus === 'completed' || searchTimedOut) {
+    if (currentStatus === 'completed' || currentStatus === 'cancelled' || searchTimedOut) {
       return;
     }
 
@@ -349,7 +356,10 @@ function JobTrackingScreen(): React.JSX.Element {
     ? `${job.provider.firstName} ${job.provider.lastName}`.trim()
     : null;
   const hasProvider = tracking?.providerName != null || jobProviderName != null;
-  const showMap = (currentStatus !== 'pending' && currentStatus !== 'completed' && !searchTimedOut) || hasProvider;
+  const isCancelled = currentStatus === 'cancelled';
+  const showMap =
+    !isCancelled &&
+    ((currentStatus !== 'pending' && currentStatus !== 'completed' && !searchTimedOut) || hasProvider);
 
   const providerName = tracking?.providerName ?? jobProviderName ?? 'Finding provider...';
 
@@ -602,7 +612,8 @@ function JobTrackingScreen(): React.JSX.Element {
             </View>
           ) : null}
 
-          {/* Provider Card */}
+          {/* Provider Card — no en un cancelado: ahí no hay proveedor que mostrar. */}
+          {!isCancelled && (
           <View style={styles.section}>
             <GlassCard variant="dark">
               <View style={styles.providerHeader}>
@@ -657,6 +668,21 @@ function JobTrackingScreen(): React.JSX.Element {
               )}
             </GlassCard>
           </View>
+          )}
+
+          {/* Cancelado: aviso claro en vez de "Searching for providers…". */}
+          {isCancelled && (
+            <View style={styles.section}>
+              <GlassCard variant="standard" style={styles.searchingCard}>
+                <Text style={[styles.searchingTitle, { color: theme.textPrimary }]}>
+                  {t('myJobs.cancelledTitle') || 'Job cancelled'}
+                </Text>
+                <Text style={[styles.searchingSubtext, { color: theme.textSecondary }]}>
+                  {t('myJobs.cancelledBody') || 'This job was cancelled. Any card hold was released.'}
+                </Text>
+              </GlassCard>
+            </View>
+          )}
 
           {/* Searching for provider — NO map */}
           {currentStatus === 'pending' && !searchTimedOut && (

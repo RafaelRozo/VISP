@@ -233,4 +233,33 @@ export const providerService = {
     getPublicProfile: async (providerId: string): Promise<ProviderPublicProfile> => {
         return await get<ProviderPublicProfile>(`/provider/${providerId}/public-profile`);
     },
+
+    /** Earnings for a period with the breakdown and the paid jobs (Earnings screen). */
+    getEarnings: async (period: 'week' | 'month' | 'all'): Promise<ProviderEarnings> => {
+        return await get<ProviderEarnings>('/provider/earnings', { period });
+    },
 };
+
+/**
+ * GET /provider/earnings. `receivedCents` es lo que de verdad le llegó por
+ * Stripe: trabajo − comisión + propina + impuesto cobrado + material.
+ */
+export interface ProviderEarnings {
+    period: string;
+    jobCount: number;
+    laborCents: number;
+    commissionCents: number;
+    tipsCents: number;
+    taxCents: number;
+    materialsCents: number;
+    receivedCents: number;
+    currency: string;
+    jobs: {
+        jobId: string;
+        referenceNumber: string;
+        taskName: string | null;
+        serviceCity: string | null;
+        receivedCents: number | null;
+        completedAt: string | null;
+    }[];
+}

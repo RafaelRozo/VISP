@@ -1776,10 +1776,15 @@ async def get_job_invoice(
             select(ProviderProfile).where(ProviderProfile.user_id == user.id)
         )).scalars().first()
         asignado = perfil is not None and (await db.execute(
+            # COMPLETED también: al cerrar el trabajo la asignación pasa a
+            # COMPLETED, y sin esto el proveedor nunca podía abrir su
+            # liquidación (justo cuando ya existe).
             select(JobAssignment.id).where(
                 JobAssignment.job_id == job_id,
                 JobAssignment.provider_id == perfil.id,
-                JobAssignment.status == AssignmentStatus.ACCEPTED,
+                JobAssignment.status.in_(
+                    [AssignmentStatus.ACCEPTED, AssignmentStatus.COMPLETED]
+                ),
             ).limit(1)
         )).scalars().first() is not None
         if not asignado:

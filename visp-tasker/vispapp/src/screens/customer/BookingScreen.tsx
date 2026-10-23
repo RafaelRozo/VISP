@@ -737,7 +737,7 @@ function BookingScreen(): React.JSX.Element {
                   (pricingUnit ?? '').toUpperCase() === 'HOURLY' || (pricingUnit ?? '').toUpperCase() === 'PER_CONTRACT'
                     ? 'the hours worked'
                     : 'the agreed price'
-                }, and the rest is released automatically.`}
+                }, and the rest is released back to you after the job is complete.`}
               </Text>
             </TouchableOpacity>
 

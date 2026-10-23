@@ -835,6 +835,11 @@ async def get_earnings(
         commission_cents=earnings["commission_cents"],
         net_cents=earnings["net_cents"],
         job_count=earnings["job_count"],
+        labor_cents=earnings["labor_cents"],
+        tips_cents=earnings["tips_cents"],
+        tax_cents=earnings["tax_cents"],
+        materials_cents=earnings["materials_cents"],
+        received_cents=earnings["received_cents"],
         currency=earnings["currency"],
         jobs=[EarningsJobSummary(**j) for j in earnings["jobs"]],
     )

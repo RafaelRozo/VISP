@@ -1,110 +1,65 @@
 /**
- * VISP - Earnings Screen (Mockup-fidelity refresh)
+ * VISP - Earnings Screen
  *
- * Matches `ProviderEarnings` in newdesign/app-provider.jsx:
- *   - ScreenTitle "Earnings" / "§ Wallet & payouts" with a download IconBtn
- *   - "Available to cash out" card with violet eyebrow, huge $X,XXX in mono,
- *     pending / in-escrow split, and a primary cash-out button.
- *   - Week/Month/Year TabPills.
- *   - Gross-this-month card with `↑ X% MoM` badge + `MiniBars` chart with
- *     WK01..WKN mono labels.
- *   - "Recent payouts" Eyebrow with rows: date / label / amount via Row.
- *   - Stripe Connect status surfaces (kept). The "Set Up Payments" CTA keeps
- *     GlassButton (the violet purple CTA is intentional per spec).
+ * Rehecha el 2026-10-23. La versión anterior estaba pensada para dinero
+ * RETENIDO en VISP ("Available to cash out", "Pending", botón "Cash out to
+ * bank"), pero el cobro es destination charge: Stripe le paga al proveedor en
+ * el momento de capturar y lo manda solo a su banco. Esos números salían
+ * siempre a $0 y el botón no hacía nada.
  *
- * Data fetching (paymentService / providerService / store) is preserved.
+ * Ahora responde a lo que el proveedor quiere saber:
+ *   - Cuánto ganó en el periodo (semana / mes / todo) y cuántos trabajos.
+ *   - De dónde sale: su trabajo − comisión de VISP + propinas + impuesto +
+ *     material reembolsado. El mismo cálculo que Stripe.
+ *   - Cada trabajo pagado, con su liquidación en PDF al tocarlo.
+ *   - El estado de su cuenta de cobros (se mantiene).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  ViewStyle,
 } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 
 import { useTranslation } from '../../i18n';
-import {
-  Screen,
-  ScreenTitle,
-  Eyebrow,
-  Card,
-  Row,
-  IconBtn,
-  MiniBars,
-} from '../../components/visp';
+import { Screen, ScreenTitle, Eyebrow, Card, Row } from '../../components/visp';
 import { useVispTheme, VispText, VispSpace, VispRadius, FontSansBold, FontMono } from '../../theme/visp';
 import { GlassButton } from '../../components/glass';
-import { useProviderStore } from '../../stores/providerStore';
-import { paymentService, ProviderBalance, PayoutInfo } from '../../services/paymentService';
-import { providerService, PayoutsStatus } from '../../services/providerService';
+import { providerService, PayoutsStatus, ProviderEarnings } from '../../services/providerService';
 import { payoutsV2Service } from '../../services/payoutsV2Service';
-import { EarningsPayout } from '../../types';
-
-// ──────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────
+import { taskService } from '../../services/taskService';
+import { useFocusRefresh } from '../../hooks/useFocusRefresh';
 
 type Period = 'week' | 'month' | 'all';
 
-// ──────────────────────────────────────────────
-// MotionPressable
-// ──────────────────────────────────────────────
+const money = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 
-function MotionPressable({
-  onPress,
-  children,
-  style,
-  pressScale = 0.97,
-}: {
-  onPress?: () => void;
-  children: React.ReactNode;
-  style?: ViewStyle | ViewStyle[];
-  pressScale?: number;
-}): React.JSX.Element {
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  return (
-    <Pressable
-      onPress={onPress}
-      style={style}
-      onPressIn={() => {
-        scale.value = withTiming(pressScale, { duration: 90, easing: Easing.out(Easing.quad) });
-      }}
-      onPressOut={() => {
-        scale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.6 });
-      }}
-    >
-      <Animated.View style={[{ alignSelf: 'stretch' }, animatedStyle]}>{children}</Animated.View>
-    </Pressable>
-  );
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+  } catch {
+    return '—';
+  }
 }
 
-// ──────────────────────────────────────────────
-// TabPills
-// ──────────────────────────────────────────────
-
-interface TabPillsProps {
-  tabs: { key: Period; label: string }[];
-  active: Period;
-  onChange: (k: Period) => void;
-}
-
-function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element {
+function TabPills({ active, onChange }: { active: Period; onChange: (k: Period) => void }) {
   const t = useVispTheme();
+  const { t: tr } = useTranslation();
+  const tabs: { key: Period; label: string }[] = [
+    { key: 'week', label: tr('earningsScreen.week') || 'Week' },
+    { key: 'month', label: tr('earningsScreen.month') || 'Month' },
+    { key: 'all', label: tr('earningsScreen.all') || 'All' },
+  ];
   return (
-    <View style={pillStyles.row}>
+    <View style={styles.pillRow}>
       {tabs.map((tab) => {
         const isActive = tab.key === active;
         return (
@@ -112,11 +67,8 @@ function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element 
             key={tab.key}
             onPress={() => onChange(tab.key)}
             style={[
-              pillStyles.pill,
-              {
-                backgroundColor: isActive ? t.text : 'transparent',
-                borderColor: isActive ? t.text : t.border,
-              },
+              styles.pill,
+              { backgroundColor: isActive ? t.text : 'transparent', borderColor: isActive ? t.text : t.border },
             ]}
           >
             <Text style={[VispText.chip, { color: isActive ? t.bg : t.text2 }]}>{tab.label}</Text>
@@ -127,76 +79,32 @@ function TabPills({ tabs, active, onChange }: TabPillsProps): React.JSX.Element 
   );
 }
 
-const pillStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: VispRadius.pill,
-    borderWidth: 1,
-  },
-});
-
-// ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
-
-function splitCurrency(amount: number): { dollars: string; cents: string } {
-  const fixed = (Math.round(amount * 100) / 100).toFixed(2);
-  const [d, c] = fixed.split('.');
-  return { dollars: Number(d).toLocaleString(), cents: c };
-}
-
-function formatDateLabel(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
-  } catch {
-    return '—';
-  }
-}
-
-// ──────────────────────────────────────────────
-// Component
-// ──────────────────────────────────────────────
-
 export default function EarningsScreen(): React.JSX.Element {
   const t = useVispTheme();
   const { t: tr } = useTranslation();
   const navigation = useNavigation<any>();
 
-  const {
-    earnings: rawEarnings,
-    weeklyEarnings,
-    payouts,
-    providerProfile,
-    isLoadingEarnings,
-    fetchEarnings,
-  } = useProviderStore();
-  const earnings = rawEarnings ?? {
-    today: 0,
-    thisWeek: 0,
-    thisMonth: 0,
-    pendingPayout: 0,
-    totalEarned: 0,
-  };
+  const [period, setPeriod] = useState<Period>('week');
+  const [data, setData] = useState<ProviderEarnings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pulling, setPulling] = useState(false);
+  const [payouts, setPayouts] = useState<PayoutsStatus | null>(null);
 
-  const [selectedPeriod, setSelectedPeriod] = useState<Period>('week');
-  const isConnecting = false;
-  const [stripeBalance, setStripeBalance] = useState<ProviderBalance | null>(null);
-  const [stripePayouts, setStripePayouts] = useState<PayoutInfo[]>([]);
-  const [livePayoutsStatus, setLivePayoutsStatus] = useState<PayoutsStatus | null>(null);
+  const loadEarnings = useCallback(async (p: Period) => {
+    try {
+      setData(await providerService.getEarnings(p));
+    } catch (err) {
+      console.warn('[EarningsScreen] earnings fetch failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // Reads the v2 onboarding status (the wizard updates this state, not the
-  // legacy v1 setup endpoint), then maps it onto the existing PayoutsStatus
-  // shape so the rest of this screen keeps working unchanged.
-  const refreshPayoutsStatus = useCallback(async () => {
+  // Estado de la cuenta de cobros (v2), mapeado a PayoutsStatus como antes.
+  const loadPayouts = useCallback(async () => {
     try {
       const v2 = await payoutsV2Service.getStatus();
-      setLivePayoutsStatus({
+      setPayouts({
         connected: v2.accountId != null,
         accountId: v2.accountId,
         detailsSubmitted: v2.detailsSubmitted,
@@ -207,299 +115,140 @@ export default function EarningsScreen(): React.JSX.Element {
         requirementsDue: v2.requirementsDue ?? [],
       });
     } catch (err) {
-      console.warn('[EarningsScreen] v2 payouts status fetch failed:', err);
+      console.warn('[EarningsScreen] payouts status fetch failed:', err);
     }
   }, []);
 
-  useEffect(() => {
-    fetchEarnings();
-    refreshPayoutsStatus();
-  }, [fetchEarnings, refreshPayoutsStatus]);
+  // Al volver a la pestaña (p. ej. tras terminar un trabajo o el alta de cobros).
+  const refreshAll = useCallback(() => {
+    loadEarnings(period);
+    loadPayouts();
+  }, [loadEarnings, loadPayouts, period]);
+  useFocusRefresh(refreshAll);
 
-  // Re-fetch whenever the screen regains focus (e.g. user returns from the
-  // Payouts onboarding wizard) so the CTA disappears as soon as setup is done.
-  useFocusEffect(
-    useCallback(() => {
-      refreshPayoutsStatus();
-    }, [refreshPayoutsStatus]),
+  const onChangePeriod = useCallback(
+    (p: Period) => {
+      setPeriod(p);
+      loadEarnings(p);
+    },
+    [loadEarnings],
   );
 
-  useEffect(() => {
-    if (providerProfile?.stripeConnectStatus === 'active') {
-      const accountId = providerProfile.stripeAccountId;
-      if (accountId) {
-        paymentService
-          .getProviderBalance(accountId)
-          .then(setStripeBalance)
-          .catch((err) => console.warn('[EarningsScreen] Balance fetch failed:', err));
-        paymentService
-          .listProviderPayouts(accountId, 5)
-          .then((res) => setStripePayouts(res.payouts ?? []))
-          .catch((err) => console.warn('[EarningsScreen] Payouts fetch failed:', err));
+  const onRefresh = useCallback(async () => {
+    setPulling(true);
+    await Promise.all([loadEarnings(period), loadPayouts()]);
+    setPulling(false);
+  }, [loadEarnings, loadPayouts, period]);
+
+  const openReceipt = useCallback(
+    async (jobId: string) => {
+      const url = await taskService.getInvoiceUrl(jobId);
+      if (!url) {
+        Alert.alert(
+          tr('earningsScreen.receiptPendingTitle') || 'Receipt not ready',
+          tr('earningsScreen.receiptPendingBody') || 'Your receipt is issued once the payment is finalised.',
+        );
+        return;
       }
-    }
-  }, [providerProfile]);
+      Linking.openURL(url).catch(() => undefined);
+    },
+    [tr],
+  );
 
-  const handleConnectStripe = useCallback(() => {
-    navigation.navigate('PayoutsOnboarding' as any);
-  }, [navigation]);
-
-  // ── Period-filtered payouts ──
-  const filteredPayouts = useMemo(() => {
-    const now = new Date();
-    return (payouts || []).filter((payout) => {
-      if (selectedPeriod === 'all') return true;
-      const payoutDate = new Date(payout.createdAt);
-      if (selectedPeriod === 'week') {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return payoutDate >= weekAgo;
-      }
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return payoutDate >= monthAgo;
-    });
-  }, [payouts, selectedPeriod]);
-
-  const onRefresh = useCallback(() => {
-    fetchEarnings();
-    refreshPayoutsStatus();
-  }, [fetchEarnings, refreshPayoutsStatus]);
-
-  const effectiveStripeStatus: 'not_connected' | 'pending' | 'active' | 'restricted' = livePayoutsStatus
-    ? !livePayoutsStatus.connected
+  const stripeStatus: 'not_connected' | 'pending' | 'active' | 'restricted' | null = payouts
+    ? !payouts.connected
       ? 'not_connected'
-      : livePayoutsStatus.payoutsEnabled
+      : payouts.payoutsEnabled
         ? 'active'
-        : livePayoutsStatus.requirementsDue.length > 0
+        : payouts.requirementsDue.length > 0
           ? 'restricted'
           : 'pending'
-    : providerProfile?.stripeConnectStatus ?? 'not_connected';
+    : null;
 
-  // ── Available to cash out ──
-  // The mockup is a single "available balance" hero. We prefer the live Stripe
-  // balance (cents) when present, otherwise fall back to the legacy summary
-  // (pendingPayout dollars).
-  const availableAmount =
-    stripeBalance != null
-      ? (stripeBalance.available_cents ?? 0) / 100
-      : earnings.pendingPayout;
-  const pendingAmount =
-    stripeBalance != null ? (stripeBalance.pending_cents ?? 0) / 100 : 0;
-  const escrowAmount = earnings.thisWeek; // best proxy from our data shape
+  const periodLabel =
+    period === 'week'
+      ? tr('earningsScreen.earnedThisWeek') || 'Earned this week'
+      : period === 'month'
+        ? tr('earningsScreen.earnedThisMonth') || 'Earned this month'
+        : tr('earningsScreen.earnedAllTime') || 'Earned all time';
 
-  const { dollars, cents } = splitCurrency(availableAmount);
+  const received = data?.receivedCents ?? 0;
+  const [dollars, cents] = (received / 100).toFixed(2).split('.');
+  const jobCount = data?.jobCount ?? 0;
 
-  // ── Bars data + week labels (up to 10 weeks) ──
-  const barData = (weeklyEarnings.slice(-10).map((w) => w.amount) as number[]);
-  const peakIndex = barData.length
-    ? barData.reduce((best, v, i) => (v > barData[best] ? i : best), 0)
-    : undefined;
-  const weekLabels =
-    weeklyEarnings.length > 0
-      ? weeklyEarnings.slice(-10).map((w) => w.weekLabel.toUpperCase())
-      : Array.from({ length: 10 }, (_, i) => `WK${String(i + 1).padStart(2, '0')}`);
-
-  // Month-over-month delta (compare last week to previous week as a proxy)
-  const mom =
-    weeklyEarnings.length >= 2
-      ? (() => {
-        const last = weeklyEarnings[weeklyEarnings.length - 1].amount;
-        const prev = weeklyEarnings[weeklyEarnings.length - 2].amount || 1;
-        const pct = Math.round(((last - prev) / prev) * 100);
-        return pct;
-      })()
-      : null;
-
-  const momLabel = mom != null ? `${mom >= 0 ? '↑' : '↓'} ${Math.abs(mom)}% MoM` : '';
-
-  // ── Recent payouts rows (mix Stripe payouts + local payouts) ──
-  const recentRows = useMemo(() => {
-    const stripeRows = stripePayouts.map((p) => ({
-      key: `s-${p.id}`,
-      icon: 'bank' as const,
-      title: `${tr('earningsScreen.payoutAccount')} · ${p.currency.toUpperCase()}`,
-      sub: formatDateLabel(p.arrival_date || p.created_at || new Date().toISOString()),
-      amount: `-$${(p.amount_cents / 100).toFixed(2)}`,
-      out: true,
-    }));
-    const localRows = (filteredPayouts as EarningsPayout[]).slice(0, 8).map((p) => ({
-      key: `p-${p.id}`,
-      icon: 'briefcase' as const,
-      title: `Job · ${p.taskName}`,
-      sub: formatDateLabel(p.createdAt),
-      amount: `+$${p.netAmount.toFixed(2)}`,
-      out: false,
-    }));
-    return [...stripeRows, ...localRows];
-  }, [stripePayouts, filteredPayouts, tr]);
+  const breakdown: { label: string; value: string; strong?: boolean }[] = data
+    ? [
+        { label: tr('earningsScreen.yourWork') || 'Your work', value: money(data.laborCents) },
+        {
+          label: tr('earningsScreen.vispFee') || 'VISP fee',
+          value: `−${money(data.commissionCents)}`,
+        },
+        ...(data.tipsCents ? [{ label: tr('earningsScreen.tips') || 'Tips', value: `+${money(data.tipsCents)}` }] : []),
+        ...(data.taxCents ? [{ label: tr('earningsScreen.taxCollected') || 'Tax collected', value: `+${money(data.taxCents)}` }] : []),
+        ...(data.materialsCents
+          ? [{ label: tr('earningsScreen.materials') || 'Materials reimbursed', value: `+${money(data.materialsCents)}` }]
+          : []),
+        { label: tr('earningsScreen.youEarned') || 'You earned', value: money(received), strong: true },
+      ]
+    : [];
 
   return (
     <Screen>
-      <ScreenTitle
-        title={tr('nav.earnings') || 'Earnings'}
-        sub="§ Wallet & payouts"
-        right={<IconBtn name="dots" />}
-      />
+      <ScreenTitle title={tr('nav.earnings') || 'Earnings'} sub="§ Wallet & payouts" />
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.contentContainer}
-        refreshControl={
-          <RefreshControl refreshing={isLoadingEarnings} onRefresh={onRefresh} tintColor={t.text2} />
-        }
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={t.text2} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Available to cash out hero card */}
-        <Card accent padding={20} style={styles.heroCard}>
-          <Eyebrow color={t.violet}>{tr('earningsScreen.available') || 'Available to cash out'}</Eyebrow>
+        <TabPills active={period} onChange={onChangePeriod} />
+
+        {/* Lo ganado en el periodo */}
+        <Card accent padding={20} style={styles.block}>
+          <Eyebrow color={t.violet}>{periodLabel.toUpperCase()}</Eyebrow>
           <View style={styles.heroAmountRow}>
             <Text style={{ fontFamily: FontSansBold, fontSize: 20, color: t.text3, fontWeight: '700' }}>$</Text>
-            <Text
-              style={{
-                fontFamily: FontSansBold,
-                fontSize: 48,
-                fontWeight: '700',
-                color: t.text,
-                letterSpacing: -1.7,
-                lineHeight: 48,
-              }}
-            >
-              {dollars}
+            <Text style={{ fontFamily: FontSansBold, fontSize: 48, fontWeight: '700', color: t.text, letterSpacing: -1.7, lineHeight: 48 }}>
+              {Number(dollars).toLocaleString()}
             </Text>
-            <Text
-              style={{
-                fontFamily: FontMono,
-                fontSize: 15,
-                marginLeft: 6,
-                color: t.text3,
-                letterSpacing: 0.9,
-              }}
-            >
-              .{cents}
-            </Text>
-            {momLabel ? (
-              <View style={[styles.momBadge, { borderColor: t.violetLine, backgroundColor: t.violetDim }]}>
-                <Text style={{ fontFamily: FontMono, fontSize: 10, color: t.violet, letterSpacing: 0.6 }}>
-                  {momLabel}
+            <Text style={{ fontFamily: FontMono, fontSize: 15, marginLeft: 6, color: t.text3, letterSpacing: 0.9 }}>.{cents}</Text>
+          </View>
+          <Text style={[VispText.body, { color: t.text2, marginTop: 8 }]}>
+            {loading
+              ? '…'
+              : `${jobCount} ${jobCount === 1 ? tr('earningsScreen.jobDone') || 'job completed' : tr('earningsScreen.jobsDone') || 'jobs completed'}`}
+          </Text>
+          <Text style={[VispText.body, { color: t.text3, marginTop: 2, fontSize: 12 }]}>
+            {tr('earningsScreen.paidAutomatically') || 'Paid automatically to your bank account by Stripe.'}
+          </Text>
+        </Card>
+
+        {/* De dónde sale */}
+        {jobCount > 0 ? (
+          <Card padding={VispSpace.card} style={styles.block}>
+            <Eyebrow>{tr('earningsScreen.breakdown') || 'Breakdown'}</Eyebrow>
+            {breakdown.map((b, i) => (
+              <View
+                key={b.label}
+                style={[
+                  styles.breakdownRow,
+                  b.strong && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border, marginTop: 6, paddingTop: 10 },
+                  i === 0 && { marginTop: 10 },
+                ]}
+              >
+                <Text style={[VispText.body, { color: b.strong ? t.text : t.text2 }]}>{b.label}</Text>
+                <Text style={{ fontFamily: FontMono, fontSize: b.strong ? 15 : 13, fontWeight: '700', color: t.text }}>
+                  {b.value}
                 </Text>
               </View>
-            ) : null}
-          </View>
+            ))}
+          </Card>
+        ) : null}
 
-          <View style={[styles.heroSplitRow, { borderTopColor: t.border }]}>
-            <View style={{ flex: 1 }}>
-              <Eyebrow>{tr('earningsScreen.pending') || 'Pending'}</Eyebrow>
-              <Text
-                style={{
-                  fontFamily: FontMono,
-                  fontSize: 15,
-                  fontWeight: '700',
-                  color: t.text,
-                  marginTop: 4,
-                }}
-              >
-                ${pendingAmount.toFixed(2)}
-              </Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Eyebrow>{tr('earningsScreen.thisWeek') || 'In escrow'}</Eyebrow>
-              <Text
-                style={{
-                  fontFamily: FontMono,
-                  fontSize: 15,
-                  fontWeight: '700',
-                  color: t.text,
-                  marginTop: 4,
-                }}
-              >
-                ${escrowAmount.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-
-          <MotionPressable onPress={() => void 0}>
-            <View style={[styles.cashoutBtn, { backgroundColor: t.text }]}>
-              <Text style={[VispText.bodyStrong, { color: t.bg, fontSize: 13 }]}>
-                {tr('earningsScreen.cashOut') || 'Cash out to bank'}
-              </Text>
-            </View>
-          </MotionPressable>
-        </Card>
-
-        {/* Period tabs */}
-        <TabPills
-          tabs={[
-            { key: 'week', label: tr('earningsScreen.week') || 'Week' },
-            { key: 'month', label: tr('earningsScreen.month') || 'Month' },
-            { key: 'all', label: tr('earningsScreen.all') || 'All' },
-          ]}
-          active={selectedPeriod}
-          onChange={setSelectedPeriod}
-        />
-
-        {/* Gross this period + chart */}
-        <Card padding={VispSpace.card} style={{ marginBottom: 14 }}>
-          <View style={styles.chartHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Eyebrow>
-                {selectedPeriod === 'week'
-                  ? tr('earningsScreen.thisWeek') || 'Gross this week'
-                  : selectedPeriod === 'month'
-                    ? tr('earningsScreen.thisMonth') || 'Gross this month'
-                    : tr('earningsScreen.totalEarned') || 'Gross all-time'}
-              </Eyebrow>
-              <Text
-                style={{
-                  fontFamily: FontMono,
-                  fontSize: 24,
-                  fontWeight: '700',
-                  letterSpacing: -0.6,
-                  color: t.text,
-                  marginTop: 6,
-                }}
-              >
-                $
-                {(selectedPeriod === 'week'
-                  ? earnings.thisWeek
-                  : selectedPeriod === 'month'
-                    ? earnings.thisMonth
-                    : earnings.totalEarned
-                ).toLocaleString()}
-              </Text>
-            </View>
-            {momLabel ? (
-              <Text style={{ fontFamily: FontMono, fontSize: 11, color: t.violet, letterSpacing: 0.6 }}>
-                {momLabel}
-              </Text>
-            ) : null}
-          </View>
-
-          {barData.length > 0 ? (
-            <>
-              <View style={{ marginTop: 12 }}>
-                <MiniBars data={barData} peakIndex={peakIndex} height={42} />
-              </View>
-              <View style={styles.weekLabelsRow}>
-                {weekLabels.map((w, i) => (
-                  <Text
-                    key={`${w}-${i}`}
-                    style={{ fontFamily: FontMono, fontSize: 9, color: t.text4, letterSpacing: 1, flex: 1, textAlign: 'center' }}
-                    numberOfLines={1}
-                  >
-                    {w}
-                  </Text>
-                ))}
-              </View>
-            </>
-          ) : (
-            <Text style={[VispText.body, { color: t.text3, marginTop: 12 }]}>
-              {tr('earningsScreen.noPayoutsForPeriod') || 'No earnings data yet'}
-            </Text>
-          )}
-        </Card>
-
-        {/* Stripe connect status (compact) */}
-        {effectiveStripeStatus === 'not_connected' ? (
-          <Card accent padding={VispSpace.card} style={{ marginBottom: 14 }}>
+        {/* Cuenta de cobros */}
+        {stripeStatus === 'not_connected' ? (
+          <Card accent padding={VispSpace.card} style={styles.block}>
             <Eyebrow color={t.violet}>{tr('earningsScreen.notConnected') || 'Payouts'}</Eyebrow>
             <Text style={[VispText.body, { color: t.text, marginTop: 6, marginBottom: 14 }]}>
               {tr('earningsScreen.connectBank') || 'Connect your bank to receive payouts from completed jobs.'}
@@ -507,13 +256,11 @@ export default function EarningsScreen(): React.JSX.Element {
             <GlassButton
               title={tr('earningsScreen.setUpPayments') || 'Set Up Payments'}
               variant="glow"
-              onPress={handleConnectStripe}
-              disabled={isConnecting}
-              loading={isConnecting}
+              onPress={() => navigation.navigate('PayoutsOnboarding' as any)}
             />
           </Card>
-        ) : effectiveStripeStatus === 'restricted' ? (
-          <Card accent padding={VispSpace.card} style={{ marginBottom: 14 }}>
+        ) : stripeStatus === 'restricted' ? (
+          <Card accent padding={VispSpace.card} style={styles.block}>
             <Eyebrow color={t.violet}>{tr('earningsScreen.restricted') || 'Action needed'}</Eyebrow>
             <Text style={[VispText.body, { color: t.text, marginTop: 6, marginBottom: 14 }]}>
               {tr('earningsScreen.accountRestricted') || 'Your payout account needs additional info.'}
@@ -521,20 +268,18 @@ export default function EarningsScreen(): React.JSX.Element {
             <GlassButton
               title={tr('profileScreen.stripeConnectContinueButton') || 'Continue setup'}
               variant="glow"
-              onPress={handleConnectStripe}
-              loading={isConnecting}
-              disabled={isConnecting}
+              onPress={() => navigation.navigate('PayoutsOnboarding' as any)}
             />
           </Card>
-        ) : effectiveStripeStatus === 'pending' ? (
-          <Card padding={VispSpace.card} style={{ marginBottom: 14 }}>
+        ) : stripeStatus === 'pending' ? (
+          <Card padding={VispSpace.card} style={styles.block}>
             <Eyebrow>{tr('earningsScreen.pendingVerification') || 'Verifying account'}</Eyebrow>
             <Text style={[VispText.body, { color: t.text2, marginTop: 6 }]}>
               {tr('earningsScreen.accountBeingVerified') || 'We are verifying your payout account.'}
             </Text>
           </Card>
-        ) : effectiveStripeStatus === 'active' ? (
-          <Card padding={VispSpace.card} style={{ marginBottom: 14, borderColor: t.ok, borderWidth: 1 }}>
+        ) : stripeStatus === 'active' ? (
+          <Card padding={VispSpace.card} style={[styles.block, { borderColor: t.ok, borderWidth: 1 }]}>
             <Eyebrow color={t.ok}>{tr('earningsScreen.payoutsActiveLabel') || 'Payouts active'}</Eyebrow>
             <Text style={[VispText.body, { color: t.text, marginTop: 6 }]}>
               {tr('earningsScreen.payoutsActiveBody') || '✓ Your bank account is connected. Completed jobs will be paid out automatically.'}
@@ -542,38 +287,35 @@ export default function EarningsScreen(): React.JSX.Element {
           </Card>
         ) : null}
 
-        {/* Recent payouts */}
-        <Eyebrow>{tr('earningsScreen.recentPayouts') || 'Recent payouts'}</Eyebrow>
+        {/* Trabajos pagados, cada uno con su liquidación */}
+        <Eyebrow>{tr('earningsScreen.paidJobs') || 'Paid jobs'}</Eyebrow>
         <View style={{ marginTop: 6, marginBottom: 14 }}>
-          {recentRows.length === 0 ? (
+          {!loading && (data?.jobs.length ?? 0) === 0 ? (
             <Text style={[VispText.body, { color: t.text3, paddingVertical: 18 }]}>
-              {tr('earningsScreen.noPayoutsForPeriod') || 'No payouts for this period'}
+              {tr('earningsScreen.noJobsForPeriod') || 'No paid jobs in this period yet.'}
             </Text>
           ) : (
-            recentRows.map((r, idx) => (
-              <View
-                key={r.key}
-                style={idx === recentRows.length - 1 ? undefined : [styles.rowDivider, { borderBottomColor: t.border }]}
+            (data?.jobs ?? []).map((j, idx, all) => (
+              <Pressable
+                key={j.jobId}
+                onPress={() => openReceipt(j.jobId)}
+                style={idx === all.length - 1 ? undefined : [styles.rowDivider, { borderBottomColor: t.border }]}
               >
                 <Row
-                  icon={r.icon}
-                  title={r.title}
-                  sub={r.sub}
-                  chevron={false}
+                  icon="briefcase"
+                  title={j.taskName || j.referenceNumber}
+                  sub={[formatDate(j.completedAt), j.serviceCity, tr('earningsScreen.viewReceipt') || 'View receipt']
+                    .filter(Boolean)
+                    .join(' · ')
+                    .toUpperCase()}
+                  chevron
                   trailing={
-                    <Text
-                      style={{
-                        fontFamily: FontMono,
-                        fontSize: 13,
-                        fontWeight: '700',
-                        color: r.out ? t.text3 : t.text,
-                      }}
-                    >
-                      {r.amount}
+                    <Text style={{ fontFamily: FontMono, fontSize: 13, fontWeight: '700', color: t.text }}>
+                      +{money(j.receivedCents ?? 0)}
                     </Text>
                   }
                 />
-              </View>
+              </Pressable>
             ))
           )}
         </View>
@@ -582,10 +324,6 @@ export default function EarningsScreen(): React.JSX.Element {
   );
 }
 
-// ──────────────────────────────────────────────
-// Styles
-// ──────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   contentContainer: {
@@ -593,45 +331,25 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 40,
   },
-
-  heroCard: { marginBottom: 14 },
+  block: { marginBottom: 14 },
+  pillRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: VispRadius.pill,
+    borderWidth: 1,
+  },
   heroAmountRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     marginTop: 10,
     gap: 4,
-    flexWrap: 'wrap',
   },
-  momBadge: {
-    marginLeft: 'auto',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  heroSplitRow: {
-    flexDirection: 'row',
-    gap: 14,
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  cashoutBtn: {
-    marginTop: 14,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  chartHeaderRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  weekLabelsRow: {
+  breakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 6,
+    alignItems: 'center',
+    paddingVertical: 4,
   },
-
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
+  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
 });

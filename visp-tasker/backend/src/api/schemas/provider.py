@@ -229,7 +229,11 @@ class AssignmentOut(BaseModel):
 
 class EarningsJobSummary(BaseModel):
     """A completed job in the earnings detail list."""
-    model_config = ConfigDict(from_attributes=True)
+    # populate_by_name: la ruta lo construye con los nombres de campo
+    # (`job_id=...`). Sin esto la validación exigía los alias y /provider/earnings
+    # daba 500 en cuanto el proveedor tenía UN trabajo cobrado — nunca se vio
+    # porque hasta el 2026-10-23 ninguno tenía la asignación en COMPLETED.
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     job_id: uuid.UUID = Field(alias="jobId")
     reference_number: str = Field(alias="referenceNumber")
@@ -237,6 +241,9 @@ class EarningsJobSummary(BaseModel):
     final_price_cents: Optional[int] = Field(default=None, alias="finalPriceCents")
     commission_cents: Optional[int] = Field(default=None, alias="commissionCents")
     payout_cents: Optional[int] = Field(default=None, alias="payoutCents")
+    # Lo que le llegó de verdad (trabajo − comisión + propina + impuesto + material).
+    received_cents: Optional[int] = Field(default=None, alias="receivedCents")
+    task_name: Optional[str] = Field(default=None, alias="taskName")
     completed_at: Optional[datetime] = Field(default=None, alias="completedAt")
 
 
@@ -249,6 +256,12 @@ class EarningsSummaryOut(BaseModel):
     commission_cents: int = Field(alias="commissionCents")
     net_cents: int = Field(alias="netCents")
     job_count: int = Field(alias="jobCount")
+    # Desglose de la pantalla Earnings (2026-10-23).
+    labor_cents: int = Field(default=0, alias="laborCents")
+    tips_cents: int = Field(default=0, alias="tipsCents")
+    tax_cents: int = Field(default=0, alias="taxCents")
+    materials_cents: int = Field(default=0, alias="materialsCents")
+    received_cents: int = Field(default=0, alias="receivedCents")
     currency: str = "CAD"
     jobs: list[EarningsJobSummary] = Field(default_factory=list)
 

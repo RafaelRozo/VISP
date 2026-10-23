@@ -58,7 +58,11 @@ interface ChatHistory {
   role: 'customer' | 'provider';
 }
 
-const POLL_MS = 6000;
+// Cada 2 s mientras el chat está abierto (eran 6 s y en la prueba del
+// 2026-10-23 la respuesta tardaba lo bastante como para que el usuario creyera
+// que había que recargar). Es una consulta pequeña y solo corre con la pantalla
+// a la vista.
+const POLL_MS = 2000;
 
 // ---------------------------------------------------------------------------
 // Component
